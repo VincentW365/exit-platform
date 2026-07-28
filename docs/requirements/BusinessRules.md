@@ -1,0 +1,134 @@
+# Business Rules
+
+## Purpose
+
+These rules convert the DMAIC and Decision Register into deterministic behaviour. Requirements describe what the product must provide; business rules describe constraints that must remain true.
+
+## Rule catalogue
+
+| Rule ID | Area | Rule |
+| --- | --- | --- |
+| BR-GOV-001 | Authority | An approved Decision Register entry overrides conflicting wording in the source DMAIC. |
+| BR-GOV-002 | Authority | Claude shall not implement an OPEN decision as though it were approved. |
+| BR-GOV-003 | Change control | Any change to scope, workflow authority, privacy model, KPI formula or architecture requires a change request and traceability update. |
+| BR-GOV-004 | Data | Real employee data shall not be used in development, tests, screenshots or demos. |
+| BR-GOV-005 | AI | AI output shall never be treated as an approved HR decision, legal interpretation or final communication without human approval. |
+| BR-CASE-001 | Creation | Only an authorized HR role may create an MVP offboarding case. |
+| BR-CASE-002 | Creation | A case remains DRAFT until required receipt, employee, departure, date, owner and classification fields are valid. |
+| BR-CASE-003 | Approval | Only an authorized HR approval action creates the employee snapshot and workflow instance. |
+| BR-CASE-004 | Departure type | A case shall have exactly one active departure type. |
+| BR-CASE-005 | Dates | Receipt date/time, proposed last day, confirmed last day and effective separation time are distinct concepts. |
+| BR-CASE-006 | Dates | Security-critical deadlines use the exact effective separation time, not the end of the calendar day. |
+| BR-CASE-007 | Dates | A changed effective date/time requires reason, impact preview, confirmation and an audit event. |
+| BR-CASE-008 | History | Prior values and schedules shall remain in history after a correction. |
+| BR-CASE-009 | Deletion | Operational users cannot hard-delete cases. |
+| BR-CASE-010 | Void | A void requires HR Manager authority and cancels future work without deleting history. |
+| BR-CASE-011 | Reopen | A completed case may be reopened only by authorized HR with reason. |
+| BR-CASE-012 | Confidentiality | Termination cases default to RESTRICTED and are excluded from unauthorized lists. |
+| BR-CASE-013 | Cohort | BASELINE, PILOT and POST_ROLLOUT cases shall not be mixed by default in improvement reporting. |
+| BR-CASE-014 | Cohort | A completed case cohort cannot change without an audited correction by authorized governance. |
+| BR-CASE-015 | Duplicates | The system warns on overlapping non-voided cases for the same employee; proceeding requires a reason. |
+| BR-WF-001 | Versioning | A workflow definition used by a case is immutable for that case. |
+| BR-WF-002 | Instantiation | Workflow instantiation is exactly-once and idempotent. |
+| BR-WF-003 | Separation | Resignation with notice, immediate resignation and termination use separate workflow definitions. |
+| BR-WF-004 | Dependencies | A task becomes READY only when its dependencies and conditions are satisfied. |
+| BR-WF-005 | Mandatory work | A mandatory task cannot be silently skipped. |
+| BR-WF-006 | Waiver | A waiver is allowed only for configured task types and roles and requires reason/evidence. |
+| BR-WF-007 | Blocker | Blocking a task does not remove its due date, overdue status or accountability. |
+| BR-WF-008 | Assignment | Every actionable task has a role queue or named assignee. |
+| BR-WF-009 | Reassignment | Reassignment preserves the prior assignee and reason. |
+| BR-WF-010 | Due dates | Business-day deadlines use the approved calendar version and timezone. |
+| BR-WF-011 | Due dates | The originally calculated due timestamp is preserved after rescheduling. |
+| BR-WF-012 | Escalation | Reminders and escalations must be idempotent. |
+| BR-WF-013 | Conditional tasks | NCB, Sagicor, survey and handover tasks are created only when applicability is true. |
+| BR-WF-014 | Cancellation | Case cancellation/void cancels pending work but not completed evidence or history. |
+| BR-WF-015 | Closure | CLEARANCE_REVIEW requires all mandatory tasks terminal in an acceptable state and every asset item to have a final disposition. |
+| BR-WF-016 | Completion | COMPLETED requires HR Manager approval and a passing closure-integrity check. |
+| BR-WF-017 | Hold | A hold must specify which SLA clocks pause; this policy must be approved before implementation. |
+| BR-DOC-001 | Templates | Only an active approved template version may produce a controlled document. |
+| BR-DOC-002 | Source | Documents use the case snapshot and approved case fields, not unreviewed live source data. |
+| BR-DOC-003 | Validation | Missing or inconsistent required placeholders block generation or approval. |
+| BR-DOC-004 | Preview | The approver must be able to see the full rendered content and key field sources. |
+| BR-DOC-005 | Approval | Generation does not equal approval or issue. |
+| BR-DOC-006 | Separation | Termination cases may not use resignation-acceptance templates. |
+| BR-DOC-007 | Issue | Issued bytes, checksum, template version, data snapshot, approver and issue time are immutable. |
+| BR-DOC-008 | Correction | A correction supersedes rather than overwrites an issued document. |
+| BR-DOC-009 | Access | Restricted document views/downloads are authorized per request and audited. |
+| BR-DOC-010 | Signature | Authenticated attestation is the MVP signature evidence unless a stronger approved e-signature is required. |
+| BR-NOT-001 | Templates | Every outbound notice uses an approved template/version or an explicitly approved manual exception. |
+| BR-NOT-002 | Applicability | A notification cannot be generated solely because it exists in the general process map; applicability must be true. |
+| BR-NOT-003 | Minimum data | The recipient sees only the approved field set for the purpose. |
+| BR-NOT-004 | Approval | External, employee-facing and termination communications require human approval in MVP. |
+| BR-NOT-005 | Outbox | A notification is persisted before provider dispatch. |
+| BR-NOT-006 | Idempotency | The same logical notification/recipient/effective event may not be submitted twice without an approved resend reason. |
+| BR-NOT-007 | Status | Provider acceptance means SUBMITTED, not DELIVERED. |
+| BR-NOT-008 | Retry | Only transient failures are automatically retried; retries are bounded. |
+| BR-NOT-009 | Failure | Permanent failure or bounce creates an exception and manual next action. |
+| BR-NOT-010 | Fallback | Manual fallback requires recipient, method, timestamp, sender, reason and evidence. |
+| BR-NOT-011 | Development | Non-production environments cannot send to real external recipients. |
+| BR-NOT-012 | Urgency | Urgent IT access work is not delayed by the general 24-hour communication target. |
+| BR-ASSET-001 | Generation | Case assets come from issued-asset records plus applicable workflow defaults. |
+| BR-ASSET-002 | Disposition | Every required asset item must end with an explicit final disposition. |
+| BR-ASSET-003 | Return evidence | RETURNED requires receiver, time and condition; configured classes may require evidence. |
+| BR-ASSET-004 | Exception | LOST, DAMAGED, WAIVED or UNRESOLVED items require an owned exception or approval. |
+| BR-ASSET-005 | Pay | No asset state directly creates or changes a payroll deduction or final-pay amount. |
+| BR-ASSET-006 | Metrics | Documentation compliance and physical recovery are separate KPIs. |
+| BR-ASSET-007 | Closure | Physical non-return does not make closure impossible when an authorized final disposition and exception are recorded. |
+| BR-HAND-001 | Applicability | Handover is enabled by workflow and can be marked not applicable only with authority and reason. |
+| BR-HAND-002 | Secrets | Passwords, API keys, security codes and secret values are prohibited in handover content. |
+| BR-HAND-003 | Ownership | Every handover item must have a receiving owner or an explicit escalation. |
+| BR-HAND-004 | Immediate departures | Immediate departure may use manager-led reconstruction without employee participation. |
+| BR-SUR-001 | Eligibility | No survey is sent without an eligibility decision. |
+| BR-SUR-002 | Termination | Termination surveys default to suppressed until an approved policy rule says otherwise. |
+| BR-SUR-003 | Contact | The personal contact must be verified or the case uses an approved alternative/no-contact outcome. |
+| BR-SUR-004 | Token | Survey links use high-entropy, single-use, expiring tokens stored as hashes. |
+| BR-SUR-005 | Privacy | The respondent page exposes no internal case data. |
+| BR-SUR-006 | Timing | Default send timing is day 3 and reminder day 7 after effective departure, subject to suppression/reschedule. |
+| BR-SUR-007 | Response | The respondent can review before submit but cannot edit through the token after submission. |
+| BR-SUR-008 | Visibility | Identifiable responses are restricted to approved HR/privacy roles. |
+| BR-SUR-009 | Manager reports | Managers receive aggregates, not identifiable responses. |
+| BR-SUR-010 | Small cohorts | Segmented results below the approved threshold are suppressed or combined. |
+| BR-SUR-011 | Metric | Completion uses eligible successfully delivered invitations plus approved verbal routes; exclusions remain visible. |
+| BR-REP-001 | Metrics | A dashboard percentage must use the approved metric definition and show/report denominator and exclusions. |
+| BR-REP-002 | Access | Report data and exports are filtered by the user's effective permissions. |
+| BR-REP-003 | Exports | Sensitive exports require authorization, redaction and audit. |
+| BR-REP-004 | Freshness | Reports display data-as-of time and relevant integration health. |
+| BR-SEC-001 | Authorization | Hiding a UI control is not authorization; every request is checked server-side. |
+| BR-SEC-002 | Admin | SYSTEM_ADMIN has no default HR content access. |
+| BR-SEC-003 | Break glass | Break-glass access is approved, time-bound, reasoned and reviewed. |
+| BR-SEC-004 | Uploads | Unsafe/unscanned files are not served. |
+| BR-SEC-005 | Logs | Logs exclude secrets, tokens, document bodies, survey answers and unnecessary PII. |
+| BR-SEC-006 | Sessions | Production has no local development login bypass. |
+| BR-SEC-007 | Environment | Development/test/staging/production use separate credentials and data. |
+| BR-PRIV-001 | Purpose | Personal data is collected/used only for an approved offboarding purpose. |
+| BR-PRIV-002 | Minimization | Department queues and external notices expose only necessary fields. |
+| BR-PRIV-003 | Retention | Production deletion is not enabled until record-class retention rules are approved. |
+| BR-PRIV-004 | Legal hold | A legal hold blocks automated disposal without broadening access. |
+| BR-PRIV-005 | Cross-border | External cloud/AI processing is not enabled without approved assessment. |
+| BR-PRIV-006 | Breach | Incident records preserve awareness time and evidence needed for regulatory/subject notification decisions. |
+| BR-INT-001 | BambooHR | MVP BambooHR access is read-only unless a separate write scope is approved. |
+| BR-INT-002 | Identity | Integration credentials belong to the company, not a normal employee. |
+| BR-INT-003 | Webhook | Webhook signatures, timestamps and idempotency are verified before processing. |
+| BR-INT-004 | Fallback | Integration failure does not prevent approved manual case progression. |
+| BR-INT-005 | Reconciliation | Manual/stale source data creates a reconciliation obligation. |
+
+## Rule implementation standard
+
+Each implemented rule must have:
+
+- a stable rule/reference ID in code or tests where practical;
+- server-side enforcement;
+- a clear user-facing validation or exception message;
+- an audit event when the rule governs a sensitive state change;
+- unit/integration/end-to-end evidence appropriate to the risk;
+- no contradictory client-only implementation.
+
+## Conflict handling
+
+When a requested change conflicts with a rule:
+
+1. do not weaken the rule silently;
+2. raise a change request;
+3. identify impacted requirements, workflows, metrics, privacy/security controls and tests;
+4. obtain the approval owner specified in the Decision Register;
+5. version the affected configuration or document.

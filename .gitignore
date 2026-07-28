@@ -1,0 +1,60 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+secrets/
+credentials/
+
+# Dependencies and build
+node_modules/
+.next/
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+.turbo/
+*.tsbuildinfo
+
+# Local databases and storage
+*.db
+*.sqlite
+uploads/
+storage/
+tmp/
+temp/
+data/
+
+# Sensitive HR/reference materials: never commit
+reference/private/
+docs/private/
+exports/
+employee-data/
+case-files/
+*.pst
+*.ost
+
+# Source DMAIC and exported HR office documents: these contain real personal
+# data, signatures and screenshots and must never enter the repository.
+# See README.md "Sensitive-source warning" and CLAUDE.md "Sensitive data".
+*.docx
+*.doc
+*.xls
+*.xlsx
+*.pptx
+
+# Logs
+*.log
+logs/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+.idea/
