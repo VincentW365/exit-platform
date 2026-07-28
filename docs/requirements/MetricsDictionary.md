@@ -7,7 +7,8 @@ All dashboards, pilot decisions and post-implementation claims must use these de
 - Store instants in UTC; apply `America/Jamaica` for business rules and display.
 - Business-day calculations use the approved holiday calendar version.
 - Preserve the timestamps used when an event occurs; do not recalculate historical performance from later-edited dates.
-- Report BASELINE, PILOT and POST_ROLLOUT separately by default.
+- Report BASELINE, PILOT and POST_ROLLOUT measurement cohorts separately by default.
+- Default every metric to `record_purpose = OPERATIONAL`. TRAINING and TEST records are synthetic and are excluded from all operational KPIs, management reports, cohort reports, notification and document-turnaround performance, survey completion, asset recovery and business-volume reporting. TRAINING and TEST are record purposes, not measurement cohorts.
 - Show counts and exclusions beside percentages.
 - A provider's technical acceptance is not final delivery evidence.
 - For low monthly volumes, show rolling periods and raw counts; do not over-interpret one case.

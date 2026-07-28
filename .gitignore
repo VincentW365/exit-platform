@@ -45,6 +45,7 @@ case-files/
 *.doc
 *.xls
 *.xlsx
+*.ppt
 *.pptx
 
 # Logs

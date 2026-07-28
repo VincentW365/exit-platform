@@ -11,6 +11,8 @@ This matrix links every stable requirement to its source/rationale, decision sta
 - Open: **18**
 - Future-stage requirements: **2**
 
+Two Stage 1 requirements are OPEN: `REQ-SEC-001` (production SSO, DEC-021) and `REQ-ADMIN-007` (reason taxonomy, DEC-031). Both are covered for non-production Stage 1 work by `Stage1ImplementationConstraints.md` — IC-S1-005 and IC-S1-008 respectively. Those constraints permit reversible engineering only; the requirements and their decisions remain OPEN and neither is verified until its owner approves.
+
 | Requirement ID | Title | Source / rationale | Status | Priority | Stage | Verification |
 | --- | --- | --- | --- | --- | --- | --- |
 | REQ-CASE-001 | Unique case number | DMAIC pp. 8, 18 | PROVISIONAL | MUST | 1 | Integration and end-to-end test |
@@ -25,7 +27,7 @@ This matrix links every stable requirement to its source/rationale, decision sta
 | REQ-CASE-010 | Case owner | DMAIC p. 7 | PROVISIONAL | MUST | 1 | Authorization and assignment test |
 | REQ-CASE-011 | Confidentiality classification | DEC-035 | PROVISIONAL | MUST | 1 | Authorization test |
 | REQ-CASE-012 | Workflow version reference | DEC-003 | PROVISIONAL | MUST | 3 | Data integrity test |
-| REQ-CASE-013 | Measurement cohort | DEC-007 | PROVISIONAL | MUST | 1 | Reporting and audit test |
+| REQ-CASE-013 | Measurement cohort and record purpose | DEC-007; Directive 0.1 section C | PROVISIONAL | MUST | 1 | Reporting and audit test; record-purpose exclusion test |
 | REQ-CASE-014 | Case state machine | StateMachines.md | PROVISIONAL | MUST | 1 | Unit and authorization test |
 | REQ-CASE-015 | No ordinary hard deletion | DEC-026 | PROVISIONAL | MUST | 1 | Database and authorization test |
 | REQ-CASE-016 | Void control | DEC-026 | PROVISIONAL | MUST | 3 | End-to-end test |
@@ -189,14 +191,14 @@ This matrix links every stable requirement to its source/rationale, decision sta
 | REQ-REPORT-011 | Survey reporting | KPI-009 | PROVISIONAL | MUST | 6 | Reporting test |
 | REQ-REPORT-012 | Exception feed | DMAIC p. 18 | PROVISIONAL | MUST | 3 | UI and integration test |
 | REQ-REPORT-013 | Trend reporting | DMAIC pp. 18-20 | PROVISIONAL | MUST | 6 | Reporting test |
-| REQ-REPORT-014 | Cohort comparison | DEC-007 | PROVISIONAL | MUST | 6 | Reporting test |
+| REQ-REPORT-014 | Cohort comparison | DEC-007; Directive 0.1 section C | PROVISIONAL | MUST | 6 | Reporting test; OPERATIONAL-default test |
 | REQ-REPORT-015 | Filters | DMAIC p. 18 | PROVISIONAL | MUST | 6 | UI test |
 | REQ-REPORT-016 | Export redaction | Privacy baseline | PROVISIONAL | MUST | 6 | Authorization/export test |
 | REQ-REPORT-017 | Small-cohort protection | DEC-024 | OPEN | MUST | 6 | Privacy/reporting test |
 | REQ-REPORT-018 | Data freshness | Integration design | PROVISIONAL | SHOULD | 6 | UI test |
 | REQ-REPORT-019 | Scheduled management report | DMAIC p. 16 | PROVISIONAL | SHOULD | 6 | Scheduler and authorization test |
 | REQ-REPORT-020 | Baseline data export | DMAIC p. 8; DEC-007 | PROVISIONAL | MUST | 1 | Reporting test |
-| REQ-SEC-001 | Production SSO | DEC-021 | OPEN | MUST | 1 | Security integration test |
+| REQ-SEC-001 | Production SSO | DEC-021; constrained by IC-S1-005 | OPEN | MUST | 1 | Security integration test after decision |
 | REQ-SEC-002 | MFA dependency | Security baseline | PROVISIONAL | MUST | 1 | Security review |
 | REQ-SEC-003 | Development login safeguards | Operating rules | PROVISIONAL | MUST | 1 | Configuration test |
 | REQ-SEC-004 | Secure session | Security baseline | PROVISIONAL | MUST | 1 | Security test |
@@ -290,7 +292,7 @@ This matrix links every stable requirement to its source/rationale, decision sta
 | REQ-ADMIN-004 | Workflow administration | Workflow versioning | PROVISIONAL | MUST | 3 | Admin test |
 | REQ-ADMIN-005 | Template administration | Risk R2 | PROVISIONAL | MUST | 2 | Admin/authorization test |
 | REQ-ADMIN-006 | Business calendar | DEC-027 | PROVISIONAL | MUST | 1 | Calendar/admin test |
-| REQ-ADMIN-007 | Reason taxonomy | DEC-031 | OPEN | MUST | 1 | Admin test after decision |
+| REQ-ADMIN-007 | Reason taxonomy | DEC-031; constrained by IC-S1-008 | OPEN | MUST | 1 | Admin test after decision |
 | REQ-ADMIN-008 | Asset catalogue | Asset design | PROVISIONAL | MUST | 4 | Admin test |
 | REQ-ADMIN-009 | Recipient directory | Notification design | PROVISIONAL | MUST | 5 | Admin test |
 | REQ-ADMIN-010 | Feature flags | DEC-007 | PROVISIONAL | MUST | 1 | Admin/configuration test |

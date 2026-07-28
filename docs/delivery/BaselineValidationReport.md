@@ -4,7 +4,37 @@
 **Baseline version:** 0.1
 **Validated:** 2026-07-28
 **Validator:** Claude, acting as bounded implementation engineer under `CLAUDE.md`
-**Outcome:** Package is structurally sound and internally consistent. **Directive 1 is NOT ready to start.**
+**Outcome:** Package is structurally sound and internally consistent.
+**Updated:** 2026-07-28 by Directive 0.1 — all eight findings are now resolved or reconciled.
+
+---
+
+## 0. Directive 0.1 reconciliation status
+
+Directive 0 recorded eight findings. Directive 0.1 reconciled them all. This report retains the original findings as the audit record and appends a **Resolution** line to each.
+
+| Finding | Original severity | Status after Directive 0.1 |
+| --- | --- | --- |
+| F-01 Source DMAIC in repository | High — privacy | **Resolved** — moved outside the working tree |
+| F-02 Role model 8 vs. 7 | Blocks Directive 1 | **Resolved** — `PRIVACY_OFFICER` restored |
+| F-03 Cohort enum 3 vs. 5 | Blocks Directive 1 | **Resolved** — split into two dimensions |
+| F-04 Case state name | Non-blocking | **Resolved** — `APPROVED` is authoritative |
+| F-05 Directive 2 decisions | Quality | **Resolved** — corrected decision set |
+| F-06 Directive-to-stage mapping | Quality | **Resolved** — mapping table added |
+| F-07 Stray duplicate file | Hygiene | **Resolved** — duplicate removed |
+| F-08 Line-ending drift | Hygiene | **Resolved** — `.gitattributes` added |
+
+### Git author identity — provisional and unverified
+
+> **The initial commit author identity is provisional.** Commit `f425ecb` was authored as `Vincent Wilson <vincentclaude@bertsautoparts.com>` using a repository-local Git configuration, because no Git identity was configured on the machine.
+>
+> **The email address has not been confirmed by the project owner.**
+>
+> - No remote push should occur until the project owner provides an approved corporate Git email.
+> - The initial commit author should then be amended before the first push.
+> - **No identity amendment is authorized during Directive 0.1.** The existing commit and history are preserved unchanged.
+>
+> Amending author identity after a push rewrites history for everyone who has cloned the repository, so the correction must happen before the first push or not at all.
 
 ---
 
@@ -79,6 +109,8 @@ This directly contravenes three approved controls: `README.md` "Sensitive-source
 
 **Action still required by the owner:** move the `.docx` out of the repository tree entirely to a company-controlled location. Ignoring it prevents commits but does not remove it from the working directory, where it remains exposed to backup, sync and search tooling.
 
+**Resolution (Directive 0.1 §A.3):** the file was **moved** — not copied, not deleted — to `../hr-offboarding-sensitive-source/`, a sibling folder outside the Git working tree. Filename, byte size (794,280) and SHA-256 were verified identical after the move. A "do not commit" marker document was placed alongside it in that folder, explaining the handling rules. That marker lives outside the repository and is deliberately not a repository file. No Office document of any type (`.doc`, `.docx`, `.xls`, `.xlsx`, `.ppt`, `.pptx`) now exists under the repository root, and none is tracked or staged. The ignore rules remain in `.gitignore` as defence in depth, with `*.ppt` added to close a gap in the original correction.
+
 ### F-02 — Role model contradiction: 8 approved roles vs. 7 in Directive 1 *(blocks Directive 1)*
 
 `RolesAndPermissions.md` and `PRD.md` define **eight** roles: `HR_MANAGER`, `HR_OFFICER`, `IT_RESPONDER`, `FINANCE_RESPONDER`, `LINE_MANAGER`, `AUDITOR`, `PRIVACY_OFFICER`, `SYSTEM_ADMIN`. `README.md` also states eight.
@@ -87,7 +119,9 @@ Directive 1 ("AUTHENTICATION AND AUTHORIZATION", item 3) instructs implementatio
 
 This is not cosmetic. `PRIVACY_OFFICER` carries defined record-level rules in the approved role model — notably identifiable exit-response access and retention/legal-hold configuration authority. Building the Stage 1 role enum from Directive 1 would omit a role the approved authorization model depends on, and the omission would propagate into the database enum, policy layer and authorization test matrix.
 
-**Not corrected.** Roles are explicitly reserved from unilateral change by `CLAUDE.md` and by the directive's own constraints.
+**Not corrected in Directive 0.** Roles are explicitly reserved from unilateral change by `CLAUDE.md` and by the directive's own constraints.
+
+**Resolution (Directive 0.1 §B):** Directive 1 now names all eight roles including `PRIVACY_OFFICER`, and carries an explicit scope boundary: the role covers privacy, retention, disclosure, access review, data-subject and unauthorized-access oversight, and must **not** receive authority to create ordinary cases, approve resignations or terminations, alter final-pay details, edit exit responses, or perform ordinary HR case processing. The restrictions in `RolesAndPermissions.md` are preserved and the role is not broadened into routine HR operations. Directive 10's UAT participant list now also includes the privacy officer. `RolesAndPermissions.md`, `PRD.md`, `InformationArchitecture.md`, `ScreenInventory.md` and `TestStrategy.md` already covered the role and needed no change.
 
 ### F-03 — Cohort enum contradiction: 3 values vs. 5 *(blocks Directive 1)*
 
@@ -103,7 +137,18 @@ Directive 1 says "Support BASELINE, PILOT, POST_ROLLOUT, TRAINING and TEST cohor
 
 The two readings are plausibly reconcilable — `TRAINING` and `TEST` are excluded from all operational reporting, which may be why the analysis-cohort artefacts list only three — but the conflict lands directly on a Stage 1 database enum and an immutable, audited field. Per `CLAUDE.md`, this is recorded rather than resolved.
 
-**Not corrected.** Requires a Decision Register entry or an amendment to `DataDictionary.md` and `REQ-CASE-013`.
+**Not corrected in Directive 0.** Requires a Decision Register entry or an amendment to `DataDictionary.md` and `REQ-CASE-013`.
+
+**Resolution (Directive 0.1 §C):** the conflict was a conflated concept, not a disagreement about values. It is resolved by separating one enum into two dimensions — **no five-value cohort enum exists anywhere**:
+
+| Dimension | Values | Meaning |
+| --- | --- | --- |
+| `measurement_cohort` | `BASELINE`, `PILOT`, `POST_ROLLOUT` | Business-analysis dimension. Required on `OPERATIONAL` records. |
+| `record_purpose` | `OPERATIONAL`, `TRAINING`, `TEST` | Data-use dimension. Set at record creation. |
+
+`TRAINING` and `TEST` are record purposes, never business cohorts. They must be synthetic, must carry no measurement cohort, must never reach a live integration, and are excluded from all business reporting. Reports default to `record_purpose = OPERATIONAL`. Neither dimension may be silently reassigned: measurement cohort follows the audited-correction rule, and record purpose may change only by authorized, reasoned, audited correction before operational use.
+
+`REQ-CASE-013` was preserved and extended in place rather than duplicated, keeping its ID and its three-value measurement cohort. Reconciled across `DataDictionary.md`, `RequirementsCatalogue.md` (`REQ-CASE-013`, `REQ-REPORT-014`), `RequirementsTraceabilityMatrix.md`, `BusinessRules.md` (`BR-CASE-013`, `BR-CASE-014`), `MetricsDictionary.md`, `PilotAndRolloutPlan.md`, `ExitSurveySpecification.md` and Directives 1 and 7. No new requirement or business rule was added, so all published counts are unchanged.
 
 ### F-04 — Case state name contradiction: `APPROVED` vs. `APPROVED_OR_ACCEPTED` *(does not block Directive 1)*
 
@@ -111,13 +156,17 @@ The two readings are plausibly reconcilable — `TRAINING` and `TEST` are exclud
 
 Directive 1 creates the case status enum, so the name should be settled before Stage 1 rather than discovered at Stage 3. `APPROVED_OR_ACCEPTED` appears only in `ClaudeBuildDirectives.md`; every other artefact uses `APPROVED`.
 
-**Not corrected.** State names are approved architecture.
+**Not corrected in Directive 0.** State names are approved architecture.
+
+**Resolution (Directive 0.1 §D):** `APPROVED` is the single authoritative case state; `APPROVED_OR_ACCEPTED` is removed and no reference remains anywhere in the repository. The reasoning is recorded in Directive 4: "accepted" is not valid for every departure type — it is a resignation communication or document outcome, not a universal case-lifecycle state. Resignation acceptance and acknowledgement are represented through document records, document approval records, document status, communication records and communication status, never through a universal case status. The authoritative progression `DRAFT → PENDING_HR_REVIEW → APPROVED → ACTIVE → CLEARANCE_REVIEW → COMPLETED` and the controlled alternatives `ON_HOLD`, `CANCELLED`, `VOIDED`, `REOPENED` are preserved as specified in `StateMachines.md`.
 
 ### F-05 — Directive 2 cites decisions that do not match its stage *(quality, non-blocking)*
 
 Directive 2 (controlled documents, Stage 2) instructs reading `DEC-007`, `DEC-008`, `DEC-010` and `DEC-025`. `DEC-008` is the **asset KPI model**, owned by Stage 4, with no bearing on document generation. Meanwhile the two Stage 2 decisions most relevant to controlled documents — `DEC-004` (authoritative automation model) and `DEC-005` (communication approval) — are not cited.
 
-**Not corrected.** Changing which approved decisions govern a directive is substantive.
+**Not corrected in Directive 0.** Changing which approved decisions govern a directive is substantive.
+
+**Resolution (Directive 0.1 §E):** Directive 2 now cites the decisions that actually govern controlled documents and approvals — `DEC-004` (authoritative automation model), `DEC-005` (communication approval), `DEC-007` (baseline measurement and the prohibition on improvement automation during baseline capture), `DEC-010` (Employee Action Form approval hierarchy) and `DEC-025` (digital signatures and attestations). `DEC-008` is removed and explicitly noted as belonging to the asset-recovery stage, so it can no longer be read as a controlling document decision.
 
 ### F-06 — Roadmap-to-directive mapping is undocumented *(quality, non-blocking)*
 
@@ -127,6 +176,8 @@ Stage 0 and Stage 1 — the only ones in play now — match exactly, so this doe
 
 **Recommendation:** add a directive-to-stage mapping table to `Roadmap.md` or `ClaudeBuildDirectives.md`.
 
+**Resolution (Directive 0.1 §F):** an authoritative mapping table now appears near the top of `ClaudeBuildDirectives.md` and is cross-referenced from `Roadmap.md` — Stage 0: Directives 0 and 0.1; Stage 1: Directive 1; Stage 2: Directives 2 and 3; Stage 3: Directives 4 and 5; Stage 4: Directive 6; Stage 5: Directives 7 and 8; Stage 6: Directive 9; Stage 7: Directive 10. Both documents now state that a stage may need several directives, that each directive has its own scope, exclusions, acceptance gate, tests, evidence and commit, that finishing the first directive in a stage does not finish the stage, that Claude stops after every directive for review, and that a later directive is never executed merely because an earlier one in the same stage passed. The Roadmap's "Expected local commit" column is clarified as the stage-level outcome; each directive's own COMMIT line is authoritative.
+
 ### F-07 — Stray duplicate file at repository root *(hygiene)*
 
 A byte-identical copy of `docs/delivery/ClaudeBuildDirectives.md` (SHA-256 `eeca3428…c117a56`) appeared at the repository root during validation. It is not listed in `PACKAGE_MANIFEST.md` or `docs/INDEX.md` and is not part of the baseline.
@@ -134,6 +185,8 @@ A byte-identical copy of `docs/delivery/ClaudeBuildDirectives.md` (SHA-256 `eeca
 It was **not committed** and **not deleted** — removing a file from the user's working tree is the owner's call. It appears in `git status --short` as untracked.
 
 **Recommendation:** delete `./ClaudeBuildDirectives.md`; the canonical file is `docs/delivery/ClaudeBuildDirectives.md`.
+
+**Resolution (Directive 0.1 §A.2):** the two files were compared by SHA-256 and byte-by-byte before any deletion — identical hash `eeca3428…c117a56`, identical length 38,490, zero differing bytes. Since the root copy held no unique material, it was removed under path A.2c. `docs/delivery/ClaudeBuildDirectives.md` is now the only canonical directive file, and `git status` is clean.
 
 ### F-08 — Line-ending normalization will break manifest checksum verification *(hygiene, non-blocking)*
 
@@ -143,7 +196,9 @@ Content is committed as LF, so the repository itself is correct. But a fresh clo
 
 **Recommendation:** add a `.gitattributes` containing `* text=auto eol=lf` so checkouts preserve LF and checksum verification stays meaningful.
 
-**Not applied.** Adding a repository configuration file exceeds the corrections authorized for this directive.
+**Not applied in Directive 0.** Adding a repository configuration file exceeded the corrections authorized for that directive.
+
+**Resolution (Directive 0.1 §A.5):** a repository-level `.gitattributes` now normalizes `*.md`, `*.json`, `*.ts`, `*.tsx`, `*.js`, `*.mjs`, `*.cjs`, `*.prisma`, `*.yml`, `*.yaml` and `*.sh` to LF, keeps `*.ps1` as CRLF because some Windows PowerShell hosts are sensitive to LF-only scripts, and applies a conservative `* text=auto` default to everything else. Checkouts are now byte-stable across platforms, so hash comparison stays meaningful regardless of `core.autocrlf`. The file documents its own rationale inline.
 
 ## 5. OPEN decisions blocking Stage 1
 
@@ -171,6 +226,8 @@ No real personal data has been introduced into examples, fixtures or documentati
 
 ## 7. Corrections applied
 
+### Under Directive 0
+
 Exactly one change was made. It is protective and non-behavioural: it alters no business rule, scope, architecture, status, target, role or decision.
 
 | File | Change | Authority |
@@ -179,23 +236,49 @@ Exactly one change was made. It is protective and non-behavioural: it alters no 
 
 No broken links, duplicate IDs, malformed numbering or duplicated headings were found, so no corrections of that class were needed.
 
+### Under Directive 0.1
+
+Directive 0.1 explicitly authorized the reconciliation of findings F-02 through F-08 and the recording of Stage 1 constraints. Those changes are documentation-only and are itemized in the delta table below and in each finding's Resolution line.
+
+Two limits were observed throughout: **no decision status was changed**, and **no approval box was ticked**. The Decision Register still reports 13 OPEN and 22 PROVISIONAL, exactly as before.
+
 Two further files changed as a direct product of this directive rather than as corrections: this report was created at `docs/delivery/BaselineValidationReport.md`, and `docs/INDEX.md` gained one row listing it, so the index remains complete.
 
-### Manifest delta
+### PACKAGE_MANIFEST.md is an immutable import receipt
 
-`PACKAGE_MANIFEST.md` records the package **as imported** and was deliberately left unmodified, so it now carries three known, expected deltas. Regenerating it is a package-construction act, not a validation correction, and is left to the owner.
+`PACKAGE_MANIFEST.md` is the **integrity receipt for the package as originally imported**. It is deliberately not maintained as a live inventory of the repository, and its original checksum table intentionally remains unchanged.
 
-| Path | Delta |
-| --- | --- |
-| `.gitignore` | Content changed (F-01 correction); checksum no longer matches |
-| `docs/INDEX.md` | Content changed (one added row); checksum no longer matches |
-| `docs/delivery/BaselineValidationReport.md` | New file; not in manifest |
+The distinction matters:
 
-All 52 manifest rows matched **before** these changes, which is the integrity evidence that matters: the imported package arrived intact.
+- **`PACKAGE_MANIFEST.md` records the integrity of the originally imported package.** All 52 rows were verified to match at import, which is the evidence that the baseline arrived intact and unmodified. That fact is historical and permanent — rewriting the table would destroy it.
+- **Post-import changes are governed by Git history.** Every subsequent change is authored, reviewed, committed and attributable through Git. That is the correct control for a living repository; a static hash table is not.
+- **The original package checksum table is intentionally left unchanged.** Do not rewrite the original package hashes merely because the repository has legitimately changed after import. A row whose hash no longer matches is not a defect — it is evidence that the file has been deliberately changed since import, which Git already explains in detail.
+- **Future repository validation should use Git status, Git history, tests and current documentation checks** rather than expecting the import receipt to match the modified repository. Re-running a whole-manifest comparison against a live repository will produce false failures and should not be treated as an integrity check.
 
-## 8. Recommended surgical corrections (owner approval required)
+Files that have legitimately diverged from the import receipt as a result of Directives 0 and 0.1:
 
-Listed smallest-change-first. None were applied.
+| Path | Delta | Directive |
+| --- | --- | --- |
+| `.gitignore` | Office-file exclusions added | 0 (F-01), 0.1 (`*.ppt`) |
+| `docs/INDEX.md` | Two rows added | 0, 0.1 |
+| `docs/delivery/ClaudeBuildDirectives.md` | Findings F-02, F-04, F-05, F-06 and section C/G reconciliation | 0.1 |
+| `docs/delivery/Roadmap.md` | Directive mapping section | 0.1 |
+| `docs/delivery/PilotAndRolloutPlan.md` | Cohort/purpose split | 0.1 |
+| `docs/requirements/DataDictionary.md` | Cohort/purpose fields | 0.1 |
+| `docs/requirements/RequirementsCatalogue.md` | `REQ-CASE-013`, `REQ-REPORT-014` | 0.1 |
+| `docs/requirements/RequirementsTraceabilityMatrix.md` | Traceability updates | 0.1 |
+| `docs/requirements/BusinessRules.md` | `BR-CASE-013`, `BR-CASE-014` | 0.1 |
+| `docs/requirements/MetricsDictionary.md` | Reporting default | 0.1 |
+| `docs/requirements/DecisionRegister.md` | Constraint cross-reference | 0.1 |
+| `docs/requirements/StakeholderApprovalChecklist.md` | "Constraints are not approvals" note | 0.1 |
+| `docs/templates/ExitSurveySpecification.md` | No-send guard wording | 0.1 |
+| `docs/delivery/BaselineValidationReport.md` | New file | 0, 0.1 |
+| `docs/requirements/Stage1ImplementationConstraints.md` | New file | 0.1 |
+| `.gitattributes` | New file | 0.1 (F-08) |
+
+## 8. Recommended surgical corrections — all applied by Directive 0.1
+
+Listed smallest-change-first. These were the Directive 0 recommendations; **all eight were carried out under Directive 0.1**, which authorized them. See §0 for the status summary and each finding's Resolution line for detail.
 
 1. **F-02** — In Directive 1, add `PRIVACY_OFFICER` to the role list so it reads eight roles, matching `RolesAndPermissions.md` and `PRD.md`. *(One-line edit; requires HR/Privacy confirmation that the role is in Stage 1 scope.)*
 2. **F-03** — Resolve the cohort enum to either three or five values, then align `DataDictionary.md`, `REQ-CASE-013`, `PilotAndRolloutPlan.md` and Directive 1 together. Record as a Decision Register entry or an amendment to `DEC-007`.
@@ -208,23 +291,43 @@ Listed smallest-change-first. None were applied.
 
 ## 9. Directive 1 readiness
 
-**Directive 1 is NOT ready to start.**
+**Assessment at Directive 0:** NOT ready — four OPEN Stage 1 decisions and three unresolved contradictions.
 
-Directive 1's own precondition requires that Stage 1 checklist items be "resolved or an approved written implementation constraint exists for each". None of the eleven are ticked, and four are `OPEN`.
+**Assessment after Directive 0.1:** **Directive 1 is technically ready to begin under the documented non-production constraints, and remains business-blocked for pilot and production.**
 
-Blocking items, in priority order:
+Both halves of that sentence matter.
 
-1. **DEC-031 / REQ-ADMIN-007 (reason taxonomy)** — hard blocker. Directive 1 mandates an approved reason category at case creation; none exists, and inventing HR categories is prohibited.
-2. **F-02 (role model)** — the Stage 1 role enum, policy layer and authorization test matrix cannot be built from two conflicting role lists.
-3. **F-03 (cohort enum)** — the Stage 1 `cohort` field is immutable and audited; its permitted values must be settled before the migration is written.
-4. **DEC-021 / REQ-SEC-001 (production SSO)** — the adapter and guarded dev login may proceed; production binding may not. Needs a written constraint.
-5. **DEC-022, DEC-033** — resolvable by written constraint; both lie outside Directive 1's build scope.
-6. **DEC-035, DEC-027** — `PROVISIONAL` but load-bearing for Directive 1's termination-restriction and business-calendar test requirements. Confirm before build.
+### What is now unblocked
 
-**Minimum path to readiness:** hold the Stage 1 approval meeting described in `StakeholderApprovalChecklist.md`, approve or constrain all eleven Stage 1 decisions, resolve F-02 and F-03, and approve this report. `DEC-031` requires actual HR content — a reason taxonomy — not merely a status change, so it should be started first.
+Directive 1's precondition requires Stage 1 checklist items to be "resolved **or** an approved written implementation constraint exists for each". `Stage1ImplementationConstraints.md` records a constraint for all eleven — IC-S1-001 to IC-S1-011 — so the precondition is satisfied by its second limb. The three contradictions that made the Stage 1 data model unbuildable are resolved:
 
-No other blocker was found. Aside from the contradictions above, the package is complete, internally consistent, fully traceable and free of real personal data.
+| Former blocker | Now |
+| --- | --- |
+| DEC-031 / REQ-ADMIN-007 reason taxonomy | IC-S1-008 — versioned reference-data model, nullable `reason_category_id`, `reason_capture_status`. Directive 1 no longer requires an approved reason category at case creation, so no HR policy is invented. |
+| F-02 role model | Eight roles, `PRIVACY_OFFICER` scoped to oversight only. |
+| F-03 cohort enum | `measurement_cohort` (3) and `record_purpose` (3) as separate dimensions. |
+| DEC-021 / REQ-SEC-001 production SSO | IC-S1-005 — interface, boundaries, doubly guarded dev login. No production IdP selected. |
+| DEC-022 hosting | IC-S1-006 — local services and portable adapters only. |
+| DEC-033 historical migration | IC-S1-010 — no migration; prospective and synthetic records only. |
+| DEC-035, DEC-027 | IC-S1-011 and IC-S1-007 — restricted-by-default terminations; `America/Jamaica` with a versioned configurable calendar and synthetic test holidays. |
+
+### What remains blocked
+
+- **All eleven Stage 1 decisions remain OPEN or PROVISIONAL.** Four are OPEN: DEC-021, DEC-022, DEC-031, DEC-033. Seven are PROVISIONAL: DEC-001, DEC-002, DEC-003, DEC-007, DEC-027, DEC-032, DEC-035.
+- **Every Stage 1 approval box remains unticked**, correctly. A constraint is not an approval.
+- **Pilot and production remain prohibited.** So do real employee data, live identity, live email, live BambooHR, live external providers, live object storage, production hosting, deployment, credentials, secrets, and external AI processing of employee information.
+- `REQ-SEC-001` and `REQ-ADMIN-007` remain OPEN and unverified.
+
+### The distinction being drawn
+
+Directive 1 builds a local, synthetic-data, non-production foundation. Every constraint is reversible, and none commits the organization to an HR policy, a vendor, a hosting region or a production behaviour. That is why engineering may proceed while the business decisions stay open.
+
+What the constraints do **not** do is create approval. If a decision owner later chooses differently — a different identity provider, a different reason taxonomy, a different retention model — the affected Stage 1 code is expected to change. Building on a constraint is accepting that rework risk knowingly, not eliminating it.
+
+`DEC-031` still requires real HR content, not merely a status change, and should be started first: IC-S1-008 defers the taxonomy but final case completion will eventually require either an approved category or an audited `NOT_PROVIDED`/`NOT_APPLICABLE` outcome.
 
 ## 10. Stop
 
-Work stopped at the end of Directive 0 as required. No application code was written, no stack was installed, no live system was contacted, and nothing was pushed.
+Directive 0 stopped at validation. Directive 0.1 stopped at documentation reconciliation.
+
+Across both: no application code was written, no application dependencies were installed, no database migration was created, no application source directory was introduced, no live system was contacted, no email was sent, and nothing was pushed.

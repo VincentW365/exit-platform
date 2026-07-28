@@ -1,0 +1,31 @@
+# Line-ending normalization.
+#
+# Every file in this repository is authored with LF endings, and the SHA-256
+# values recorded in PACKAGE_MANIFEST.md were computed over LF content.
+# Without these rules, `core.autocrlf=true` on Windows materializes the working
+# tree as CRLF on checkout, and every recomputed hash would differ from the
+# import receipt. These rules keep checkouts byte-stable across platforms so
+# integrity verification stays meaningful.
+#
+# Recorded under Directive 0.1, section A.5 (finding F-08).
+
+# Conservative default: let Git decide what is text, and normalize it in the
+# repository. Binary files are left untouched.
+* text=auto
+
+# Explicit LF for all authored text formats.
+*.md text eol=lf
+*.json text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.prisma text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+
+# PowerShell stays CRLF: some Windows PowerShell hosts are sensitive to LF-only
+# script files.
+*.ps1 text eol=crlf

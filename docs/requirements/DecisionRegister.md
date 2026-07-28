@@ -59,3 +59,11 @@
 ## Implementation gate
 
 Claude must list all still-open decisions relevant to an active directive before making changes. An unrelated open decision does not block work, but a decision that controls the active stage does.
+
+## Non-production implementation constraints
+
+Where a Stage 1 decision remains OPEN or PROVISIONAL, `Stage1ImplementationConstraints.md` records a reversible, non-production engineering constraint (IC-S1-001 to IC-S1-011) that allows foundation work to proceed safely.
+
+Those constraints are **not** approvals. They do not change any status in this register, and they do not authorize pilot or production use. A decision remains OPEN or PROVISIONAL until its named owner approves it in writing and that approval is recorded here.
+
+Stage 1 constraint coverage: DEC-001, DEC-002, DEC-003, DEC-007, DEC-021, DEC-022, DEC-027, DEC-031, DEC-032, DEC-033 and DEC-035.

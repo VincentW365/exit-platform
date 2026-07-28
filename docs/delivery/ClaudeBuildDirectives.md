@@ -4,6 +4,39 @@
 **Prepared:** 2026-07-28
 **Use:** Paste only one directive at a time. Do not authorize the next directive until the prior evidence has been reviewed.
 
+## Directive-to-stage mapping
+
+The delivery stages in `Roadmap.md` and the directives in this file are not one
+to one. A roadmap stage may require more than one directive.
+
+| Roadmap stage | Directives | Stage name |
+| --- | --- | --- |
+| 0 | Directive 0, Directive 0.1 | Product and architecture baseline |
+| 1 | Directive 1 | Foundation, access, audit and baseline capture |
+| 2 | Directive 2, Directive 3 | Controlled documents and exit-survey quick wins |
+| 3 | Directive 4, Directive 5 | Workflow engine and departmental queues |
+| 4 | Directive 6 | Assets, handover and clearance |
+| 5 | Directive 7, Directive 8 | Notifications and integrations |
+| 6 | Directive 9 | Reporting and control automation |
+| 7 | Directive 10 | Hardening, UAT, pilot and rollout |
+
+Directive 0.1 was issued as a baseline-reconciliation and repository-hygiene
+correction after Directive 0 validation; it introduced no application code.
+
+Rules that follow from this mapping:
+
+1. A roadmap stage may require more than one directive.
+2. Every directive has its own authorized scope, exclusions, acceptance gate,
+   required tests, evidence requirements and local commit.
+3. Completing the first directive within a stage does not complete the stage.
+4. Claude must stop after every directive and wait for review.
+5. A later directive must not be executed merely because an earlier directive
+   in the same stage passed.
+
+Because a stage spans several directives, the Roadmap's "Expected local commit"
+column names the stage-level outcome, not any single directive's commit message.
+Use the COMMIT line inside each directive as the authoritative commit message.
+
 ## Operating note
 
 Before every directive, Claude must:
@@ -71,11 +104,15 @@ ready and which decisions block it. Stop.
 DIRECTIVE 1 — SECURE APPLICATION FOUNDATION AND BASELINE CAPTURE
 
 PRECONDITION
-Directive 0 is approved. The Stage 1 items in
-docs/requirements/StakeholderApprovalChecklist.md have been resolved or an
-approved written implementation constraint exists for each. In particular,
-do not invent production SSO, hosting, reason taxonomy, historical migration
-or restricted-termination rules.
+Directive 0 and Directive 0.1 are approved. The Stage 1 items in
+docs/requirements/StakeholderApprovalChecklist.md have been resolved, or an
+approved written implementation constraint exists for each. The written
+constraints are recorded in docs/requirements/Stage1ImplementationConstraints.md
+(IC-S1-001 to IC-S1-011). Those constraints permit reversible non-production
+engineering only; they are NOT stakeholder approval and do not change any OPEN
+or PROVISIONAL decision to APPROVED. In particular, do not invent production
+SSO, hosting, reason taxonomy, historical migration or restricted-termination
+rules.
 
 OBJECTIVE
 Create the maintainable application foundation and a safe baseline-capture
@@ -83,6 +120,7 @@ release. This directive does not automate the improved offboarding workflow.
 
 READ
 - Project.md and CLAUDE.md
+- Stage1ImplementationConstraints.md (IC-S1-001 to IC-S1-011)
 - RequirementsCatalogue.md: all Stage 1 requirements
 - BusinessRules.md
 - RolesAndPermissions.md
@@ -116,13 +154,21 @@ AUTHENTICATION AND AUTHORIZATION
      NODE_ENV != production
      ALLOW_DEV_LOGIN=true
    The app must fail closed if development login is enabled in production.
-3. Implement server-side policy checks for:
+3. Implement server-side policy checks for all eight roles:
    HR_MANAGER, HR_OFFICER, IT_RESPONDER, FINANCE_RESPONDER, LINE_MANAGER,
-   AUDITOR and SYSTEM_ADMIN.
+   AUDITOR, PRIVACY_OFFICER and SYSTEM_ADMIN.
 4. SYSTEM_ADMIN must not gain routine HR-case access merely because it is a
    technical role.
-5. Implement restricted-by-default termination-case access with negative tests.
-6. Implement session/user/role audit events.
+5. PRIVACY_OFFICER covers privacy oversight, retention oversight, disclosure
+   review, access review, data-subject request oversight, investigation of
+   unauthorized access and review of privacy-sensitive reporting. It must NOT
+   receive authority to create ordinary offboarding cases, approve
+   resignations, approve terminations, alter final-pay details, edit exit
+   responses or perform ordinary HR case processing. Preserve the
+   restrictions defined in RolesAndPermissions.md; do not broaden the role
+   into routine HR operations.
+6. Implement restricted-by-default termination-case access with negative tests.
+7. Implement session/user/role audit events.
 
 FOUNDATIONAL DATA
 Implement the minimum approved entities and constraints for:
@@ -141,7 +187,13 @@ CASE BASELINE FLOW
 1. Authorized HR creates a DRAFT case.
 2. Employee is selected from a synthetic/manual source adapter.
 3. Require departure type, receipt timestamp, proposed/confirmed effective
-   date/time, case owner, location/department and approved reason category.
+   date/time, case owner and location/department.
+   Do NOT require an approved reason category at case creation: the taxonomy
+   decision DEC-031 is still OPEN. Per IC-S1-008 in
+   Stage1ImplementationConstraints.md, implement a versioned reference-data
+   model with a nullable reason_category_id and a reason_capture_status of
+   PENDING, PROVIDED, NOT_PROVIDED or NOT_APPLICABLE. Do not invent reason
+   categories as an enum, hard-coded dropdown or production seed list.
 4. Validate high-risk fields and show a review step.
 5. HR submits and approves/accepts according to the approved Stage 1 state rules.
 6. Store the immutable employee snapshot on approval.
@@ -150,13 +202,24 @@ CASE BASELINE FLOW
 9. Never hard-delete a case.
 
 BASELINE MODE
-1. Support BASELINE, PILOT, POST_ROLLOUT, TRAINING and TEST cohorts as specified.
+1. Implement two separate dimensions. Do not use a five-value cohort enum.
+   - measurement_cohort: exactly BASELINE, PILOT, POST_ROLLOUT.
+   - record_purpose:     exactly OPERATIONAL, TRAINING, TEST.
+   OPERATIONAL records require a measurement cohort. TRAINING and TEST records
+   must be synthetic, must carry no measurement cohort, and must never call a
+   live integration. TRAINING and TEST are not business cohorts.
+   record_purpose is set at creation and may change only by authorized,
+   reasoned, audited correction before operational use. Never silently convert
+   OPERATIONAL to TRAINING/TEST, or TRAINING/TEST to OPERATIONAL.
 2. BASELINE must disable all improvement automations:
    no generated/issued letter, no survey, no notification dispatch, no automatic
    reminder/escalation.
 3. Capture manual timestamps/outcomes needed by BaselineDataCapturePlan.md.
 4. Provide a basic baseline dashboard/export showing counts and missing fields.
-5. Keep TRAINING and TEST out of operational metrics.
+   Reports default to record_purpose = OPERATIONAL.
+5. Exclude TRAINING and TEST records from operational KPIs, management reports,
+   baseline/pilot/post-rollout reports, notification and document-turnaround
+   performance, survey completion, asset recovery and business-volume reporting.
 
 ATTACHMENTS
 Create a secure adapter boundary and metadata model. A local development adapter
@@ -249,7 +312,13 @@ READ
 - TemplateCatalogue.md
 - RolesAndPermissions.md
 - DataClassificationAndRetention.md
-- DecisionRegister entries DEC-007, DEC-008, DEC-010 and DEC-025
+- DecisionRegister entries that govern controlled documents and approvals:
+  DEC-004 (authoritative automation model), DEC-005 (communication approval),
+  DEC-007 (baseline measurement and the prohibition on improvement automation
+  during baseline capture), DEC-010 (Employee Action Form approval hierarchy)
+  and DEC-025 (digital signatures and attestations).
+  DEC-008 governs the asset-recovery stage and is NOT a controlling decision
+  for document generation and approval.
 
 FUNCTIONAL SCOPE
 1. Implement document-template definitions and immutable versions.
@@ -484,11 +553,20 @@ SCHEDULING
 6. Retrying after a crash cannot duplicate transitions/reminders.
 
 CASE LIFECYCLE
-Implement approved transitions among:
-DRAFT, PENDING_HR_REVIEW, APPROVED_OR_ACCEPTED, ACTIVE, CLEARANCE_REVIEW,
-COMPLETED, ON_HOLD, CANCELLED, VOIDED and REOPENED.
-Use final names from the approved state specification; do not rename them for
-convenience without updating the baseline.
+Implement the authoritative progression:
+DRAFT -> PENDING_HR_REVIEW -> APPROVED -> ACTIVE -> CLEARANCE_REVIEW ->
+COMPLETED
+and the controlled alternative states ON_HOLD, CANCELLED, VOIDED and REOPENED.
+
+APPROVED is the single authoritative post-review case state. Do not use
+APPROVED_OR_ACCEPTED: "accepted" is not valid for every departure type. It is
+a resignation communication or document outcome, not a universal case-lifecycle
+state. Represent resignation acceptance or acknowledgement through document
+records, document approval records, document status, communication records and
+communication status - never through a universal case status.
+
+Use final names from the approved state specification in StateMachines.md; do
+not rename them for convenience without updating the baseline.
 
 UI/API
 - workflow timeline;
@@ -770,7 +848,8 @@ ENVIRONMENT SAFETY
 - default provider is sink/file/test mailbox;
 - startup guard rejects real provider in test/development unless an explicit
   approved staging setting exists;
-- BASELINE, TRAINING and TEST cohorts cannot send externally;
+- BASELINE measurement-cohort records cannot send externally, and neither can
+  TRAINING or TEST record-purpose records;
 - provide a visible environment/no-send indicator.
 
 TESTS
@@ -1055,7 +1134,8 @@ HARDENING
 UAT
 - prepare synthetic scenarios from PilotAndRolloutPlan.md;
 - record tester, expected result, actual result, defect and approval;
-- include HR, IT, Finance, manager, auditor, admin and survey respondent;
+- include HR, IT, Finance, manager, auditor, privacy officer, admin and
+  survey respondent;
 - retest all fixed critical/high defects;
 - maintain known-limitations register.
 

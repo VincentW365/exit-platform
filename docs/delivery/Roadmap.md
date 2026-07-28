@@ -9,6 +9,33 @@
 - Security, privacy, accessibility, documentation and tests are part of each stage.
 - Stage gates are outcome/evidence based, not calendar based.
 
+## Directive mapping
+
+Stages and directives are not one to one. A stage may require more than one
+directive, and each directive has its own scope, acceptance gate, tests,
+evidence and local commit. The authoritative mapping is the
+directive-to-stage table in `ClaudeBuildDirectives.md`:
+
+| Stage | Directives |
+| --- | --- |
+| 0 | Directive 0, Directive 0.1 |
+| 1 | Directive 1 |
+| 2 | Directive 2, Directive 3 |
+| 3 | Directive 4, Directive 5 |
+| 4 | Directive 6 |
+| 5 | Directive 7, Directive 8 |
+| 6 | Directive 9 |
+| 7 | Directive 10 |
+
+Completing the first directive in a stage does not complete the stage. Claude
+stops after every directive and waits for review. The "Expected local commit"
+column below names the stage-level outcome; the authoritative commit message
+for any single piece of work is the COMMIT line inside its directive.
+
+Stage 1 additionally operates under the non-production engineering constraints
+recorded in `../requirements/Stage1ImplementationConstraints.md`, which do not
+constitute stakeholder approval.
+
 ## Stage roadmap
 
 | Stage | Name | Included | Excluded | Dependencies | Acceptance gate | Expected local commit |

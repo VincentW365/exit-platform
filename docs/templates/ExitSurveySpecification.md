@@ -53,7 +53,7 @@ Provisional approved pattern:
 - use America/Jamaica for scheduling;
 - invitation expiry is configurable and stated clearly.
 
-The scheduler must be idempotent and not send to `BASELINE`, `TRAINING` or `TEST` external recipients.
+The scheduler must be idempotent and must not send to external recipients for records in the `BASELINE` measurement cohort or with `TRAINING` or `TEST` record purpose. Survey completion reporting defaults to `record_purpose = OPERATIONAL`, so training and test responses never affect the completion KPI.
 
 ## 5. Respondent identity and token
 

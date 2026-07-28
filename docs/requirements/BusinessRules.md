@@ -25,8 +25,8 @@ These rules convert the DMAIC and Decision Register into deterministic behaviour
 | BR-CASE-010 | Void | A void requires HR Manager authority and cancels future work without deleting history. |
 | BR-CASE-011 | Reopen | A completed case may be reopened only by authorized HR with reason. |
 | BR-CASE-012 | Confidentiality | Termination cases default to RESTRICTED and are excluded from unauthorized lists. |
-| BR-CASE-013 | Cohort | BASELINE, PILOT and POST_ROLLOUT cases shall not be mixed by default in improvement reporting. |
-| BR-CASE-014 | Cohort | A completed case cohort cannot change without an audited correction by authorized governance. |
+| BR-CASE-013 | Cohort and purpose | BASELINE, PILOT and POST_ROLLOUT measurement cohorts shall not be mixed by default in improvement reporting. Measurement cohort and record purpose are separate dimensions: TRAINING and TEST are record purposes, never business cohorts. Reporting defaults to `record_purpose = OPERATIONAL`, and TRAINING/TEST records are excluded from all business reporting. An OPERATIONAL record requires a measurement cohort; a TRAINING or TEST record must have none, must be synthetic, and must never reach a live integration. |
+| BR-CASE-014 | Cohort and purpose | A completed case measurement cohort cannot change without an audited correction by authorized governance. Record purpose is set at creation and may change only by authorized, reasoned, audited correction before operational use; an OPERATIONAL record shall never be silently converted to TRAINING or TEST, nor the reverse. |
 | BR-CASE-015 | Duplicates | The system warns on overlapping non-voided cases for the same employee; proceeding requires a reason. |
 | BR-WF-001 | Versioning | A workflow definition used by a case is immutable for that case. |
 | BR-WF-002 | Instantiation | Workflow instantiation is exactly-once and idempotent. |

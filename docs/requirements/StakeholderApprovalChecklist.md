@@ -4,6 +4,8 @@
 
 Before each delivery stage, the named owner must mark the relevant decision `APPROVED`, `DEFERRED`, `REJECTED`, or provide revised wording in `DecisionRegister.md`. A checked box in this document is only a review aid; the Decision Register is authoritative.
 
+**Constraints are not approvals.** `Stage1ImplementationConstraints.md` records reversible, non-production engineering constraints (IC-S1-001 to IC-S1-011) so that Stage 1 foundation work can proceed while decisions remain unresolved. A recorded constraint must **never** be treated as a reason to tick a box below. Every Stage 1 box remains unticked until its named owner approves in writing.
+
 ## Before Stage 1
 
 | Confirm | Decision | Current status | Owner | Recommended decision |

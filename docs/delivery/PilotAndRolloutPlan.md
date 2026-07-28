@@ -18,17 +18,35 @@ The rollout has five controlled periods:
 
 ## 2. Cohort model
 
-Every case must have one immutable analysis cohort:
+Every case carries two distinct dimensions. They must not be collapsed into a single enum.
 
-| Cohort | Meaning | Automation state | Reporting treatment |
+### Measurement cohort — the business-analysis dimension
+
+Exactly three values. Required on every `OPERATIONAL` record.
+
+| Measurement cohort | Meaning | Automation state | Reporting treatment |
 | --- | --- | --- | --- |
 | `BASELINE` | Current/manual process measurement before improvement | Improvement automation off; system may capture facts only | Establish current performance; never mix with pilot |
 | `PILOT` | Approved limited production use | Only pilot-approved features enabled | Compared with baseline and pilot targets |
 | `POST_ROLLOUT` | Normal production process after sponsor sign-off | Approved production feature set | Monitored against full targets |
-| `TRAINING` | Synthetic training/demonstration data | No live integrations | Excluded from operational KPIs |
-| `TEST` | Automated or engineering test data | No live integrations | Excluded from all business reports |
 
-Cohort changes require an authorized correction event; they must not silently rewrite historical metrics.
+### Record purpose — the data-use dimension
+
+Exactly three values. Set when the record is created.
+
+| Record purpose | Meaning | Measurement cohort | Integrations | Reporting treatment |
+| --- | --- | --- | --- | --- |
+| `OPERATIONAL` | Real business record | Required | Per approved feature set | Included, subject to cohort |
+| `TRAINING` | Synthetic training/demonstration data | Must be absent | Never live | Excluded from all business reporting |
+| `TEST` | Automated or engineering test data | Must be absent | Never live | Excluded from all business reporting |
+
+`TRAINING` and `TEST` are **not** business cohorts. Records so marked must be synthetic and are excluded from operational KPIs, management reports, baseline/pilot/post-rollout reports, notification performance, document-turnaround performance, survey completion performance, asset recovery performance and business-volume reporting. Reports default to `record_purpose = OPERATIONAL`.
+
+### Change control for both dimensions
+
+- Measurement-cohort changes require an authorized correction event and must not silently rewrite historical metrics.
+- Record purpose may change only through an authorized, reasoned, audited correction, and only before the record has been used operationally.
+- An `OPERATIONAL` record must never be silently converted to `TRAINING` or `TEST` to remove it from reporting, nor may `TRAINING` or `TEST` records be silently converted to `OPERATIONAL`.
 
 ## 3. Phase A — Preparation
 

@@ -47,7 +47,8 @@ This is the logical business data dictionary, not a final Prisma schema. Field n
 | OffboardingCase | notice_status | Enum | Restricted HR | HR | No entitlement calculation. |
 | OffboardingCase | case_owner_user_id | UUID | Confidential | HR assignment | Required for active case. |
 | OffboardingCase | classification | Enum | Restricted HR | Rule/HR | TERMINATION defaults RESTRICTED. |
-| OffboardingCase | cohort | Enum | Internal | Product owner/feature mode | BASELINE, PILOT, POST_ROLLOUT. |
+| OffboardingCase | measurement_cohort | Enum | Internal | Product owner/feature mode | BASELINE, PILOT, POST_ROLLOUT. Business-analysis dimension. Required when record_purpose is OPERATIONAL; must be null for TRAINING and TEST. Changes follow the audited-correction rule. |
+| OffboardingCase | record_purpose | Enum | Internal | Set at record creation | OPERATIONAL, TRAINING, TEST. Data-use dimension, distinct from measurement_cohort. TRAINING and TEST must be synthetic, must never call live integrations, and are excluded from all business reporting. Changeable only by authorized, reasoned, audited correction before operational use. |
 | OffboardingCase | status | Enum | Confidential | State machine | Current status; history separate. |
 | OffboardingCase | reason_code | Reference | Restricted HR | HR | Versioned taxonomy. |
 | OffboardingCase | reason_notes | Text | Restricted HR | HR | Optional, limited and restricted. |

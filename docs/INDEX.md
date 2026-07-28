@@ -24,6 +24,7 @@
 | Requirements | `docs/requirements/MetricsDictionary.md` | 13 defined KPIs. |
 | Requirements | `docs/requirements/DataDictionary.md` | Core fields, source and classification. |
 | Requirements | `docs/requirements/StakeholderApprovalChecklist.md` | Decisions required before each stage. |
+| Requirements | `docs/requirements/Stage1ImplementationConstraints.md` | Reversible non-production Stage 1 constraints (IC-S1-001 to IC-S1-011). Not stakeholder approval. |
 | Architecture | `docs/architecture/Architecture.md` | System context and modular-monolith design. |
 | Architecture | `docs/architecture/DomainModel.md` | Domain boundaries and invariants. |
 | Architecture | `docs/architecture/DataModel.md` | Proposed logical entities and relationships. |
