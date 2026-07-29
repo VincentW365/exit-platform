@@ -106,8 +106,11 @@ test('J.5 restricted termination: assignment-gated access; no discovery for othe
   await signInAs(page, 'Riley Okafor');
   await page.goto('/cases');
   await expect(page.getByText(caseNumber)).toHaveCount(0);
+  // Search by the restricted employee's name must not surface THIS case
+  // (prior synthetic runs may have left older cases the officer was later
+  // assigned to - the invariant is per-case non-disclosure).
   await page.goto('/cases?q=morgan');
-  await expect(page.getByText('No cases match your access and filters.')).toBeVisible();
+  await expect(page.getByText(caseNumber)).toHaveCount(0);
   await page.goto(caseUrl);
   await expect(page.getByText('Page or record not found')).toBeVisible();
   await signOut(page);

@@ -1,0 +1,111 @@
+/**
+ * Focused Stage 2 visual QA + accessibility (Directive 2 section O).
+ * Small screenshot set to artifacts/stage2/ (gitignored, synthetic data only);
+ * axe scans assert no critical/serious violations on the new surfaces.
+ */
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test, type Page } from '@playwright/test';
+
+const OUT = 'artifacts/stage2';
+const DESKTOP = { width: 1280, height: 800 };
+const MOBILE = { width: 375, height: 812 };
+
+async function signInAs(page: Page, displayName: string): Promise<void> {
+  await page.goto('/signin');
+  await page.getByRole('button', { name: `Sign in as ${displayName}` }).click();
+  await page.waitForURL('**/');
+}
+
+async function snap(page: Page, name: string, mobileToo = false): Promise<void> {
+  await page.setViewportSize(DESKTOP);
+  await page.screenshot({ path: `${OUT}/${name}-desktop.png`, fullPage: true });
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow, `${name} desktop overflow`).toBeLessThanOrEqual(1);
+  if (mobileToo) {
+    await page.setViewportSize(MOBILE);
+    await page.screenshot({ path: `${OUT}/${name}-mobile.png`, fullPage: true });
+    const mOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(mOverflow, `${name} mobile overflow`).toBeLessThanOrEqual(1);
+    await page.setViewportSize(DESKTOP);
+  }
+}
+
+async function axeCheck(page: Page, name: string): Promise<void> {
+  const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+  const serious = results.violations.filter(
+    (v) => v.impact === 'critical' || v.impact === 'serious',
+  );
+  expect(
+    serious.map((v) => `${name}: [${v.impact}] ${v.id} - ${v.help} (${v.nodes.length})`),
+  ).toEqual([]);
+}
+
+test('stage 2 surfaces: visual + axe sweep', async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.setViewportSize(DESKTOP);
+
+  await signInAs(page, 'Riley Okafor');
+
+  // Dashboard with the new queues/metrics.
+  await snap(page, '01-dashboard-stage2', true);
+  await axeCheck(page, 'dashboard-stage2');
+
+  // Template list/editor.
+  await page.goto('/admin/templates');
+  await snap(page, '02-template-list');
+  await axeCheck(page, 'template-list');
+
+  // Build one case through the document flow for the remaining captures.
+  await page.goto('/cases/new');
+  await page.getByLabel(/Search the employee source/).fill('casey');
+  await page.getByRole('button', { name: 'Search' }).click();
+  await page.getByRole('link', { name: 'Select' }).first().click();
+  await page.getByLabel('Departure type (required)').selectOption('RESIGNATION_WITH_NOTICE');
+  await page.getByLabel('Receipt date and time (required)').fill('2026-07-21T10:00');
+  await page.getByLabel('Source of the receipt timestamp (required)').fill('Visual QA synthetic');
+  await page.getByLabel('Confirmed last working day').fill('2026-08-14');
+  await page.getByLabel(/Effective separation date and exact time/).fill('2026-08-14T17:00');
+  await page.getByLabel('Record purpose').selectOption('TEST');
+  await page.getByRole('button', { name: 'Create draft case' }).click();
+  await expect(page.getByText(/Draft case OFF-\d{4}-\d{4} created/)).toBeVisible();
+  const caseUrl = page.url().split('?')[0]!;
+
+  await page.goto(`${caseUrl}/documents`);
+  await page.getByRole('button', { name: 'Create resignation document draft' }).click();
+  await page.getByRole('button', { name: 'Validate and submit for approval' }).click();
+  await snap(page, '03-document-preview-approval', true);
+  await axeCheck(page, 'document-preview');
+
+  await page.goto(`${caseUrl}/action-form`);
+  await page.getByRole('button', { name: 'Create action form' }).click();
+  await snap(page, '04-action-form', true);
+  await axeCheck(page, 'action-form');
+
+  await page.goto(`${caseUrl}/survey`);
+  await page.getByRole('button', { name: 'Create survey invitation' }).click();
+  await page.getByRole('button', { name: 'Generate secure link' }).click();
+  await snap(page, '05-survey-admin');
+  await axeCheck(page, 'survey-admin');
+  const link = await page.locator('code').first().textContent();
+
+  // Mobile case detail.
+  await page.goto(caseUrl);
+  await snap(page, '06-mobile-case-detail', true);
+
+  await page.getByRole('button', { name: 'Sign out' }).click();
+
+  // Public survey (mobile-first) + neutral invalid-token page.
+  await page.goto(link!);
+  await snap(page, '07-public-survey', true);
+  await axeCheck(page, 'public-survey');
+  await page.goto('/survey/thanks');
+  await snap(page, '08-survey-thanks');
+  await page.goto(`/survey/${'A'.repeat(43)}`);
+  await snap(page, '09-survey-neutral-invalid');
+  await axeCheck(page, 'survey-neutral');
+  await expect(page.getByText('Survey not available')).toBeVisible();
+});

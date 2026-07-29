@@ -24,6 +24,8 @@ import {
 import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
+import { outdateDocumentsForCaseChange } from './documentService.ts';
+import { outdateFormsForCaseChange } from './actionFormService.ts';
 
 const employeeSource = new SyntheticEmployeeSourceAdapter();
 
@@ -738,6 +740,8 @@ export async function changeEffectiveTime(
     });
     if (updated.count === 0) throw ServiceError.conflict('The case was changed; reload and retry.');
     await appendAudit(tx, {
+      // Stage 2: a material case correction invalidates affected document and
+      // form approvals (Directive 2 D.12 / F.11) - handled after commit below.
       eventType: 'CASE_EFFECTIVE_TIME_CHANGED',
       actorType: 'USER',
       actorId: actor.userId,
@@ -755,6 +759,12 @@ export async function changeEffectiveTime(
       },
     });
   });
+
+  // Material correction ripple (Directive 2 D.12 / F.11): outdate affected
+  // documents and forms; issued artefacts are never touched.
+  const rippleReason = 'effective separation time changed';
+  await outdateDocumentsForCaseChange(caseId, rippleReason);
+  await outdateFormsForCaseChange(caseId, rippleReason);
 }
 
 export async function correctRecordPurpose(
@@ -840,7 +850,7 @@ export async function addParticipant(
   actor: Actor,
   caseId: string,
   userId: string,
-  participantRole: 'HR_SUPPORT' | 'OVERSIGHT',
+  participantRole: 'HR_SUPPORT' | 'OVERSIGHT' | 'FINANCE' | 'MANAGER',
   reason: string,
 ) {
   const { ctx, c } = await loadCaseWithAccess(caseId);
@@ -866,6 +876,13 @@ export async function addParticipant(
     !targetRoles.some((r) => r === 'AUDITOR' || r === 'PRIVACY_OFFICER')
   ) {
     throw ServiceError.validation(['Oversight participants must hold an oversight role.']);
+  }
+  // Stage 2: scoped action-form participants (Directive 2 section F).
+  if (participantRole === 'FINANCE' && !targetRoles.includes('FINANCE_RESPONDER')) {
+    throw ServiceError.validation(['Finance participants must hold the FINANCE_RESPONDER role.']);
+  }
+  if (participantRole === 'MANAGER' && !targetRoles.includes('LINE_MANAGER')) {
+    throw ServiceError.validation(['Manager participants must hold the LINE_MANAGER role.']);
   }
 
   const existing = await prisma.caseParticipant.findFirst({

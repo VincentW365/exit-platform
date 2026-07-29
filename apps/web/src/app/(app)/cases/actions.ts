@@ -221,7 +221,7 @@ export async function addParticipantAction(formData: FormData): Promise<void> {
       actor,
       caseId,
       str(formData, 'userId'),
-      str(formData, 'participantRole') as 'HR_SUPPORT' | 'OVERSIGHT',
+      str(formData, 'participantRole') as 'HR_SUPPORT' | 'OVERSIGHT' | 'FINANCE' | 'MANAGER',
       str(formData, 'reason'),
     );
     revalidatePath(`/cases/${caseId}`);

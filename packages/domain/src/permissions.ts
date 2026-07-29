@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Server-side authorization policy (REQ-SEC-005/006/007/008/010,
  * RolesAndPermissions.md, DEC-035 / IC-S1-011).
  *
@@ -65,6 +65,21 @@ export function canDiscoverCase(actor: Actor, c: CaseAccessContext): boolean {
   return false;
 }
 
+/**
+ * Stage 2 limited access levels: FINANCE_RESPONDER and LINE_MANAGER gain
+ * access ONLY to their action-form surfaces when explicitly assigned as
+ * participants - never to the full case (Directive 2 section F role rules).
+ */
+export type CaseAccessLevel = 'FULL' | 'FINANCE_FORM' | 'MANAGER_FORM' | 'DISCOVER' | 'NONE';
+
+export function caseAccessLevel(actor: Actor, c: CaseAccessContext): CaseAccessLevel {
+  if (canViewCase(actor, c)) return 'FULL';
+  if (isParticipant(actor, c) && hasRole(actor, 'FINANCE_RESPONDER')) return 'FINANCE_FORM';
+  if (isParticipant(actor, c) && hasRole(actor, 'LINE_MANAGER')) return 'MANAGER_FORM';
+  if (canDiscoverCase(actor, c)) return 'DISCOVER';
+  return 'NONE';
+}
+
 /** Case-scoped actions. */
 export type CaseAction =
   | 'case.editDraft'
@@ -83,9 +98,36 @@ export type CaseAction =
   | 'case.recordBaselineEvent'
   | 'attachment.upload'
   | 'attachment.download'
-  | 'audit.viewCase';
+  | 'audit.viewCase'
+  | 'doc.create'
+  | 'doc.edit'
+  | 'doc.submit'
+  | 'doc.approve'
+  | 'doc.return'
+  | 'doc.void'
+  | 'doc.markIssued'
+  | 'doc.supersede'
+  | 'doc.download'
+  | 'form.edit'
+  | 'form.submit'
+  | 'form.financeEdit'
+  | 'form.managerApprove'
+  | 'form.hrApprove'
+  | 'form.return'
+  | 'form.void'
+  | 'form.view'
+  | 'survey.manage'
+  | 'survey.viewResponses'
+  | 'survey.recordVerbal';
 
 export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessContext): boolean {
+  // Limited participant surfaces (no full case view required).
+  const level = caseAccessLevel(actor, c);
+  if (action === 'form.financeEdit') return level === 'FINANCE_FORM' || false;
+  if (action === 'form.managerApprove') return level === 'MANAGER_FORM' || false;
+  if (action === 'form.view')
+    return level === 'FULL' || level === 'FINANCE_FORM' || level === 'MANAGER_FORM';
+
   const view = canViewCase(actor, c);
   if (!view) return false;
   const hrManager = hasRole(actor, 'HR_MANAGER');
@@ -93,6 +135,29 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
   const hrOnCase = c.classification === 'RESTRICTED' ? isHrParticipant(actor, c) : hr;
 
   switch (action) {
+    case 'doc.create':
+    case 'doc.edit':
+    case 'doc.submit':
+    case 'form.edit':
+    case 'form.submit':
+    case 'survey.manage':
+    case 'survey.recordVerbal':
+      return hrOnCase;
+    case 'doc.approve':
+    case 'doc.return':
+    case 'doc.void':
+    case 'doc.markIssued':
+    case 'doc.supersede':
+    case 'form.hrApprove':
+    case 'form.return':
+    case 'form.void':
+      return hrManager && (c.classification !== 'RESTRICTED' || isHrParticipant(actor, c));
+    case 'doc.download':
+      return hrOnCase || (view && hasRole(actor, 'AUDITOR', 'PRIVACY_OFFICER'));
+    case 'survey.viewResponses':
+      // Identifiable responses: HR on the case + privacy oversight (read-only).
+      // AUDITOR gets metadata only - enforced by the service masking layer.
+      return hrOnCase || (view && hasRole(actor, 'PRIVACY_OFFICER'));
     case 'case.editDraft':
     case 'case.submit':
     case 'case.addNote':
@@ -135,7 +200,10 @@ export type GlobalAction =
   | 'admin.flags'
   | 'admin.calendar'
   | 'admin.configLists'
-  | 'employeeSource.search';
+  | 'employeeSource.search'
+  | 'template.view'
+  | 'template.draft'
+  | 'template.activate';
 
 const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   'case.create': ['HR_MANAGER', 'HR_OFFICER'],
@@ -148,6 +216,10 @@ const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   'admin.calendar': ['HR_MANAGER'],
   'admin.configLists': ['HR_MANAGER'],
   'employeeSource.search': ['HR_MANAGER', 'HR_OFFICER'],
+  // Directive 2 B.1/B.2: officers draft, managers activate/supersede/retire.
+  'template.view': ['HR_MANAGER', 'HR_OFFICER', 'AUDITOR', 'PRIVACY_OFFICER'],
+  'template.draft': ['HR_MANAGER', 'HR_OFFICER'],
+  'template.activate': ['HR_MANAGER'],
 };
 
 export function can(actor: Actor, action: GlobalAction): boolean {

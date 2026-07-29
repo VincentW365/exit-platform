@@ -210,9 +210,210 @@ async function main(): Promise<void> {
     });
   }
 
+  await seedStage2(prisma);
+
   console.log(
-    'Seed complete: synthetic users, flags (all disabled), calendar, reasons, org lists.',
+    'Seed complete: synthetic users, flags (all disabled), calendar, reasons, org lists, DEV templates, DEV exit survey.',
   );
+}
+
+// --- Stage 2 seeds (Directive 2 B.9 / G) -------------------------------------
+
+async function seedStage2(db: ReturnType<typeof getPrisma>): Promise<void> {
+  const hrManager = await db.user.findUniqueOrThrow({
+    where: { identitySubject: 'dev|hr-manager' },
+  });
+  const DEV_MARK = 'DEVELOPMENT TEMPLATE - REQUIRES HR APPROVAL BEFORE OPERATIONAL USE';
+
+  const noticeBody = `${DEV_MARK}
+
+[[DOCUMENT_DATE]]
+
+Dear [[EMPLOYEE_LEGAL_NAME]],
+
+We acknowledge receipt of your resignation on [[RESIGNATION_RECEIVED_DATE]] and accept it on behalf of Bert's Auto Parts Ltd. (case [[CASE_REFERENCE]]).
+
+We confirm that your last working day is [[CONFIRMED_LAST_WORKING_DATE]] and that your employment ends effective [[EFFECTIVE_SEPARATION_DATE]].
+
+Human Resources will coordinate the remaining administrative steps of your offboarding with you. Please return any applicable company property on or before your last working day.
+
+If you have any questions, please contact the Human Resources office.
+
+Thank you for your professional service to the company.
+
+Sincerely,
+
+[[HR_APPROVER_NAME]]
+[[HR_APPROVER_TITLE]]`;
+
+  const immediateBody = `${DEV_MARK}
+
+[[DOCUMENT_DATE]]
+
+Dear [[EMPLOYEE_LEGAL_NAME]],
+
+We acknowledge receipt of your resignation on [[RESIGNATION_RECEIVED_DATE]], effective immediately (case [[CASE_REFERENCE]]).
+
+We confirm that your employment ends effective [[EFFECTIVE_SEPARATION_DATE]] at [[EFFECTIVE_SEPARATION_TIME]].
+
+Human Resources will coordinate the remaining administrative steps of your offboarding. Please return any applicable company property promptly; the Human Resources office will contact you regarding arrangements.
+
+If you have any questions, please contact the Human Resources office.
+
+Thank you for your service to the company.
+
+Sincerely,
+
+[[HR_APPROVER_NAME]]
+[[HR_APPROVER_TITLE]]`;
+
+  const seedTemplates = [
+    {
+      documentType: 'RESIGNATION_ACCEPTANCE_WITH_NOTICE',
+      name: 'DEV Resignation acceptance (with notice)',
+      body: noticeBody,
+      status: 'ACTIVE',
+    },
+    {
+      documentType: 'IMMEDIATE_RESIGNATION_ACKNOWLEDGEMENT',
+      name: 'DEV Immediate resignation acknowledgement',
+      body: immediateBody,
+      status: 'ACTIVE',
+    },
+    {
+      documentType: 'OFFBOARDING_ACTION_FORM',
+      name: 'DEV Offboarding action form (structure v1)',
+      body: `${DEV_MARK}\n\nStructured form - sections are defined by the application, not by this template body.`,
+      status: 'ACTIVE',
+    },
+    {
+      documentType: 'MANUAL_EXCEPTION_DOCUMENT',
+      name: 'Manual exception document (upload-based)',
+      body: '',
+      status: 'ACTIVE',
+    },
+    {
+      documentType: 'TERMINATION_DOCUMENT_PLACEHOLDER',
+      name: 'Termination placeholder (permanently disabled - no content permitted)',
+      body: '',
+      status: 'DRAFT',
+    },
+  ] as const;
+
+  const { createHash } = await import('node:crypto');
+  for (const t of seedTemplates) {
+    const existing = await db.documentTemplate.findFirst({
+      where: { documentType: t.documentType, version: 1 },
+    });
+    if (!existing) {
+      await db.documentTemplate.create({
+        data: {
+          documentType: t.documentType,
+          name: t.name,
+          version: 1,
+          status: t.status,
+          contentBody: t.body,
+          allowedPlaceholders: [
+            ...new Set([...t.body.matchAll(/\[\[([A-Z0-9_]+)\]\]/g)].map((m) => m[1]!)),
+          ],
+          contentChecksum: createHash('sha256').update(t.body, 'utf8').digest('hex'),
+          changeReason: 'Synthetic development seed (Stage 2).',
+          createdById: hrManager.id,
+          ...(t.status === 'ACTIVE'
+            ? { activatedById: hrManager.id, activatedAt: new Date() }
+            : {}),
+        },
+      });
+    }
+  }
+
+  const existingSurvey = await db.surveyTemplate.findFirst({
+    where: { code: 'exit-survey-dev', version: 1 },
+  });
+  if (!existingSurvey) {
+    await db.surveyTemplate.create({
+      data: {
+        code: 'exit-survey-dev',
+        version: 1,
+        status: 'ACTIVE',
+        title: 'Exit survey (development)',
+        introText:
+          'Thank you for taking a few minutes to share feedback about your employment experience. ' +
+          'Your answers help the company improve.',
+        privacyNotice:
+          'Privacy notice: your responses are reviewed by authorized Human Resources personnel. ' +
+          'This survey is linked to your offboarding record, so responses are confidential but not anonymous. ' +
+          'Free-text answers are optional.',
+        createdById: hrManager.id,
+        activatedById: hrManager.id,
+        activatedAt: new Date(),
+        questions: {
+          create: [
+            {
+              order: 1,
+              type: 'RATING_1_5',
+              prompt: 'How would you rate your overall employment experience?',
+              required: true,
+              options: [],
+            },
+            {
+              order: 2,
+              type: 'SINGLE_CHOICE',
+              prompt: 'What was the primary factor in your decision to leave?',
+              required: true,
+              options: [
+                'Career growth opportunity',
+                'Compensation',
+                'Work environment',
+                'Personal or family reasons',
+                'Relocation',
+                'Another opportunity',
+                'Other',
+                'Prefer not to say',
+              ],
+            },
+            {
+              order: 3,
+              type: 'RATING_1_5',
+              prompt: 'How would you rate the support you received from your direct manager?',
+              required: false,
+              options: [],
+            },
+            {
+              order: 4,
+              type: 'RATING_1_5',
+              prompt: 'How would you rate the work environment?',
+              required: false,
+              options: [],
+            },
+            {
+              order: 5,
+              type: 'SHORT_TEXT',
+              prompt: 'What did you value most about working here? (optional)',
+              required: false,
+              options: [],
+              maxLength: 200,
+            },
+            {
+              order: 6,
+              type: 'LONG_TEXT',
+              prompt: 'What is the most important improvement the company could make? (optional)',
+              required: false,
+              options: [],
+              maxLength: 2000,
+            },
+            {
+              order: 7,
+              type: 'YES_NO_PNTS',
+              prompt: 'Would you consider returning to the company in the future?',
+              required: true,
+              options: ['Yes', 'No', 'Unsure', 'Prefer not to say'],
+            },
+          ],
+        },
+      },
+    });
+  }
 }
 
 await main();

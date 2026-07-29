@@ -84,6 +84,8 @@ enum ParticipantRole {
   OWNER
   HR_SUPPORT
   OVERSIGHT
+  FINANCE
+  MANAGER
 }
 
 enum ScanStatus {
@@ -96,6 +98,8 @@ enum ScanStatus {
 enum AttachmentPurpose {
   RESIGNATION_LETTER
   SUPPORTING_DOCUMENT
+  MANUAL_EXCEPTION_DOCUMENT
+  ACKNOWLEDGEMENT_EVIDENCE
 }
 
 enum ActorType {
@@ -260,6 +264,9 @@ model OffboardingCase {
   notes          CaseNote[]
   attachments    Attachment[]
   baselineEvents BaselineEvent[]
+  documents      DocumentInstance[]
+  actionForms    ActionFormVersion[]
+  surveyInvitations SurveyInvitation[]
 
   @@index([status])
   @@index([ownerId])
@@ -471,6 +478,355 @@ model ConfigListItem {
 
   @@unique([kind, value])
   @@map("config_list_item")
+}
+
+// --- Stage 2: controlled documents, action form, exit survey -----------------
+
+enum DocumentType {
+  RESIGNATION_ACCEPTANCE_WITH_NOTICE
+  IMMEDIATE_RESIGNATION_ACKNOWLEDGEMENT
+  OFFBOARDING_ACTION_FORM
+  MANUAL_EXCEPTION_DOCUMENT
+  TERMINATION_DOCUMENT_PLACEHOLDER
+}
+
+enum TemplateStatus {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+  RETIRED
+}
+
+enum DocumentStatus {
+  DRAFT
+  VALIDATION_FAILED
+  PENDING_APPROVAL
+  RETURNED
+  APPROVED
+  RENDERING
+  RENDERED
+  MANUALLY_ISSUED
+  SUPERSEDED
+  VOIDED
+  RENDER_FAILED
+}
+
+enum IssueMethod {
+  HAND_DELIVERY
+  REGISTERED_MAIL
+  OTHER_APPROVED
+}
+
+enum RecipientClass {
+  EMPLOYEE
+  AUTHORIZED_REPRESENTATIVE
+  INTERNAL_RECORD
+}
+
+enum AttestationSubject {
+  DOCUMENT
+  ACTION_FORM
+}
+
+enum AttestationKind {
+  HR_DOCUMENT_APPROVAL
+  MANAGER_FORM_APPROVAL
+  HR_FORM_FINAL_APPROVAL
+}
+
+enum ActionFormStatus {
+  DRAFT
+  RETURNED
+  PENDING_MANAGER
+  PENDING_HR
+  APPROVED
+  SUPERSEDED
+  VOIDED
+}
+
+enum AcknowledgementStatus {
+  PENDING
+  ACKNOWLEDGED
+  NOT_OBTAINED
+  NOT_APPLICABLE
+}
+
+enum SurveyQuestionType {
+  SINGLE_CHOICE
+  MULTI_CHOICE
+  RATING_1_5
+  YES_NO_PNTS
+  SHORT_TEXT
+  LONG_TEXT
+}
+
+enum InvitationStatus {
+  PENDING
+  MANUALLY_SENT
+  COMPLETED
+  DECLINED
+  EXPIRED
+  CANCELLED
+  INVALID_CONTACT
+  NOT_ELIGIBLE
+}
+
+enum ResponseChannel {
+  ONLINE_SURVEY
+  VERBAL_DEBRIEF
+  DECLINED
+  NOT_COMPLETED
+}
+
+/// Immutable-once-active controlled document templates (Directive 2 section B).
+model DocumentTemplate {
+  id                  String         @id @default(uuid()) @db.Uuid
+  documentType        DocumentType
+  name                String
+  version             Int
+  status              TemplateStatus @default(DRAFT)
+  /// Plain-text structured content with [[PLACEHOLDER]] tokens.
+  contentBody         String
+  allowedPlaceholders String[]
+  contentChecksum     String
+  changeReason        String?
+  createdById         String         @db.Uuid
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  activatedById       String?        @db.Uuid
+  activatedAt         DateTime?
+  supersededAt        DateTime?
+  retiredAt           DateTime?
+  documents           DocumentInstance[]
+
+  @@unique([documentType, version])
+  @@index([documentType, status])
+  @@map("document_template")
+}
+
+/// Case document instances (Directive 2 section D lifecycle).
+model DocumentInstance {
+  id               String         @id @default(uuid()) @db.Uuid
+  caseId           String         @db.Uuid
+  case             OffboardingCase @relation(fields: [caseId], references: [id])
+  documentType     DocumentType
+  templateId       String?        @db.Uuid
+  template         DocumentTemplate? @relation(fields: [templateId], references: [id])
+  templateVersion  Int?
+  version          Int
+  status           DocumentStatus @default(DRAFT)
+  /// Exact field values captured for THIS version (never silently refreshed).
+  fieldSnapshot    Json
+  /// Rendered body text (placeholders substituted) captured at submission.
+  contentSnapshot  String?
+  contentChecksum  String?
+  validationErrors Json?
+  outdatedReason   String?
+  returnReason     String?
+  voidReason       String?
+  /// Manual-exception documents reference an uploaded controlled attachment.
+  exceptionAttachmentId String?   @db.Uuid
+  exceptionReason  String?
+  pdfObjectKey     String?        @unique
+  pdfChecksum      String?
+  renderAttempts   Int            @default(0)
+  renderError      String?
+  issuedById       String?        @db.Uuid
+  issuedAt         DateTime?
+  issueMethod      IssueMethod?
+  recipientClass   RecipientClass?
+  issueNote        String?
+  createdById      String         @db.Uuid
+  submittedAt      DateTime?
+  approvedAt       DateTime?
+  renderedAt       DateTime?
+  rowVersion       Int            @default(0)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([caseId, documentType, version])
+  @@index([caseId, documentType])
+  @@index([status])
+  @@map("document_instance")
+}
+
+/// Authenticated approval/attestation records (DEC-025 Option B).
+/// Core columns are immutable (trigger); only invalidation fields may change.
+model Attestation {
+  id                 String             @id @default(uuid()) @db.Uuid
+  subjectType        AttestationSubject
+  subjectId          String             @db.Uuid
+  subjectVersion     Int
+  kind               AttestationKind
+  caseId             String             @db.Uuid
+  actorId            String             @db.Uuid
+  actorDisplayName   String
+  actorRole          String
+  meaning            String
+  contentChecksum    String
+  correlationId      String
+  createdAt          DateTime           @default(now())
+  invalidatedAt      DateTime?
+  invalidatedReason  String?
+
+  @@index([subjectType, subjectId])
+  @@index([caseId])
+  @@map("attestation")
+}
+
+/// One versioned offboarding action form per case (Directive 2 section F).
+model ActionFormVersion {
+  id                    String                @id @default(uuid()) @db.Uuid
+  caseId                String                @db.Uuid
+  case                  OffboardingCase       @relation(fields: [caseId], references: [id])
+  version               Int
+  status                ActionFormStatus      @default(DRAFT)
+  /// Frozen employee/case identification for this version.
+  fieldSnapshot         Json
+  priorStatus           String                @default("EMPLOYED")
+  newStatus             String                @default("SEPARATED")
+  hrChecklist           Json
+  financeChecklist      Json
+  financeNotes          String?
+  ackStatus             AcknowledgementStatus @default(PENDING)
+  ackDate               DateTime?
+  ackMethod             String?
+  ackReason             String?
+  ackEvidenceAttachmentId String?             @db.Uuid
+  hrRemarks             String?
+  returnReason          String?
+  voidReason            String?
+  outdatedReason        String?
+  pdfObjectKey          String?               @unique
+  pdfChecksum           String?
+  renderError           String?
+  createdById           String                @db.Uuid
+  rowVersion            Int                   @default(0)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@unique([caseId, version])
+  @@index([status])
+  @@map("action_form_version")
+}
+
+/// Versioned exit-survey templates (Directive 2 section G).
+model SurveyTemplate {
+  id            String           @id @default(uuid()) @db.Uuid
+  code          String
+  version       Int
+  status        TemplateStatus   @default(DRAFT)
+  title         String
+  introText     String
+  privacyNotice String
+  createdById   String?          @db.Uuid
+  activatedById String?          @db.Uuid
+  activatedAt   DateTime?
+  createdAt     DateTime         @default(now())
+  questions     SurveyQuestion[]
+  invitations   SurveyInvitation[]
+
+  @@unique([code, version])
+  @@map("survey_template")
+}
+
+model SurveyQuestion {
+  id         String             @id @default(uuid()) @db.Uuid
+  templateId String             @db.Uuid
+  template   SurveyTemplate     @relation(fields: [templateId], references: [id])
+  order      Int
+  type       SurveyQuestionType
+  prompt     String
+  required   Boolean            @default(false)
+  options    String[]
+  maxLength  Int?
+  answers    SurveyAnswer[]
+
+  @@unique([templateId, order])
+  @@map("survey_question")
+}
+
+/// Survey invitations: token HASH only, never the raw token (section H).
+model SurveyInvitation {
+  id               String           @id @default(uuid()) @db.Uuid
+  caseId           String           @db.Uuid
+  case             OffboardingCase  @relation(fields: [caseId], references: [id])
+  templateId       String           @db.Uuid
+  template         SurveyTemplate   @relation(fields: [templateId], references: [id])
+  status           InvitationStatus @default(PENDING)
+  eligibilityNote  String?
+  overrideReason   String?
+  tokenHash        String?          @unique
+  tokenGeneratedAt DateTime?
+  invitationDueAt  DateTime
+  manualSentById   String?          @db.Uuid
+  manualSentAt     DateTime?
+  reminder1DueAt   DateTime?
+  reminder1SentAt  DateTime?
+  reminder2DueAt   DateTime?
+  reminder2SentAt  DateTime?
+  expiresAt        DateTime?
+  responseChannel  ResponseChannel?
+  completedAt      DateTime?
+  invalidContactNote String?
+  cancelReason     String?
+  createdById      String           @db.Uuid
+  rowVersion       Int              @default(0)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  response         SurveyResponse?
+
+  @@index([caseId])
+  @@index([status])
+  @@map("survey_invitation")
+}
+
+/// One final response per invitation; append-only (section H rules 7-10).
+model SurveyResponse {
+  id           String           @id @default(uuid()) @db.Uuid
+  invitationId String           @unique @db.Uuid
+  invitation   SurveyInvitation @relation(fields: [invitationId], references: [id])
+  caseId       String           @db.Uuid
+  channel      ResponseChannel
+  submittedAt  DateTime         @default(now())
+  /// Set for VERBAL_DEBRIEF: the HR user who recorded it.
+  recordedById String?          @db.Uuid
+  answers      SurveyAnswer[]
+
+  @@index([caseId])
+  @@map("survey_response")
+}
+
+model SurveyAnswer {
+  id          String         @id @default(uuid()) @db.Uuid
+  responseId  String         @db.Uuid
+  response    SurveyResponse @relation(fields: [responseId], references: [id])
+  questionId  String         @db.Uuid
+  question    SurveyQuestion @relation(fields: [questionId], references: [id])
+  valueChoice String[]
+  valueRating Int?
+  /// RESTRICTED_HR free text.
+  valueText   String?
+
+  @@unique([responseId, questionId])
+  @@map("survey_answer")
+}
+
+/// PDF render jobs claimed by the worker for retry handling (section J).
+model RenderJob {
+  id            String             @id @default(uuid()) @db.Uuid
+  subjectType   AttestationSubject
+  subjectId     String             @db.Uuid
+  status        String             @default("QUEUED")
+  attempts      Int                @default(0)
+  lastError     String?
+  correlationId String
+  claimedAt     DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([status])
+  @@map("render_job")
 }
 
 /// Human-readable case-number allocation (REQ-CASE-001): OFF-<year>-<seq>,

@@ -24,7 +24,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   transpilePackages: ['@exit/config', '@exit/domain', '@exit/db'],
-  serverExternalPackages: ['@prisma/client'],
+  // pdfkit must stay external: bundling breaks its runtime font-data paths.
+  serverExternalPackages: ['@prisma/client', 'pdfkit'],
   poweredByHeader: false,
   headers() {
     return Promise.resolve([{ source: '/(.*)', headers: securityHeaders }]);

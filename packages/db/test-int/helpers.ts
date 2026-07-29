@@ -9,6 +9,16 @@ export async function resetDb(): Promise<void> {
   // integration cleanup uses TRUNCATE ... CASCADE as the database owner.
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      render_job,
+      survey_answer,
+      survey_response,
+      survey_invitation,
+      survey_question,
+      survey_template,
+      attestation,
+      action_form_version,
+      document_instance,
+      document_template,
       audit_event,
       baseline_event,
       attachment,

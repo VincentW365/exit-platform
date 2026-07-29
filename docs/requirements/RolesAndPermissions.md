@@ -41,6 +41,18 @@ Legend: `Full` means within approved record scope, not unrestricted database acc
 | Configuration | HR business config approval | Limited draft/config | No | No | No | No | Retention/privacy config | Technical config |
 | Roles/access | No self-grant; approve HR assignment where defined | No | No | No | No | Read audit | Privacy review | Technical provisioning without business-content grant |
 
+## Stage 2 implementation note (Directive 2, 2026-07-29)
+
+The document/action-form/survey build maps this model as follows, without
+changing any authority: HR_OFFICER drafts documents/templates and edits the
+action form; HR_MANAGER activates templates, approves documents, and gives
+final form approval (all as authenticated attestations, DEC-025 Option B
+recommendation); FINANCE_RESPONDER and LINE_MANAGER receive **participant-
+scoped action-form surfaces only** (finance checklist; manager minimum
+review/approval view) when explicitly assigned - never case content;
+identifiable survey responses are restricted to case HR plus read-only
+PRIVACY_OFFICER oversight, with AUDITOR receiving metadata only.
+
 ## Record-level access rules
 
 ### Normal resignation cases

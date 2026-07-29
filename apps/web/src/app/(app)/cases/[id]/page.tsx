@@ -11,6 +11,7 @@ import {
   listNotes,
 } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
+import { CaseNav } from './CaseNav';
 import {
   ClassificationBadge,
   Feedback,
@@ -80,6 +81,7 @@ export default async function CaseDetailPage({
       </h1>
       <Feedback err={sp.err} ok={sp.ok} />
       {c.classification === 'RESTRICTED' ? <RestrictedBanner /> : null}
+      <CaseNav caseId={id} active="overview" />
 
       <section className="panel" aria-labelledby="summary-h">
         <h2 id="summary-h" style={{ marginTop: 0 }}>
@@ -407,6 +409,8 @@ export default async function CaseDetailPage({
                 <select id="p-role" name="participantRole" defaultValue="HR_SUPPORT">
                   <option value="HR_SUPPORT">HR support (requires an HR role)</option>
                   <option value="OVERSIGHT">Oversight (auditor / privacy officer)</option>
+                  <option value="FINANCE">Finance - action-form checklist only</option>
+                  <option value="MANAGER">Manager - action-form review/approval only</option>
                 </select>
               </div>
               <div className="field">

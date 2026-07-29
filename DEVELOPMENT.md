@@ -126,7 +126,12 @@ ever set in production). All eight synthetic users from the seed are offered.
 - **Action feedback:** mutations report success/errors through redirect query
   parameters rendered as an accessible summary. Field-level inline errors are
   a later refinement.
-- **No automation:** letters, surveys, notifications, reminders are all
-  Stage 2+ and their feature flags are seeded disabled (DEC-007 / IC-S1-004).
+- **Stage 2 features (documents, action forms, exit surveys)** are built but
+  gated: OPERATIONAL records require the `automation.*` feature flags (seeded
+  disabled) and a non-BASELINE cohort; use TRAINING/TEST-purpose cases to
+  exercise them locally. No email is ever sent - survey links are generated
+  for HR to copy and send manually. See
+  `docs/delivery/Stage2CombinedBuildRecord.md` section 10 for the operating
+  steps.
 - The holiday calendar and reason categories in the seed are **synthetic
   placeholders**; real values require DEC-027 / DEC-031 approval.

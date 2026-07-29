@@ -35,8 +35,22 @@ GRANT SELECT, INSERT, UPDATE ON
   feature_flag,
   config_list_item,
   integration_placeholder,
-  case_number_counter
+  case_number_counter,
+  document_template,
+  document_instance,
+  action_form_version,
+  survey_template,
+  survey_question,
+  survey_invitation,
+  render_job
 TO exit_app;
+
+-- Attestations: insert + read + update (update restricted by trigger to the
+-- invalidation fields only; core columns are database-immutable).
+GRANT SELECT, INSERT, UPDATE ON attestation TO exit_app;
+
+-- Survey responses/answers: append-only evidence (no UPDATE, no DELETE).
+GRANT SELECT, INSERT ON survey_response, survey_answer TO exit_app;
 
 -- Append-only evidence: read and insert only. UPDATE/DELETE are refused at
 -- the privilege layer (this file) AND by triggers (migration) - two

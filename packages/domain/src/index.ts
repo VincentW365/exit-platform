@@ -8,3 +8,6 @@ export * from './attachments.ts';
 export * from './employeeSource.ts';
 export * from './snapshot.ts';
 export * from './baseline.ts';
+export * from './documents.ts';
+export * from './actionForm.ts';
+export * from './survey.ts';

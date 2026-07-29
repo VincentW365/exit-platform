@@ -8,3 +8,8 @@ export * from './services/baselineService.ts';
 export * from './services/userService.ts';
 export * from './services/adminService.ts';
 export * from './services/dashboardService.ts';
+export * from './services/templateService.ts';
+export * from './services/documentService.ts';
+export * from './services/actionFormService.ts';
+export * from './services/surveyService.ts';
+export { readVerifiedPdf } from './services/renderService.ts';
