@@ -15,6 +15,8 @@ Two Stage 1 requirements are OPEN: `REQ-SEC-001` (production SSO, DEC-021) and `
 
 Stage 1 implementation evidence (Directive 1): the non-production foundation implementing the Stage 1 requirement set was built and verified on 2026-07-28/29 — lint, strict typecheck, 70 unit tests, 36 integration tests against a real PostgreSQL test database, a Playwright critical-path E2E and a production build all pass. The version decisions, design mapping and per-check results are recorded in `../delivery/Stage1BuildRecord.md`. This is engineering evidence under the Stage 1 constraints, not stakeholder acceptance; the Stage 1 gate in `../delivery/Roadmap.md` still requires reviewer approval.
 
+Stage 1 acceptance evidence (Directive 1.1, 2026-07-29): independent clean-worktree reproduction, migration-from-zero and schema-drift verification, SCRAM/least-privilege database hardening with runtime-privilege denial tests, production fail-closed guard verification against the running production build (dev login, scanner passthrough, nonce CSP), a complete eight-role-by-surface authorization matrix, restricted-case non-disclosure checks, CSV formula-injection and attachment-boundary hardening, axe accessibility scans (0 critical/serious) and visual QA — 84 unit / 66 integration / 9 E2E tests pass. Full results: `../delivery/Stage1AcceptanceReport.md`.
+
 | Requirement ID | Title | Source / rationale | Status | Priority | Stage | Verification |
 | --- | --- | --- | --- | --- | --- | --- |
 | REQ-CASE-001 | Unique case number | DMAIC pp. 8, 18 | PROVISIONAL | MUST | 1 | Integration and end-to-end test |

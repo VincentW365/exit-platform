@@ -51,6 +51,7 @@
 | Delivery | `docs/delivery/ClaudeBuildDirectives.md` | Paste-ready bounded implementation directives. |
 | Delivery | `docs/delivery/BaselineValidationReport.md` | Directive 0 validation result, blockers and Directive 1 readiness. |
 | Delivery | `docs/delivery/Stage1BuildRecord.md` | Directive 1 build record: versions, design decisions, evidence. |
+| Delivery | `docs/delivery/Stage1AcceptanceReport.md` | Directive 1.1 acceptance audit: hardening, authorization matrix, visual QA. |
 | Top level | `DEVELOPMENT.md` | Local development setup and check commands. |
 | Operations | `docs/operations/ManualFallbackAndBusinessContinuity.md` | Secure fallback procedures. |
 | Operations | `docs/operations/SupportAndIncidentManagement.md` | Ownership, incidents and support. |

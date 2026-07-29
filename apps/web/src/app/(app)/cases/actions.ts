@@ -91,21 +91,33 @@ export async function updateDraftAction(formData: FormData): Promise<void> {
   await touchSession();
   const caseId = str(formData, 'caseId');
   try {
-    await updateDraft(actor, caseId, {
-      receivedAt: opt(formData, 'receivedAt') ?? undefined,
-      receiptSource: opt(formData, 'receiptSource') ?? undefined,
-      proposedLastDay: opt(formData, 'proposedLastDay'),
-      confirmedLastDay: opt(formData, 'confirmedLastDay'),
-      effectiveSeparationAt: opt(formData, 'effectiveSeparationAt'),
-      department: opt(formData, 'department') ?? undefined,
-      location: opt(formData, 'location') ?? undefined,
-      measurementCohort: opt(formData, 'measurementCohort'),
-      reasonCaptureStatus: opt(formData, 'reasonCaptureStatus') ?? undefined,
-      reasonNotes: opt(formData, 'reasonNotes') ?? '',
-      noticeProvidedDays: opt(formData, 'noticeProvidedDays'),
-      noticeRequiredDays: opt(formData, 'noticeRequiredDays'),
-      noticeTreatment: opt(formData, 'noticeTreatment') ?? '',
-    });
+    // Patch ONLY fields the form actually posted: an absent input must never
+    // silently clear stored data (a blank optional input keeps the value).
+    const patch: Record<string, unknown> = {};
+    const putIfFilled = (key: string) => {
+      const v = opt(formData, key);
+      if (formData.has(key) && v !== null) patch[key] = v;
+    };
+    const putIfPresent = (key: string) => {
+      if (formData.has(key)) patch[key] = str(formData, key);
+    };
+    for (const k of [
+      'receivedAt',
+      'receiptSource',
+      'proposedLastDay',
+      'confirmedLastDay',
+      'effectiveSeparationAt',
+      'department',
+      'location',
+      'measurementCohort',
+      'reasonCaptureStatus',
+      'noticeProvidedDays',
+      'noticeRequiredDays',
+    ])
+      putIfFilled(k);
+    // Free-text fields may be cleared deliberately by submitting them empty.
+    for (const k of ['reasonNotes', 'noticeTreatment']) putIfPresent(k);
+    await updateDraft(actor, caseId, patch);
     revalidatePath(`/cases/${caseId}`);
     feedbackRedirect(`/cases/${caseId}`, { ok: 'Draft updated.' });
   } catch (e) {

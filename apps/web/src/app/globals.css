@@ -13,9 +13,11 @@
   --text: #16212e;
   --text-2: #44546a;
   --border: #c9d2dd;
-  --success: #1a7f37;
+  /* Status colours validated against their tinted backgrounds for WCAG 1.4.3
+     (>= 4.5:1); verified by the axe scan in e2e/acceptance-visual.spec.ts. */
+  --success: #116329;
   --success-bg: #e6f4ea;
-  --warning: #9a6700;
+  --warning: #7a5200;
   --warning-bg: #fff8e1;
   --danger: #b42318;
   --danger-bg: #fdecea;

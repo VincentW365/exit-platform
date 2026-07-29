@@ -15,6 +15,7 @@ import {
   type CaseAccessContext,
 } from '@exit/domain';
 import { getPrisma } from '../client.ts';
+import { csvCell } from '../csv.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
 
@@ -218,7 +219,7 @@ export async function baselineExportCsv(actor: Actor): Promise<string> {
     ...BASELINE_EVENT_TYPES.map((t) => `${t.toLowerCase()}_missing_reason`),
   ];
 
-  const csvEscape = (v: string): string => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  const csvEscape = csvCell;
 
   const lines = [header.join(',')];
   for (const r of rows) {
@@ -247,6 +248,8 @@ export async function baselineExportCsv(actor: Actor): Promise<string> {
     );
   }
 
+  // Export audit (Directive 1.1 F.12): actor, correlation id, criteria,
+  // cohort/purpose and row count - never the exported row content itself.
   await appendAudit(prisma, {
     eventType: 'CASE_EXPORTED',
     actorType: 'USER',
@@ -256,7 +259,14 @@ export async function baselineExportCsv(actor: Actor): Promise<string> {
     objectId: 'baseline-csv',
     result: 'SUCCESS',
     correlationId: newCorrelationId(),
-    metadata: { rowCount: rows.length, exportType: 'baseline-csv' },
+    metadata: {
+      exportType: 'baseline-csv',
+      rowCount: rows.length,
+      measurementCohort: 'BASELINE',
+      recordPurpose: 'OPERATIONAL',
+      filterCriteria: 'fixed: BASELINE cohort, OPERATIONAL purpose, actor-visible cases',
+      includesNonOperational: false,
+    },
   });
 
   return lines.join('\n') + '\n';

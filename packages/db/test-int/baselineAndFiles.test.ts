@@ -206,6 +206,63 @@ describe('attachments: quarantine-first uploads (REQ-SEC-019/020/022)', () => {
     ).rejects.toMatchObject({ code: 'VALIDATION' });
   });
 
+  it('a REJECTED file cannot be downloaded even by authorized HR', async () => {
+    const { attachmentId } = await uploadAttachment(
+      officer.actor,
+      baselineCaseId,
+      { fileName: 'rejected-later.pdf', declaredMime: 'application/pdf', bytes: PDF_BYTES },
+      'SUPPORTING_DOCUMENT',
+    );
+    await prisma.attachment.update({
+      where: { id: attachmentId },
+      data: { scanStatus: 'REJECTED', scanNote: 'synthetic rejection for test' },
+    });
+    await expect(downloadAttachment(officer.actor, attachmentId)).rejects.toMatchObject({
+      code: 'CONFLICT',
+    });
+  });
+
+  it('a stored-object checksum mismatch blocks the download (integrity)', async () => {
+    const { attachmentId } = await uploadAttachment(
+      officer.actor,
+      baselineCaseId,
+      { fileName: 'tampered.pdf', declaredMime: 'application/pdf', bytes: PDF_BYTES },
+      'SUPPORTING_DOCUMENT',
+    );
+    // Simulate on-disk tampering by changing the recorded checksum.
+    await prisma.attachment.update({
+      where: { id: attachmentId },
+      data: { checksum: '0'.repeat(64) },
+    });
+    await expect(downloadAttachment(officer.actor, attachmentId)).rejects.toThrow(
+      /integrity check/,
+    );
+  });
+
+  it('rejects filenames with control or bidirectional-override characters', async () => {
+    for (const name of ['evil\u202efdp.pdf', 'bad\u0007name.pdf', 'tab\tname.pdf']) {
+      await expect(
+        uploadAttachment(
+          officer.actor,
+          baselineCaseId,
+          { fileName: name, declaredMime: 'application/pdf', bytes: PDF_BYTES },
+          'SUPPORTING_DOCUMENT',
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION' });
+    }
+  });
+
+  it('rejects a double-extension executable masquerade', async () => {
+    await expect(
+      uploadAttachment(
+        officer.actor,
+        baselineCaseId,
+        { fileName: 'report.pdf.exe', declaredMime: 'application/pdf', bytes: PDF_BYTES },
+        'SUPPORTING_DOCUMENT',
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION' });
+  });
+
   it('departmental roles cannot download case files', async () => {
     const it2 = await createUser('Sam IT', 'IT_RESPONDER');
     const listed = await listAttachments(officer.actor, baselineCaseId);

@@ -45,6 +45,10 @@ export function uploadValidationErrors(candidate: UploadCandidate, maxUploadMb: 
   const name = candidate.fileName.trim();
   if (!name || name.length > 200) errors.push('File name is missing or too long.');
   if (/[\\/]|\.\./.test(name)) errors.push('File name must not contain path segments.');
+  // Control and bidirectional-override characters enable extension spoofing
+  // (e.g. RTLO "fdp.exe" tricks) and log/header injection.
+  if (/[\u0000-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(name))
+    errors.push('File name contains control or bidirectional characters.');
 
   const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
   const allowed = ALLOWED_TYPES.find((t) => t.extension === ext);

@@ -72,6 +72,38 @@ describe('KPI-001 case-capture window', () => {
   });
 });
 
+describe('edge cases (Directive 1.1 H.17)', () => {
+  it('consecutive holidays are skipped in sequence', () => {
+    const consec: BusinessCalendar = {
+      timezone: 'America/Jamaica',
+      holidays: [
+        { date: '2026-08-04', label: 'TEST consecutive A' },
+        { date: '2026-08-05', label: 'TEST consecutive B' },
+      ],
+    };
+    // Anchor Monday 2026-08-03: Tue+Wed are holidays -> next business day Thu 08-06.
+    const end1 = endOfNthBusinessDayAfter(new Date('2026-08-03T15:00:00Z'), 1, consec);
+    expect(formatInstant(end1)).toBe('6 Aug 2026, 11:59 PM');
+  });
+
+  it('year boundary: business-day math crosses into the next year', () => {
+    const yearEnd: BusinessCalendar = {
+      timezone: 'America/Jamaica',
+      holidays: [{ date: '2027-01-01', label: 'TEST New Year (synthetic)' }],
+    };
+    // Anchor Thursday 2026-12-31; Fri 01-01 is a holiday, weekend follows ->
+    // first business day after the anchor is Monday 2027-01-04.
+    const end = endOfNthBusinessDayAfter(new Date('2026-12-31T15:00:00Z'), 1, yearEnd);
+    expect(formatInstant(end)).toBe('4 Jan 2027, 11:59 PM');
+  });
+
+  it('Jamaica observes no DST: UTC offset is -05:00 in June and December alike', () => {
+    // 17:00 UTC is always 12:00 in Jamaica regardless of season.
+    expect(formatInstant(new Date('2026-06-15T17:00:00Z'))).toBe('15 Jun 2026, 12:00 PM');
+    expect(formatInstant(new Date('2026-12-15T17:00:00Z'))).toBe('15 Dec 2026, 12:00 PM');
+  });
+});
+
 describe('display helpers', () => {
   it('formats instants in the app zone with explicit month names', () => {
     expect(formatInstant(new Date('2026-08-14T22:00:00Z'))).toBe('14 Aug 2026, 5:00 PM');

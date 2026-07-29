@@ -148,11 +148,18 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
 
   const prisma = getPrisma();
 
-  // Duplicate warning (REQ-CASE-020) - warn, do not block.
+  // Duplicate warning (REQ-CASE-020) - warn, do not block. Restricted cases
+  // the actor cannot discover are EXCLUDED: their existence must not leak
+  // through the duplicate warning (DEC-035 / IC-S1-011 outranks the SHOULD).
   const duplicates = await prisma.offboardingCase.findMany({
     where: {
       employeeSourceId: input.employeeSourceId,
       status: { notIn: ['VOIDED', 'CANCELLED'] },
+      OR: [
+        { classification: 'CONFIDENTIAL' },
+        { participants: { some: { userId: actor.userId, removedAt: null } } },
+        { ownerId: actor.userId },
+      ],
     },
     select: { caseNumber: true, status: true },
   });

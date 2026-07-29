@@ -25,6 +25,11 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 *.sh text eol=lf
+*.css text eol=lf
+*.sql text eol=lf
+*.toml text eol=lf
+*.svg text eol=lf
+*.example text eol=lf
 
 # PowerShell stays CRLF: some Windows PowerShell hosts are sensitive to LF-only
 # script files.

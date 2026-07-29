@@ -18,6 +18,8 @@ if (!testUrl) {
       'It must point at a disposable test database.',
   );
 }
+// App-role connection to the SAME test database for privilege-denial tests.
+const testRuntimeUrl = process.env['DATABASE_URL_TEST_RUNTIME'] ?? '';
 
 export default defineConfig({
   test: {
@@ -32,6 +34,7 @@ export default defineConfig({
     hookTimeout: 60_000,
     env: {
       DATABASE_URL: testUrl,
+      DATABASE_URL_TEST_RUNTIME: testRuntimeUrl,
       NODE_ENV: 'test',
       ALLOW_DEV_LOGIN: 'false',
       SESSION_SECRET: 'integration-test-secret-0123456789abcdefghij',

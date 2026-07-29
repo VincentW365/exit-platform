@@ -137,6 +137,20 @@ describe('validation and state guards', () => {
     ).rejects.toMatchObject({ code: 'VALIDATION' });
   });
 
+  it('maker-checker (authoritative Stage 1 rule): approval requires HR_MANAGER; the state machine does not forbid approving a case the manager created', async () => {
+    // StateMachines.md assigns PENDING_HR_REVIEW -> APPROVED to "HR Manager".
+    // No approved rule forbids a manager approving a case they themselves
+    // created; this test DOCUMENTS that rule rather than inventing a stricter one.
+    const { caseId } = await createDraft(manager.actor, {
+      ...VALID_DRAFT,
+      employeeSourceId: 'EMP-TEST-004',
+    });
+    await transitionCase(manager.actor, caseId, 'submit');
+    await transitionCase(manager.actor, caseId, 'approve');
+    const { case: c } = await getCase(manager.actor, caseId);
+    expect(c.status).toBe('APPROVED');
+  });
+
   it('optimistic concurrency: one of two racing approvals loses cleanly', async () => {
     const { caseId } = await createDraft(officer.actor, {
       ...VALID_DRAFT,

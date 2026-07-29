@@ -76,13 +76,20 @@ they earn separate packages. Domain boundaries match the module table.
 9. **Local development database**: project-local PostgreSQL 17 instance on
    127.0.0.1:5433 (see DEVELOPMENT.md) - no shared or production database is
    reachable from this repository (REQ-INT-018, REQ-SEC-037).
+   *Updated by Directive 1.1:* the instance now uses SCRAM-only
+   authentication with separated `exit_admin` / `exit_migrate` / `exit_app`
+   roles and lives outside the Git worktree; the original trust-auth
+   configuration was removed.
 
 ## 4. Known limitations / deferred refinements
 
 - Action feedback via redirect query parameters (accessible summary); inline
-  field-level error association is a refinement for a later pass.
-- CSP blocks `eval` which React dev-mode logs complaints about; harmless,
-  production unaffected; full CSP tightening is Stage 7 work.
+  field-level error association is a refinement for a later pass. The
+  parameters carry only safe status text (no employee data or tokens).
+- *Updated by Directive 1.1:* the production CSP is now nonce-based
+  (`strict-dynamic`, no `unsafe-eval`/`unsafe-inline` for scripts) via
+  `src/proxy.ts`; only `style-src` retains `unsafe-inline` for style
+  attributes. The dev-mode policy allows eval for the Turbopack runtime.
 - `SCAN_MODE=dev-passthrough` is clearly labelled and refused in production;
   no real scanner exists yet (Stage 8 integration decision).
 - Worker is a heartbeat/boundary skeleton by design: the outbox arrives at

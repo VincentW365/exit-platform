@@ -17,30 +17,73 @@ Copy-Item .env.example .env
 # then edit .env: set SESSION_SECRET (generation command is in the file)
 ```
 
-### Local database (isolated instance)
+### Local database (isolated, hardened instance)
 
 Stage 1 development uses a **project-local PostgreSQL instance** so nothing
-touches any other database on the machine. It lives in the gitignored `data/`
-folder, listens on **127.0.0.1:5433 only**, and uses trust authentication for
-the current user - acceptable here because the instance is loopback-only and
-contains synthetic data exclusively. Production hosting is a separate, open
-decision (DEC-022 / IC-S1-006).
+touches any other database on the machine. This is synthetic development
+infrastructure only - it is **not** a production-hosting decision (DEC-022 /
+IC-S1-006 remain open).
+
+Properties (Directive 1.1 section C):
+
+- data directory lives **outside the Git worktree**:
+  `..\hr-offboarding-local-runtime\postgres\data` (portable: pick any sibling
+  path; nothing in the repo hard-codes it);
+- listens on **127.0.0.1:5433 only** (IPv4 + deliberate ::1 loopback);
+- authentication is **scram-sha-256 only** - no trust rules;
+- runs on demand via `pg_ctl`, never as a Windows service;
+- three separated roles:
+
+| Role | Purpose | Powers |
+| --- | --- | --- |
+| `exit_admin` | cluster setup/recovery only | superuser; never used by code |
+| `exit_migrate` | migrations, seed tooling, test harness | owns the schema; CREATEDB (shadow db) |
+| `exit_app` | web app + worker runtime | SELECT/INSERT + permitted UPDATE only; **no DELETE, no DDL, no trigger control**; audit/history/snapshots are INSERT-only |
+
+#### One-time setup
 
 ```powershell
 $bin = "C:\Program Files\PostgreSQL\17\bin"
-& "$bin\initdb.exe"  -D data\pg17 -U exitplatform -A trust -E UTF8 --locale=C
-& "$bin\pg_ctl.exe"  -D data\pg17 -l data\pg17\server.log -o "-p 5433 -h 127.0.0.1" -w start
-& "$bin\createdb.exe" -h 127.0.0.1 -p 5433 -U exitplatform exitplatform_dev
-& "$bin\createdb.exe" -h 127.0.0.1 -p 5433 -U exitplatform exitplatform_test
+$rt  = "..\..\hr-offboarding-local-runtime\postgres"   # any path outside the worktree
+# 1. init with SCRAM and a superuser password (write it to a temp pwfile):
+& "$bin\initdb.exe" -D "$rt\data" -U exit_admin -A scram-sha-256 --pwfile=<pwfile> -E UTF8 --locale=C
+# 2. bind loopback + port in $rt\data\postgresql.conf:
+#      listen_addresses = '127.0.0.1'   port = 5433   password_encryption = 'scram-sha-256'
+#    and replace $rt\data\pg_hba.conf with scram-only loopback rules.
+# 3. start (see below), then create roles + databases as exit_admin:
+#      CREATE ROLE exit_migrate LOGIN PASSWORD '<generated>' CREATEDB NOSUPERUSER NOCREATEROLE;
+#      CREATE ROLE exit_app     LOGIN PASSWORD '<generated>' NOSUPERUSER NOCREATEROLE NOCREATEDB;
+#      CREATE DATABASE exitplatform_dev  OWNER exit_migrate;
+#      CREATE DATABASE exitplatform_test OWNER exit_migrate;
+# 4. put the FOUR connection URLs in .env (see .env.example placeholders):
+#    DATABASE_URL (exit_app), DATABASE_URL_MIGRATE, DATABASE_URL_TEST,
+#    DATABASE_URL_TEST_RUNTIME. Generated passwords live ONLY in .env.
+# 5. apply migrations and the runtime grants:
+pnpm --filter '@exit/db' migrate:deploy
+# then run scripts/db/grants.sql against each database as exit_migrate.
 ```
 
-Stop it with `pg_ctl -D data\pg17 stop`. The matching connection strings are
-already in `.env.example`:
+#### Start / stop / reset / recovery
 
-```text
-DATABASE_URL=postgresql://exitplatform@127.0.0.1:5433/exitplatform_dev
-DATABASE_URL_TEST=postgresql://exitplatform@127.0.0.1:5433/exitplatform_test
+```powershell
+$bin = "C:\Program Files\PostgreSQL\17\bin"
+$rt  = "C:\...\hr-offboarding-local-runtime\postgres"
+
+# start (on demand; keeps running until stopped):
+& "$bin\pg_ctl.exe" -D "$rt\data" -l "$rt\server.log" -w start
+# stop:
+& "$bin\pg_ctl.exe" -D "$rt\data" stop -m fast
+# status:
+& "$bin\pg_ctl.exe" -D "$rt\data" status
+
+# reset the TEST database (safe; the harness re-migrates automatically):
+#   as exit_admin: DROP DATABASE exitplatform_test; CREATE DATABASE exitplatform_test OWNER exit_migrate;
+# reset the DEV database: same pattern, then re-run migrate:deploy, grants.sql and pnpm db:seed.
+# recovery: if the cluster is corrupt, delete $rt\data entirely and redo the
+# one-time setup - everything in it is synthetic and reproducible.
 ```
+
+All database credentials, logs and data files stay outside version control.
 
 ### Migrate and seed
 

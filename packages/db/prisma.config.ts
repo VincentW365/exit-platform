@@ -13,7 +13,9 @@ try {
 export default defineConfig({
   schema: path.join('prisma', 'schema.prisma'),
   datasource: {
-    url: process.env['DATABASE_URL'] ?? '',
+    // Migrations run as the schema-owner role, never as the runtime role
+    // (Directive 1.1 section C role separation).
+    url: process.env['DATABASE_URL_MIGRATE'] ?? process.env['DATABASE_URL'] ?? '',
   },
   migrations: {
     path: path.join('prisma', 'migrations'),
