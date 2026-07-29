@@ -67,3 +67,7 @@ Where a Stage 1 decision remains OPEN or PROVISIONAL, `Stage1ImplementationConst
 Those constraints are **not** approvals. They do not change any status in this register, and they do not authorize pilot or production use. A decision remains OPEN or PROVISIONAL until its named owner approves it in writing and that approval is recorded here.
 
 Stage 1 constraint coverage: DEC-001, DEC-002, DEC-003, DEC-007, DEC-021, DEC-022, DEC-027, DEC-031, DEC-032, DEC-033 and DEC-035.
+
+## Stage 2 decision pack
+
+The decisions governing Directive 2 - DEC-004, DEC-005, DEC-007 (confirmation), DEC-010 and DEC-025 - are presented in approval-ready form in `Stage2DocumentDecisionPack.md`, with the capture instrument `Stage2ApprovalWorksheet.md`. The pack contains recommendations only; the statuses in this register remain authoritative and unchanged until owners record approvals here.

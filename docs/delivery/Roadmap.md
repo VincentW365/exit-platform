@@ -36,6 +36,11 @@ Stage 1 additionally operates under the non-production engineering constraints
 recorded in `../requirements/Stage1ImplementationConstraints.md`, which do not
 constitute stakeholder approval.
 
+Stage 2 entry is prepared by Directive 1.2: the decision pack
+(`../requirements/Stage2DocumentDecisionPack.md`), approval worksheet and
+`Stage2DocumentReadinessReport.md` define the exact approvals required before
+Directive 2 may run.
+
 ## Stage roadmap
 
 | Stage | Name | Included | Excluded | Dependencies | Acceptance gate | Expected local commit |

@@ -292,6 +292,12 @@ called and nothing was pushed. Stop.
 
 ## Directive 2 — Controlled documents and digital action form
 
+> **Readiness:** the approval-ready decision pack for this directive is
+> `../requirements/Stage2DocumentDecisionPack.md` with worksheet
+> `../requirements/Stage2ApprovalWorksheet.md`; the exact preconditions are in
+> `Stage2DocumentReadinessReport.md`. Directive 1.2 prepared these documents;
+> no governing decision status has changed.
+
 ```text
 DIRECTIVE 2 — CONTROLLED DOCUMENTS, APPROVALS AND DIGITAL ACTION FORM
 

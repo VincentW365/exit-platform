@@ -25,6 +25,15 @@
 | Requirements | `docs/requirements/DataDictionary.md` | Core fields, source and classification. |
 | Requirements | `docs/requirements/StakeholderApprovalChecklist.md` | Decisions required before each stage. |
 | Requirements | `docs/requirements/Stage1ImplementationConstraints.md` | Reversible non-production Stage 1 constraints (IC-S1-001 to IC-S1-011). Not stakeholder approval. |
+| Requirements | `docs/requirements/Stage2DocumentDecisionPack.md` | Approval-ready pack for DEC-004/005/007/010/025 (Directive 1.2; proposals only). |
+| Requirements | `docs/requirements/Stage2ApprovalWorksheet.md` | Stage 2 approval capture worksheet (18 rows; blank until the meeting). |
+| Templates | `docs/templates/ControlledDocumentCatalogue.md` | Stage 2 controlled document types DOC-01..05 (proposed). |
+| Templates | `docs/templates/DocumentFieldDictionary.md` | Canonical Stage 2 document fields, sources and control rules (proposed). |
+| Templates | `docs/templates/ResignationDocumentSpecification.md` | Section-level specs for the two resignation letters (no final wording). |
+| Templates | `docs/templates/EmployeeActionFormOffboardingSpecification.md` | Offboarding action-form structure, exclusions and confirmation questions. |
+| Templates | `docs/templates/DocumentLifecycleAndApprovalSpecification.md` | Proposed template/instance lifecycles and approval binding rules. |
+| Templates | `docs/templates/DocumentOutputSpecification.md` | Output-format options, rendering standard and branding rules (proposed). |
+| Delivery | `docs/delivery/Stage2DocumentReadinessReport.md` | Directive 1.2 readiness verdict and exact Directive 2 preconditions. |
 | Architecture | `docs/architecture/Architecture.md` | System context and modular-monolith design. |
 | Architecture | `docs/architecture/DomainModel.md` | Domain boundaries and invariants. |
 | Architecture | `docs/architecture/DataModel.md` | Proposed logical entities and relationships. |

@@ -24,6 +24,8 @@ Before each delivery stage, the named owner must mark the relevant decision `APP
 
 ## Before Stage 2
 
+> **Preparation aid:** the Stage 2 approval meeting should work from `Stage2DocumentDecisionPack.md` and record outcomes in `Stage2ApprovalWorksheet.md` (18 rows covering these decisions plus template wording, action-form hierarchy, output format and activation rules). Boxes below remain unticked until owners approve.
+
 | Confirm | Decision | Current status | Owner | Recommended decision |
 | --- | --- | --- | --- | --- |
 | [ ] DEC-004 | Authoritative automation model | PROVISIONAL | Project Sponsor / HR Manager / IT | Use deterministic workflow rules and approved templates. Generative AI is optional assistance only and cannot be the authoritative source of letters, entitlements, decisions, or dispatch. |
