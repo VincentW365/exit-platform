@@ -1,0 +1,14 @@
+# Documentation baseline is authored prose; do not reformat governed documents.
+docs/
+*.md
+# Generated / vendored
+node_modules/
+.next/
+dist/
+coverage/
+playwright-report/
+test-results/
+packages/db/src/generated/
+packages/db/prisma/migrations/
+storage/
+pnpm-lock.yaml

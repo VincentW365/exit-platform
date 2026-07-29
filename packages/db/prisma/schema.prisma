@@ -1,0 +1,495 @@
+// Employee Offboarding Platform - Stage 1 schema.
+// Translates docs/architecture/DataModel.md for the Stage 1 scope only.
+// Synthetic data only in non-production (BR-GOV-004).
+//
+// Raw-SQL guarantees added in the migration (not expressible here):
+//  - CHECK: cohort/purpose pairing on offboarding_case (REQ-CASE-013);
+//  - triggers: audit_event append-only (REQ-SEC-024);
+//  - trigger: offboarding_case DELETE forbidden (REQ-CASE-015).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated"
+}
+
+// Prisma 7: connection URLs live in prisma.config.ts (Migrate) and the
+// driver adapter passed to PrismaClient (runtime), never in this file.
+datasource db {
+  provider = "postgresql"
+}
+
+// --- Enums -------------------------------------------------------------------
+
+enum Role {
+  HR_MANAGER
+  HR_OFFICER
+  IT_RESPONDER
+  FINANCE_RESPONDER
+  LINE_MANAGER
+  AUDITOR
+  PRIVACY_OFFICER
+  SYSTEM_ADMIN
+}
+
+enum DepartureType {
+  RESIGNATION_WITH_NOTICE
+  IMMEDIATE_RESIGNATION
+  TERMINATION
+}
+
+enum CaseStatus {
+  DRAFT
+  PENDING_HR_REVIEW
+  APPROVED
+  ACTIVE
+  CLEARANCE_REVIEW
+  COMPLETED
+  ON_HOLD
+  CANCELLED
+  VOIDED
+  REOPENED
+}
+
+enum CaseClassification {
+  CONFIDENTIAL
+  RESTRICTED
+}
+
+enum MeasurementCohort {
+  BASELINE
+  PILOT
+  POST_ROLLOUT
+}
+
+enum RecordPurpose {
+  OPERATIONAL
+  TRAINING
+  TEST
+}
+
+enum ReasonCaptureStatus {
+  PENDING
+  PROVIDED
+  NOT_PROVIDED
+  NOT_APPLICABLE
+}
+
+enum RehireEligibility {
+  ELIGIBLE
+  NOT_ELIGIBLE
+  CONDITIONAL
+}
+
+enum ParticipantRole {
+  OWNER
+  HR_SUPPORT
+  OVERSIGHT
+}
+
+enum ScanStatus {
+  PENDING
+  CLEAN
+  REJECTED
+  SCANNER_UNAVAILABLE
+}
+
+enum AttachmentPurpose {
+  RESIGNATION_LETTER
+  SUPPORTING_DOCUMENT
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+}
+
+enum AuditResult {
+  SUCCESS
+  DENIED
+  FAILURE
+}
+
+enum BaselineEventType {
+  DOCUMENT_REQUESTED
+  DOCUMENT_APPROVED
+  DOCUMENT_ISSUED
+  NOTIFICATION_SENT
+  ACCESS_REMOVAL_REQUESTED
+  ACCESS_REMOVAL_DUE
+  ACCESS_REMOVAL_COMPLETED
+  ASSET_DUE
+  ASSET_RETURNED
+  ASSET_DISPOSITION_RECORDED
+  EXIT_FEEDBACK_OFFERED
+  EXIT_FEEDBACK_COMPLETED
+  PROCESS_COMPLETED
+}
+
+enum MissingReason {
+  NOT_RECORDED_CURRENT_PROCESS
+  SOURCE_UNAVAILABLE
+  NOT_APPLICABLE
+  CASE_IN_PROGRESS
+  DISPUTED
+  UNKNOWN_OTHER
+}
+
+enum ConfigListKind {
+  DEPARTMENT
+  LOCATION
+}
+
+enum NoteVisibility {
+  HR_ONLY
+  HR_AND_OVERSIGHT
+}
+
+// --- Identity and authorization ---------------------------------------------
+
+model User {
+  id              String   @id @default(uuid()) @db.Uuid
+  /// Stable identity-provider subject; dev identities use the "dev|" prefix.
+  identitySubject String   @unique
+  displayName     String
+  workEmail       String   @unique
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  roleAssignments    RoleAssignment[] @relation("assignee")
+  ownedCases         OffboardingCase[] @relation("caseOwner")
+  createdCases       OffboardingCase[] @relation("caseCreator")
+  participations     CaseParticipant[] @relation("participantUser")
+
+  @@map("app_user")
+}
+
+model RoleAssignment {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  user         User      @relation("assignee", fields: [userId], references: [id])
+  role         Role
+  reason       String
+  grantedById  String?   @db.Uuid
+  grantedAt    DateTime  @default(now())
+  revokedAt    DateTime?
+  revokedById  String?   @db.Uuid
+  revokeReason String?
+
+  @@index([userId, role])
+  @@map("role_assignment")
+}
+
+// --- Employee source ---------------------------------------------------------
+
+/// Local cache of adapter lookups; provenance for the snapshot. Never the
+/// case truth after approval (Architecture.md domain rules).
+model EmployeeSourceRecord {
+  id           String   @id @default(uuid()) @db.Uuid
+  sourceSystem String
+  sourceId     String
+  displayName  String
+  workEmail    String?
+  jobTitle     String?
+  department   String?
+  location     String?
+  retrievedAt  DateTime
+  payload      Json
+
+  @@unique([sourceSystem, sourceId])
+  @@map("employee_source_record")
+}
+
+// --- Case --------------------------------------------------------------------
+
+model OffboardingCase {
+  id         String        @id @default(uuid()) @db.Uuid
+  caseNumber String        @unique
+  status     CaseStatus    @default(DRAFT)
+  departureType DepartureType
+  classification CaseClassification @default(CONFIDENTIAL)
+
+  /// Two separate dimensions (REQ-CASE-013): cohort required iff OPERATIONAL.
+  measurementCohort MeasurementCohort?
+  recordPurpose     RecordPurpose      @default(OPERATIONAL)
+
+  employeeSourceSystem String
+  employeeSourceId     String
+  employeeDisplayName  String
+  employeeWorkEmail    String?
+  department           String
+  location             String
+  jobTitle             String?
+
+  receivedAt    DateTime
+  receiptSource String
+  proposedLastDay       DateTime?
+  confirmedLastDay      DateTime?
+  effectiveSeparationAt DateTime?
+
+  noticeProvidedDays Int?
+  noticeRequiredDays Int?
+  /// Approved notice treatment wording; never an entitlement calculation.
+  noticeTreatment    String?
+
+  /// IC-S1-008: nullable until DEC-031 approves a taxonomy.
+  reasonCategoryId    String?             @db.Uuid
+  reasonCategory      ReasonCategory?     @relation(fields: [reasonCategoryId], references: [id])
+  reasonCaptureStatus ReasonCaptureStatus @default(PENDING)
+  /// RESTRICTED_HR free text (REQ-PRIV-024); masked outside HR participants.
+  reasonNotes         String?
+
+  /// RESTRICTED_HR (DEC-032): HR Manager only.
+  rehireEligibility RehireEligibility?
+
+  ownerId     String @db.Uuid
+  owner       User   @relation("caseOwner", fields: [ownerId], references: [id])
+  createdById String @db.Uuid
+  createdBy   User   @relation("caseCreator", fields: [createdById], references: [id])
+
+  /// Optimistic concurrency (Architecture.md section 8).
+  version   Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  closedAt  DateTime?
+  closeReason String?
+
+  snapshot       EmployeeSnapshot?
+  statusHistory  CaseStatusHistory[]
+  participants   CaseParticipant[]
+  notes          CaseNote[]
+  attachments    Attachment[]
+  baselineEvents BaselineEvent[]
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([effectiveSeparationAt])
+  @@index([measurementCohort, recordPurpose])
+  @@index([employeeSourceId])
+  @@index([departureType])
+  @@map("offboarding_case")
+}
+
+/// Immutable snapshot captured exactly once at approval (REQ-CASE-004).
+model EmployeeSnapshot {
+  id            String          @id @default(uuid()) @db.Uuid
+  caseId        String          @unique @db.Uuid
+  case          OffboardingCase @relation(fields: [caseId], references: [id])
+  sourceSystem  String
+  sourceId      String
+  retrievedAt   DateTime
+  capturedAt    DateTime        @default(now())
+  capturedById  String          @db.Uuid
+  payload       Json
+  checksum      String
+  schemaVersion Int
+
+  @@map("employee_snapshot")
+}
+
+model CaseStatusHistory {
+  id            String          @id @default(uuid()) @db.Uuid
+  caseId        String          @db.Uuid
+  case          OffboardingCase @relation(fields: [caseId], references: [id])
+  fromStatus    CaseStatus?
+  toStatus      CaseStatus
+  actorId       String          @db.Uuid
+  reason        String?
+  correlationId String
+  occurredAt    DateTime        @default(now())
+
+  @@index([caseId, occurredAt])
+  @@map("case_status_history")
+}
+
+model CaseParticipant {
+  id              String          @id @default(uuid()) @db.Uuid
+  caseId          String          @db.Uuid
+  case            OffboardingCase @relation(fields: [caseId], references: [id])
+  userId          String          @db.Uuid
+  user            User            @relation("participantUser", fields: [userId], references: [id])
+  participantRole ParticipantRole
+  reason          String?
+  addedById       String          @db.Uuid
+  addedAt         DateTime        @default(now())
+  removedAt       DateTime?
+  removedById     String?         @db.Uuid
+  removeReason    String?
+
+  @@index([caseId])
+  @@index([userId])
+  @@map("case_participant")
+}
+
+/// Internal notes with immutable edit history (REQ-CASE-019): editing creates
+/// a new note that supersedes the old one; rows are never updated in place.
+model CaseNote {
+  id           String          @id @default(uuid()) @db.Uuid
+  caseId       String          @db.Uuid
+  case         OffboardingCase @relation(fields: [caseId], references: [id])
+  authorId     String          @db.Uuid
+  visibility   NoteVisibility  @default(HR_ONLY)
+  body         String
+  createdAt    DateTime        @default(now())
+  supersedesId String?         @unique @db.Uuid
+  supersedes   CaseNote?       @relation("noteSupersession", fields: [supersedesId], references: [id])
+  supersededBy CaseNote?       @relation("noteSupersession")
+
+  @@index([caseId, createdAt])
+  @@map("case_note")
+}
+
+// --- Files -------------------------------------------------------------------
+
+model Attachment {
+  id           String            @id @default(uuid()) @db.Uuid
+  caseId       String            @db.Uuid
+  case         OffboardingCase   @relation(fields: [caseId], references: [id])
+  purpose      AttachmentPurpose
+  /// Display name only; storage uses the random objectKey (REQ-SEC-021).
+  fileName     String
+  objectKey    String            @unique
+  mimeType     String
+  sizeBytes    Int
+  checksum     String
+  scanStatus   ScanStatus        @default(PENDING)
+  scanNote     String?
+  uploadedById String            @db.Uuid
+  createdAt    DateTime          @default(now())
+
+  @@index([caseId])
+  @@map("attachment")
+}
+
+// --- Audit -------------------------------------------------------------------
+
+/// Append-only (enforced by trigger in the migration; REQ-SEC-024).
+model AuditEvent {
+  id             String      @id @default(uuid()) @db.Uuid
+  eventType      String
+  occurredAt     DateTime    @default(now())
+  actorType      ActorType
+  actorId        String?     @db.Uuid
+  effectiveRoles String[]
+  objectType     String
+  objectId       String
+  caseId         String?     @db.Uuid
+  result         AuditResult
+  correlationId  String
+  metadata       Json
+  appVersion     String
+
+  @@index([caseId, occurredAt])
+  @@index([eventType, occurredAt])
+  @@index([actorId, occurredAt])
+  @@map("audit_event")
+}
+
+// --- Baseline capture --------------------------------------------------------
+
+/// Append-only baseline facts (BaselineDataCapturePlan.md section 5).
+model BaselineEvent {
+  id              String            @id @default(uuid()) @db.Uuid
+  caseId          String            @db.Uuid
+  case            OffboardingCase   @relation(fields: [caseId], references: [id])
+  eventType       BaselineEventType
+  occurredAt      DateTime?
+  missingReason   MissingReason?
+  missingNote     String?
+  detail          String?
+  evidenceRef     String?
+  recordedById    String            @db.Uuid
+  recordedAt      DateTime          @default(now())
+  supersededAt    DateTime?
+  supersededById  String?           @db.Uuid
+  supersedeReason String?
+
+  @@index([caseId, eventType])
+  @@map("baseline_event")
+}
+
+// --- Configuration -----------------------------------------------------------
+
+model HolidayCalendar {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  timezone  String    @default("America/Jamaica")
+  version   Int
+  isActive  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  holidays  Holiday[]
+
+  @@unique([name, version])
+  @@map("holiday_calendar")
+}
+
+model Holiday {
+  id         String          @id @default(uuid()) @db.Uuid
+  calendarId String          @db.Uuid
+  calendar   HolidayCalendar @relation(fields: [calendarId], references: [id])
+  /// ISO date in calendar timezone.
+  date       String
+  label      String
+
+  @@unique([calendarId, date])
+  @@map("holiday")
+}
+
+/// Versioned reference data capable of holding the HR-approved taxonomy later
+/// (IC-S1-008). Stage 1 seeds clearly-labelled TEST-ONLY records only.
+model ReasonCategory {
+  id              String   @id @default(uuid()) @db.Uuid
+  code            String   @unique
+  label           String
+  taxonomyVersion Int
+  isActive        Boolean  @default(false)
+  isTestOnly      Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  cases           OffboardingCase[]
+
+  @@map("reason_category")
+}
+
+/// All improvement automation defaults to disabled (IC-S1-004).
+model FeatureFlag {
+  key         String   @id
+  description String
+  enabled     Boolean  @default(false)
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt
+
+  @@map("feature_flag")
+}
+
+model ConfigListItem {
+  id          String         @id @default(uuid()) @db.Uuid
+  kind        ConfigListKind
+  value       String
+  isActive    Boolean        @default(true)
+  createdById String         @db.Uuid
+  createdAt   DateTime       @default(now())
+
+  @@unique([kind, value])
+  @@map("config_list_item")
+}
+
+/// Human-readable case-number allocation (REQ-CASE-001): OFF-<year>-<seq>,
+/// allocated transactionally per year.
+model CaseNumberCounter {
+  year Int @id
+  next Int @default(1)
+
+  @@map("case_number_counter")
+}
+
+/// Integration placeholders: adapters exist, nothing is configured, and no
+/// credential is ever stored here (REQ-INT-018, IC-S1-006).
+model IntegrationPlaceholder {
+  key         String  @id
+  displayName String
+  mode        String  @default("stub")
+  configured  Boolean @default(false)
+  notes       String?
+
+  @@map("integration_placeholder")
+}

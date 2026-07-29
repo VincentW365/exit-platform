@@ -50,6 +50,8 @@
 | Delivery | `docs/delivery/DefinitionOfDone.md` | Completion evidence per work item/stage. |
 | Delivery | `docs/delivery/ClaudeBuildDirectives.md` | Paste-ready bounded implementation directives. |
 | Delivery | `docs/delivery/BaselineValidationReport.md` | Directive 0 validation result, blockers and Directive 1 readiness. |
+| Delivery | `docs/delivery/Stage1BuildRecord.md` | Directive 1 build record: versions, design decisions, evidence. |
+| Top level | `DEVELOPMENT.md` | Local development setup and check commands. |
 | Operations | `docs/operations/ManualFallbackAndBusinessContinuity.md` | Secure fallback procedures. |
 | Operations | `docs/operations/SupportAndIncidentManagement.md` | Ownership, incidents and support. |
 | Operations | `docs/operations/BaselineDataCapturePlan.md` | Clean 4–6 week baseline capture. |

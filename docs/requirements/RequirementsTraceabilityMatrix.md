@@ -13,6 +13,8 @@ This matrix links every stable requirement to its source/rationale, decision sta
 
 Two Stage 1 requirements are OPEN: `REQ-SEC-001` (production SSO, DEC-021) and `REQ-ADMIN-007` (reason taxonomy, DEC-031). Both are covered for non-production Stage 1 work by `Stage1ImplementationConstraints.md` — IC-S1-005 and IC-S1-008 respectively. Those constraints permit reversible engineering only; the requirements and their decisions remain OPEN and neither is verified until its owner approves.
 
+Stage 1 implementation evidence (Directive 1): the non-production foundation implementing the Stage 1 requirement set was built and verified on 2026-07-28/29 — lint, strict typecheck, 70 unit tests, 36 integration tests against a real PostgreSQL test database, a Playwright critical-path E2E and a production build all pass. The version decisions, design mapping and per-check results are recorded in `../delivery/Stage1BuildRecord.md`. This is engineering evidence under the Stage 1 constraints, not stakeholder acceptance; the Stage 1 gate in `../delivery/Roadmap.md` still requires reviewer approval.
+
 | Requirement ID | Title | Source / rationale | Status | Priority | Stage | Verification |
 | --- | --- | --- | --- | --- | --- | --- |
 | REQ-CASE-001 | Unique case number | DMAIC pp. 8, 18 | PROVISIONAL | MUST | 1 | Integration and end-to-end test |

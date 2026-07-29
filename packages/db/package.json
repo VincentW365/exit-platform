@@ -1,0 +1,30 @@
+{
+  "name": "@exit/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "generate": "prisma generate",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "migrate:status": "prisma migrate status",
+    "seed": "tsx src/seed.ts"
+  },
+  "dependencies": {
+    "@exit/config": "workspace:*",
+    "@exit/domain": "workspace:*",
+    "@prisma/adapter-pg": "7.9.1",
+    "@prisma/client": "7.9.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "prisma": "7.9.1",
+    "tsx": "4.23.1",
+    "typescript": "6.0.3"
+  }
+}

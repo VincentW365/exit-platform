@@ -1,0 +1,44 @@
+{
+  "name": "exit-platform",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Employee Offboarding Web Application - Bert's Auto Parts Ltd. (synthetic data only)",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/engines",
+      "prisma",
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
+  },
+  "scripts": {
+    "lint": "eslint . && pnpm --filter web lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm test:unit",
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:int": "vitest run --config vitest.integration.config.ts",
+    "e2e": "playwright test",
+    "build": "pnpm --filter web build && pnpm --filter worker typecheck",
+    "dev": "pnpm --filter web dev",
+    "worker": "pnpm --filter worker start",
+    "db:generate": "pnpm --filter @exit/db generate",
+    "db:migrate": "pnpm --filter @exit/db migrate:dev",
+    "db:seed": "pnpm --filter @exit/db seed"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.0",
+    "eslint": "10.8.0",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
+  }
+}

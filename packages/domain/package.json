@@ -1,0 +1,21 @@
+{
+  "name": "@exit/domain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "luxon": "3.7.2",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/luxon": "3.7.2",
+    "@types/node": "26.1.2",
+    "typescript": "6.0.3"
+  }
+}
