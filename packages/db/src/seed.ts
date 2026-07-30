@@ -213,6 +213,8 @@ async function main(): Promise<void> {
   await seedStage2(prisma);
   const { seedStage3 } = await import('./seedStage3.ts');
   await seedStage3(prisma);
+  const { seedStage4 } = await import('./seedStage4.ts');
+  await seedStage4(prisma);
 
   console.log(
     'Seed complete: synthetic users, flags (all disabled), calendar, reasons, org lists, ' +

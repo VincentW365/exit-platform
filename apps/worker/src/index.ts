@@ -14,8 +14,16 @@ import { loadRootEnvFile, getConfig } from '@exit/config';
 
 loadRootEnvFile(import.meta.dirname);
 
-const { getPrisma, renderApprovedDocument, renderApprovedForm, appendAudit, runStage3Sweep } =
-  await import('@exit/db');
+const {
+  getPrisma,
+  renderApprovedDocument,
+  renderApprovedForm,
+  appendAudit,
+  runStage3Sweep,
+  processOutbox,
+  runDueSchedules,
+  revokeExpiredRoles,
+} = await import('@exit/db');
 const { randomUUID } = await import('node:crypto');
 
 const HEARTBEAT_MS = 60_000;
@@ -176,14 +184,47 @@ async function stage3Sweep(): Promise<void> {
   }
 }
 
+/**
+ * Stage 4 sweep (Directive 4 sections B, E, O, V): transactional-outbox
+ * processing, scheduled report runs, role-expiry revocation and a recorded
+ * worker heartbeat for the health dashboard. The worker never sends live
+ * email in development configuration - dispatch goes to the capture mailbox.
+ */
+async function stage4Sweep(): Promise<void> {
+  try {
+    const outbox = await processOutbox(new Date());
+    const reports = await runDueSchedules(new Date());
+    const expiredRoles = await revokeExpiredRoles(new Date());
+    // PII-free heartbeat for readiness gates and the health dashboard.
+    await prisma.systemConfig.upsert({
+      where: { key: 'worker.lastHeartbeat' },
+      create: {
+        key: 'worker.lastHeartbeat',
+        value: new Date().toISOString(),
+        reason: 'worker heartbeat',
+      },
+      update: { value: new Date().toISOString() },
+    });
+    if (outbox.submitted + outbox.failed + outbox.deadLettered + reports + expiredRoles > 0) {
+      log('stage4_sweep', { ...outbox, scheduledReports: reports, expiredRoles });
+    }
+  } catch (e) {
+    log('stage4_sweep_error', {
+      message: e instanceof Error ? e.message.slice(0, 200) : 'unknown',
+    });
+  }
+}
+
 log('started', { env: config.NODE_ENV, heartbeatMs: HEARTBEAT_MS });
 await heartbeat();
 await stage2Sweep();
 await stage3Sweep();
+await stage4Sweep();
 const timer = setInterval(() => {
   void heartbeat();
   void stage2Sweep();
   void stage3Sweep();
+  void stage4Sweep();
 }, HEARTBEAT_MS);
 
 async function shutdown(signal: string): Promise<void> {

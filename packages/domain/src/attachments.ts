@@ -29,7 +29,16 @@ const ALLOWED_TYPES: readonly AllowedType[] = [
   },
 ];
 
-export const SCAN_STATUSES = ['PENDING', 'CLEAN', 'REJECTED', 'SCANNER_UNAVAILABLE'] as const;
+// Stage 4 (Directive 4 section H) added QUARANTINED / INFECTED / SCAN_FAILED.
+export const SCAN_STATUSES = [
+  'PENDING',
+  'CLEAN',
+  'REJECTED',
+  'SCANNER_UNAVAILABLE',
+  'QUARANTINED',
+  'INFECTED',
+  'SCAN_FAILED',
+] as const;
 export type ScanStatus = (typeof SCAN_STATUSES)[number];
 
 export interface UploadCandidate {

@@ -29,6 +29,8 @@ storage/
 tmp/
 temp/
 data/
+backups/
+*.dump
 
 # Sensitive HR/reference materials: never commit
 reference/private/

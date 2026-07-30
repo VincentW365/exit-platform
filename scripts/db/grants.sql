@@ -53,7 +53,19 @@ GRANT SELECT, INSERT, UPDATE ON
   issued_asset,
   asset_recovery_item,
   handover_record,
-  case_exception
+  case_exception,
+  notification_outbox,
+  recipient_config,
+  system_config,
+  pilot_activation,
+  scheduled_report,
+  retention_policy,
+  retention_hold,
+  data_subject_request,
+  outage,
+  fallback_entry,
+  support_ticket,
+  backup_record
 TO exit_app;
 
 -- Attestations: insert + read + update (update restricted by trigger to the
@@ -66,6 +78,17 @@ GRANT SELECT, INSERT ON survey_response, survey_answer TO exit_app;
 -- Stage 3 append-only evidence: clearance approvals, task corrections and
 -- development notification captures can be written once, never changed.
 GRANT SELECT, INSERT ON task_correction, clearance_record, notification_capture TO exit_app;
+
+-- Stage 4 append-only evidence: access reviews, sync runs, retention runs,
+-- disclosures, report runs and training completions.
+GRANT SELECT, INSERT ON
+  access_review,
+  employee_sync_run,
+  retention_run,
+  disclosure_log,
+  report_run,
+  training_completion
+TO exit_app;
 
 -- Append-only evidence: read and insert only. UPDATE/DELETE are refused at
 -- the privilege layer (this file) AND by triggers (migration) - two

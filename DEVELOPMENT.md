@@ -145,3 +145,22 @@ ever set in production). All eight synthetic users from the seed are offered.
   `docs/delivery/Stage3OperationalWorkflowBuildRecord.md`.
 - The holiday calendar and reason categories in the seed are **synthetic
   placeholders**; real values require DEC-027 / DEC-031 approval.
+- **Stage 4 features (outbox, adapters, pilot, reporting, privacy,
+  continuity, packaging):** the development email mode is `dev-capture` -
+  approved notifications on eligible cases are enqueued transactionally and
+  the worker (or the "Run outbox pass now" button on `/admin/outbox`)
+  delivers them into the local capture mailbox at `/dev/mailbox`; nothing
+  ever leaves the machine. All live adapters (Graph, OIDC, BambooHR, S3,
+  scanner) FAIL CLOSED without configuration, and a production `NODE_ENV`
+  refuses to start without complete provider configuration (see
+  `docs/operations/ProductionConfigurationChecklist.md`). New surfaces:
+  `/admin` hub, `/admin/system`, `/admin/health`, `/admin/outbox`,
+  `/admin/recipients`, `/admin/reasons`, `/admin/pilot`, `/admin/privacy`,
+  `/reports`, `/continuity`, `/operations`, `/support`, plus `/api/health`
+  and `/api/ready`. Backups need `PG_BIN` (PostgreSQL 17 binaries) and write
+  to the gitignored `BACKUP_DIR`; restore verification uses the isolated
+  `exitplatform_restorecheck` database. Container images: `Dockerfile.web` /
+  `Dockerfile.worker` (non-root; requires Docker, which is not installed on
+  the reference workstation). See
+  `docs/delivery/Stage4ProductionReadinessBuildRecord.md` and the runbooks
+  in `docs/operations/`.

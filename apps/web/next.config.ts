@@ -26,6 +26,9 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@exit/config', '@exit/domain', '@exit/db'],
   // pdfkit must stay external: bundling breaks its runtime font-data paths.
   serverExternalPackages: ['@prisma/client', 'pdfkit'],
+  // Stage 4 (Directive 4 U): minimal self-contained server output for the
+  // production container image.
+  output: 'standalone',
   poweredByHeader: false,
   headers() {
     return Promise.resolve([{ source: '/(.*)', headers: securityHeaders }]);

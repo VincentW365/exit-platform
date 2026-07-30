@@ -130,6 +130,96 @@ export async function publishCalendarVersion(
   });
 }
 
+/** Stage 4 (Directive 4 K.1): approve the active calendar version. */
+export async function approveCalendar(actor: Actor, calendarId: string) {
+  if (!can(actor, 'admin.calendar')) throw ServiceError.forbidden();
+  const prisma = getPrisma();
+  const correlationId = newCorrelationId();
+  await prisma.$transaction(async (tx) => {
+    const cal = await tx.holidayCalendar.update({
+      where: { id: calendarId },
+      data: { approvedById: actor.userId, approvedAt: new Date(), effectiveFrom: new Date() },
+    });
+    await appendAudit(tx, {
+      eventType: 'CALENDAR_APPROVED',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'HolidayCalendar',
+      objectId: calendarId,
+      result: 'SUCCESS',
+      correlationId,
+      metadata: { name: cal.name, version: cal.version },
+    });
+  });
+}
+
+/**
+ * Stage 4 (K.5): preview future SLA effects of a candidate holiday list
+ * WITHOUT applying anything. Open tasks keep their stored provenance (K.2/K.3)
+ * - this computes what WOULD change for comparison only.
+ */
+export async function previewCalendarImpact(
+  actor: Actor,
+  candidateHolidays: readonly { date: string; label: string }[],
+) {
+  if (!can(actor, 'admin.calendar')) throw ServiceError.forbidden();
+  const { computeTaskDue } = await import('@exit/domain');
+  const prisma = getPrisma();
+  const candidate = { timezone: 'America/Jamaica', holidays: [...candidateHolidays] };
+  const tasks = await prisma.workflowTask.findMany({
+    where: {
+      status: { in: ['NOT_READY', 'READY', 'IN_PROGRESS', 'BLOCKED'] },
+      dueAt: { not: null },
+      taskDef: { isNot: null },
+    },
+    include: {
+      taskDef: true,
+      instance: { select: { activatedAt: true } },
+      case: {
+        select: {
+          caseNumber: true,
+          receivedAt: true,
+          effectiveSeparationAt: true,
+          confirmedLastDay: true,
+        },
+      },
+    },
+    take: 100,
+  });
+  const changes: Array<{
+    caseNumber: string;
+    title: string;
+    currentDue: Date;
+    wouldBe: Date | null;
+  }> = [];
+  for (const t of tasks) {
+    const due = computeTaskDue(
+      t.taskDef!,
+      {
+        receivedAt: t.case.receivedAt,
+        activationAt: t.instance.activatedAt,
+        effectiveSeparationAt: t.case.effectiveSeparationAt,
+        confirmedLastDay: t.case.confirmedLastDay,
+      },
+      candidate,
+    );
+    if ((due.dueAt?.getTime() ?? null) !== t.dueAt!.getTime()) {
+      changes.push({
+        caseNumber: t.case.caseNumber,
+        title: t.title,
+        currentDue: t.dueAt!,
+        wouldBe: due.dueAt,
+      });
+    }
+  }
+  return {
+    evaluatedTasks: tasks.length,
+    changes,
+    note: 'Preview only: existing tasks retain their stored calculation provenance; a new calendar version affects future or explicitly recalculated tasks only (K.2-K.4).',
+  };
+}
+
 // --- org lists (REQ-ADMIN-003) -----------------------------------------------
 
 export async function listConfigItems(kind: 'DEPARTMENT' | 'LOCATION') {

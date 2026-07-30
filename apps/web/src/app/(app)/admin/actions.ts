@@ -5,7 +5,9 @@ import { revalidatePath } from 'next/cache';
 import {
   ServiceError,
   addConfigItem,
+  approveCalendar,
   grantRole,
+  previewCalendarImpact,
   publishCalendarVersion,
   revokeRole,
   setFlag,
@@ -26,6 +28,49 @@ function errText(e: unknown): string {
 }
 
 const str = (fd: FormData, k: string): string => String(fd.get(k) ?? '').trim();
+
+/** Stage 4 (Directive 4 K.1): approve the active business calendar. */
+export async function approveCalendarAction(formData: FormData): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  try {
+    await approveCalendar(actor, str(formData, 'calendarId'));
+    revalidatePath('/admin');
+    done({ ok: 'Active calendar version approved (audited).' });
+  } catch (e) {
+    if (e instanceof ServiceError) done({ err: errText(e) });
+    throw e;
+  }
+}
+
+/** Stage 4 (K.5): preview SLA impact of a candidate holiday list. */
+export async function previewCalendarAction(formData: FormData): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  try {
+    const holidays = str(formData, 'holidays')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [date, ...label] = line.split(',');
+        return { date: (date ?? '').trim(), label: label.join(',').trim() || 'Holiday' };
+      });
+    const impact = await previewCalendarImpact(actor, holidays);
+    const p = new URLSearchParams();
+    p.set(
+      'preview',
+      `Preview: ${impact.evaluatedTasks} open task(s) evaluated; ${impact.changes.length} would change under the candidate calendar. ${impact.note}`.slice(
+        0,
+        900,
+      ),
+    );
+    redirect(`/admin?${p.toString()}`);
+  } catch (e) {
+    if (e instanceof ServiceError) done({ err: errText(e) });
+    throw e;
+  }
+}
 
 export async function grantRoleAction(formData: FormData): Promise<void> {
   const { actor } = await requireAuth();

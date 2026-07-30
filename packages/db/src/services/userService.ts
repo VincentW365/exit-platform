@@ -14,13 +14,27 @@ export interface SessionUser {
   readonly roles: readonly Role[];
 }
 
-/** Resolve an active user with their active roles (session hydration). */
-export async function getSessionUser(userId: string): Promise<SessionUser | null> {
+/**
+ * Resolve an active user with their active roles (session hydration).
+ * Stage 4 (Directive 4 E.7): sessions issued before sessionsInvalidatedAt are
+ * rejected, so disabling a user revokes access immediately.
+ */
+export async function getSessionUser(
+  userId: string,
+  sessionIssuedAt?: number,
+): Promise<SessionUser | null> {
   const u = await getPrisma().user.findUnique({
     where: { id: userId },
     include: { roleAssignments: { where: { revokedAt: null }, select: { role: true } } },
   });
-  if (!u || !u.isActive) return null;
+  if (!u || !u.isActive || u.provisioningStatus === 'DEACTIVATED') return null;
+  if (
+    sessionIssuedAt !== undefined &&
+    u.sessionsInvalidatedAt !== null &&
+    sessionIssuedAt * 1000 < u.sessionsInvalidatedAt.getTime()
+  ) {
+    return null; // session predates an invalidation event
+  }
   return {
     userId: u.id,
     displayName: u.displayName,

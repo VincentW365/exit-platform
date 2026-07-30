@@ -43,6 +43,11 @@ export async function destroySessionCookie(): Promise<void> {
 
 /** Verify the cookie and enforce idle/absolute timeouts. Returns userId or null. */
 export async function readSessionUserId(): Promise<string | null> {
+  return (await readSession())?.userId ?? null;
+}
+
+/** Verified session with its issue time (Stage 4 E.7 revocation check). */
+export async function readSession(): Promise<{ userId: string; issuedAt: number } | null> {
   const store = await cookies();
   const token = store.get(COOKIE_NAME)?.value;
   if (!token) return null;
@@ -51,7 +56,11 @@ export async function readSessionUserId(): Promise<string | null> {
     const la = typeof payload['la'] === 'number' ? payload['la'] : 0;
     const idleSeconds = getConfig().SESSION_IDLE_MINUTES * 60;
     if (Math.floor(Date.now() / 1000) - la > idleSeconds) return null; // idle timeout
-    return payload.sub ?? null;
+    if (!payload.sub) return null;
+    return {
+      userId: payload.sub,
+      issuedAt: typeof payload.iat === 'number' ? payload.iat : 0,
+    };
   } catch {
     return null;
   }
@@ -68,7 +77,9 @@ export async function touchSession(): Promise<void> {
 
 /** Resolve the authenticated user with active roles, or null. */
 export async function currentUser(): Promise<SessionUser | null> {
-  const userId = await readSessionUserId();
-  if (!userId) return null;
-  return getSessionUser(userId);
+  const session = await readSession();
+  if (!session) return null;
+  // Sessions issued before a user's invalidation instant are rejected -
+  // disabling a user takes effect immediately (Directive 4 E.7).
+  return getSessionUser(session.userId, session.issuedAt);
 }

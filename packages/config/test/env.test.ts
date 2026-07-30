@@ -14,7 +14,9 @@ describe('environment schema validation', () => {
     expect(c.ALLOW_DEV_LOGIN).toBe(false); // default off: opt-in only
     expect(c.devLoginEnabled).toBe(false);
     expect(c.SCAN_MODE).toBe('disabled'); // quarantine by default
-    expect(c.EMAIL_MODE).toBe('sink');
+    // Stage 4 (Directive 4 section C): the development default is the capture
+    // provider; live modes stay configuration-gated.
+    expect(c.EMAIL_MODE).toBe('dev-capture');
     expect(c.APP_TIMEZONE).toBe('America/Jamaica');
     expect(c.SESSION_IDLE_MINUTES).toBe(30);
   });
@@ -39,10 +41,13 @@ describe('environment schema validation', () => {
     );
   });
 
-  it('production with dev login off starts (guard is targeted, not blanket)', () => {
-    const c = loadConfig({ ...base, NODE_ENV: 'production', ALLOW_DEV_LOGIN: 'false' });
-    expect(c.isProduction).toBe(true);
-    expect(c.devLoginEnabled).toBe(false);
+  it('production starts only with complete provider configuration (Stage 4 fail-closed)', () => {
+    // A bare production environment now fails closed on every development
+    // provider (Directive 4 U.5); the full passing matrix is covered in
+    // failClosed.test.ts.
+    expect(() => loadConfig({ ...base, NODE_ENV: 'production', ALLOW_DEV_LOGIN: 'false' })).toThrow(
+      ConfigError,
+    );
   });
 
   it('refuses dev-passthrough scanning in production (REQ-SEC-020)', () => {
@@ -54,9 +59,11 @@ describe('environment schema validation', () => {
     ).toBe('dev-passthrough');
   });
 
-  it('rejects any non-sink email mode in Stage 1 (REQ-NOTIFY-013)', () => {
+  it('email modes are the approved enum only (Stage 4 supersedes REQ-NOTIFY-013 sink-only)', () => {
     expect(() => loadConfig({ ...base, EMAIL_MODE: 'smtp' })).toThrow(ConfigError);
-    expect(() => loadConfig({ ...base, EMAIL_MODE: 'graph' })).toThrow(ConfigError);
+    expect(loadConfig({ ...base, EMAIL_MODE: 'graph' }).EMAIL_MODE).toBe('graph'); // dev: boundary allowed, unconfigured -> fails closed at send
+    expect(loadConfig({ ...base, EMAIL_MODE: 'sink' }).EMAIL_MODE).toBe('sink');
+    expect(loadConfig({ ...base, EMAIL_MODE: 'disabled' }).EMAIL_MODE).toBe('disabled');
   });
 
   it('rejects a non-Jamaica application timezone (DEC-027 / IC-S1-007)', () => {

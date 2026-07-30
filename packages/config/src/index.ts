@@ -28,11 +28,40 @@ const envSchema = z.object({
   ALLOW_DEV_LOGIN: boolString,
   STORAGE_DIR: z.string().min(1).default('./storage'),
   MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(100).default(10),
-  SCAN_MODE: z.enum(['disabled', 'dev-passthrough']).default('disabled'),
+  SCAN_MODE: z.enum(['disabled', 'dev-passthrough', 'external']).default('disabled'),
+  SCANNER_URL: z.string().optional(),
   APP_TIMEZONE: z.literal('America/Jamaica').default('America/Jamaica'),
-  // Stage 1: sink only (REQ-NOTIFY-013). Widening this enum is a later-stage,
-  // decision-gated change (DEC-020).
-  EMAIL_MODE: z.literal('sink').default('sink'),
+  // Stage 4 (Directive 4 sections B/C): provider-neutral email boundary.
+  // 'sink' (legacy no-op) and 'dev-capture' are development-only; 'graph' is
+  // the production boundary; 'disabled' runs without email entirely.
+  EMAIL_MODE: z.enum(['disabled', 'sink', 'dev-capture', 'graph']).default('dev-capture'),
+  GRAPH_TENANT_ID: z.string().optional(),
+  GRAPH_CLIENT_ID: z.string().optional(),
+  /// A REFERENCE to the credential location (vault path / secret name) -
+  /// never the secret itself (fixed defaults 9/10).
+  GRAPH_CLIENT_SECRET_REF: z.string().optional(),
+  GRAPH_SENDER_MAILBOX: z.string().optional(),
+  GRAPH_ALLOWED_DOMAINS: z.string().optional(),
+  // Stage 4 (section G): object-storage boundary.
+  STORAGE_MODE: z.enum(['local', 's3']).default('local'),
+  S3_ENDPOINT: z.string().optional(),
+  S3_BUCKET: z.string().optional(),
+  S3_REGION: z.string().optional(),
+  S3_ACCESS_KEY_REF: z.string().optional(),
+  S3_SECRET_KEY_REF: z.string().optional(),
+  // Stage 4 (section E): identity boundary.
+  IDENTITY_MODE: z.enum(['dev', 'oidc']).default('dev'),
+  OIDC_ISSUER: z.string().optional(),
+  OIDC_CLIENT_ID: z.string().optional(),
+  OIDC_CLIENT_SECRET_REF: z.string().optional(),
+  IDENTITY_JIT_PROVISIONING: boolString,
+  // Stage 4 operations.
+  TRUSTED_PROXY: z.string().optional(),
+  PG_BIN: z.string().default('C:\\Program Files\\PostgreSQL\\17\\bin'),
+  BACKUP_DIR: z.string().default('./backups'),
+  /// Optional dedicated data-encryption key (>=32 chars); when absent the key
+  /// is derived from SESSION_SECRET (documented development fallback).
+  DATA_KEY: z.string().min(32).optional(),
   APP_BASE_URL: z.string().min(1).default('http://localhost:3000'),
 });
 
@@ -75,6 +104,81 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       'FATAL: SCAN_MODE=dev-passthrough is not permitted in production. ' +
         'Production requires a real malware-scanning boundary (REQ-SEC-020).',
     );
+  }
+
+  // Stage 4 production fail-closed matrix (Directive 4 U.5 / fixed default 11):
+  // every development-only provider is refused; every enabled production
+  // provider must be completely configured.
+  if (isProduction) {
+    if (c.SCAN_MODE === 'disabled') {
+      throw new ConfigError(
+        'FATAL: SCAN_MODE=disabled is not permitted in production; configure SCAN_MODE=external with SCANNER_URL.',
+      );
+    }
+    if (c.SCAN_MODE === 'external' && !c.SCANNER_URL) {
+      throw new ConfigError('FATAL: SCAN_MODE=external requires SCANNER_URL.');
+    }
+    if (c.EMAIL_MODE === 'sink' || c.EMAIL_MODE === 'dev-capture') {
+      throw new ConfigError(
+        `FATAL: EMAIL_MODE=${c.EMAIL_MODE} is a development capture provider and is not permitted in production. ` +
+          'Use EMAIL_MODE=graph (fully configured) or EMAIL_MODE=disabled.',
+      );
+    }
+    if (c.EMAIL_MODE === 'graph') {
+      const missing = [
+        ['GRAPH_TENANT_ID', c.GRAPH_TENANT_ID],
+        ['GRAPH_CLIENT_ID', c.GRAPH_CLIENT_ID],
+        ['GRAPH_CLIENT_SECRET_REF', c.GRAPH_CLIENT_SECRET_REF],
+        ['GRAPH_SENDER_MAILBOX', c.GRAPH_SENDER_MAILBOX],
+      ]
+        .filter(([, v]) => !v)
+        .map(([k]) => k);
+      if (missing.length) {
+        throw new ConfigError(
+          `FATAL: EMAIL_MODE=graph requires complete configuration; missing: ${missing.join(', ')}.`,
+        );
+      }
+    }
+    if (c.STORAGE_MODE === 'local') {
+      throw new ConfigError(
+        'FATAL: STORAGE_MODE=local (filesystem) is not permitted in production; configure STORAGE_MODE=s3.',
+      );
+    }
+    if (c.STORAGE_MODE === 's3') {
+      const missing = [
+        ['S3_ENDPOINT', c.S3_ENDPOINT],
+        ['S3_BUCKET', c.S3_BUCKET],
+        ['S3_REGION', c.S3_REGION],
+        ['S3_ACCESS_KEY_REF', c.S3_ACCESS_KEY_REF],
+        ['S3_SECRET_KEY_REF', c.S3_SECRET_KEY_REF],
+      ]
+        .filter(([, v]) => !v)
+        .map(([k]) => k);
+      if (missing.length) {
+        throw new ConfigError(
+          `FATAL: STORAGE_MODE=s3 requires complete configuration; missing: ${missing.join(', ')}.`,
+        );
+      }
+    }
+    if (c.IDENTITY_MODE === 'dev') {
+      throw new ConfigError(
+        'FATAL: IDENTITY_MODE=dev is not permitted in production; configure IDENTITY_MODE=oidc.',
+      );
+    }
+    if (c.IDENTITY_MODE === 'oidc') {
+      const missing = [
+        ['OIDC_ISSUER', c.OIDC_ISSUER],
+        ['OIDC_CLIENT_ID', c.OIDC_CLIENT_ID],
+        ['OIDC_CLIENT_SECRET_REF', c.OIDC_CLIENT_SECRET_REF],
+      ]
+        .filter(([, v]) => !v)
+        .map(([k]) => k);
+      if (missing.length) {
+        throw new ConfigError(
+          `FATAL: IDENTITY_MODE=oidc requires complete configuration; missing: ${missing.join(', ')}.`,
+        );
+      }
+    }
   }
 
   return Object.freeze({

@@ -1,0 +1,21 @@
+# Never in an image (Directive 4 U.4): secrets, source DMAIC, test artifacts,
+# development databases, uploads, git history.
+.git
+.env
+.env.*
+*.local
+node_modules
+**/node_modules
+.next
+**/.next
+storage
+backups
+artifacts
+test-results
+playwright-report
+e2e
+docs/source
+**/*.dump
+**/*.pem
+**/*.key
+coverage

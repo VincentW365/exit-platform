@@ -127,6 +127,44 @@ describe('runtime role cannot tamper with Stage 3 workflow evidence (Directive 3
   });
 });
 
+describe('runtime role cannot tamper with Stage 4 operational evidence (Directive 4)', () => {
+  it('cannot DELETE outbox, pilot, backup or privacy evidence', async () => {
+    await expectDenied(`DELETE FROM notification_outbox WHERE 1=0`);
+    await expectDenied(`DELETE FROM recipient_config WHERE 1=0`);
+    await expectDenied(`DELETE FROM pilot_activation WHERE 1=0`);
+    await expectDenied(`DELETE FROM backup_record WHERE 1=0`);
+    await expectDenied(`DELETE FROM disclosure_log WHERE 1=0`);
+    await expectDenied(`DELETE FROM retention_policy WHERE 1=0`);
+    await expectDenied(`DELETE FROM fallback_entry WHERE 1=0`);
+    await expectDenied(`DELETE FROM support_ticket WHERE 1=0`);
+  });
+
+  it('cannot UPDATE append-only evidence tables (INSERT/SELECT grants only)', async () => {
+    await expectDenied(`UPDATE access_review SET payload='{}' WHERE 1=0`);
+    await expectDenied(`UPDATE employee_sync_run SET "createdCount"=0 WHERE 1=0`);
+    await expectDenied(`UPDATE retention_run SET findings='{}' WHERE 1=0`);
+    await expectDenied(`UPDATE disclosure_log SET "disclosedTo"='TAMPERED' WHERE 1=0`);
+    await expectDenied(`UPDATE report_run SET status='TAMPERED' WHERE 1=0`);
+    await expectDenied(`UPDATE training_completion SET module='TAMPERED' WHERE 1=0`);
+  });
+
+  it('cannot disable the Stage 4 protection triggers', async () => {
+    await expectDenied(
+      `ALTER TABLE notification_outbox DISABLE TRIGGER trg_notification_outbox_no_delete`,
+    );
+    await expectDenied(
+      `ALTER TABLE backup_record DISABLE TRIGGER trg_backup_record_core_immutable`,
+    );
+    await expectDenied(`DROP TRIGGER trg_pilot_activation_frozen ON pilot_activation`);
+  });
+
+  it('cannot TRUNCATE Stage 4 evidence tables', async () => {
+    await expectDenied(`TRUNCATE TABLE notification_outbox`);
+    await expectDenied(`TRUNCATE TABLE backup_record`);
+    await expectDenied(`TRUNCATE TABLE disclosure_log`);
+  });
+});
+
 describe('runtime role retains exactly its working privileges', () => {
   it('can still read and insert where the application requires it', async () => {
     const read = await runtime.query(`SELECT count(*)::int AS n FROM offboarding_case`);

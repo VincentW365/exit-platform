@@ -70,6 +70,39 @@ participation everywhere (queues, tasks, assets, handover, notifications,
 exceptions, clearance) and never leak through totals, feeds or errors.
 SYSTEM_ADMIN has no queue and no workflow surface.
 
+## Stage 4 implementation note (Directive 4, 2026-07-30)
+
+The production-readiness build adds ~30 global actions to the enforced
+server-side matrix without changing any authority above:
+
+- **Business vs technical administration is a hard split.** HR_MANAGER /
+  HR_OFFICER hold business configuration (recipient directory business
+  fields, reason taxonomy, calendar approval); SYSTEM_ADMIN holds technical
+  configuration (`admin.system`, system config references, user lifecycle,
+  access reviews, fixture sync, backup/restore, technical recipient fields)
+  and still has **zero access to HR case content** - verified by tests.
+- **Outbox**: monitor view is HR_MANAGER + SYSTEM_ADMIN; retry/resolve of
+  failures is SYSTEM_ADMIN; every action is audited with masked destinations.
+- **Pilot**: propose/apply/suspend is HR_MANAGER + SYSTEM_ADMIN
+  (`pilot.manage`); the three approvals are role-exclusive
+  (`pilot.hrApprove` HR_MANAGER, `pilot.adminApprove` SYSTEM_ADMIN,
+  `pilot.privacyApprove` PRIVACY_OFFICER) so no single person can activate.
+- **Reports** (`reports.view`, audited exports): HR_MANAGER, HR_OFFICER,
+  AUDITOR, PRIVACY_OFFICER - all output passes visibility filters and
+  small-group suppression; department roles keep queue-only visibility.
+- **Privacy operations** (`privacy.operate`: retention, holds, dry runs,
+  anonymization, DSR, disclosures): PRIVACY_OFFICER with HR_MANAGER
+  participation; no other role.
+- **Backup** (`backup.operate`) and health administration: SYSTEM_ADMIN;
+  read-only health for authorized viewers.
+- **Continuity** (`continuity.operate`), support tickets, SOP/training
+  surfaces follow the operational roles; the development capture mailbox
+  (`mailbox.dev`) is HR + SYSTEM_ADMIN and refuses production.
+- **Identity lifecycle**: roles are NEVER granted from identity-provider
+  claims; expiring role assignments are revoked by the worker; disabling a
+  user revokes sessions immediately; break-glass stays disabled unless
+  explicitly configured and is enhanced-audited.
+
 ## Record-level access rules
 
 ### Normal resignation cases

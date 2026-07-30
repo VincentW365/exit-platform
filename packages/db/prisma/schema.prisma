@@ -93,6 +93,10 @@ enum ScanStatus {
   CLEAN
   REJECTED
   SCANNER_UNAVAILABLE
+  // Stage 4 (Directive 4 section H) additions:
+  QUARANTINED
+  INFECTED
+  SCAN_FAILED
 }
 
 enum AttachmentPurpose {
@@ -163,6 +167,16 @@ model User {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  // Stage 4 identity lifecycle (Directive 4 section E).
+  department            String?
+  managerUserId         String?             @db.Uuid
+  lastSignInAt          DateTime?
+  identitySource        String              @default("dev")
+  provisioningStatus    ProvisioningStatus  @default(ACTIVE)
+  deactivatedAt         DateTime?
+  /// Sessions issued before this instant are rejected (immediate revocation).
+  sessionsInvalidatedAt DateTime?
+
   roleAssignments    RoleAssignment[] @relation("assignee")
   ownedCases         OffboardingCase[] @relation("caseOwner")
   createdCases       OffboardingCase[] @relation("caseCreator")
@@ -179,6 +193,8 @@ model RoleAssignment {
   reason       String
   grantedById  String?   @db.Uuid
   grantedAt    DateTime  @default(now())
+  /// Stage 4 (E.6): optional review expiry; expired roles are revoked by sweep.
+  expiresAt    DateTime?
   revokedAt    DateTime?
   revokedById  String?   @db.Uuid
   revokeReason String?
@@ -254,6 +270,11 @@ model OffboardingCase {
   createdById String @db.Uuid
   createdBy   User   @relation("caseCreator", fields: [createdById], references: [id])
 
+  /// Stage 4 (P): identity fields anonymized through the approved privacy
+  /// workflow; audit and structural evidence are preserved.
+  anonymizedAt   DateTime?
+  anonymizedById String?   @db.Uuid
+
   /// Optimistic concurrency (Architecture.md section 8).
   version   Int      @default(0)
   createdAt DateTime @default(now())
@@ -277,6 +298,7 @@ model OffboardingCase {
   handover           HandoverRecord?
   exceptions         CaseException[]
   clearanceRecords   ClearanceRecord[]
+  retentionHolds     RetentionHold[]
 
   @@index([status])
   @@index([ownerId])
@@ -436,6 +458,15 @@ model HolidayCalendar {
   createdAt DateTime  @default(now())
   holidays  Holiday[]
 
+  // Stage 4 (Directive 4 section K): approval + effective period. Existing
+  // tasks keep their calculation provenance; a new version never rewrites
+  // historical due dates.
+  approvedById  String?   @db.Uuid
+  approvedAt    DateTime?
+  effectiveFrom DateTime?
+  effectiveTo   DateTime?
+  note          String?
+
   @@unique([name, version])
   @@map("holiday_calendar")
 }
@@ -454,6 +485,8 @@ model Holiday {
 
 /// Versioned reference data capable of holding the HR-approved taxonomy later
 /// (IC-S1-008). Stage 1 seeds clearly-labelled TEST-ONLY records only.
+/// Stage 4 (Directive 4 section J): full configurable taxonomy - never an
+/// enum; historical cases keep the category row selected at the time.
 model ReasonCategory {
   id              String   @id @default(uuid()) @db.Uuid
   code            String   @unique
@@ -462,6 +495,22 @@ model ReasonCategory {
   isActive        Boolean  @default(false)
   isTestOnly      Boolean  @default(true)
   createdAt       DateTime @default(now())
+
+  description     String?
+  /// null = applicable to both voluntary and involuntary departures.
+  voluntary       Boolean?
+  departureTypes  DepartureType[]
+  reportingGroup  String?
+  effectiveFrom   DateTime?
+  effectiveTo     DateTime?
+  sortOrder       Int      @default(0)
+  sensitive       Boolean  @default(false)
+  createdById     String?  @db.Uuid
+  approvedById    String?  @db.Uuid
+  approvedAt      DateTime?
+  retiredAt       DateTime?
+  changeReason    String?
+
   cases           OffboardingCase[]
 
   @@map("reason_category")
@@ -1324,6 +1373,7 @@ model NotificationRecord {
   updatedAt   DateTime @updatedAt
 
   captures NotificationCapture[]
+  outbox   NotificationOutbox[]
 
   @@index([caseId])
   @@index([status])
@@ -1484,6 +1534,454 @@ model CaseException {
   @@index([exceptionType, status])
   @@index([status, severity])
   @@map("case_exception")
+}
+
+// --- Stage 4: outbox, providers, pilot, privacy, operations ------------------
+
+enum ProvisioningStatus {
+  ACTIVE
+  PENDING
+  DEACTIVATED
+}
+
+enum OutboxStatus {
+  PENDING
+  CLAIMED
+  SUBMITTED
+  DELIVERED
+  FAILED_RETRYABLE
+  FAILED_PERMANENT
+  CANCELLED
+  DEAD_LETTER
+}
+
+enum RecipientClassDir {
+  IT_OFFBOARDING
+  FINANCE_OFFBOARDING
+  HR_OFFBOARDING
+  LINE_MANAGER
+  SAGICOR_GROUP_HEALTH
+  NCB_GROUP_LIFE
+  EMPLOYEE_PERSONAL
+  OTHER_APPROVED_EXTERNAL
+}
+
+enum RecipientApprovalStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SUSPENDED
+  RETIRED
+}
+
+enum ActivationState {
+  DISABLED
+  TEST_ONLY
+  TRAINING_ENABLED
+  PILOT_READY
+  PILOT_ACTIVE
+  POST_ROLLOUT_READY
+  POST_ROLLOUT_ACTIVE
+  SUSPENDED
+}
+
+enum SupportCategory {
+  INCIDENT
+  SERVICE_REQUEST
+  INTEGRATION_FAILURE
+  SECURITY_PRIVACY_INCIDENT
+  DATA_CORRECTION
+  ACCESS_REQUEST
+  CONFIGURATION_ISSUE
+}
+
+enum SupportStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum OutageStatus {
+  DECLARED
+  RESTORED
+  CLOSED
+}
+
+enum ReportFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum RetentionRunMode {
+  DRY_RUN
+  EXECUTE
+}
+
+enum DsrType {
+  ACCESS
+  CORRECTION
+  EXPORT
+}
+
+/// Durable transactional outbox (Directive 4 section B). Created in the SAME
+/// transaction as the notification approval so nothing is lost on crash.
+model NotificationOutbox {
+  id                   String             @id @default(uuid()) @db.Uuid
+  notificationRecordId String             @db.Uuid
+  notificationRecord   NotificationRecord @relation(fields: [notificationRecordId], references: [id])
+  provider             String
+  recipientClass       RecipientClassDir
+  recipientConfigId    String?            @db.Uuid
+  /// Masked display only; the real destination stays encrypted on the config.
+  destinationMask      String
+  subjectSnapshot      String
+  contentChecksum      String
+  templateVersion      Int
+  workflowVersion      Int
+  idempotencyKey       String             @unique
+  status               OutboxStatus       @default(PENDING)
+  scheduledAt          DateTime           @default(now())
+  claimedAt            DateTime?
+  attempts             Int                @default(0)
+  nextAttemptAt        DateTime           @default(now())
+  submittedAt          DateTime?
+  providerMessageRef   String?
+  /// SUBMITTED vs provider-evidenced DELIVERED vs BOUNCED/REJECTED/CAPTURED.
+  deliveryStatus       String?
+  lastErrorCode        String?
+  cancelReason         String?
+  resolvedById         String?            @db.Uuid
+  resolvedAt           DateTime?
+  resolutionNote       String?
+  correlationId        String
+  rowVersion           Int                @default(0)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([notificationRecordId])
+  @@map("notification_outbox")
+}
+
+/// Controlled recipient directory (section D). Destinations are encrypted at
+/// rest through the application boundary; no real address is ever seeded.
+model RecipientConfig {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  recipientClass        RecipientClassDir
+  displayName           String
+  destinationCiphertext String
+  destinationMask       String
+  active                Boolean                 @default(true)
+  environment           String                  @default("development")
+  allowedTypes          NotificationType[]
+  isExternal            Boolean                 @default(false)
+  ownerId               String?                 @db.Uuid
+  approvalStatus        RecipientApprovalStatus @default(DRAFT)
+  approvedById          String?                 @db.Uuid
+  approvedAt            DateTime?
+  effectiveFrom         DateTime?
+  verifiedAt            DateTime?
+  changeReason          String?
+  createdById           String                  @db.Uuid
+  rowVersion            Int                     @default(0)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  @@index([recipientClass, environment])
+  @@map("recipient_config")
+}
+
+/// Technical configuration (secret REFERENCES only - never raw secrets).
+model SystemConfig {
+  key         String   @id
+  value       Json
+  secretRef   String?
+  reason      String?
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_config")
+}
+
+/// Periodic user-access review snapshots (E.10) - append-only evidence.
+model AccessReview {
+  id            String   @id @default(uuid()) @db.Uuid
+  generatedById String   @db.Uuid
+  generatedAt   DateTime @default(now())
+  payload       Json
+  note          String?
+  correlationId String
+
+  @@map("access_review")
+}
+
+/// Employee-source synchronization runs (section F) - append-only evidence.
+model EmployeeSyncRun {
+  id            String    @id @default(uuid()) @db.Uuid
+  source        String
+  mode          String
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  createdCount  Int       @default(0)
+  updatedCount  Int       @default(0)
+  mismatches    Json?
+  startedById   String?   @db.Uuid
+  correlationId String
+
+  @@map("employee_sync_run")
+}
+
+/// Pilot/environment activation evidence (section L). Core fields freeze once
+/// recorded; only approvals and lifecycle fields may change (trigger).
+model PilotActivation {
+  id                       String          @id @default(uuid()) @db.Uuid
+  state                    ActivationState
+  environment              String
+  cohort                   String
+  scope                    Json
+  startDate                DateTime?
+  enabledIntegrations      Json
+  approvedWorkflowVersions Json
+  approvedTemplateVersions Json
+  approvedCalendarVersion  Int?
+  conditions               String?
+  rollbackPlan             String
+  checksum                 String
+  hrApprovedById           String?         @db.Uuid
+  hrApprovedAt             DateTime?
+  adminApprovedById        String?         @db.Uuid
+  adminApprovedAt          DateTime?
+  privacyApprovedById      String?         @db.Uuid
+  privacyApprovedAt        DateTime?
+  activatedAt              DateTime?
+  suspendedAt              DateTime?
+  suspendReason            String?
+  supersededAt             DateTime?
+  createdById              String          @db.Uuid
+  correlationId            String
+  rowVersion               Int             @default(0)
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  @@index([state])
+  @@map("pilot_activation")
+}
+
+/// Scheduled report definitions (section O).
+model ScheduledReport {
+  id             String            @id @default(uuid()) @db.Uuid
+  reportKey      String
+  name           String
+  frequency      ReportFrequency
+  recipientClass RecipientClassDir
+  format         String            @default("CSV")
+  filters        Json
+  active         Boolean           @default(true)
+  nextRunAt      DateTime
+  lastRunAt      DateTime?
+  lastStatus     String?
+  lastError      String?
+  createdById    String            @db.Uuid
+  rowVersion     Int               @default(0)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  runs ReportRun[]
+
+  @@map("scheduled_report")
+}
+
+/// Scheduled report runs - append-only evidence.
+model ReportRun {
+  id                String          @id @default(uuid()) @db.Uuid
+  scheduledReportId String          @db.Uuid
+  scheduledReport   ScheduledReport @relation(fields: [scheduledReportId], references: [id])
+  ranAt             DateTime        @default(now())
+  status            String
+  rowCount          Int             @default(0)
+  objectKey         String?
+  error             String?
+  correlationId     String
+
+  @@index([scheduledReportId])
+  @@map("report_run")
+}
+
+/// Versioned retention policies (section P) - synthetic in development.
+model RetentionPolicy {
+  id           String    @id @default(uuid()) @db.Uuid
+  recordType   String
+  retainYears  Int
+  basis        String
+  version      Int
+  active       Boolean   @default(false)
+  approvedById String?   @db.Uuid
+  approvedAt   DateTime?
+  createdById  String    @db.Uuid
+  reason       String?
+  createdAt    DateTime  @default(now())
+
+  @@unique([recordType, version])
+  @@map("retention_policy")
+}
+
+/// Legal/administrative holds suspend all retention action (P.3/P.4).
+model RetentionHold {
+  id           String    @id @default(uuid()) @db.Uuid
+  caseId       String    @db.Uuid
+  case         OffboardingCase @relation(fields: [caseId], references: [id])
+  reason       String
+  placedById   String    @db.Uuid
+  placedAt     DateTime  @default(now())
+  releasedById String?   @db.Uuid
+  releasedAt   DateTime?
+  releaseNote  String?
+
+  @@index([caseId])
+  @@map("retention_hold")
+}
+
+/// Retention dry-run/execution evidence - append-only.
+model RetentionRun {
+  id            String           @id @default(uuid()) @db.Uuid
+  mode          RetentionRunMode
+  policyVersion Int
+  startedById   String           @db.Uuid
+  startedAt     DateTime         @default(now())
+  findings      Json
+  executedCount Int              @default(0)
+  correlationId String
+
+  @@map("retention_run")
+}
+
+/// Disclosure log (P.9) - append-only evidence.
+model DisclosureLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  caseId       String?  @db.Uuid
+  subjectRef   String
+  disclosedTo  String
+  description  String
+  lawfulBasis  String
+  disclosedById String  @db.Uuid
+  disclosedAt  DateTime @default(now())
+  correlationId String
+
+  @@map("disclosure_log")
+}
+
+/// Data-subject requests (P.6-P.8).
+model DataSubjectRequest {
+  id               String   @id @default(uuid()) @db.Uuid
+  type             DsrType
+  subjectRef       String
+  status           String   @default("OPEN")
+  note             String?
+  packageObjectKey String?
+  requestedAt      DateTime @default(now())
+  handledById      String?  @db.Uuid
+  completedAt      DateTime?
+  correlationId    String
+  rowVersion       Int      @default(0)
+  updatedAt        DateTime @updatedAt
+
+  @@map("data_subject_request")
+}
+
+/// Backup evidence (section Q) - core fields immutable via trigger.
+model BackupRecord {
+  id               String    @id @default(uuid()) @db.Uuid
+  kind             String    @default("DATABASE")
+  objectPath       String
+  sizeBytes        BigInt
+  checksum         String
+  createdById      String?   @db.Uuid
+  createdAt        DateTime  @default(now())
+  verifiedAt       DateTime?
+  verificationNote String?
+  correlationId    String
+
+  @@map("backup_record")
+}
+
+/// Declared outages for manual fallback (section R).
+model Outage {
+  id           String       @id @default(uuid()) @db.Uuid
+  title        String
+  status       OutageStatus @default(DECLARED)
+  declaredById String       @db.Uuid
+  declaredAt   DateTime     @default(now())
+  restoredAt   DateTime?
+  closedById   String?      @db.Uuid
+  closedAt     DateTime?
+  note         String?
+  rowVersion   Int          @default(0)
+  updatedAt    DateTime     @updatedAt
+
+  entries FallbackEntry[]
+
+  @@map("outage")
+}
+
+/// Manual records captured during an outage; reconciled on restore (R.3-R.5).
+model FallbackEntry {
+  id             String    @id @default(uuid()) @db.Uuid
+  outageId       String    @db.Uuid
+  outage         Outage    @relation(fields: [outageId], references: [id])
+  refNumber      String    @unique
+  kind           String
+  summary        String
+  recordedById   String    @db.Uuid
+  recordedAt     DateTime  @default(now())
+  reconciledCaseId String? @db.Uuid
+  reconciledById String?   @db.Uuid
+  reconciledAt   DateTime?
+  reconcileNote  String?
+  rowVersion     Int       @default(0)
+  updatedAt      DateTime  @updatedAt
+
+  @@index([outageId])
+  @@map("fallback_entry")
+}
+
+/// Support and incident records (section T). Linked case only where
+/// authorized; descriptions are safe operational text.
+model SupportTicket {
+  id                String          @id @default(uuid()) @db.Uuid
+  category          SupportCategory
+  severity          ExceptionSeverity
+  environment       String          @default("development")
+  title             String
+  description       String
+  affectedComponent String?
+  reporterId        String          @db.Uuid
+  ownerId           String?         @db.Uuid
+  status            SupportStatus   @default(OPEN)
+  resolution        String?
+  linkedExceptionId String?         @db.Uuid
+  linkedCaseId      String?         @db.Uuid
+  correlationId     String
+  rowVersion        Int             @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  resolvedAt        DateTime?
+
+  @@index([status, severity])
+  @@map("support_ticket")
+}
+
+/// Role-scoped training completion (section S) - not formal certification.
+model TrainingCompletion {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  role        Role
+  module      String
+  completedAt DateTime @default(now())
+
+  @@unique([userId, module])
+  @@map("training_completion")
 }
 
 /// Immutable final-clearance approval evidence (section O).

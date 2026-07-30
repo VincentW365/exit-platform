@@ -1,0 +1,29 @@
+# Production worker image (Directive 4 section U): outbox dispatch, workflow
+# sweeps, scheduled reports and role-expiry revocation. Runs as NON-ROOT; the
+# same fail-closed configuration guards apply at startup. Graceful shutdown
+# handles SIGTERM (the worker closes its database connection cleanly).
+#
+# Build: docker build -f Dockerfile.worker -t exit-platform-worker .
+
+FROM node:24-slim AS builder
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json apps/web/package.json
+COPY apps/worker/package.json apps/worker/package.json
+COPY packages/config/package.json packages/config/package.json
+COPY packages/domain/package.json packages/domain/package.json
+COPY packages/db/package.json packages/db/package.json
+RUN pnpm install --frozen-lockfile
+COPY . .
+RUN pnpm --filter @exit/db exec prisma generate
+
+FROM node:24-slim AS runner
+ENV NODE_ENV=production
+WORKDIR /app
+RUN groupadd --system app && useradd --system --gid app --home /app app
+COPY --from=builder --chown=app:app /app /app
+USER app
+# Migration deployment (run as a release step, not at container start):
+#   pnpm --filter @exit/db exec prisma migrate deploy
+CMD ["./node_modules/.bin/tsx", "apps/worker/src/index.ts"]

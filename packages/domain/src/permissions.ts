@@ -262,7 +262,38 @@ export type GlobalAction =
   | 'workflowDef.draft'
   | 'workflowDef.activate'
   | 'queue.view'
-  | 'exceptions.viewFeed';
+  | 'exceptions.viewFeed'
+  // Stage 4 (Directive 4): administration, integrations, pilot, reporting,
+  // privacy, continuity, support.
+  | 'admin.system'
+  | 'admin.integrations'
+  | 'recipients.viewBusiness'
+  | 'recipients.editBusiness'
+  | 'recipients.editTechnical'
+  | 'recipients.approveExternal'
+  | 'reasons.manage'
+  | 'outbox.view'
+  | 'outbox.resolve'
+  | 'mailbox.dev'
+  | 'identity.admin'
+  | 'identity.accessReview'
+  | 'sync.run'
+  | 'pilot.view'
+  | 'pilot.manage'
+  | 'pilot.hrApprove'
+  | 'pilot.adminApprove'
+  | 'pilot.privacyApprove'
+  | 'reports.view'
+  | 'reports.export'
+  | 'reports.schedule'
+  | 'privacy.view'
+  | 'privacy.operate'
+  | 'backup.operate'
+  | 'continuity.operate'
+  | 'support.use'
+  | 'support.manage'
+  | 'sop.view'
+  | 'health.view';
 
 const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   'case.create': ['HR_MANAGER', 'HR_OFFICER'],
@@ -287,6 +318,56 @@ const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   // queue service; SYSTEM_ADMIN has no queue - R.8).
   'queue.view': ['HR_MANAGER', 'HR_OFFICER', 'IT_RESPONDER', 'FINANCE_RESPONDER', 'LINE_MANAGER'],
   'exceptions.viewFeed': ['HR_MANAGER', 'HR_OFFICER', 'AUDITOR', 'PRIVACY_OFFICER'],
+  // Directive 4: business administration is HR; technical administration is
+  // SYSTEM_ADMIN (never HR case content - I.1-I.3); privacy oversight reviews
+  // privacy configuration (I.4).
+  'admin.system': ['SYSTEM_ADMIN'],
+  'admin.integrations': ['SYSTEM_ADMIN'],
+  'recipients.viewBusiness': ['HR_MANAGER', 'HR_OFFICER', 'SYSTEM_ADMIN', 'PRIVACY_OFFICER'],
+  'recipients.editBusiness': ['HR_MANAGER', 'HR_OFFICER'],
+  'recipients.editTechnical': ['SYSTEM_ADMIN'],
+  'recipients.approveExternal': ['HR_MANAGER'],
+  'reasons.manage': ['HR_MANAGER'],
+  'outbox.view': ['SYSTEM_ADMIN', 'HR_MANAGER'],
+  'outbox.resolve': ['SYSTEM_ADMIN'],
+  'mailbox.dev': ['SYSTEM_ADMIN', 'HR_MANAGER', 'HR_OFFICER'],
+  'identity.admin': ['SYSTEM_ADMIN'],
+  'identity.accessReview': ['SYSTEM_ADMIN', 'AUDITOR', 'PRIVACY_OFFICER'],
+  'sync.run': ['SYSTEM_ADMIN', 'HR_MANAGER'],
+  'pilot.view': ['HR_MANAGER', 'SYSTEM_ADMIN', 'PRIVACY_OFFICER', 'AUDITOR'],
+  'pilot.manage': ['HR_MANAGER', 'SYSTEM_ADMIN'],
+  'pilot.hrApprove': ['HR_MANAGER'],
+  'pilot.adminApprove': ['SYSTEM_ADMIN'],
+  'pilot.privacyApprove': ['PRIVACY_OFFICER'],
+  'reports.view': ['HR_MANAGER', 'HR_OFFICER', 'AUDITOR', 'PRIVACY_OFFICER'],
+  'reports.export': ['HR_MANAGER', 'HR_OFFICER'],
+  'reports.schedule': ['HR_MANAGER'],
+  'privacy.view': ['PRIVACY_OFFICER', 'HR_MANAGER', 'AUDITOR'],
+  'privacy.operate': ['PRIVACY_OFFICER', 'HR_MANAGER'],
+  'backup.operate': ['SYSTEM_ADMIN'],
+  'continuity.operate': ['HR_MANAGER', 'SYSTEM_ADMIN'],
+  'support.use': [
+    'HR_MANAGER',
+    'HR_OFFICER',
+    'IT_RESPONDER',
+    'FINANCE_RESPONDER',
+    'LINE_MANAGER',
+    'AUDITOR',
+    'PRIVACY_OFFICER',
+    'SYSTEM_ADMIN',
+  ],
+  'support.manage': ['SYSTEM_ADMIN'],
+  'sop.view': [
+    'HR_MANAGER',
+    'HR_OFFICER',
+    'IT_RESPONDER',
+    'FINANCE_RESPONDER',
+    'LINE_MANAGER',
+    'AUDITOR',
+    'PRIVACY_OFFICER',
+    'SYSTEM_ADMIN',
+  ],
+  'health.view': ['SYSTEM_ADMIN', 'HR_MANAGER', 'AUDITOR'],
 };
 
 export function can(actor: Actor, action: GlobalAction): boolean {

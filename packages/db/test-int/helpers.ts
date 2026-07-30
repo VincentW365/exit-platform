@@ -9,6 +9,24 @@ export async function resetDb(): Promise<void> {
   // integration cleanup uses TRUNCATE ... CASCADE as the database owner.
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      notification_outbox,
+      recipient_config,
+      system_config,
+      access_review,
+      employee_sync_run,
+      pilot_activation,
+      report_run,
+      scheduled_report,
+      retention_run,
+      retention_hold,
+      retention_policy,
+      disclosure_log,
+      data_subject_request,
+      backup_record,
+      fallback_entry,
+      outage,
+      support_ticket,
+      training_completion,
       clearance_record,
       case_exception,
       handover_record,
@@ -104,4 +122,6 @@ export async function seedStage3Fixtures(): Promise<void> {
   }
   const { seedStage3 } = await import('../src/seedStage3.ts');
   await seedStage3(prisma);
+  const { seedStage4 } = await import('../src/seedStage4.ts');
+  await seedStage4(prisma);
 }

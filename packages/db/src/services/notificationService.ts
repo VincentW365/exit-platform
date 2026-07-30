@@ -36,6 +36,8 @@ import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
 import { loadCaseAccess } from './shared.ts';
+import { cancelPendingOutboxTx, enqueueOutboxTx, recipientClassForType } from './outboxService.ts';
+import { resolveUsableRecipient } from './recipientService.ts';
 
 // --- provider-neutral delivery boundary (K.12-K.15) --------------------------
 
@@ -330,6 +332,45 @@ export async function transitionNotification(
       break;
   }
 
+  // Stage 4 (Directive 4 B.1): automatic dispatch eligibility is resolved
+  // BEFORE the transaction; the outbox row is created INSIDE it.
+  let enqueueRecipient: { id: string; destinationMask: string } | null = null;
+  let workflowVersion = 0;
+  if (action === 'approve') {
+    const c = await prisma.offboardingCase.findUniqueOrThrow({
+      where: { id: record.caseId },
+      select: { recordPurpose: true, measurementCohort: true },
+    });
+    // Fixed defaults 4-6: TEST/TRAINING may use the capture provider;
+    // OPERATIONAL requires the notifications flag AND never BASELINE (live
+    // activation is additionally pilot-gated at startup/provider level).
+    let dispatchEligible = false;
+    if (c.recordPurpose !== 'OPERATIONAL') {
+      dispatchEligible = !getConfig().isProduction;
+    } else if (c.measurementCohort !== 'BASELINE') {
+      const flag = await prisma.featureFlag.findUnique({
+        where: { key: 'automation.notifications' },
+      });
+      dispatchEligible = flag?.enabled === true;
+    }
+    if (dispatchEligible) {
+      const resolved = await resolveUsableRecipient(
+        recipientClassForType(record.notificationType),
+        record.notificationType,
+      );
+      if ('destination' in resolved) {
+        enqueueRecipient = { id: resolved.id, destinationMask: resolved.destinationMask };
+        const instance = await prisma.workflowInstance.findFirst({
+          where: { caseId: record.caseId },
+          orderBy: { activatedAt: 'desc' },
+          select: { definitionVersion: true },
+        });
+        workflowVersion = instance?.definitionVersion ?? 0;
+      }
+    }
+  }
+
+  const correlationId = newCorrelationId();
   await prisma.$transaction(async (tx) => {
     const updated = await tx.notificationRecord.updateMany({
       where: { id: recordId, status: record.status, rowVersion: record.rowVersion },
@@ -337,6 +378,19 @@ export async function transitionNotification(
     });
     if (updated.count === 0)
       throw ServiceError.conflict('The notification was changed; reload and retry.');
+
+    if (action === 'approve' && enqueueRecipient) {
+      await enqueueOutboxTx(tx, record, enqueueRecipient, workflowVersion, actor, correlationId);
+    }
+    if (action === 'recordManualSend' || action === 'cancel') {
+      // B.8/B.9: manual sending or cancellation stops automatic dispatch.
+      await cancelPendingOutboxTx(
+        tx,
+        record.id,
+        action === 'recordManualSend' ? 'manually sent' : 'notification cancelled',
+      );
+    }
+
     await appendAudit(tx, {
       eventType: NOTIF_EVENT[action],
       actorType: 'USER',
@@ -346,7 +400,7 @@ export async function transitionNotification(
       objectId: recordId,
       caseId: record.caseId,
       result: 'SUCCESS',
-      correlationId: newCorrelationId(),
+      correlationId,
       // Method + destination REFERENCE only; never an address (K.7).
       metadata: {
         notificationType: record.notificationType,
@@ -354,6 +408,7 @@ export async function transitionNotification(
         method: fields.method ?? null,
         destinationRef: fields.destinationRef ?? null,
         reason: fields.reason ?? null,
+        autoDispatchEnqueued: action === 'approve' ? enqueueRecipient !== null : undefined,
       },
     });
   });

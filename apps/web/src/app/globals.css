@@ -166,6 +166,9 @@ main {
   border-radius: var(--radius);
   padding: 1rem 1.25rem;
   margin-bottom: 1.25rem;
+  /* Long unbreakable tokens (migration names, checksums, references) must
+     wrap on narrow viewports instead of forcing horizontal scroll. */
+  overflow-wrap: anywhere;
 }
 
 table.data {

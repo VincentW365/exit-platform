@@ -36,6 +36,7 @@
 | Delivery | `docs/delivery/Stage2DocumentReadinessReport.md` | Directive 1.2 readiness verdict and exact Directive 2 preconditions. |
 | Delivery | `docs/delivery/Stage2CombinedBuildRecord.md` | Directive 2 build record: documents, action form, exit surveys. |
 | Delivery | `docs/delivery/Stage3OperationalWorkflowBuildRecord.md` | Directive 3 build record: workflows, queues, access control, notifications, assets, handover, clearance. |
+| Delivery | `docs/delivery/Stage4ProductionReadinessBuildRecord.md` | Directive 4 build record: outbox, adapters, pilot operations, reporting, privacy, packaging. |
 | Architecture | `docs/architecture/Architecture.md` | System context and modular-monolith design. |
 | Architecture | `docs/architecture/DomainModel.md` | Domain boundaries and invariants. |
 | Architecture | `docs/architecture/DataModel.md` | Proposed logical entities and relationships. |
@@ -67,6 +68,14 @@
 | Operations | `docs/operations/ManualFallbackAndBusinessContinuity.md` | Secure fallback procedures. |
 | Operations | `docs/operations/SupportAndIncidentManagement.md` | Ownership, incidents and support. |
 | Operations | `docs/operations/BaselineDataCapturePlan.md` | Clean 4–6 week baseline capture. |
+| Operations | `docs/operations/PilotRunbook.md` | Activation states, readiness gates, approvals and suspension procedure. |
+| Operations | `docs/operations/ManualFallbackRunbook.md` | Executable outage/fallback/reconciliation procedure (`/continuity`). |
+| Operations | `docs/operations/BackupRestoreRunbook.md` | Backup, checksum and isolated restore-verification procedure. |
+| Operations | `docs/operations/SupportAndIncidentRunbook.md` | Ticket intake, triage, diagnostic bundles and incident handling. |
+| Operations | `docs/operations/ProductionConfigurationChecklist.md` | Fail-closed production configuration gates (nothing satisfied yet). |
+| Operations | `docs/operations/UATPlan.md` | Synthetic user acceptance test plan and sign-off rules. |
+| Operations | `docs/operations/TrainingGuide.md` | Role-based training modules with recorded completions. |
+| Operations | `docs/operations/ReleaseChecklist.md` | Per-release and pre-pilot promotion gates. |
 | Templates | `docs/templates/TemplateCatalogue.md` | Controlled document/notification inventory. |
 | Templates | `docs/templates/ControlledCommunicationTemplates.md` | Sanitized draft templates and placeholders. |
 | Templates | `docs/templates/ExitSurveySpecification.md` | Survey questions, privacy and token flow. |

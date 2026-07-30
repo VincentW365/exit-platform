@@ -12,7 +12,9 @@ import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import {
   addConfigItemAction,
+  approveCalendarAction,
   grantRoleAction,
+  previewCalendarAction,
   publishCalendarAction,
   revokeRoleAction,
   setFlagAction,
@@ -24,7 +26,7 @@ export const dynamic = 'force-dynamic';
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ err?: string; ok?: string }>;
+  searchParams: Promise<{ err?: string; ok?: string; preview?: string }>;
 }) {
   const { actor } = await requireAuth();
   const isSysAdmin = can(actor, 'admin.roles');
@@ -41,14 +43,44 @@ export default async function AdminPage({
   const departments = isHrConfig ? await listConfigItems('DEPARTMENT') : [];
   const locations = isHrConfig ? await listConfigItems('LOCATION') : [];
 
+  const hubLinks: Array<{ href: string; label: string; kind: 'business' | 'technical' }> = [
+    { href: '/admin/workflows', label: 'Workflow definitions', kind: 'business' },
+    { href: '/admin/templates', label: 'Document templates', kind: 'business' },
+    { href: '/admin/reasons', label: 'Reason taxonomy', kind: 'business' },
+    { href: '/admin/recipients', label: 'Recipient directory', kind: 'business' },
+    { href: '/reports', label: 'Reporting centre', kind: 'business' },
+    { href: '/admin/pilot', label: 'Pilot readiness and activation', kind: 'business' },
+    { href: '/admin/privacy', label: 'Privacy and retention', kind: 'business' },
+    { href: '/continuity', label: 'Business continuity', kind: 'business' },
+    { href: '/admin/system', label: 'System configuration and identity', kind: 'technical' },
+    { href: '/admin/health', label: 'Integration health', kind: 'technical' },
+    { href: '/admin/outbox', label: 'Email/outbox status', kind: 'technical' },
+    { href: '/dev/mailbox', label: 'Development mailbox', kind: 'technical' },
+    { href: '/support', label: 'Support and incidents', kind: 'technical' },
+  ];
+
   return (
     <>
-      <h1>Administration</h1>
+      <h1>Administration centre</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint">
         Technical administration and HR business configuration are separated by role; system
         administration includes no HR case content (least privilege).
       </p>
+
+      <section className="panel" aria-labelledby="hub-h">
+        <h2 id="hub-h" style={{ marginTop: 0 }}>
+          Administration areas
+        </h2>
+        <div className="actions-row">
+          {hubLinks.map((l) => (
+            <a key={l.href} className="button secondary" href={l.href}>
+              {l.label}
+              {l.kind === 'technical' ? ' (technical)' : ''}
+            </a>
+          ))}
+        </div>
+      </section>
 
       {isSysAdmin ? (
         <section className="panel" aria-labelledby="roles-h">
@@ -237,14 +269,44 @@ export default async function AdminPage({
                   <strong>
                     {cal.name} v{cal.version}
                   </strong>{' '}
-                  {cal.isActive ? <span className="badge badge--success">active</span> : null} -{' '}
-                  {cal.holidays.length} holidays ({formatInstant(cal.createdAt)})
+                  {cal.isActive ? <span className="badge badge--success">active</span> : null}{' '}
+                  {cal.approvedAt ? (
+                    <span className="badge badge--success">approved</span>
+                  ) : (
+                    <span className="badge badge--warning">unapproved</span>
+                  )}{' '}
+                  - {cal.holidays.length} holidays ({formatInstant(cal.createdAt)})
+                  {cal.isActive && !cal.approvedAt ? (
+                    <form action={approveCalendarAction} style={{ display: 'inline-block' }}>
+                      <input type="hidden" name="calendarId" value={cal.id} />
+                      <button type="submit" className="secondary">
+                        Approve active version
+                      </button>
+                    </form>
+                  ) : null}
                 </li>
               ))}
             </ul>
           ) : (
             <p>No calendar configured.</p>
           )}
+          <details className="action">
+            <summary>Preview SLA impact of a candidate holiday list (nothing is applied)</summary>
+            <form action={previewCalendarAction} className="stack">
+              <div className="field">
+                <label htmlFor="cal-preview">
+                  Candidate holidays, one per line: YYYY-MM-DD,Label
+                </label>
+                <textarea id="cal-preview" name="holidays" rows={4} required />
+              </div>
+              <button type="submit">Preview impact</button>
+            </form>
+            {sp.preview ? (
+              <p className="hint" role="status">
+                {sp.preview}
+              </p>
+            ) : null}
+          </details>
           <details className="action">
             <summary>Publish a new calendar version</summary>
             <form action={publishCalendarAction} className="stack">
