@@ -33,6 +33,9 @@ BASELINE records never trigger automation in any state.
    Gates are computed from live facts (approved calendar/reasons/policies,
    verified backup + restore, published SOPs, recorded training, UAT result,
    manual fallback readiness, health checks) - they cannot be hand-waved.
+   The UAT gate is set only after stakeholder sign-off of the plan in
+   `UATPlan.md`; the automated synthetic execution
+   (`../delivery/SyntheticUATReport.md`) is supporting evidence.
 2. Propose the activation with the pilot scope and a rollback plan. The
    proposal core is frozen (database trigger) and checksummed.
 3. Record HR Manager approval and System Administrator approval (distinct

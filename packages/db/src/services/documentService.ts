@@ -327,7 +327,12 @@ export async function submitDocument(actor: Actor, docId: string) {
     return prisma.$transaction(async (tx) => {
       const u = await tx.documentInstance.updateMany({
         where: { id: docId, rowVersion: d.rowVersion },
-        data: { status: 'PENDING_APPROVAL', submittedAt: new Date(), rowVersion: { increment: 1 } },
+        data: {
+          status: 'PENDING_APPROVAL',
+          submittedAt: new Date(),
+          submittedById: actor.userId,
+          rowVersion: { increment: 1 },
+        },
       });
       if (u.count === 0) throw ServiceError.conflict('The document changed; reload and retry.');
       await appendAudit(tx, {
@@ -402,6 +407,7 @@ export async function submitDocument(actor: Actor, docId: string) {
         contentSnapshot: content,
         validationErrors: undefined,
         submittedAt: new Date(),
+        submittedById: actor.userId,
         rowVersion: { increment: 1 },
       },
     });
@@ -482,9 +488,17 @@ export async function approveDocument(actor: Actor, docId: string) {
     await auditDenied(actor, 'ACCESS_DENIED', 'DocumentInstance', docId, d.caseId);
     throw ServiceError.forbidden();
   }
-  if (d.createdById === actor.userId)
+  // Maker-checker (UAT-4 finding): the human who VALIDATED AND SUBMITTED this
+  // version is the maker; they can never also be the approver. The mechanical
+  // creator is used only as a fallback for legacy rows submitted before the
+  // submitter was recorded. This keeps supersede-and-recreate workable in a
+  // single-HR-Manager organization (the manager's auto-created corrected
+  // draft is reviewed and submitted by an HR officer, then manager-approved)
+  // without ever allowing one person to both submit and approve.
+  const makerId = d.submittedById ?? d.createdById;
+  if (makerId === actor.userId)
     throw ServiceError.forbidden(
-      'The document creator cannot approve their own document (maker-checker).',
+      'The user who submitted this document for approval cannot also approve it (maker-checker).',
     );
   const guard = docTransitionError('approve', d.status);
   if (guard) throw ServiceError.validation([guard]);

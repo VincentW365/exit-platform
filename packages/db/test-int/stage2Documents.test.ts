@@ -201,3 +201,52 @@ describe('document maker-checker flow', () => {
     });
   });
 });
+
+describe('UAT-4 defect fix: submitter-based maker-checker (Directive 5)', () => {
+  it('supersede-recreated draft works in a single-manager org (submitter is the maker)', async () => {
+    // The audited correction above left a system-created DRAFT replacement.
+    const draft = await prisma.documentInstance.findFirstOrThrow({
+      where: { caseId: testCaseId, status: 'DRAFT' },
+      orderBy: { version: 'desc' },
+    });
+    // The OFFICER validates and submits it - the officer is the maker.
+    await submitDocument(officer.actor, draft.id);
+    // The (only) manager may approve: two distinct humans attested it.
+    await approveDocument(manager.actor, draft.id);
+    const approved = await prisma.documentInstance.findUniqueOrThrow({ where: { id: draft.id } });
+    expect(approved.status).toBe('RENDERED');
+    expect(approved.submittedById).toBe(officer.userId);
+
+    // Manual supersede by the manager reproduces the UAT-4 single-manager
+    // deadlock shape: the corrected draft is created UNDER THE MANAGER.
+    const { supersedeAndRecreate } = await import('../src/services/documentService.ts');
+    const replacement = await supersedeAndRecreate(
+      manager.actor,
+      draft.id,
+      'UAT-4: corrected after an audited case change.',
+    );
+    expect(replacement.createdById).toBe(manager.userId);
+    await submitDocument(officer.actor, replacement.id);
+    await approveDocument(manager.actor, replacement.id); // no deadlock
+  });
+
+  it('keeps the control: the submitter can never also approve', async () => {
+    const { supersedeAndRecreate } = await import('../src/services/documentService.ts');
+    const rendered = await prisma.documentInstance.findFirstOrThrow({
+      where: { caseId: testCaseId, status: 'RENDERED' },
+      orderBy: { version: 'desc' },
+    });
+    const replacement = await supersedeAndRecreate(
+      manager.actor,
+      rendered.id,
+      'UAT-4: second correction to prove the submitter block.',
+    );
+    // The manager submits their own recreated draft, then tries to approve.
+    await submitDocument(manager.actor, replacement.id);
+    await expect(approveDocument(manager.actor, replacement.id)).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+    // A DIFFERENT manager may approve (distinct submitter and approver).
+    await approveDocument(manager2.actor, replacement.id);
+  });
+});

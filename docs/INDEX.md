@@ -37,6 +37,7 @@
 | Delivery | `docs/delivery/Stage2CombinedBuildRecord.md` | Directive 2 build record: documents, action form, exit surveys. |
 | Delivery | `docs/delivery/Stage3OperationalWorkflowBuildRecord.md` | Directive 3 build record: workflows, queues, access control, notifications, assets, handover, clearance. |
 | Delivery | `docs/delivery/Stage4ProductionReadinessBuildRecord.md` | Directive 4 build record: outbox, adapters, pilot operations, reporting, privacy, packaging. |
+| Delivery | `docs/delivery/SyntheticUATReport.md` | Directive 5 synthetic UAT execution: scenarios, defects, fixes, perf smoke, recommendation. |
 | Architecture | `docs/architecture/Architecture.md` | System context and modular-monolith design. |
 | Architecture | `docs/architecture/DomainModel.md` | Domain boundaries and invariants. |
 | Architecture | `docs/architecture/DataModel.md` | Proposed logical entities and relationships. |

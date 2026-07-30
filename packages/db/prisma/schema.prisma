@@ -698,6 +698,9 @@ model DocumentInstance {
   recipientClass   RecipientClass?
   issueNote        String?
   createdById      String         @db.Uuid
+  /// Who validated and submitted this version for approval (maker-checker:
+  /// the submitter can never be the approver). Null only on legacy rows.
+  submittedById    String?        @db.Uuid
   submittedAt      DateTime?
   approvedAt       DateTime?
   renderedAt       DateTime?

@@ -15,6 +15,7 @@ export default defineConfig([
     'test-results/**',
     'coverage/**',
     'storage/**',
+    'tmp/**', // gitignored local scratch (UAT fixtures, perf harness)
   ]),
   ...tseslint.configs.recommended,
   {
@@ -27,7 +28,7 @@ export default defineConfig([
   },
   {
     // The worker and scripts are console applications: structured stdout logging is intentional.
-    files: ['apps/worker/**', 'packages/db/src/seed.ts', 'packages/db/test-int/**'],
+    files: ['apps/worker/**', 'packages/db/src/seed.ts', 'packages/db/test-int/**', 'scripts/**'],
     rules: {
       'no-console': 'off',
     },

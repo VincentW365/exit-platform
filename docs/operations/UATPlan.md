@@ -5,6 +5,15 @@ group, using SYNTHETIC data only (EMP-TEST employees, TEST record purpose).
 Passing this plan is a pilot readiness gate (`readiness.uatPassed` is set by
 the System Administrator only after the HR Manager signs the results).
 
+> **Execution status (Directive 5, 2026-07-30):** an automated synthetic
+> execution of this plan - 14 business scenarios driven through the real UI
+> as the synthetic role accounts - is recorded in
+> `../delivery/SyntheticUATReport.md`, including defects found and fixed.
+> The journeys live in `e2e/uat-scenarios.spec.ts` plus the stage acceptance
+> suites, so every future run repeats the whole plan. Stakeholder (human)
+> UAT sign-off is still required before `readiness.uatPassed` may be set;
+> the automated run does not substitute for it.
+
 ## Participants and prerequisites
 
 | Role | Participant (synthetic account) | Modules |

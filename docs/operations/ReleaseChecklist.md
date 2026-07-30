@@ -43,7 +43,9 @@ test or an unresolved security finding.
 - [ ] All 24 pilot readiness gates PASS; activation proposed and dually
       approved (HR Manager + System Administrator, plus Privacy Officer
       where configured); rollback plan recorded.
-- [ ] UAT signed off (UATPlan.md) and training completions recorded.
+- [ ] UAT signed off (UATPlan.md) and training completions recorded. The
+      automated synthetic execution (docs/delivery/SyntheticUATReport.md)
+      supports but does not replace stakeholder sign-off.
 - [ ] Manual fallback readiness confirmed (`readiness.manualFallbackReady`)
       with the runbook rehearsed once.
 - [ ] Written authorizations on file for every live integration touched
