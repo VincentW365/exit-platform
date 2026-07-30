@@ -5,7 +5,13 @@ import { can, formatInstant } from '@exit/domain';
 import { listConfigItems, searchEmployees } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
-import { createCaseAction } from '../actions';
+import { createCaseAction, createManualEmployeeAction } from '../actions';
+
+const SOURCE_LABEL: Record<string, string> = {
+  SYNTHETIC: 'Synthetic fixture',
+  BAMBOOHR: 'BambooHR (live)',
+  MANUAL: 'Manual entry',
+};
 
 export const metadata: Metadata = { title: 'New case' };
 export const dynamic = 'force-dynamic';
@@ -39,10 +45,14 @@ export default async function NewCasePage({
         </h2>
         <form method="get" className="actions-row" aria-label="Employee search">
           <div className="field" style={{ maxWidth: '22rem' }}>
-            <label htmlFor="emp-q">Search the employee source (name or employee id)</label>
+            <label htmlFor="emp-q">
+              Search the employee source (name, id, department, position or location)
+            </label>
             <input id="emp-q" type="search" name="q" defaultValue={q} required />
             <p className="hint">
-              Synthetic source adapter - BambooHR integration is a Stage 5 decision.
+              Searches the local employee source cache: synthetic fixtures, the read-only BambooHR
+              directory once synchronized, and manual entries. Searches are audited without
+              recording their content.
             </p>
           </div>
           <div style={{ alignSelf: 'end' }}>
@@ -57,7 +67,7 @@ export default async function NewCasePage({
             <div className="table-wrap">
               <table className="data">
                 <caption>
-                  Source: {search.sourceSystem}, retrieved {formatInstant(search.retrievedAt)}
+                  Local employee source cache, queried {formatInstant(search.retrievedAt)}
                 </caption>
                 <thead>
                   <tr>
@@ -66,11 +76,14 @@ export default async function NewCasePage({
                     <th scope="col">Job title</th>
                     <th scope="col">Department</th>
                     <th scope="col">Location</th>
+                    <th scope="col">Source</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Last sync</th>
                   </tr>
                 </thead>
                 <tbody>
                   {search.results.map((e) => (
-                    <tr key={e.sourceId}>
+                    <tr key={`${e.sourceSystem}-${e.sourceId}`}>
                       <td>
                         <a
                           className="button secondary"
@@ -85,6 +98,13 @@ export default async function NewCasePage({
                       <td>{e.jobTitle}</td>
                       <td>{e.department}</td>
                       <td>{e.location}</td>
+                      <td>
+                        <span className="badge badge--neutral">
+                          {SOURCE_LABEL[e.sourceSystem] ?? e.sourceSystem}
+                        </span>
+                      </td>
+                      <td>{e.active ? 'Active' : 'Inactive'}</td>
+                      <td>{e.lastSyncedAt ? formatInstant(e.lastSyncedAt) : 'not synced'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -92,6 +112,28 @@ export default async function NewCasePage({
             </div>
           )
         ) : null}
+
+        <details className="action">
+          <summary>Directory unavailable? Enter the employee manually</summary>
+          <form action={createManualEmployeeAction}>
+            <p className="hint">
+              Manual fallback (audited): the record is stored with source MANUAL and reported by
+              reconciliation until it is matched to the directory. Enter only the minimum work
+              details - never personal addresses or identifiers.
+            </p>
+            <label htmlFor="man-name">Employee name (required)</label>
+            <input id="man-name" name="displayName" required maxLength={120} />
+            <label htmlFor="man-email">Work email</label>
+            <input id="man-email" name="workEmail" type="email" maxLength={200} />
+            <label htmlFor="man-title">Position / job title</label>
+            <input id="man-title" name="jobTitle" maxLength={120} />
+            <label htmlFor="man-dept">Department</label>
+            <input id="man-dept" name="department" maxLength={100} />
+            <label htmlFor="man-loc">Location</label>
+            <input id="man-loc" name="location" maxLength={100} />
+            <button type="submit">Create manual employee entry</button>
+          </form>
+        </details>
       </section>
 
       {selected ? (
@@ -99,6 +141,14 @@ export default async function NewCasePage({
           <h2 id="intake-h" style={{ marginTop: 0 }}>
             Step 2 - intake details for {selected.displayName} ({selected.sourceId})
           </h2>
+          <p className="hint">
+            Source: {SOURCE_LABEL[selected.sourceSystem] ?? selected.sourceSystem}
+            {selected.lastSyncedAt
+              ? `, last synchronized ${formatInstant(selected.lastSyncedAt)}`
+              : ' (not synchronized)'}
+            . Review the pre-populated organizational details before creating the draft - the case
+            is never created automatically from the directory.
+          </p>
           <p className="hint">
             Required fields are marked &quot;(required)&quot;. Times are entered and shown in
             America/Jamaica. A draft is created first; you review it before submitting for HR
@@ -163,7 +213,12 @@ export default async function NewCasePage({
 
             <div className="field">
               <label htmlFor="department">Department (required)</label>
-              <select id="department" name="department" defaultValue={selected.department} required>
+              <select
+                id="department"
+                name="department"
+                defaultValue={selected.department ?? undefined}
+                required
+              >
                 {departments.map((d) => (
                   <option key={d.id} value={d.value}>
                     {d.value}
@@ -173,7 +228,12 @@ export default async function NewCasePage({
             </div>
             <div className="field">
               <label htmlFor="location">Location (required)</label>
-              <select id="location" name="location" defaultValue={selected.location} required>
+              <select
+                id="location"
+                name="location"
+                defaultValue={selected.location ?? undefined}
+                required
+              >
                 {locations.map((l) => (
                   <option key={l.id} value={l.value}>
                     {l.value}

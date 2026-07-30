@@ -38,6 +38,7 @@
 | Delivery | `docs/delivery/Stage3OperationalWorkflowBuildRecord.md` | Directive 3 build record: workflows, queues, access control, notifications, assets, handover, clearance. |
 | Delivery | `docs/delivery/Stage4ProductionReadinessBuildRecord.md` | Directive 4 build record: outbox, adapters, pilot operations, reporting, privacy, packaging. |
 | Delivery | `docs/delivery/SyntheticUATReport.md` | Directive 5 synthetic UAT execution: scenarios, defects, fixes, perf smoke, recommendation. |
+| Delivery | `docs/delivery/BambooHRAndBrandingBuildRecord.md` | Directive 5.1: read-only BambooHR directory, real-data safeguards, approved branding. |
 | Architecture | `docs/architecture/Architecture.md` | System context and modular-monolith design. |
 | Architecture | `docs/architecture/DomainModel.md` | Domain boundaries and invariants. |
 | Architecture | `docs/architecture/DataModel.md` | Proposed logical entities and relationships. |

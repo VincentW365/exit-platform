@@ -27,6 +27,7 @@ export * from './services/emailProviders.ts';
 export * from './services/recipientService.ts';
 export * from './services/identityService.ts';
 export * from './services/bamboohrService.ts';
+export * from './services/directoryService.ts';
 export * from './services/scannerService.ts';
 export * from './services/systemConfigService.ts';
 export * from './services/healthService.ts';

@@ -13,6 +13,7 @@ import {
   changeEffectiveTime,
   correctRecordPurpose,
   createDraft,
+  createManualEmployeeSource,
   recordBaselineEvent,
   removeParticipant,
   ServiceError,
@@ -45,6 +46,31 @@ const opt = (fd: FormData, k: string): string | null => {
   const v = str(fd, k);
   return v === '' ? null : v;
 };
+
+/**
+ * Directive 5.1 E.8: manual employee entry when the directory is unavailable.
+ * The new MANUAL source record is selected immediately for case intake.
+ */
+export async function createManualEmployeeAction(formData: FormData): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  try {
+    const { sourceId } = await createManualEmployeeSource(actor, {
+      displayName: str(formData, 'displayName'),
+      workEmail: str(formData, 'workEmail'),
+      jobTitle: str(formData, 'jobTitle'),
+      department: str(formData, 'department'),
+      location: str(formData, 'location'),
+    });
+    revalidatePath('/cases/new');
+    redirect(
+      `/cases/new?q=${encodeURIComponent(sourceId)}&employee=${encodeURIComponent(sourceId)}`,
+    );
+  } catch (e) {
+    if (e instanceof ServiceError) feedbackRedirect('/cases/new', { err: errText(e) });
+    throw e;
+  }
+}
 
 export async function createCaseAction(formData: FormData): Promise<void> {
   const { actor } = await requireAuth();

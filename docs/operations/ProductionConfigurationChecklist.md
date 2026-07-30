@@ -54,10 +54,15 @@ Legend: **[ENFORCED]** = the config loader refuses to start;
 
 ## BambooHR
 
-- [ ] [ENFORCED] `BAMBOO_MODE=live` requires `BAMBOO_BASE_URL` +
-      `BAMBOO_API_KEY_REF`; otherwise the adapter fails closed.
-- [ ] [MANUAL] Read-only integration identity; written authorization for the
-      field set; sync remains source-record-only (never case snapshots).
+- [ ] [ENFORCED] The raw-key form (`BAMBOOHR_API_KEY`) is REFUSED at startup
+      in production; production access requires the reference-based secret
+      pattern like every other provider.
+- [ ] [MANUAL] Dedicated READ-ONLY BambooHR integration identity provisioned
+      by the HR-system administrator (replace the local personal-style key);
+      written authorization for the approved minimum field set recorded in
+      the Decision Register; sync remains source-record-only (never case
+      snapshots); scheduled sync enabled only by recorded configuration
+      decision.
 
 ## Operations
 

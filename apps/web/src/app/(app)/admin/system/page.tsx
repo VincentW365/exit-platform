@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import {
   breakGlassStatus,
+  directoryTechnicalCounts,
+  getSystemConfigValue,
   listAccessReviews,
   listActiveUsers,
   listBackups,
@@ -8,6 +10,7 @@ import {
   reconciliationReport,
   ServiceError,
 } from '@exit/db';
+import { bambooDirectoryStatus } from '@exit/config';
 import { can, formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
@@ -15,10 +18,12 @@ import {
   accessReviewAction,
   createBackupAction,
   disableUserAction,
+  purgeDirectoryAction,
   reconciliationAction,
   restoreVerifyAction,
   setConfigAction,
   syncEmployeesAction,
+  testDirectoryConnectionAction,
 } from './actions';
 
 export const metadata: Metadata = { title: 'System administration' };
@@ -45,18 +50,24 @@ export default async function SystemAdminPage({
   let backups: Awaited<ReturnType<typeof listBackups>> = [];
   let breakGlass = { enabled: false, note: '' };
   let recon: Awaited<ReturnType<typeof reconciliationReport>> | null = null;
+  let directory: Awaited<ReturnType<typeof directoryTechnicalCounts>> | null = null;
+  let adapterMode = 'fixture';
   try {
-    [config, users, reviews, backups, breakGlass] = await Promise.all([
+    [config, users, reviews, backups, breakGlass, directory] = await Promise.all([
       listSystemConfig(actor),
       listActiveUsers(),
       listAccessReviews(actor),
       listBackups(actor),
       breakGlassStatus(),
+      directoryTechnicalCounts(),
     ]);
+    adapterMode =
+      ((await getSystemConfigValue('bamboohr.mode')) as string) === 'live' ? 'live' : 'fixture';
     recon = await reconciliationReport(actor);
   } catch (e) {
     if (!(e instanceof ServiceError)) throw e;
   }
+  const directoryStatus = bambooDirectoryStatus();
 
   return (
     <>
@@ -132,14 +143,60 @@ export default async function SystemAdminPage({
 
       <section className="panel" aria-labelledby="sync-h">
         <h2 id="sync-h" style={{ marginTop: 0 }}>
-          Employee source (BambooHR fixture adapter)
+          Employee source (BambooHR read-only directory)
         </h2>
+        <p>
+          Credential status:{' '}
+          <span
+            className={`badge ${directoryStatus === 'configured' ? 'badge--success' : directoryStatus === 'invalid configuration' ? 'badge--danger' : 'badge--neutral'}`}
+          >
+            {directoryStatus}
+          </span>{' '}
+          - active adapter: <span className="badge badge--info">{adapterMode}</span>
+          {directory ? (
+            <span className="hint">
+              {' '}
+              {directory.total} cached record(s), {directory.liveRecords} live BambooHR record(s),{' '}
+              {directory.syncRuns} sync run(s).
+            </span>
+          ) : null}
+        </p>
+        <p className="hint">
+          The credential value is never displayed, logged or committed; only the status above is
+          reported. Switch adapters with configuration key <code>bamboohr.mode</code> (fixture |
+          live). The live adapter is strictly READ-ONLY - no write operation exists. Scheduled sync
+          stays disabled unless <code>bamboohr.scheduledSync</code> is explicitly set.
+        </p>
         <form action={syncEmployeesAction} style={{ display: 'inline-block' }}>
-          <button type="submit">Run fixture sync</button>
+          <button type="submit">Run directory sync ({adapterMode} adapter)</button>
+        </form>{' '}
+        <form action={testDirectoryConnectionAction} style={{ display: 'inline-block' }}>
+          <button type="submit" className="secondary">
+            Test connection (read-only)
+          </button>
         </form>{' '}
         <form action={reconciliationAction} style={{ display: 'inline-block' }}>
           <button type="submit">Run reconciliation report</button>
+        </form>{' '}
+        <form action={purgeDirectoryAction} style={{ display: 'inline-block' }}>
+          <button type="submit" className="danger">
+            Purge live directory cache
+          </button>
         </form>
+        {directory && directory.recentRuns.length > 0 ? (
+          <>
+            <h3>Synchronization history</h3>
+            <ul>
+              {directory.recentRuns.map((s, i) => (
+                <li key={i}>
+                  {s.mode} - {formatInstant(s.startedAt)}
+                  {s.finishedAt ? ` to ${formatInstant(s.finishedAt)}` : ''} - {s.createdCount}{' '}
+                  created, {s.updatedCount} updated.
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
         {recon ? (
           <>
             <h3>Latest reconciliation ({recon.adapterMode} adapter)</h3>
@@ -158,7 +215,8 @@ export default async function SystemAdminPage({
         ) : null}
         <p className="hint">
           Sync updates SOURCE records only; immutable case snapshots and approved HR decisions are
-          never touched. Live BambooHR stays disabled without credentials and written authorization.
+          never touched. Missing source employees are reported for reconciliation, never deleted.
+          Purging anonymizes cached live records without touching cases or snapshots.
         </p>
       </section>
 

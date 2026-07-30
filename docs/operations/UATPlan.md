@@ -30,6 +30,13 @@ Prerequisites: seeded development database; training module for the
 participant's role completed (recorded in the Operations centre); this plan
 executed against a build where all automated checks pass.
 
+> **Live directory caution (Directive 5.1):** if the environment shows the
+> red "LIVE HR DIRECTORY DATA" banner, real employee names are present in
+> the employee selector. Do not capture screenshots or attach UAT evidence
+> in that state - purge the live cache from `/admin/system` (or use a
+> freshly seeded database) first. UAT case records must keep using the
+> synthetic EMP-TEST employees.
+
 ## Test sets
 
 Each row is pass/fail with a comment. A FAIL on a bold row blocks UAT

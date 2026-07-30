@@ -19,3 +19,5 @@ export * from './clearance.ts';
 export * from './outbox.ts';
 export * from './pilot.ts';
 export * from './operations.ts';
+export * from './bambooDirectory.ts';
+export * from './branding.ts';

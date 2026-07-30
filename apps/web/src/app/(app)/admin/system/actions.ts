@@ -7,10 +7,12 @@ import {
   createBackup,
   disableUser,
   generateAccessReview,
+  purgeLiveDirectory,
   reconciliationReport,
   restoreAndVerify,
   setSystemConfig,
   syncEmployees,
+  testDirectoryConnection,
 } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { touchSession } from '@/lib/session';
@@ -86,7 +88,50 @@ export async function syncEmployeesAction(): Promise<void> {
     const result = await syncEmployees(actor);
     revalidatePath('/admin/system');
     back({
-      ok: `Employee sync (fixture adapter): ${result.created} created, ${result.updated} updated, ${result.diffs.length} field difference(s) recorded.`,
+      ok: `Employee sync (${result.mode} adapter): ${result.retrieved} retrieved, ${result.created} created, ${result.updated} updated, ${result.unchanged} unchanged, ${result.failed} failed, ${result.diffs.length} difference record(s).`,
+    });
+  } catch (e) {
+    if (e instanceof ServiceError) back({ err: errText(e) });
+    throw e;
+  }
+}
+
+/**
+ * Directive 5.1 L: read-only connection verification. The result is
+ * aggregate-only (counts) and nothing is persisted or logged beyond the
+ * audited technical action.
+ */
+export async function testDirectoryConnectionAction(): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  try {
+    const result = await testDirectoryConnection(actor);
+    revalidatePath('/admin/system');
+    if (result.status === 'ok' && result.aggregates) {
+      const a = result.aggregates;
+      back({
+        ok:
+          `BambooHR connection OK (read-only): ${a.employees} employee(s), ${a.departments} department(s), ` +
+          `${a.positions} position(s), ${a.locations} location(s), ${a.withManager} with manager data, ` +
+          `${a.missingDepartment + a.missingPosition} record(s) with missing mapping. Nothing was stored.`,
+      });
+    }
+    back({ err: `BambooHR connection test: ${result.status} - ${result.detail}` });
+  } catch (e) {
+    if (e instanceof ServiceError) back({ err: errText(e) });
+    throw e;
+  }
+}
+
+/** Directive 5.1 G.5: anonymize the synchronized live directory cache. */
+export async function purgeDirectoryAction(): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  try {
+    const result = await purgeLiveDirectory(actor);
+    revalidatePath('/admin/system');
+    back({
+      ok: `Live directory cache purged: ${result.anonymized} record(s) anonymized (${result.referencedKept} referenced by cases kept as deactivated identifiers). Cases and immutable snapshots untouched.`,
     });
   } catch (e) {
     if (e instanceof ServiceError) back({ err: errText(e) });

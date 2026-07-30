@@ -35,6 +35,7 @@ backups/
 # Sensitive HR/reference materials: never commit
 reference/private/
 docs/private/
+hr-offboarding-sensitive-source/
 exports/
 employee-data/
 case-files/

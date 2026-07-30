@@ -149,7 +149,7 @@ test('Scenario 4 - BambooHR fixture sync and reconciliation', async ({ page }) =
   test.setTimeout(240_000);
   await signInAs(page, 'Marley Thompson');
   await page.goto('/admin/system');
-  await page.getByRole('button', { name: 'Run fixture sync' }).click();
+  await page.getByRole('button', { name: /Run directory sync \(fixture adapter\)/ }).click();
   await expect(page.getByText(/Employee sync \(fixture adapter\)/)).toBeVisible();
   await page.getByRole('button', { name: 'Run reconciliation report' }).click();
   await expect(page.getByText(/Reconciliation: \d+ finding/)).toBeVisible();

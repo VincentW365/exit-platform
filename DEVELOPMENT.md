@@ -145,6 +145,20 @@ ever set in production). All eight synthetic users from the seed are offered.
   `docs/delivery/Stage3OperationalWorkflowBuildRecord.md`.
 - The holiday calendar and reason categories in the seed are **synthetic
   placeholders**; real values require DEC-027 / DEC-031 approval.
+- **BambooHR read-only directory + branding (Directive 5.1):** put
+  `BAMBOOHR_API_KEY` and `BAMBOOHR_SUBDOMAIN` in the gitignored `.env.local`
+  (never `.env.example` or anything committed); the app reports only
+  configured / not configured / invalid configuration. Switch the adapter
+  with configuration key `bamboohr.mode` (`fixture` default | `live`) on
+  `/admin/system`, which also offers a read-only connection test, manual
+  directory sync, sync history, reconciliation and a purge control that
+  anonymizes cached live rows without touching cases. A red banner marks the
+  environment whenever unpurged live rows exist - never capture screenshots
+  or test evidence in that state. Automated tests always use the fixture
+  adapter. The approved logo lives at
+  `apps/web/public/brand/berts-auto-parts.png` (checksum recorded in
+  `packages/domain/src/branding.ts`; `BRAND_LOGO_PATH` overrides for
+  containers); PDFs fall back to the company name if the asset is missing.
 - **Stage 4 features (outbox, adapters, pilot, reporting, privacy,
   continuity, packaging):** the development email mode is `dev-capture` -
   approved notifications on eligible cases are enqueued transactionally and

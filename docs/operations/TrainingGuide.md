@@ -24,6 +24,11 @@ recorded completions feed the pilot readiness gate.
 ### HR Officer (SOP-02, SOP-03, SOP-04)
 
 - Case intake: receipt capture, departure types, record purpose, snapshots.
+- Employee lookup: searching the directory (name, id, department, position,
+  location), source badges and last-sync status, reviewing pre-populated
+  details before creating a draft, and the audited manual-entry fallback
+  when the directory is unavailable. The organization directory view
+  (`/directory`) for case preparation.
 - Controlled documents: generation, approval binding, attestation; why a
   termination letter is impossible.
 - Notifications: preparing drafts, placeholders as minimum-data, submitting

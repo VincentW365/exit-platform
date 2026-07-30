@@ -159,6 +159,12 @@ export const AUDIT_EVENT_TYPES = [
   'IDENTITY_ACCESS_REVIEW',
   'ROLE_EXPIRED_REVOKED',
   'SYNC_RUN_COMPLETED',
+  // Directive 5.1: live read-only directory (searches audited without
+  // content; purge/deactivation and manual source entry are audited actions)
+  'EMPLOYEE_DIRECTORY_SEARCHED',
+  'DIRECTORY_CONNECTION_TESTED',
+  'DIRECTORY_PURGED',
+  'MANUAL_EMPLOYEE_SOURCE_CREATED',
   // Stage 4: taxonomy, calendar, pilot (J-M)
   'REASON_CATEGORY_CHANGED',
   'CALENDAR_APPROVED',

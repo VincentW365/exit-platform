@@ -5,11 +5,47 @@
  * so re-rendering the same version is byte-identical (idempotent).
  */
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import PDFDocument from 'pdfkit';
-import { formatInstant } from '@exit/domain';
+import { BRAND, formatInstant } from '@exit/domain';
+import { getConfig } from '@exit/config';
 import { getStorage, newObjectKey } from '../storage.ts';
 
 const PRODUCER = "Bert's Auto Parts - Offboarding Platform";
+
+/**
+ * Approved brand logo for formal documents (Directive 5.1 H/I). Loaded once
+ * from the controlled BRAND_LOGO_PATH; when the file is missing or unreadable
+ * the header falls back to the company name - document generation NEVER fails
+ * because of branding (I.5).
+ */
+let logoCache: Buffer | null | undefined;
+function brandLogo(): Buffer | null {
+  if (logoCache !== undefined) return logoCache;
+  const configured = getConfig().BRAND_LOGO_PATH;
+  const candidates = [
+    configured,
+    path.resolve(process.cwd(), configured),
+    path.resolve(process.cwd(), '..', '..', configured),
+    path.resolve(process.cwd(), 'public', 'brand', BRAND.logoFileName),
+  ];
+  for (const p of candidates) {
+    try {
+      logoCache = readFileSync(p);
+      return logoCache;
+    } catch {
+      // try the next candidate
+    }
+  }
+  logoCache = null;
+  return null;
+}
+
+/** Test hook: re-evaluate the logo path on the next render. */
+export function resetBrandLogoCacheForTests(): void {
+  logoCache = undefined;
+}
 
 export interface RenderedPdf {
   objectKey: string;
@@ -58,15 +94,17 @@ function collect(doc: InstanceType<typeof PDFDocument>): Promise<Buffer> {
 }
 
 function header(doc: InstanceType<typeof PDFDocument>, confidentiality: string): void {
-  doc.font('Helvetica-Bold').fontSize(14).text("BERT'S AUTO PARTS LTD.", { align: 'left' });
-  doc
-    .font('Helvetica')
-    .fontSize(8)
-    .fillColor('#555555')
-    .text('DEVELOPMENT BRANDING - approved company brand asset required before pilot', {
-      align: 'left',
-    });
-  doc.moveDown(0.3);
+  const logo = brandLogo();
+  if (logo) {
+    // Approved company logo (aspect ratio preserved by `fit`; H.5/I.4). The
+    // native asset is 1184x880, comfortably above print resolution at 96pt.
+    doc.image(logo, doc.page.margins.left, doc.y, { fit: [96, 72] });
+    doc.y += 78;
+  } else {
+    // I.5: text fallback - never fail rendering over branding.
+    doc.font('Helvetica-Bold').fontSize(14).text(BRAND.legalName, { align: 'left' });
+    doc.moveDown(0.3);
+  }
   doc.fillColor('#8a1f11').fontSize(9).font('Helvetica-Bold').text(confidentiality.toUpperCase());
   doc.fillColor('black');
   doc.moveDown(0.8);

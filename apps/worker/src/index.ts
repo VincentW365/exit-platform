@@ -23,6 +23,7 @@ const {
   processOutbox,
   runDueSchedules,
   revokeExpiredRoles,
+  scheduledDirectorySyncIfEnabled,
 } = await import('@exit/db');
 const { randomUUID } = await import('node:crypto');
 
@@ -195,6 +196,12 @@ async function stage4Sweep(): Promise<void> {
     const outbox = await processOutbox(new Date());
     const reports = await runDueSchedules(new Date());
     const expiredRoles = await revokeExpiredRoles(new Date());
+    // Directive 5.1 D.2: prepared scheduled directory sync - a no-op unless
+    // the bamboohr.scheduledSync configuration flag is explicitly enabled.
+    const directorySync = await scheduledDirectorySyncIfEnabled();
+    if (directorySync !== 'disabled') {
+      log('directory_scheduled_sync', { outcome: directorySync }); // counts only, never names
+    }
     // PII-free heartbeat for readiness gates and the health dashboard.
     await prisma.systemConfig.upsert({
       where: { key: 'worker.lastHeartbeat' },

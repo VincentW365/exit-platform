@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getConfig } from '@exit/config';
+import { BRAND } from '@exit/domain';
 import { listActiveUsers } from '@exit/db';
 import { currentUser } from '@/lib/session';
 import { Feedback } from '@/components/ui';
@@ -20,7 +21,15 @@ export default async function SignInPage({
 
   return (
     <main id="main" style={{ maxWidth: '40rem' }}>
-      <h1>Offboarding Platform - sign in</h1>
+      {/* eslint-disable-next-line @next/next/no-img-element -- static brand asset */}
+      <img
+        src={BRAND.logoWebPath}
+        alt={BRAND.logoAlt}
+        className="signin-logo"
+        width={BRAND.logoWidth}
+        height={BRAND.logoHeight}
+      />
+      <h1 style={{ textAlign: 'center' }}>Offboarding Platform - sign in</h1>
       <Feedback err={err} />
       {config.devLoginEnabled ? (
         <section className="panel" aria-labelledby="dev-login-h">

@@ -111,10 +111,160 @@ async function allocateCaseNumber(
 
 // --- employee search ---------------------------------------------------------
 
+export interface EmployeeSearchRow {
+  sourceSystem: string;
+  sourceId: string;
+  displayName: string;
+  workEmail: string | null;
+  jobTitle: string | null;
+  department: string | null;
+  location: string | null;
+  active: boolean;
+  lastSyncedAt: Date | null;
+}
+
+const PURGED_SOURCE_PREFIX = 'PURGED-';
+
+/**
+ * Directive 5.1 E.1: search the local employee-source cache (synthetic, live
+ * BambooHR and manual rows) by name, identifier, department, position or
+ * location; the in-memory synthetic fixtures remain available even before any
+ * sync. Searches are audited WITHOUT recording the query or result content
+ * (G.8).
+ */
 export async function searchEmployees(actor: Actor, query: string) {
   if (!can(actor, 'employeeSource.search')) throw ServiceError.forbidden();
-  const results = await employeeSource.search(query);
-  return { retrievedAt: new Date(), sourceSystem: employeeSource.sourceSystem, results };
+  const q = query.trim();
+  const prisma = getPrisma();
+  const dbRows = q
+    ? await prisma.employeeSourceRecord.findMany({
+        where: {
+          NOT: { displayName: { startsWith: PURGED_SOURCE_PREFIX } },
+          OR: [
+            { displayName: { contains: q, mode: 'insensitive' } },
+            { sourceId: { contains: q, mode: 'insensitive' } },
+            { department: { contains: q, mode: 'insensitive' } },
+            { jobTitle: { contains: q, mode: 'insensitive' } },
+            { location: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+        orderBy: { displayName: 'asc' },
+        take: 25,
+      })
+    : [];
+  const results: EmployeeSearchRow[] = dbRows.map((r) => ({
+    sourceSystem: r.sourceSystem,
+    sourceId: r.sourceId,
+    displayName: r.displayName,
+    workEmail: r.workEmail,
+    jobTitle: r.jobTitle,
+    department: r.department,
+    location: r.location,
+    active: ((r.payload as { active?: boolean } | null)?.active ?? true) === true,
+    lastSyncedAt: r.retrievedAt,
+  }));
+  // Synthetic fixtures not yet cached in the database stay findable.
+  const known = new Set(results.map((r) => r.sourceId));
+  for (const e of await employeeSource.search(q)) {
+    if (known.has(e.sourceId)) continue;
+    results.push({
+      sourceSystem: e.sourceSystem,
+      sourceId: e.sourceId,
+      displayName: e.displayName,
+      workEmail: e.workEmail,
+      jobTitle: e.jobTitle,
+      department: e.department,
+      location: e.location,
+      active: true,
+      lastSyncedAt: null,
+    });
+  }
+  await appendAudit(prisma, {
+    eventType: 'EMPLOYEE_DIRECTORY_SEARCHED',
+    actorType: 'USER',
+    actorId: actor.userId,
+    effectiveRoles: actor.roles,
+    objectType: 'EmployeeSourceRecord',
+    objectId: 'search',
+    result: 'SUCCESS',
+    correlationId: newCorrelationId(),
+    // G.8: no query text and no result content - sizes only.
+    metadata: { queryLength: q.length, resultCount: results.length },
+  });
+  return { retrievedAt: new Date(), results };
+}
+
+/**
+ * Resolve a selected employee: local source cache first (live/manual rows),
+ * synthetic fixtures as fallback. Purged live rows never resolve.
+ */
+async function lookupEmployeeSource(sourceId: string) {
+  const row = await getPrisma().employeeSourceRecord.findFirst({
+    where: { sourceId, NOT: { displayName: { startsWith: PURGED_SOURCE_PREFIX } } },
+    orderBy: { retrievedAt: 'desc' },
+  });
+  if (row) {
+    return {
+      sourceSystem: row.sourceSystem,
+      sourceId: row.sourceId,
+      displayName: row.displayName,
+      workEmail: row.workEmail ?? '',
+      jobTitle: row.jobTitle ?? '',
+      department: row.department ?? '',
+      location: row.location ?? '',
+    };
+  }
+  return employeeSource.getById(sourceId);
+}
+
+const manualEmployeeSchema = z.object({
+  displayName: shortText(120).min(1),
+  workEmail: z.union([z.literal(''), z.string().trim().email().max(200)]).optional(),
+  jobTitle: shortText(120).optional(),
+  department: shortText(100).optional(),
+  location: shortText(100).optional(),
+});
+
+/**
+ * Directive 5.1 E.8: manual-entry fallback when the directory source is
+ * unavailable. The record is clearly marked MANUAL for later reconciliation.
+ */
+export async function createManualEmployeeSource(actor: Actor, rawInput: unknown) {
+  if (!can(actor, 'case.create')) throw ServiceError.forbidden();
+  const parsed = manualEmployeeSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    throw ServiceError.validation(
+      parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
+    );
+  }
+  const input = parsed.data;
+  const prisma = getPrisma();
+  const sourceId = `MAN-${new Date().getUTCFullYear()}-${newCorrelationId().slice(0, 8)}`;
+  const record = await prisma.employeeSourceRecord.create({
+    data: {
+      sourceSystem: 'MANUAL',
+      sourceId,
+      displayName: input.displayName,
+      workEmail: input.workEmail || null,
+      jobTitle: input.jobTitle || null,
+      department: input.department || null,
+      location: input.location || null,
+      retrievedAt: new Date(),
+      payload: { active: true, manualEntry: true, enteredById: actor.userId },
+    },
+  });
+  await appendAudit(prisma, {
+    eventType: 'MANUAL_EMPLOYEE_SOURCE_CREATED',
+    actorType: 'USER',
+    actorId: actor.userId,
+    effectiveRoles: actor.roles,
+    objectType: 'EmployeeSourceRecord',
+    objectId: record.id,
+    result: 'SUCCESS',
+    correlationId: newCorrelationId(),
+    metadata: { sourceId },
+  });
+  return { sourceId };
 }
 
 // --- create ------------------------------------------------------------------
@@ -132,7 +282,7 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
   }
   const input = parsed.data;
 
-  const employee = await employeeSource.getById(input.employeeSourceId);
+  const employee = await lookupEmployeeSource(input.employeeSourceId);
   if (!employee) throw ServiceError.validation(['Selected employee was not found in the source.']);
   const retrievedAt = new Date();
 

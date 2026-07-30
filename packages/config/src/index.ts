@@ -63,6 +63,18 @@ const envSchema = z.object({
   /// is derived from SESSION_SECRET (documented development fallback).
   DATA_KEY: z.string().min(32).optional(),
   APP_BASE_URL: z.string().min(1).default('http://localhost:3000'),
+  // Directive 5.1 (section A): local read-only BambooHR directory credential.
+  // The VALUE is never logged, surfaced or committed; status reporting uses
+  // bambooDirectoryStatus() which returns a category only. Production refuses
+  // this raw-key form entirely (reference-based configuration is required
+  // there), so the existing fail-closed posture is unchanged.
+  BAMBOOHR_API_KEY: z.string().optional(),
+  BAMBOOHR_SUBDOMAIN: z.string().optional(),
+  // Directive 5.1 (section H.13/H.14): controlled branding configuration. The
+  // logo can be replaced by pointing this at a new asset without touching
+  // document templates; when the file is unreadable, rendering falls back to
+  // the company name instead of failing.
+  BRAND_LOGO_PATH: z.string().min(1).default('apps/web/public/brand/berts-auto-parts.png'),
 });
 
 export type AppConfig = Readonly<
@@ -179,6 +191,15 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         );
       }
     }
+    if (c.BAMBOOHR_API_KEY) {
+      // Raw secret values are never accepted in production environment files
+      // (fixed default 9/10): production BambooHR access requires the
+      // reference-based configuration pattern like every other provider.
+      throw new ConfigError(
+        'FATAL: BAMBOOHR_API_KEY (a raw secret) is not permitted in production; ' +
+          'use a credential reference via the secret manager instead.',
+      );
+    }
   }
 
   return Object.freeze({
@@ -199,6 +220,14 @@ export function loadRootEnvFile(startDir: string): void {
     const candidate = `${dir}/.env`;
     try {
       process.loadEnvFile(candidate);
+      // Also load the gitignored .env.local beside it (local-only secrets
+      // such as the BambooHR directory credential). Existing variables are
+      // never overridden; a missing file is normal.
+      try {
+        process.loadEnvFile(`${dir}/.env.local`);
+      } catch {
+        // no .env.local - fine
+      }
       return;
     } catch {
       // keep walking up
@@ -207,6 +236,21 @@ export function loadRootEnvFile(startDir: string): void {
     if (parent === dir) return;
     dir = parent;
   }
+}
+
+/**
+ * Directive 5.1 A.8: report the BambooHR directory configuration state as a
+ * CATEGORY only - the credential value is never included in any message.
+ */
+export type BambooDirectoryStatus = 'configured' | 'not configured' | 'invalid configuration';
+
+export function bambooDirectoryStatus(config: AppConfig = getConfig()): BambooDirectoryStatus {
+  const key = config.BAMBOOHR_API_KEY?.trim() ?? '';
+  const subdomain = config.BAMBOOHR_SUBDOMAIN?.trim() ?? '';
+  if (!key && !subdomain) return 'not configured';
+  if (!key || !subdomain) return 'invalid configuration';
+  if (key.length < 20 || !/^[a-z0-9][a-z0-9-]*$/i.test(subdomain)) return 'invalid configuration';
+  return 'configured';
 }
 
 let cached: AppConfig | undefined;

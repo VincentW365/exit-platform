@@ -19,3 +19,7 @@ docs/source
 **/*.pem
 **/*.key
 coverage
+tmp
+hr-offboarding-sensitive-source
+**/*.docx
+**/*.doc

@@ -118,6 +118,19 @@ h3 {
   font-size: 1.05rem;
   color: #fff;
   text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+/* Approved brand logo (Directive 5.1 H): fixed height, intrinsic aspect
+   ratio, white plate so the mark stays legible on the dark header. */
+.site-header__logo {
+  height: 36px;
+  width: auto;
+  display: block;
+  background: #fff;
+  border-radius: 4px;
+  padding: 2px 4px;
 }
 .site-nav {
   display: flex;
@@ -151,6 +164,20 @@ h3 {
   text-align: center;
   padding: 0.3rem 1rem;
   font-size: 0.85rem;
+}
+/* Directive 5.1 G.4: unmistakable live-directory warning. */
+.env-banner--live {
+  background: #8a1f11;
+  color: #fff;
+  border-bottom: 1px solid #5c130a;
+  font-weight: 700;
+}
+/* Sign-in branding (Directive 5.1 H.8). */
+.signin-logo {
+  height: 72px;
+  width: auto;
+  display: block;
+  margin: 0 auto 0.75rem;
 }
 
 main {
