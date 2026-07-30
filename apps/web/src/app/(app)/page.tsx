@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { can, formatInstant, hasRole } from '@exit/domain';
-import { assignedFormQueue, hrDashboard, stage2Dashboard } from '@exit/db';
+import { assignedFormQueue, hrDashboard, stage2Dashboard, stage3Dashboard } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { BaselineBanner, ClassificationBadge, StatusBadge } from '@/components/ui';
 
@@ -18,6 +18,18 @@ export default async function DashboardPage() {
     return (
       <>
         <h1>Welcome, {user.displayName}</h1>
+        {can(actor, 'queue.view') ? (
+          <section className="panel" aria-labelledby="queue-link-h">
+            <h2 id="queue-link-h" style={{ marginTop: 0 }}>
+              Your department work queue
+            </h2>
+            <p>
+              Offboarding tasks assigned to your department are in{' '}
+              <Link href="/queue">My queue</Link>. Tasks show only the minimum information needed to
+              complete the work.
+            </p>
+          </section>
+        ) : null}
         {assigned.length > 0 ? (
           <section className="panel" aria-labelledby="assigned-h">
             <h2 id="assigned-h" style={{ marginTop: 0 }}>
@@ -78,7 +90,14 @@ export default async function DashboardPage() {
 
   const dash = await hrDashboard(actor);
   const s2 = await stage2Dashboard(actor);
-  const statusOrder = ['DRAFT', 'PENDING_HR_REVIEW', 'APPROVED'] as const;
+  const s3 = await stage3Dashboard(actor);
+  const statusOrder = [
+    'DRAFT',
+    'PENDING_HR_REVIEW',
+    'APPROVED',
+    'ACTIVE',
+    'CLEARANCE_REVIEW',
+  ] as const;
   const q = s2.queues;
   const m = s2.metrics;
   const exceptions = [
@@ -183,6 +202,132 @@ export default async function DashboardPage() {
             </table>
           </div>
         )}
+      </section>
+
+      <section className="panel" aria-labelledby="wf-h">
+        <h2 id="wf-h" style={{ marginTop: 0 }}>
+          Workflow operations
+        </h2>
+        <div className="actions-row">
+          {(
+            [
+              ['Active workflows', s3.queues.activeWorkflows, 'badge--info'],
+              ['Tasks due today', s3.queues.tasksDueToday, 'badge--warning'],
+              ['Tasks due this week', s3.queues.tasksDueThisWeek, 'badge--neutral'],
+              ['Overdue tasks', s3.queues.overdueTasks, 'badge--danger'],
+              ['Critical access tasks', s3.queues.criticalAccessTasks.length, 'badge--danger'],
+              ['Blocked tasks', s3.queues.blockedTasks, 'badge--warning'],
+              ['Unassigned manager tasks', s3.queues.pendingDepartmentOwnership, 'badge--warning'],
+              [
+                'Notifications awaiting approval',
+                s3.queues.notificationsAwaitingApproval,
+                'badge--warning',
+              ],
+              [
+                'Notifications ready for manual send',
+                s3.queues.notificationsReadyForManualSend,
+                'badge--info',
+              ],
+              ['Assets outstanding', s3.queues.assetsOutstanding, 'badge--warning'],
+              ['Asset exceptions', s3.queues.assetExceptions, 'badge--warning'],
+              ['Handovers outstanding', s3.queues.handoversOutstanding, 'badge--warning'],
+              ['Cases ready for clearance', s3.queues.casesReadyForClearance, 'badge--success'],
+              [
+                'Cases blocked from clearance',
+                s3.queues.casesBlockedFromClearance,
+                'badge--danger',
+              ],
+              ['Completed cases', s3.queues.completedCases, 'badge--success'],
+            ] as const
+          ).map(([label, count, cls]) => (
+            <p key={label} style={{ margin: 0 }}>
+              <span className={`badge ${cls}`}>{label}</span>{' '}
+              <strong style={{ fontSize: '1.3rem' }}>{count}</strong>
+            </p>
+          ))}
+        </div>
+        {s3.queues.criticalAccessTasks.length > 0 ? (
+          <>
+            <h3>Critical access-revocation tasks</h3>
+            <ul>
+              {s3.queues.criticalAccessTasks.map((t) => (
+                <li key={t.id}>
+                  <span className="badge badge--danger">CRITICAL</span>{' '}
+                  <Link href={`/tasks/${t.id}`}>{t.title}</Link> -{' '}
+                  <Link href={`/cases/${t.case.id}/workflow`}>{t.case.caseNumber}</Link> - due{' '}
+                  {t.dueAt ? formatInstant(t.dueAt) : '-'} ({t.status}, escalation level{' '}
+                  {t.escalationLevel})
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
+        <dl className="kv" style={{ marginTop: '0.75rem' }}>
+          <dt>Task SLA compliance</dt>
+          <dd>
+            {s3.reports.taskSlaCompliance.onTime}/{s3.reports.taskSlaCompliance.measured} on time (
+            {s3.reports.taskSlaCompliance.pct ?? '-'}%)
+          </dd>
+          <dt>Median completion hours by department</dt>
+          <dd>
+            {Object.entries(s3.reports.medianCompletionHoursByDepartment)
+              .map(([d, h]) => `${d}: ${h ?? '-'}h`)
+              .join('; ') || '-'}
+          </dd>
+          <dt>Access-revocation timeliness</dt>
+          <dd>
+            {s3.reports.accessRevocationTimeliness.completed} completed;{' '}
+            {s3.reports.accessRevocationTimeliness.late} late (on time{' '}
+            {s3.reports.accessRevocationTimeliness.onTimePct ?? '-'}%); max delay{' '}
+            {s3.reports.accessRevocationTimeliness.maxDelayMinutes} min
+          </dd>
+          <dt>Notification timeliness</dt>
+          <dd>
+            median prep-to-approval{' '}
+            {s3.reports.notificationTimeliness.medianPrepToApprovalHours ?? '-'}h; median
+            ready-to-manual-send{' '}
+            {s3.reports.notificationTimeliness.medianReadyToManualSendHours ?? '-'}h (manual-send
+            recording only - no provider delivery exists or is claimed); corrections: superseded{' '}
+            {s3.reports.notificationCorrections.superseded}, approvals invalidated{' '}
+            {s3.reports.notificationCorrections.approvalsInvalidated}
+          </dd>
+          <dt>Assets</dt>
+          <dd>
+            documentation rate {s3.reports.assets.documentationRatePct ?? '-'}% (
+            {s3.reports.assets.documentedCount}/{s3.reports.assets.requiredCount}); physical
+            recovery rate {s3.reports.assets.physicalRecoveryRatePct ?? '-'}% (
+            {s3.reports.assets.physicallyReturned}/{s3.reports.assets.physicalDenominator},
+            NOT_ISSUED excluded) - never a payroll effect
+          </dd>
+          <dt>Handover completion</dt>
+          <dd>
+            {s3.reports.handoverCompletion.satisfied}/{s3.reports.handoverCompletion.required} (
+            {s3.reports.handoverCompletion.pct ?? '-'}%)
+          </dd>
+          <dt>Cycle times</dt>
+          <dd>
+            clearance median {s3.reports.clearanceCycleDays.median ?? '-'} day(s) (
+            {s3.reports.clearanceCycleDays.count} case(s)); end-to-end median{' '}
+            {s3.reports.endToEndCycleDays.median ?? '-'} day(s)
+          </dd>
+          <dt>Overdue ageing</dt>
+          <dd>
+            &lt;1d: {s3.reports.overdueAgeing.underOneDay}; 1-3d:{' '}
+            {s3.reports.overdueAgeing.oneToThreeDays}; 3-7d:{' '}
+            {s3.reports.overdueAgeing.threeToSevenDays}; &gt;7d:{' '}
+            {s3.reports.overdueAgeing.overSevenDays}
+          </dd>
+          <dt>Waivers and overrides</dt>
+          <dd>
+            task waivers {s3.reports.waiversAndOverrides.taskWaivers}; task corrections{' '}
+            {s3.reports.waiversAndOverrides.taskCorrections}
+          </dd>
+        </dl>
+        <p className="hint">
+          Workflow reporting covers OPERATIONAL records only; TRAINING/TEST records are excluded.
+          Restricted-case data is filtered by your access. See <Link href="/queue">My queue</Link>{' '}
+          and the <Link href="/exceptions">exception feed</Link>.
+        </p>
       </section>
 
       <section className="panel" aria-labelledby="work-h">

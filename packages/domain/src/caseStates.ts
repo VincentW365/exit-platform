@@ -30,7 +30,19 @@ export const DEPARTURE_TYPES = [
 
 export type DepartureType = (typeof DEPARTURE_TYPES)[number];
 
-export type CaseTransitionAction = 'submit' | 'return' | 'approve' | 'cancel' | 'void';
+export type CaseTransitionAction =
+  | 'submit'
+  | 'return'
+  | 'approve'
+  | 'cancel'
+  | 'void'
+  | 'activate'
+  | 'hold'
+  | 'resume'
+  | 'requestClearance'
+  | 'clearanceReturn'
+  | 'complete'
+  | 'reopen';
 
 interface TransitionRule {
   readonly from: readonly CaseStatus[];
@@ -39,17 +51,34 @@ interface TransitionRule {
   readonly requiresReason: boolean;
 }
 
-/** Stage 1 transitions. Everything not listed is forbidden at this stage. */
+/**
+ * Case transitions. Stage 1 defined the intake segment; Stage 3 (Directive 3)
+ * adds the operational segment: activate -> hold/resume -> clearance ->
+ * complete -> reopen, and widens cancel/void to operational statuses (C.4/C.5).
+ * Everything not listed is forbidden.
+ */
 export const STAGE1_TRANSITIONS: Readonly<Record<CaseTransitionAction, TransitionRule>> = {
   submit: { from: ['DRAFT'], to: 'PENDING_HR_REVIEW', requiresReason: false },
   return: { from: ['PENDING_HR_REVIEW'], to: 'DRAFT', requiresReason: true },
   approve: { from: ['PENDING_HR_REVIEW'], to: 'APPROVED', requiresReason: false },
   cancel: {
-    from: ['DRAFT', 'PENDING_HR_REVIEW', 'APPROVED'],
+    from: ['DRAFT', 'PENDING_HR_REVIEW', 'APPROVED', 'ACTIVE', 'ON_HOLD', 'REOPENED'],
     to: 'CANCELLED',
     requiresReason: true,
   },
-  void: { from: ['DRAFT', 'PENDING_HR_REVIEW', 'APPROVED'], to: 'VOIDED', requiresReason: true },
+  void: {
+    from: ['DRAFT', 'PENDING_HR_REVIEW', 'APPROVED', 'ACTIVE', 'ON_HOLD', 'REOPENED'],
+    to: 'VOIDED',
+    requiresReason: true,
+  },
+  // Stage 3 operational segment (Directive 3 sections C, E, O).
+  activate: { from: ['APPROVED'], to: 'ACTIVE', requiresReason: false },
+  hold: { from: ['ACTIVE'], to: 'ON_HOLD', requiresReason: true },
+  resume: { from: ['ON_HOLD'], to: 'ACTIVE', requiresReason: true },
+  requestClearance: { from: ['ACTIVE'], to: 'CLEARANCE_REVIEW', requiresReason: false },
+  clearanceReturn: { from: ['CLEARANCE_REVIEW'], to: 'ACTIVE', requiresReason: true },
+  complete: { from: ['CLEARANCE_REVIEW'], to: 'COMPLETED', requiresReason: false },
+  reopen: { from: ['COMPLETED'], to: 'REOPENED', requiresReason: true },
 };
 
 export interface TransitionCheck {

@@ -35,6 +35,7 @@
 | Templates | `docs/templates/DocumentOutputSpecification.md` | Output-format options, rendering standard and branding rules (proposed). |
 | Delivery | `docs/delivery/Stage2DocumentReadinessReport.md` | Directive 1.2 readiness verdict and exact Directive 2 preconditions. |
 | Delivery | `docs/delivery/Stage2CombinedBuildRecord.md` | Directive 2 build record: documents, action form, exit surveys. |
+| Delivery | `docs/delivery/Stage3OperationalWorkflowBuildRecord.md` | Directive 3 build record: workflows, queues, access control, notifications, assets, handover, clearance. |
 | Architecture | `docs/architecture/Architecture.md` | System context and modular-monolith design. |
 | Architecture | `docs/architecture/DomainModel.md` | Domain boundaries and invariants. |
 | Architecture | `docs/architecture/DataModel.md` | Proposed logical entities and relationships. |

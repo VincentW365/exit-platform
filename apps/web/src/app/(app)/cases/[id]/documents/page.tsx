@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { formatInstant } from '@exit/domain';
+import { formatInstant, letterTypeForDeparture } from '@exit/domain';
 import { ServiceError, getCase, getCaseDocuments, listAttachments } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { Feedback, RestrictedBanner } from '@/components/ui';
@@ -71,10 +71,13 @@ export default async function CaseDocumentsPage({
 
       {docsData.capabilities.canCreate && (
         <section className="panel actions-row" aria-label="Create documents">
-          <form action={createLetterAction}>
-            <input type="hidden" name="caseId" value={id} />
-            <button type="submit">Create resignation document draft</button>
-          </form>
+          {/* H.1 (Directive 3): no letter path exists for terminations. */}
+          {letterTypeForDeparture(c.departureType) !== null ? (
+            <form action={createLetterAction}>
+              <input type="hidden" name="caseId" value={id} />
+              <button type="submit">Create resignation document draft</button>
+            </form>
+          ) : null}
           <details className="action">
             <summary>Create manual-exception document</summary>
             <form action={createExceptionAction} className="stack">

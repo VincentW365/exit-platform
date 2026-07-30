@@ -7,9 +7,26 @@ import {
   type CaseTransitionAction,
 } from '../src/caseStates.ts';
 
-const ACTIONS: readonly CaseTransitionAction[] = ['submit', 'return', 'approve', 'cancel', 'void'];
+const ACTIONS: readonly CaseTransitionAction[] = [
+  'submit',
+  'return',
+  'approve',
+  'cancel',
+  'void',
+  'activate',
+  'hold',
+  'resume',
+  'requestClearance',
+  'clearanceReturn',
+  'complete',
+  'reopen',
+];
 
-/** The complete allowed matrix for Stage 1; everything else must be rejected. */
+/**
+ * The complete allowed matrix: the Stage 1 intake segment plus the Stage 3
+ * operational segment (Directive 3 C.4/C.5 widened cancel/void to operational
+ * statuses). Everything else must be rejected.
+ */
 const ALLOWED: ReadonlyArray<[CaseTransitionAction, CaseStatus]> = [
   ['submit', 'DRAFT'],
   ['return', 'PENDING_HR_REVIEW'],
@@ -17,12 +34,25 @@ const ALLOWED: ReadonlyArray<[CaseTransitionAction, CaseStatus]> = [
   ['cancel', 'DRAFT'],
   ['cancel', 'PENDING_HR_REVIEW'],
   ['cancel', 'APPROVED'],
+  ['cancel', 'ACTIVE'],
+  ['cancel', 'ON_HOLD'],
+  ['cancel', 'REOPENED'],
   ['void', 'DRAFT'],
   ['void', 'PENDING_HR_REVIEW'],
   ['void', 'APPROVED'],
+  ['void', 'ACTIVE'],
+  ['void', 'ON_HOLD'],
+  ['void', 'REOPENED'],
+  ['activate', 'APPROVED'],
+  ['hold', 'ACTIVE'],
+  ['resume', 'ON_HOLD'],
+  ['requestClearance', 'ACTIVE'],
+  ['clearanceReturn', 'CLEARANCE_REVIEW'],
+  ['complete', 'CLEARANCE_REVIEW'],
+  ['reopen', 'COMPLETED'],
 ];
 
-describe('Stage 1 case state machine', () => {
+describe('case state machine (Stage 1 intake + Stage 3 operational segment)', () => {
   it('permits exactly the approved transitions and forbids every other combination', () => {
     for (const action of ACTIONS) {
       for (const status of CASE_STATUSES) {
@@ -39,23 +69,30 @@ describe('Stage 1 case state machine', () => {
     expect(checkTransition('return', 'PENDING_HR_REVIEW', 'fix dates').to).toBe('DRAFT');
     expect(checkTransition('cancel', 'DRAFT', 'duplicate').to).toBe('CANCELLED');
     expect(checkTransition('void', 'APPROVED', 'entered in error').to).toBe('VOIDED');
+    expect(checkTransition('activate', 'APPROVED', undefined).to).toBe('ACTIVE');
+    expect(checkTransition('hold', 'ACTIVE', 'legal query pending').to).toBe('ON_HOLD');
+    expect(checkTransition('resume', 'ON_HOLD', 'query resolved').to).toBe('ACTIVE');
+    expect(checkTransition('requestClearance', 'ACTIVE', undefined).to).toBe('CLEARANCE_REVIEW');
+    expect(checkTransition('complete', 'CLEARANCE_REVIEW', undefined).to).toBe('COMPLETED');
+    expect(checkTransition('reopen', 'COMPLETED', 'late evidence').to).toBe('REOPENED');
   });
 
-  it('requires a reason for return, cancel and void', () => {
+  it('requires a reason for return, cancel, void, hold, resume and reopen', () => {
     expect(checkTransition('return', 'PENDING_HR_REVIEW', '').ok).toBe(false);
     expect(checkTransition('cancel', 'DRAFT', '   ').ok).toBe(false);
     expect(checkTransition('void', 'DRAFT', undefined).ok).toBe(false);
+    expect(checkTransition('hold', 'ACTIVE', '').ok).toBe(false);
+    expect(checkTransition('resume', 'ON_HOLD', undefined).ok).toBe(false);
+    expect(checkTransition('reopen', 'COMPLETED', '').ok).toBe(false);
     expect(checkTransition('submit', 'DRAFT', undefined).ok).toBe(true);
   });
 
-  it('rejects Stage 3 workflow states outright (no partial engine)', () => {
-    for (const status of ['ACTIVE', 'CLEARANCE_REVIEW', 'ON_HOLD', 'REOPENED'] as const) {
-      for (const action of ACTIONS) {
-        expect(checkTransition(action, status, 'reason').ok, `${action} from ${status}`).toBe(
-          false,
-        );
-      }
-    }
+  it('operational states accept only their own actions (no shortcuts)', () => {
+    expect(checkTransition('approve', 'ACTIVE', 'x').ok).toBe(false);
+    expect(checkTransition('activate', 'ACTIVE', undefined).ok).toBe(false); // no double activation
+    expect(checkTransition('complete', 'ACTIVE', undefined).ok).toBe(false); // clearance gate first
+    expect(checkTransition('cancel', 'CLEARANCE_REVIEW', 'x').ok).toBe(false); // return first
+    expect(checkTransition('reopen', 'CANCELLED', 'x').ok).toBe(false);
   });
 });
 

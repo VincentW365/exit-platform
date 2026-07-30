@@ -42,14 +42,30 @@ export async function setFlag(actor: Actor, key: string, enabled: boolean, reaso
 // --- business calendar (DEC-027 / IC-S1-007) ---------------------------------
 
 export async function getActiveCalendar(): Promise<BusinessCalendar> {
+  return (await getActiveCalendarInfo()).calendar;
+}
+
+/**
+ * Stage 3 (Directive 3 section E): due-date provenance needs the calendar
+ * VERSION alongside the calendar itself.
+ */
+export async function getActiveCalendarInfo(): Promise<{
+  calendar: BusinessCalendar;
+  version: number;
+  name: string;
+}> {
   const cal = await getPrisma().holidayCalendar.findFirst({
     where: { isActive: true },
     orderBy: { version: 'desc' },
     include: { holidays: true },
   });
   return {
-    timezone: cal?.timezone ?? 'America/Jamaica',
-    holidays: (cal?.holidays ?? []).map((h) => ({ date: h.date, label: h.label })),
+    calendar: {
+      timezone: cal?.timezone ?? 'America/Jamaica',
+      holidays: (cal?.holidays ?? []).map((h) => ({ date: h.date, label: h.label })),
+    },
+    version: cal?.version ?? 0,
+    name: cal?.name ?? '(no active calendar)',
   };
 }
 

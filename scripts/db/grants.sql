@@ -42,7 +42,18 @@ GRANT SELECT, INSERT, UPDATE ON
   survey_template,
   survey_question,
   survey_invitation,
-  render_job
+  render_job,
+  workflow_definition,
+  workflow_task_definition,
+  workflow_instance,
+  workflow_task,
+  notification_template,
+  notification_record,
+  asset_catalogue_item,
+  issued_asset,
+  asset_recovery_item,
+  handover_record,
+  case_exception
 TO exit_app;
 
 -- Attestations: insert + read + update (update restricted by trigger to the
@@ -51,6 +62,10 @@ GRANT SELECT, INSERT, UPDATE ON attestation TO exit_app;
 
 -- Survey responses/answers: append-only evidence (no UPDATE, no DELETE).
 GRANT SELECT, INSERT ON survey_response, survey_answer TO exit_app;
+
+-- Stage 3 append-only evidence: clearance approvals, task corrections and
+-- development notification captures can be written once, never changed.
+GRANT SELECT, INSERT ON task_correction, clearance_record, notification_capture TO exit_app;
 
 -- Append-only evidence: read and insert only. UPDATE/DELETE are refused at
 -- the privilege layer (this file) AND by triggers (migration) - two

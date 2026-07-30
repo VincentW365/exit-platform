@@ -211,9 +211,12 @@ async function main(): Promise<void> {
   }
 
   await seedStage2(prisma);
+  const { seedStage3 } = await import('./seedStage3.ts');
+  await seedStage3(prisma);
 
   console.log(
-    'Seed complete: synthetic users, flags (all disabled), calendar, reasons, org lists, DEV templates, DEV exit survey.',
+    'Seed complete: synthetic users, flags (all disabled), calendar, reasons, org lists, ' +
+      'DEV templates, DEV exit survey, DEV workflows, DEV notification templates, synthetic assets.',
   );
 }
 

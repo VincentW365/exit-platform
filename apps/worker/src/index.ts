@@ -14,7 +14,7 @@ import { loadRootEnvFile, getConfig } from '@exit/config';
 
 loadRootEnvFile(import.meta.dirname);
 
-const { getPrisma, renderApprovedDocument, renderApprovedForm, appendAudit } =
+const { getPrisma, renderApprovedDocument, renderApprovedForm, appendAudit, runStage3Sweep } =
   await import('@exit/db');
 const { randomUUID } = await import('node:crypto');
 
@@ -146,12 +146,44 @@ async function stage2Sweep(): Promise<void> {
   }
 }
 
+/**
+ * Stage 3 sweep (Directive 3 sections N and Q): task release, dependency
+ * resolution, due-state and SLA evaluation, exact-time access escalation,
+ * notification/asset/handover due states and clearance-readiness recalc.
+ * The implementation lives in @exit/db (workflowSweepService) so integration
+ * tests can drive it with an injected clock; this process only schedules it.
+ * The worker never sends email, never revokes live access, never updates
+ * BambooHR, never touches payroll and never calls an external AI service.
+ */
+async function stage3Sweep(): Promise<void> {
+  try {
+    const r = await runStage3Sweep(new Date());
+    if (
+      r.released +
+        r.overdueExceptions +
+        r.accessEscalations +
+        r.notificationOverdue +
+        r.assetOverdue +
+        r.handoverOverdue >
+      0
+    ) {
+      log('stage3_sweep', { ...r });
+    }
+  } catch (e) {
+    log('stage3_sweep_error', {
+      message: e instanceof Error ? e.message.slice(0, 200) : 'unknown',
+    });
+  }
+}
+
 log('started', { env: config.NODE_ENV, heartbeatMs: HEARTBEAT_MS });
 await heartbeat();
 await stage2Sweep();
+await stage3Sweep();
 const timer = setInterval(() => {
   void heartbeat();
   void stage2Sweep();
+  void stage3Sweep();
 }, HEARTBEAT_MS);
 
 async function shutdown(signal: string): Promise<void> {

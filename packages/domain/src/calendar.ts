@@ -58,6 +58,58 @@ export function endOfNthBusinessDayAfter(
 }
 
 /**
+ * Date-only values (confirmed last working day) are stored as midnight UTC.
+ * Interpreting that instant in America/Jamaica (UTC-5) would land on the
+ * PREVIOUS local day. This helper re-anchors an exact-midnight-UTC value to
+ * the same calendar date in the target zone; real instants pass through.
+ */
+export function interpretDateOnlyInZone(anchor: Date, zone: string): Date {
+  if (
+    anchor.getUTCHours() === 0 &&
+    anchor.getUTCMinutes() === 0 &&
+    anchor.getUTCSeconds() === 0 &&
+    anchor.getUTCMilliseconds() === 0
+  ) {
+    return DateTime.fromISO(anchor.toISOString().slice(0, 10), { zone }).toJSDate();
+  }
+  return anchor;
+}
+
+/**
+ * The end (23:59:59.999 local) of the Nth business day BEFORE the anchor
+ * instant, as a UTC instant. n=1 means "end of the previous business day".
+ * n=0 means the end of the anchor's own local day. (Stage 3 section E:
+ * "no later than two business days before the final working day".)
+ */
+export function endOfNthBusinessDayBefore(
+  anchor: Date,
+  n: number,
+  calendar: BusinessCalendar,
+): Date {
+  if (!Number.isInteger(n) || n < 0) throw new RangeError('n must be a non-negative integer');
+  let dt = toZone(anchor, calendar.timezone).startOf('day');
+  let remaining = n;
+  while (remaining > 0) {
+    dt = dt.minus({ days: 1 });
+    if (isBusinessDay(dt.toJSDate(), calendar)) remaining -= 1;
+  }
+  return dt.endOf('day').toJSDate();
+}
+
+/** Whole business days between two instants (a before b), zone-aware. */
+export function businessDaysBetween(a: Date, b: Date, calendar: BusinessCalendar): number {
+  if (b.getTime() <= a.getTime()) return 0;
+  let dt = toZone(a, calendar.timezone).startOf('day');
+  const end = toZone(b, calendar.timezone).startOf('day');
+  let count = 0;
+  while (dt < end) {
+    dt = dt.plus({ days: 1 });
+    if (isBusinessDay(dt.toJSDate(), calendar)) count += 1;
+  }
+  return count;
+}
+
+/**
  * KPI-001 window check: was `createdAt` no later than the end of the first
  * business day after `receivedAt`? (MetricsDictionary KPI-001.)
  */

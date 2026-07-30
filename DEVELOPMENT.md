@@ -133,5 +133,15 @@ ever set in production). All eight synthetic users from the seed are offered.
   for HR to copy and send manually. See
   `docs/delivery/Stage2CombinedBuildRecord.md` section 10 for the operating
   steps.
+- **Stage 3 features (workflows, queues, access revocation, notifications,
+  assets, handover, clearance)** follow the same gating: activation of an
+  OPERATIONAL case needs the `automation.workflowEngine` flag (seeded
+  disabled); TRAINING/TEST cases exercise the complete engine. The three
+  development workflow definitions, seven notification templates and the
+  synthetic issued-asset register come from the seed and are labelled
+  `DEVELOPMENT ... REQUIRES HR APPROVAL BEFORE OPERATIONAL USE`. The worker
+  runs the release/escalation/readiness sweeps every 60 seconds; integration
+  tests drive the same sweep with an injected clock. See
+  `docs/delivery/Stage3OperationalWorkflowBuildRecord.md`.
 - The holiday calendar and reason categories in the seed are **synthetic
   placeholders**; real values require DEC-027 / DEC-031 approval.

@@ -118,7 +118,32 @@ export type CaseAction =
   | 'form.view'
   | 'survey.manage'
   | 'survey.viewResponses'
-  | 'survey.recordVerbal';
+  | 'survey.recordVerbal'
+  // Stage 3 (Directive 3): workflow, tasks, notifications, assets, handover,
+  // exceptions and clearance.
+  | 'case.activate'
+  | 'case.hold'
+  | 'case.resume'
+  | 'case.reopen'
+  | 'workflow.view'
+  | 'workflow.supersede'
+  | 'task.hrManage'
+  | 'task.correct'
+  | 'clearance.request'
+  | 'clearance.approve'
+  | 'notification.view'
+  | 'notification.prepare'
+  | 'notification.approveInternal'
+  | 'notification.approveExternal'
+  | 'notification.recordSend'
+  | 'asset.view'
+  | 'asset.manage'
+  | 'asset.waiveWriteOff'
+  | 'handover.review'
+  | 'handover.waive'
+  | 'exception.view'
+  | 'exception.resolve'
+  | 'exception.approveSecurity';
 
 export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessContext): boolean {
   // Limited participant surfaces (no full case view required).
@@ -164,6 +189,35 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
     case 'case.recordBaselineEvent':
     case 'attachment.upload':
       return hrOnCase;
+    // Stage 3: HR case-work actions (officer or manager, on-case for RESTRICTED).
+    case 'case.activate':
+    case 'clearance.request':
+    case 'notification.prepare':
+    case 'notification.approveInternal':
+    case 'notification.recordSend':
+    case 'asset.manage':
+    case 'handover.review':
+    case 'exception.resolve':
+      return hrOnCase;
+    // Stage 3: read surfaces - full case viewers (incl. read-only oversight).
+    case 'workflow.view':
+    case 'notification.view':
+    case 'asset.view':
+    case 'exception.view':
+      return view;
+    // Stage 3: HR-Manager-only authority (waivers, overrides, clearance).
+    case 'case.hold':
+    case 'case.resume':
+    case 'case.reopen':
+    case 'workflow.supersede':
+    case 'task.hrManage':
+    case 'task.correct':
+    case 'clearance.approve':
+    case 'notification.approveExternal':
+    case 'asset.waiveWriteOff':
+    case 'handover.waive':
+    case 'exception.approveSecurity':
+      return hrManager && (c.classification !== 'RESTRICTED' || isHrParticipant(actor, c));
     case 'case.return':
     case 'case.approve':
     case 'case.cancel':
@@ -203,7 +257,12 @@ export type GlobalAction =
   | 'employeeSource.search'
   | 'template.view'
   | 'template.draft'
-  | 'template.activate';
+  | 'template.activate'
+  | 'workflowDef.view'
+  | 'workflowDef.draft'
+  | 'workflowDef.activate'
+  | 'queue.view'
+  | 'exceptions.viewFeed';
 
 const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   'case.create': ['HR_MANAGER', 'HR_OFFICER'],
@@ -220,6 +279,14 @@ const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   'template.view': ['HR_MANAGER', 'HR_OFFICER', 'AUDITOR', 'PRIVACY_OFFICER'],
   'template.draft': ['HR_MANAGER', 'HR_OFFICER'],
   'template.activate': ['HR_MANAGER'],
+  // Directive 3 B.1/B.2: same split for workflow definitions.
+  'workflowDef.view': ['HR_MANAGER', 'HR_OFFICER', 'AUDITOR', 'PRIVACY_OFFICER'],
+  'workflowDef.draft': ['HR_MANAGER', 'HR_OFFICER'],
+  'workflowDef.activate': ['HR_MANAGER'],
+  // Directive 3 J: department queues (record-level filtering happens in the
+  // queue service; SYSTEM_ADMIN has no queue - R.8).
+  'queue.view': ['HR_MANAGER', 'HR_OFFICER', 'IT_RESPONDER', 'FINANCE_RESPONDER', 'LINE_MANAGER'],
+  'exceptions.viewFeed': ['HR_MANAGER', 'HR_OFFICER', 'AUDITOR', 'PRIVACY_OFFICER'],
 };
 
 export function can(actor: Actor, action: GlobalAction): boolean {

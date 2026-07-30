@@ -95,6 +95,38 @@ describe('runtime role cannot destroy case evidence', () => {
   });
 });
 
+describe('runtime role cannot tamper with Stage 3 workflow evidence (Directive 3 R.9)', () => {
+  it('cannot DELETE workflow evidence', async () => {
+    await expectDenied(`DELETE FROM workflow_definition WHERE 1=0`);
+    await expectDenied(`DELETE FROM workflow_instance WHERE 1=0`);
+    await expectDenied(`DELETE FROM workflow_task WHERE 1=0`);
+    await expectDenied(`DELETE FROM case_exception WHERE 1=0`);
+    await expectDenied(`DELETE FROM asset_recovery_item WHERE 1=0`);
+    await expectDenied(`DELETE FROM handover_record WHERE 1=0`);
+    await expectDenied(`DELETE FROM notification_record WHERE 1=0`);
+  });
+
+  it('cannot UPDATE or DELETE clearance records and task corrections', async () => {
+    await expectDenied(`UPDATE clearance_record SET decision='TAMPERED' WHERE 1=0`);
+    await expectDenied(`DELETE FROM clearance_record WHERE 1=0`);
+    await expectDenied(`UPDATE task_correction SET reason='TAMPERED' WHERE 1=0`);
+    await expectDenied(`DELETE FROM task_correction WHERE 1=0`);
+  });
+
+  it('cannot disable the Stage 3 protection triggers', async () => {
+    await expectDenied(`ALTER TABLE workflow_task DISABLE TRIGGER trg_access_task_never_waived`);
+    await expectDenied(
+      `ALTER TABLE clearance_record DISABLE TRIGGER trg_clearance_record_no_update`,
+    );
+    await expectDenied(`DROP TRIGGER trg_workflow_definition_frozen ON workflow_definition`);
+  });
+
+  it('cannot TRUNCATE workflow evidence tables', async () => {
+    await expectDenied(`TRUNCATE TABLE workflow_task CASCADE`);
+    await expectDenied(`TRUNCATE TABLE clearance_record`);
+  });
+});
+
 describe('runtime role retains exactly its working privileges', () => {
   it('can still read and insert where the application requires it', async () => {
     const read = await runtime.query(`SELECT count(*)::int AS n FROM offboarding_case`);

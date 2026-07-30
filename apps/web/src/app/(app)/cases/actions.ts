@@ -21,7 +21,7 @@ import {
   updateDraft,
   uploadAttachment,
 } from '@exit/db';
-import type { CaseTransitionAction } from '@exit/domain';
+import type { IntakeTransitionAction } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { touchSession } from '@/lib/session';
 
@@ -130,7 +130,7 @@ export async function transitionAction(formData: FormData): Promise<void> {
   const { actor } = await requireAuth();
   await touchSession();
   const caseId = str(formData, 'caseId');
-  const action = str(formData, 'action') as CaseTransitionAction;
+  const action = str(formData, 'action') as IntakeTransitionAction;
   const reason = opt(formData, 'reason') ?? undefined;
   if (!['submit', 'return', 'approve', 'cancel', 'void'].includes(action)) {
     feedbackRedirect(`/cases/${caseId}`, { err: 'Unknown action.' });
@@ -139,7 +139,7 @@ export async function transitionAction(formData: FormData): Promise<void> {
     await transitionCase(actor, caseId, action, reason);
     revalidatePath(`/cases/${caseId}`);
     revalidatePath('/cases');
-    const okText: Record<CaseTransitionAction, string> = {
+    const okText: Record<IntakeTransitionAction, string> = {
       submit: 'Case submitted for HR review.',
       return: 'Case returned to draft for correction.',
       approve: 'Case approved. The employee snapshot has been captured.',

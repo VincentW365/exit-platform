@@ -26,6 +26,8 @@ import { ServiceError } from '../errors.ts';
 import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
 import { outdateDocumentsForCaseChange } from './documentService.ts';
 import { outdateFormsForCaseChange } from './actionFormService.ts';
+import { cancelLiveWorkflowForCaseTx, recalcTasksForEffectiveChange } from './workflowService.ts';
+import { supersedeNotificationsForCaseChange } from './notificationService.ts';
 
 const employeeSource = new SyntheticEmployeeSourceAdapter();
 
@@ -574,8 +576,18 @@ export async function updateDraft(actor: Actor, caseId: string, rawPatch: unknow
 
 // --- transitions -------------------------------------------------------------
 
-const TRANSITION_EVENT: Record<
+/**
+ * Intake-segment actions handled by this generic transition. The Stage 3
+ * operational transitions (activate/hold/resume/clearance/complete/reopen)
+ * have dedicated services with their own side effects.
+ */
+export type IntakeTransitionAction = Extract<
   CaseTransitionAction,
+  'submit' | 'return' | 'approve' | 'cancel' | 'void'
+>;
+
+const TRANSITION_EVENT: Record<
+  IntakeTransitionAction,
   'CASE_SUBMITTED' | 'CASE_RETURNED_TO_DRAFT' | 'CASE_APPROVED' | 'CASE_CANCELLED' | 'CASE_VOIDED'
 > = {
   submit: 'CASE_SUBMITTED',
@@ -586,7 +598,7 @@ const TRANSITION_EVENT: Record<
 };
 
 const TRANSITION_PERMISSION: Record<
-  CaseTransitionAction,
+  IntakeTransitionAction,
   'case.submit' | 'case.return' | 'case.approve' | 'case.cancel' | 'case.void'
 > = {
   submit: 'case.submit',
@@ -599,7 +611,7 @@ const TRANSITION_PERMISSION: Record<
 export async function transitionCase(
   actor: Actor,
   caseId: string,
-  action: CaseTransitionAction,
+  action: IntakeTransitionAction,
   reason?: string,
 ) {
   const { c, ctx } = await loadCaseWithAccess(caseId);
@@ -688,6 +700,12 @@ export async function transitionCase(
       });
     }
 
+    // Stage 3 (C.4/C.5): closing an operational case cancels its incomplete
+    // workflow tasks and open notifications while preserving all evidence.
+    if (to === 'CANCELLED' || to === 'VOIDED') {
+      await cancelLiveWorkflowForCaseTx(tx, caseId, actor, to, reason ?? '', correlationId);
+    }
+
     await tx.caseStatusHistory.create({
       data: {
         caseId,
@@ -765,6 +783,10 @@ export async function changeEffectiveTime(
   const rippleReason = 'effective separation time changed';
   await outdateDocumentsForCaseChange(caseId, rippleReason);
   await outdateFormsForCaseChange(caseId, rippleReason);
+  // Stage 3 ripple (E.5-E.7 / K.5): recalculate workflow due dates with full
+  // provenance and invalidate affected notification approvals.
+  await recalcTasksForEffectiveChange(caseId, actor, `${rippleReason}: ${reason}`);
+  await supersedeNotificationsForCaseChange(caseId, rippleReason);
 }
 
 export async function correctRecordPurpose(

@@ -100,6 +100,9 @@ enum AttachmentPurpose {
   SUPPORTING_DOCUMENT
   MANUAL_EXCEPTION_DOCUMENT
   ACKNOWLEDGEMENT_EVIDENCE
+  ASSET_EVIDENCE
+  TASK_EVIDENCE
+  HANDOVER_EVIDENCE
 }
 
 enum ActorType {
@@ -267,6 +270,13 @@ model OffboardingCase {
   documents      DocumentInstance[]
   actionForms    ActionFormVersion[]
   surveyInvitations SurveyInvitation[]
+  workflowInstances WorkflowInstance[]
+  workflowTasks     WorkflowTask[]
+  notifications     NotificationRecord[]
+  assetRecoveryItems AssetRecoveryItem[]
+  handover           HandoverRecord?
+  exceptions         CaseException[]
+  clearanceRecords   ClearanceRecord[]
 
   @@index([status])
   @@index([ownerId])
@@ -526,12 +536,14 @@ enum RecipientClass {
 enum AttestationSubject {
   DOCUMENT
   ACTION_FORM
+  HANDOVER
 }
 
 enum AttestationKind {
   HR_DOCUMENT_APPROVAL
   MANAGER_FORM_APPROVAL
   HR_FORM_FINAL_APPROVAL
+  MANAGER_HANDOVER_ATTESTATION
 }
 
 enum ActionFormStatus {
@@ -848,4 +860,650 @@ model IntegrationPlaceholder {
   notes       String?
 
   @@map("integration_placeholder")
+}
+
+// --- Stage 3: workflows, tasks, notifications, assets, handover, clearance ---
+
+enum WorkflowDefinitionStatus {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+  RETIRED
+}
+
+enum WorkflowInstanceStatus {
+  PREVIEW
+  ACTIVE
+  ON_HOLD
+  CLEARANCE_PENDING
+  COMPLETED
+  CANCELLED
+  SUPERSEDED
+}
+
+enum TaskStatus {
+  NOT_READY
+  READY
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+  WAIVED
+  CANCELLED
+}
+
+enum TaskDepartment {
+  HR
+  IT
+  FINANCE
+  LINE_MANAGER
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum TaskKind {
+  STANDARD
+  ACCESS_REVOCATION
+}
+
+/// What instant a task's due date is calculated from (section E).
+enum DueBasis {
+  CASE_RECEIVED
+  WORKFLOW_ACTIVATION
+  EFFECTIVE_SEPARATION
+  FINAL_WORKING_DAY
+  NONE
+}
+
+enum DueOffsetKind {
+  BUSINESS_DAYS
+  CALENDAR_DAYS
+  /// The due instant IS the source instant (exact-time security tasks).
+  EXACT_TIME
+}
+
+enum ReleaseBasis {
+  IMMEDIATE
+  /// Released relative to the effective separation instant (restricted timing).
+  EFFECTIVE_SEPARATION
+}
+
+enum TaskEvidenceKind {
+  NONE
+  NOTE
+  ATTACHMENT
+  LINKED_RECORD
+}
+
+enum NotificationType {
+  IT_ACCESS_REMOVAL
+  FINANCE_OFFBOARDING
+  LINE_MANAGER_HANDOVER
+  SAGICOR_GROUP_HEALTH_REMOVAL
+  NCB_GROUP_LIFE_REMOVAL
+  SURVEY_INVITATION_REFERENCE
+  MANUAL_EXCEPTION_NOTIFICATION
+}
+
+enum NotificationStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  READY_FOR_MANUAL_SEND
+  MANUALLY_SENT
+  CANCELLED
+  FAILED
+  SUPERSEDED
+}
+
+enum NotificationRecipient {
+  INTERNAL_DEPARTMENT
+  EXTERNAL_PROVIDER
+  EMPLOYEE
+}
+
+enum AssetType {
+  EMPLOYEE_ID_CARD
+  ACCESS_CARD
+  HEALTH_CARD
+  LUNCH_CARD
+  UNIFORM
+  LAPTOP
+  MOBILE_PHONE
+  KEYS
+  EMPLOYEE_HANDBOOK
+  COMPANY_DOCUMENTS
+  OTHER
+}
+
+/// Operational states + final dispositions (section L). OVERDUE is computed
+/// from expectedReturnAt, never stored, so it cannot go stale.
+enum AssetRecoveryStatus {
+  EXPECTED
+  REQUESTED
+  PARTIALLY_RETURNED
+  RETURNED
+  NOT_ISSUED
+  LOST
+  DAMAGED
+  WAIVED
+  WRITTEN_OFF
+  UNRESOLVED
+}
+
+enum HandoverStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  NOT_APPLICABLE
+  WAIVED
+}
+
+enum ExceptionType {
+  TASK_OVERDUE
+  CRITICAL_ACCESS_OVERDUE
+  TASK_BLOCKED
+  RENDER_FAILED
+  DOCUMENT_UNAPPROVED
+  NOTIFICATION_OVERDUE
+  NOTIFICATION_FAILED
+  ASSET_OVERDUE
+  ASSET_UNRESOLVED
+  HANDOVER_OVERDUE
+  MISSING_APPROVAL
+  INVALID_CASE_DATE
+  WORKFLOW_ACTIVATION_FAILURE
+  DUE_DATE_RETROSPECTIVE_CHANGE
+  CLEARANCE_BLOCKED
+}
+
+enum ExceptionSeverity {
+  INFO
+  WARNING
+  HIGH
+  CRITICAL
+}
+
+enum ExceptionStatus {
+  OPEN
+  RESOLVED
+}
+
+/// Versioned workflow definitions (section B). ACTIVE versions are immutable
+/// (trigger); editing an active definition means drafting a new version.
+model WorkflowDefinition {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  workflowType         DepartureType
+  name                 String
+  version              Int
+  status               WorkflowDefinitionStatus @default(DRAFT)
+  description          String
+  activationConditions String
+  effectiveDate        DateTime?
+  changeReason         String?
+  configChecksum       String
+  createdById          String                   @db.Uuid
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  activatedById        String?                  @db.Uuid
+  activatedAt          DateTime?
+  supersededAt         DateTime?
+  retiredAt            DateTime?
+
+  taskDefs  WorkflowTaskDefinition[]
+  instances WorkflowInstance[]
+
+  @@unique([workflowType, version])
+  @@index([workflowType, status])
+  @@map("workflow_definition")
+}
+
+/// Task rows of one workflow-definition version (section D). Frozen once the
+/// definition leaves DRAFT (trigger). "Removing" a task in a draft disables
+/// it (enabled=false) - rows are never hard-deleted.
+model WorkflowTaskDefinition {
+  id           String             @id @default(uuid()) @db.Uuid
+  definitionId String             @db.Uuid
+  definition   WorkflowDefinition @relation(fields: [definitionId], references: [id])
+  taskCode     String
+  sortOrder    Int
+  enabled      Boolean            @default(true)
+  title        String
+  /// Safe operational description - no restricted HR content.
+  description  String
+  department   TaskDepartment
+  requiredRole Role
+  taskKind     TaskKind           @default(STANDARD)
+  priority     TaskPriority       @default(NORMAL)
+  /// Restricted/minimum-data handling indicator for queue rows.
+  confidential Boolean            @default(false)
+
+  required        Boolean @default(true)
+  waiverAllowed   Boolean @default(false)
+  waiverAuthority Role    @default(HR_MANAGER)
+
+  dueBasis           DueBasis
+  dueOffsetDays      Int           @default(0)
+  dueOffsetKind      DueOffsetKind @default(BUSINESS_DAYS)
+  releaseBasis       ReleaseBasis  @default(IMMEDIATE)
+  releaseOffsetHours Int           @default(0)
+  /// E.3/E.4: whether case ON_HOLD pauses this task's due date.
+  pausesOnHold       Boolean       @default(true)
+  /// D.7: whether BLOCKED pauses the SLA (explicit per definition).
+  blockPausesSla     Boolean       @default(false)
+
+  dependsOnCodes String[]
+  evidenceKind   TaskEvidenceKind @default(NOTE)
+  evidenceNote   String?
+  slaNote        String?
+  escalationNote String?
+
+  tasks WorkflowTask[]
+
+  @@unique([definitionId, taskCode])
+  @@map("workflow_task_definition")
+}
+
+/// One live workflow instance per active case (section C); the case is pinned
+/// to the exact definition version and checksum at activation.
+model WorkflowInstance {
+  id                String                 @id @default(uuid()) @db.Uuid
+  caseId            String                 @db.Uuid
+  case              OffboardingCase        @relation(fields: [caseId], references: [id])
+  definitionId      String                 @db.Uuid
+  definition        WorkflowDefinition     @relation(fields: [definitionId], references: [id])
+  definitionVersion Int
+  workflowType      DepartureType
+  configChecksum    String
+  status            WorkflowInstanceStatus @default(ACTIVE)
+  activatedById     String                 @db.Uuid
+  activatedAt       DateTime               @default(now())
+  correlationId     String
+
+  requiredTaskCount  Int       @default(0)
+  completedTaskCount Int       @default(0)
+  waivedTaskCount    Int       @default(0)
+  blockedTaskCount   Int       @default(0)
+  overdueTaskCount   Int       @default(0)
+  completionPct      Int       @default(0)
+  clearanceReady     Boolean   @default(false)
+  readinessDetail    Json?
+  readinessCheckedAt DateTime?
+
+  holdStartedAt    DateTime?
+  completedAt      DateTime?
+  cancelledAt      DateTime?
+  cancelReason     String?
+  supersededAt     DateTime?
+  supersededReason String?
+  rowVersion       Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tasks WorkflowTask[]
+
+  @@index([caseId])
+  @@index([status])
+  @@map("workflow_instance")
+}
+
+/// Task instances (section D) including the exact-time access-revocation
+/// fields (section I). caseId is denormalized for queue queries.
+model WorkflowTask {
+  id           String                  @id @default(uuid()) @db.Uuid
+  instanceId   String                  @db.Uuid
+  instance     WorkflowInstance        @relation(fields: [instanceId], references: [id])
+  caseId       String                  @db.Uuid
+  case         OffboardingCase         @relation(fields: [caseId], references: [id])
+  taskDefId    String?                 @db.Uuid
+  taskDef      WorkflowTaskDefinition? @relation(fields: [taskDefId], references: [id])
+  taskCode     String
+  sortOrder    Int
+  title        String
+  description  String
+  department   TaskDepartment
+  requiredRole Role
+  taskKind     TaskKind                @default(STANDARD)
+  priority     TaskPriority
+  confidential Boolean
+
+  required        Boolean
+  waiverAllowed   Boolean
+  waiverAuthority Role
+  status          TaskStatus @default(NOT_READY)
+  assigneeId      String?    @db.Uuid
+  dependsOnCodes  String[]
+  pausesOnHold    Boolean
+  blockPausesSla  Boolean
+
+  releaseAt          DateTime?
+  releasedAt         DateTime?
+  dueAt              DateTime?
+  originalDueAt      DateTime?
+  /// Calculation provenance (E): rule text + source instant + calendar version.
+  dueRule            String?
+  dueSourceAt        DateTime?
+  dueCalendarVersion Int?
+  dueCalculatedAt    DateTime?
+  dueRecalcReason    String?
+
+  startedAt     DateTime?
+  startedById   String?   @db.Uuid
+  blockedAt     DateTime?
+  blockedReason String?
+  blockerOwner  String?
+  waivedAt      DateTime?
+  waivedById    String?   @db.Uuid
+  waiverReason  String?
+  completedAt   DateTime?
+  completedById String?   @db.Uuid
+  completionNote String?
+  /// I.5: exact stored delay when completed after the due instant.
+  lateMinutes   Int?
+  evidenceKind  TaskEvidenceKind @default(NOTE)
+  evidenceAttachmentId String?   @db.Uuid
+  cancelledAt   DateTime?
+  cancelReason  String?
+
+  escalationLevel Int       @default(0)
+  escalatedAt     DateTime?
+
+  // Access-revocation control fields (section I); null for standard tasks.
+  accessSystems           String[]
+  accessSystemsCompleted  String[]
+  accessSystemsUnresolved String[]
+  accessResult            String?
+  earlyCompletionReason   String?
+  incidentRef             String?
+
+  rowVersion Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  corrections TaskCorrection[]
+
+  @@unique([instanceId, taskCode])
+  @@index([caseId])
+  @@index([department, status])
+  @@index([assigneeId, status])
+  @@index([status, dueAt])
+  @@map("workflow_task")
+}
+
+/// D.12/D.13: authorized corrections to completed tasks - append-only.
+model TaskCorrection {
+  id              String       @id @default(uuid()) @db.Uuid
+  taskId          String       @db.Uuid
+  task            WorkflowTask @relation(fields: [taskId], references: [id])
+  field           String
+  originalValue   String?
+  correctedValue  String?
+  reason          String
+  clearanceEffect String?
+  actorId         String       @db.Uuid
+  createdAt       DateTime     @default(now())
+
+  @@index([taskId])
+  @@map("task_correction")
+}
+
+/// Deterministic notification templates (section K).
+model NotificationTemplate {
+  id                  String                @id @default(uuid()) @db.Uuid
+  notificationType    NotificationType
+  version             Int
+  status              TemplateStatus        @default(DRAFT)
+  recipientClass      NotificationRecipient
+  name                String
+  subjectTemplate     String
+  bodyTemplate        String
+  allowedPlaceholders String[]
+  /// K: declaration of the minimum data this notification may carry.
+  minimumDataNote     String
+  contentChecksum     String
+  changeReason        String?
+  createdById         String                @db.Uuid
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  activatedById       String?               @db.Uuid
+  activatedAt         DateTime?
+  supersededAt        DateTime?
+
+  records NotificationRecord[]
+
+  @@unique([notificationType, version])
+  @@map("notification_template")
+}
+
+/// Controlled per-case notification records (section K). Never live email.
+model NotificationRecord {
+  id               String                @id @default(uuid()) @db.Uuid
+  caseId           String                @db.Uuid
+  case             OffboardingCase       @relation(fields: [caseId], references: [id])
+  notificationType NotificationType
+  templateId       String                @db.Uuid
+  template         NotificationTemplate  @relation(fields: [templateId], references: [id])
+  templateVersion  Int
+  recipientClass   NotificationRecipient
+  status           NotificationStatus    @default(DRAFT)
+  /// K.11: case + type + recipient class + workflow version + effective event.
+  idempotencyKey   String                @unique
+
+  subjectSnapshot String?
+  bodySnapshot    String?
+  contentChecksum String?
+  fieldSnapshot   Json
+
+  applicabilityNote        String?
+  applicabilityConfirmedById String?  @db.Uuid
+  applicabilityConfirmedAt DateTime?
+
+  approvedById          String?   @db.Uuid
+  approvedAt            DateTime?
+  approvalInvalidatedAt DateTime?
+  invalidationReason    String?
+
+  readyAt        DateTime?
+  manualSentById String?   @db.Uuid
+  manualSentAt   DateTime?
+  sentMethod     String?
+  /// Approved destination REFERENCE (never a personal address in logs).
+  destinationRef String?
+  sentNote       String?
+  cancelReason   String?
+  failReason     String?
+  supersededReason String?
+
+  createdById String   @db.Uuid
+  rowVersion  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  captures NotificationCapture[]
+
+  @@index([caseId])
+  @@index([status])
+  @@map("notification_record")
+}
+
+/// Development capture adapter output (K.12-K.14): records what WOULD be
+/// delivered; never represents an external delivery.
+model NotificationCapture {
+  id         String             @id @default(uuid()) @db.Uuid
+  recordId   String             @db.Uuid
+  record     NotificationRecord @relation(fields: [recordId], references: [id])
+  capturedAt DateTime           @default(now())
+  note       String
+  subject    String
+  body       String
+
+  @@index([recordId])
+  @@map("notification_capture")
+}
+
+/// Approved asset catalogue (section L).
+model AssetCatalogueItem {
+  id                String    @id @default(uuid()) @db.Uuid
+  assetType         AssetType
+  label             String    @unique
+  trackIdentifier   Boolean   @default(false)
+  issuingDepartment String
+  active            Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+
+  @@map("asset_catalogue_item")
+}
+
+/// Employee-issued asset records (synthetic in development).
+model IssuedAsset {
+  id                   String    @id @default(uuid()) @db.Uuid
+  employeeSourceSystem String
+  employeeSourceId     String
+  assetType            AssetType
+  catalogueLabel       String
+  identifier           String?
+  serialNumber         String?
+  issuingDepartment    String
+  issuedAt             DateTime?
+  currentHolderNote    String?
+  restricted           Boolean   @default(false)
+  active               Boolean   @default(true)
+  createdAt            DateTime  @default(now())
+
+  recoveryItems AssetRecoveryItem[]
+
+  @@index([employeeSourceId])
+  @@map("issued_asset")
+}
+
+/// Case asset-recovery items (section L) - every required item needs a final
+/// documented disposition before ordinary clearance.
+model AssetRecoveryItem {
+  id                    String              @id @default(uuid()) @db.Uuid
+  caseId                String              @db.Uuid
+  case                  OffboardingCase     @relation(fields: [caseId], references: [id])
+  issuedAssetId         String?             @db.Uuid
+  issuedAsset           IssuedAsset?        @relation(fields: [issuedAssetId], references: [id])
+  manuallyAdded         Boolean             @default(false)
+  assetType             AssetType
+  label                 String
+  identifier            String?
+  serialNumber          String?
+  responsibleDepartment TaskDepartment      @default(HR)
+  expectedReturnAt      DateTime?
+  requiredForClearance  Boolean             @default(true)
+  status                AssetRecoveryStatus @default(EXPECTED)
+  receivedById          String?             @db.Uuid
+  receivedAt            DateTime?
+  condition             String?
+  remarks               String?
+  evidenceAttachmentId  String?             @db.Uuid
+  exceptionOwnerId      String?             @db.Uuid
+  dispositionReason     String?
+  dispositionById       String?             @db.Uuid
+  dispositionAt         DateTime?
+  rowVersion            Int                 @default(0)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@index([caseId])
+  @@index([status])
+  @@map("asset_recovery_item")
+}
+
+/// Knowledge-transfer and handover record (section M) - one per case.
+/// Credential storage is rejected by validation; content is manager-owned.
+model HandoverRecord {
+  id                   String          @id @default(uuid()) @db.Uuid
+  caseId               String          @unique @db.Uuid
+  case                 OffboardingCase @relation(fields: [caseId], references: [id])
+  status               HandoverStatus  @default(NOT_STARTED)
+  requiredForClearance Boolean         @default(true)
+  managerId            String?         @db.Uuid
+
+  dutiesToReassign      String?
+  openWorkDeadlines     String?
+  customerVendorMatters String?
+  keyDocumentLocations  String?
+  physicalFileLocations String?
+  replacementOwner      String?
+  handoverSessions      String?
+  trainingCompleted     String?
+  unresolvedRisks       String?
+  managerNotes          String?
+
+  managerAttestedById String?   @db.Uuid
+  managerAttestedAt   DateTime?
+  hrReviewedById      String?   @db.Uuid
+  hrReviewedAt        DateTime?
+  hrReviewNote        String?
+  notApplicableReason String?
+  waiverReason        String?
+  waivedById          String?   @db.Uuid
+  waivedAt            DateTime?
+  completedAt         DateTime?
+
+  rowVersion Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("handover_record")
+}
+
+/// Exception and escalation records (section N). Open exceptions are
+/// deduplicated per (case, type, reference) by a partial unique index.
+model CaseException {
+  id             String            @id @default(uuid()) @db.Uuid
+  caseId         String            @db.Uuid
+  case           OffboardingCase   @relation(fields: [caseId], references: [id])
+  exceptionType  ExceptionType
+  severity       ExceptionSeverity
+  status         ExceptionStatus   @default(OPEN)
+  refType        String?
+  refId          String?
+  title          String
+  detail         String?
+  ownerDepartment TaskDepartment?
+  ownerId        String?           @db.Uuid
+  dueAt          DateTime?
+  /// I.10: HR_MANAGER-approved security exception for unresolved access.
+  securityExceptionApproved Boolean @default(false)
+  resolution     String?
+  resolvedById   String?           @db.Uuid
+  resolvedAt     DateTime?
+  correlationId  String
+  rowVersion     Int               @default(0)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([caseId, status])
+  @@index([exceptionType, status])
+  @@index([status, severity])
+  @@map("case_exception")
+}
+
+/// Immutable final-clearance approval evidence (section O).
+model ClearanceRecord {
+  id                 String          @id @default(uuid()) @db.Uuid
+  caseId             String          @db.Uuid
+  case               OffboardingCase @relation(fields: [caseId], references: [id])
+  workflowInstanceId String          @db.Uuid
+  workflowVersion    Int
+  decision           String          @default("APPROVED")
+  actorId            String          @db.Uuid
+  actorDisplayName   String
+  actorRole          String
+  meaning            String
+  snapshot           Json
+  unresolvedApprovedExceptions Json
+  checksum           String
+  correlationId      String
+  createdAt          DateTime        @default(now())
+
+  @@index([caseId])
+  @@map("clearance_record")
 }

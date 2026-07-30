@@ -9,8 +9,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const links: Array<{ href: string; label: string }> = [{ href: '/', label: 'Dashboard' }];
   if (can(actor, 'case.list')) links.push({ href: '/cases', label: 'Cases' });
   if (can(actor, 'case.create')) links.push({ href: '/cases/new', label: 'New case' });
+  if (can(actor, 'queue.view')) links.push({ href: '/queue', label: 'My queue' });
+  if (can(actor, 'exceptions.viewFeed')) links.push({ href: '/exceptions', label: 'Exceptions' });
   if (can(actor, 'baseline.viewDashboard')) links.push({ href: '/baseline', label: 'Baseline' });
   if (can(actor, 'template.view')) links.push({ href: '/admin/templates', label: 'Templates' });
+  if (can(actor, 'workflowDef.view')) links.push({ href: '/admin/workflows', label: 'Workflows' });
   if (can(actor, 'audit.viewGlobal')) links.push({ href: '/audit', label: 'Audit feed' });
   if (can(actor, 'admin.roles') || can(actor, 'admin.calendar'))
     links.push({ href: '/admin', label: 'Administration' });

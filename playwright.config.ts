@@ -5,12 +5,17 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
+  // Dev-server cold compiles can exceed the 5s default on first navigation.
+  expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,
   reporter: [['list']],
   use: {
     baseURL: 'http://localhost:3100',
     trace: 'retain-on-failure',
+    // Bound individual actions so a hung locator fails fast instead of
+    // consuming the whole test budget.
+    actionTimeout: 20_000,
   },
   webServer: {
     command: 'pnpm --filter web exec next dev --port 3100',

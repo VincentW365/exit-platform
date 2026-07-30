@@ -53,6 +53,23 @@ review/approval view) when explicitly assigned - never case content;
 identifiable survey responses are restricted to case HR plus read-only
 PRIVACY_OFFICER oversight, with AUDITOR receiving metadata only.
 
+## Stage 3 implementation note (Directive 3, 2026-07-29)
+
+The workflow build maps this model without changing any authority:
+HR_OFFICER drafts workflow definitions and performs HR case work (activation,
+task work, notification preparation, asset management, exception resolution);
+HR_MANAGER activates/retires workflow versions and holds every override
+authority (holds, reopening, waivers, reassignment, corrections, external and
+employee-facing notification approval, asset waive/write-off, handover
+waiver, security exceptions, final clearance). IT_RESPONDER and
+FINANCE_RESPONDER work **released tasks of their department only**, on a
+minimum-data task surface that grants no case access and never discloses the
+departure type; LINE_MANAGER works only tasks expressly assigned to them and
+owns the handover content. Restricted termination cases require explicit HR
+participation everywhere (queues, tasks, assets, handover, notifications,
+exceptions, clearance) and never leak through totals, feeds or errors.
+SYSTEM_ADMIN has no queue and no workflow surface.
+
 ## Record-level access rules
 
 ### Normal resignation cases

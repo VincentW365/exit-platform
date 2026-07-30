@@ -9,6 +9,20 @@ export async function resetDb(): Promise<void> {
   // integration cleanup uses TRUNCATE ... CASCADE as the database owner.
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      clearance_record,
+      case_exception,
+      handover_record,
+      asset_recovery_item,
+      issued_asset,
+      asset_catalogue_item,
+      notification_capture,
+      notification_record,
+      notification_template,
+      task_correction,
+      workflow_task,
+      workflow_instance,
+      workflow_task_definition,
+      workflow_definition,
       render_job,
       survey_answer,
       survey_response,
@@ -69,3 +83,25 @@ export const VALID_DRAFT = {
   measurementCohort: 'BASELINE',
   recordPurpose: 'OPERATIONAL',
 } as const;
+
+/**
+ * Stage 3 fixtures: development workflow definitions, notification templates,
+ * asset catalogue and issued assets (all synthetic). resetDb truncates them,
+ * so tests re-seed explicitly.
+ */
+export async function seedStage3Fixtures(): Promise<void> {
+  const prisma = getPrisma();
+  const existing = await prisma.user.findUnique({ where: { identitySubject: 'dev|hr-manager' } });
+  if (!existing) {
+    await prisma.user.create({
+      data: {
+        identitySubject: 'dev|hr-manager',
+        displayName: 'Dana Field',
+        workEmail: `dana.field-${randomUUID().slice(0, 8)}@example.test`,
+        roleAssignments: { create: [{ role: 'HR_MANAGER', reason: 'integration test fixture' }] },
+      },
+    });
+  }
+  const { seedStage3 } = await import('../src/seedStage3.ts');
+  await seedStage3(prisma);
+}
