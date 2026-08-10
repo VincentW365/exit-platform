@@ -33,7 +33,7 @@ export default async function DashboardPage() {
         {assigned.length > 0 ? (
           <section className="panel" aria-labelledby="assigned-h">
             <h2 id="assigned-h" style={{ marginTop: 0 }}>
-              Your assigned action forms
+              Your assigned offboarding work
             </h2>
             <div className="table-wrap">
               <table className="data">
@@ -41,23 +41,39 @@ export default async function DashboardPage() {
                 <thead>
                   <tr>
                     <th scope="col">Case</th>
-                    <th scope="col">Form status</th>
                     <th scope="col">Your role</th>
-                    <th scope="col">Next action</th>
+                    <th scope="col">Action form</th>
+                    <th scope="col">Handover</th>
                   </tr>
                 </thead>
                 <tbody>
                   {assigned.map((a) => (
                     <tr key={a.caseId}>
                       <td>{a.caseNumber}</td>
-                      <td>{a.formStatus.replaceAll('_', ' ')}</td>
                       <td>{a.yourRole === 'FINANCE' ? 'Finance' : 'Manager'}</td>
                       <td>
-                        <Link href={`/cases/${a.caseId}/action-form`}>
-                          {a.yourRole === 'FINANCE'
-                            ? 'Update Finance checklist'
-                            : 'Review and approve'}
-                        </Link>
+                        {a.formStatus ? (
+                          <>
+                            <Link href={`/cases/${a.caseId}/action-form`}>
+                              {a.yourRole === 'FINANCE'
+                                ? 'Update Finance checklist'
+                                : 'Review and approve'}
+                            </Link>{' '}
+                            ({a.formStatus.replaceAll('_', ' ')})
+                          </>
+                        ) : (
+                          'none in progress'
+                        )}
+                      </td>
+                      <td>
+                        {a.yourRole === 'MANAGER' && a.handoverStatus ? (
+                          <>
+                            <Link href={`/cases/${a.caseId}/handover`}>Open handover</Link> (
+                            {a.handoverStatus.replaceAll('_', ' ')})
+                          </>
+                        ) : (
+                          '-'
+                        )}
                       </td>
                     </tr>
                   ))}

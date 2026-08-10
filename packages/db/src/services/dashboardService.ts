@@ -552,6 +552,12 @@ export async function stage3Dashboard(actor: Actor) {
 }
 
 /** Assigned action-form queue for FINANCE_RESPONDER / LINE_MANAGER dashboards. */
+/**
+ * The Finance/Manager dashboard work list is assignment-driven, NOT form-
+ * driven: an assigned manager owes handover work even before HR drafts the
+ * action form (and after it is approved), and their only navigation to those
+ * surfaces is this list - limited-access roles never see the case tabs.
+ */
 export async function assignedFormQueue(actor: Actor) {
   const prisma = getPrisma();
   const parts = await prisma.caseParticipant.findMany({
@@ -559,22 +565,36 @@ export async function assignedFormQueue(actor: Actor) {
       userId: actor.userId,
       removedAt: null,
       participantRole: { in: ['FINANCE', 'MANAGER'] },
+      case: { status: { in: ['ACTIVE', 'ON_HOLD', 'CLEARANCE_REVIEW'] } },
     },
-    select: { caseId: true, participantRole: true },
+    select: {
+      caseId: true,
+      participantRole: true,
+      case: { select: { caseNumber: true } },
+    },
+    orderBy: { case: { caseNumber: 'asc' } },
   });
   if (parts.length === 0) return [];
+  const caseIds = parts.map((p) => p.caseId);
   const forms = await prisma.actionFormVersion.findMany({
     where: {
-      caseId: { in: parts.map((p) => p.caseId) },
+      caseId: { in: caseIds },
       status: { in: ['DRAFT', 'RETURNED', 'PENDING_MANAGER', 'PENDING_HR'] },
     },
-    include: { case: { select: { id: true, caseNumber: true } } },
-    orderBy: { updatedAt: 'asc' },
+    select: { caseId: true, status: true },
   });
-  return forms.map((f) => ({
-    caseId: f.case.id,
-    caseNumber: f.case.caseNumber,
-    formStatus: f.status,
-    yourRole: parts.find((p) => p.caseId === f.caseId)!.participantRole,
+  const handovers = await prisma.handoverRecord.findMany({
+    where: { caseId: { in: caseIds } },
+    select: { caseId: true, status: true },
+  });
+  return parts.map((p) => ({
+    caseId: p.caseId,
+    caseNumber: p.case.caseNumber,
+    formStatus: forms.find((f) => f.caseId === p.caseId)?.status ?? null,
+    handoverStatus:
+      p.participantRole === 'MANAGER'
+        ? (handovers.find((h) => h.caseId === p.caseId)?.status ?? 'NOT_STARTED')
+        : null,
+    yourRole: p.participantRole,
   }));
 }

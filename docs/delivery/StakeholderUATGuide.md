@@ -5,6 +5,10 @@ account to use, what to test, and which questions to answer. All data is
 SYNTHETIC STAKEHOLDER UAT DATA (record purpose TEST, EMP-TEST employees).
 Results are captured in `StakeholderSyntheticUATReport.md`.
 
+**New to this?** Read `UATQuickStart.md` first - the same testing in plain
+language, in the order easiest to follow. Testing is asynchronous: each role
+needs 20-30 minutes and can run their slice whenever they have time.
+
 ## 1. Access (section D)
 
 - **URL:** http://localhost:3000

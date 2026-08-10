@@ -46,6 +46,7 @@ export default async function AdminPage({
   const hubLinks: Array<{ href: string; label: string; kind: 'business' | 'technical' }> = [
     { href: '/admin/workflows', label: 'Workflow definitions', kind: 'business' },
     { href: '/admin/templates', label: 'Document templates', kind: 'business' },
+    { href: '/baseline', label: 'Baseline dashboard', kind: 'business' },
     { href: '/admin/reasons', label: 'Reason taxonomy', kind: 'business' },
     { href: '/admin/recipients', label: 'Recipient directory', kind: 'business' },
     { href: '/reports', label: 'Reporting centre', kind: 'business' },

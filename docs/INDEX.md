@@ -40,6 +40,7 @@
 | Delivery | `docs/delivery/SyntheticUATReport.md` | Directive 5 synthetic UAT execution: scenarios, defects, fixes, perf smoke, recommendation. |
 | Delivery | `docs/delivery/BambooHRAndBrandingBuildRecord.md` | Directive 5.1: read-only BambooHR directory, real-data safeguards, approved branding. |
 | Delivery | `docs/delivery/StakeholderUATGuide.md` | Directive 6: stakeholder access, scenario dataset, live-demo procedure, questionnaire. |
+| Delivery | `docs/delivery/UATQuickStart.md` | Plain-language stakeholder walkthrough of the UAT scenarios (start here as a tester). |
 | Delivery | `docs/delivery/StakeholderSyntheticUATReport.md` | Directive 6: stakeholder UAT capture record (pending stakeholder execution). |
 | Architecture | `docs/architecture/Architecture.md` | System context and modular-monolith design. |
 | Architecture | `docs/architecture/DomainModel.md` | Domain boundaries and invariants. |

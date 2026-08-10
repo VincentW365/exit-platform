@@ -23,6 +23,19 @@
 | PRIVACY_OFFICER | Reviews data protection, access, retention, breach, and data-subject matters. | Privacy-relevant records and incidents. | Review classifications, retention, access logs, data-sharing records, privacy notices, deletion/legal hold, and breach-support records. | No routine operational edits except privacy workflows; cannot change HR decisions. |
 | SYSTEM_ADMIN | Maintains technical configuration and platform availability. | Technical administration; business-record access is denied by default. | Manage deployments, integrations, health settings, feature flags, technical users, and configuration where assigned. | No default access to HR case content. Break-glass access requires explicit approval, time limitation, reason, and enhanced audit. |
 
+### Small-team staffing note (dual-hatting, DEC-037)
+
+Roles are permission sets, not headcount. At Bert's scale the operational
+roles (HR, IT, Finance, Line Manager, System Admin) map to real day-to-day
+staff, while AUDITOR and PRIVACY_OFFICER are oversight roles expected to be
+**dual-hatted**: an existing team member holds the oversight role alongside
+their main role and receives the union of both permission sets. The roles
+themselves are retained unchanged because their protections (survey-response
+oversight separate from case operations, retention approvals, read-only
+assurance) must not collapse into the operating roles. Segregation-of-duties
+rules below still apply to the person, not the role - a dual-hatted user
+still cannot approve their own work.
+
 ## Capability matrix
 
 Legend: `Full` means within approved record scope, not unrestricted database access.

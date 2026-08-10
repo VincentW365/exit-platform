@@ -98,6 +98,13 @@ export default async function ActionFormPage({
   const snap = (f?.fieldSnapshot ?? {}) as Record<string, string | null>;
   const editable = f ? ['DRAFT', 'RETURNED'].includes(f.status) : false;
   const limited = data.level === 'FINANCE_FORM' || data.level === 'MANAGER_FORM';
+  // Informed final approval: approval is NOT blocked on the Finance checklist
+  // (its gating semantics are an open decision, spec Q-6), but the approver
+  // must see what the immutable PDF will record before attesting.
+  const financePendingCount =
+    f?.financeChecklist != null
+      ? Object.values(f.financeChecklist).filter((v) => v === 'PENDING').length
+      : 0;
 
   return (
     <>
@@ -338,6 +345,14 @@ export default async function ActionFormPage({
             </section>
           ) : null}
 
+          {f.status === 'PENDING_HR' && cap.canHrApprove && financePendingCount > 0 ? (
+            <p className="banner-baseline" role="status">
+              The Finance checklist still has {financePendingCount} item(s) marked PENDING. Final
+              approval freezes this version and the final PDF will permanently record them as
+              PENDING. Confirm with the assigned Finance participant that nothing further will be
+              recorded, or return the form instead.
+            </p>
+          ) : null}
           {f.status === 'PENDING_HR' && cap.canHrApprove ? (
             <section className="panel actions-row" aria-label="HR final approval">
               <form action={hrApproveAction}>

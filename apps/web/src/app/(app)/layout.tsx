@@ -8,21 +8,27 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { user, actor } = await requireAuth();
   const liveDirectory = await liveDirectoryPresence().catch(() => ({ present: false, records: 0 }));
 
+  // Small-team navigation: users with Administration access reach Templates,
+  // Workflows and Baseline through the hub instead of the top bar; everyone
+  // else keeps direct links (they cannot open /admin).
+  const hasAdminHub = can(actor, 'admin.roles') || can(actor, 'admin.calendar');
   const links: Array<{ href: string; label: string }> = [{ href: '/', label: 'Dashboard' }];
   if (can(actor, 'case.list')) links.push({ href: '/cases', label: 'Cases' });
   if (can(actor, 'case.create')) links.push({ href: '/cases/new', label: 'New case' });
   if (can(actor, 'employeeSource.search')) links.push({ href: '/directory', label: 'Directory' });
   if (can(actor, 'queue.view')) links.push({ href: '/queue', label: 'My queue' });
   if (can(actor, 'exceptions.viewFeed')) links.push({ href: '/exceptions', label: 'Exceptions' });
-  if (can(actor, 'baseline.viewDashboard')) links.push({ href: '/baseline', label: 'Baseline' });
+  if (!hasAdminHub && can(actor, 'baseline.viewDashboard'))
+    links.push({ href: '/baseline', label: 'Baseline' });
   if (can(actor, 'reports.view')) links.push({ href: '/reports', label: 'Reports' });
-  if (can(actor, 'template.view')) links.push({ href: '/admin/templates', label: 'Templates' });
-  if (can(actor, 'workflowDef.view')) links.push({ href: '/admin/workflows', label: 'Workflows' });
+  if (!hasAdminHub && can(actor, 'template.view'))
+    links.push({ href: '/admin/templates', label: 'Templates' });
+  if (!hasAdminHub && can(actor, 'workflowDef.view'))
+    links.push({ href: '/admin/workflows', label: 'Workflows' });
   if (can(actor, 'audit.viewGlobal')) links.push({ href: '/audit', label: 'Audit feed' });
   if (can(actor, 'sop.view')) links.push({ href: '/operations', label: 'Operations' });
   if (can(actor, 'support.use')) links.push({ href: '/support', label: 'Support' });
-  if (can(actor, 'admin.roles') || can(actor, 'admin.calendar'))
-    links.push({ href: '/admin', label: 'Administration' });
+  if (hasAdminHub) links.push({ href: '/admin', label: 'Administration' });
 
   return (
     <>

@@ -53,8 +53,37 @@ export default async function SignInPage({
   );
 }
 
+const OVERSIGHT_ROLES = ['PRIVACY_OFFICER', 'AUDITOR'] as const;
+
 async function DevUserList() {
   const users = await listActiveUsers();
+  // Oversight accounts hold only oversight roles; in a small team these are
+  // dual-hatted onto existing staff at pilot time (RolesAndPermissions.md).
+  const oversight = users.filter(
+    (u) =>
+      u.roles.length > 0 &&
+      u.roles.every((r) => (OVERSIGHT_ROLES as readonly string[]).includes(r)),
+  );
+  const daily = users.filter((u) => !oversight.includes(u));
+  return (
+    <>
+      <h3 style={{ marginBottom: '0.4rem' }}>Daily operations</h3>
+      <UserButtons users={daily} />
+      <h3 style={{ marginBottom: '0.4rem' }}>Oversight (dual-hat roles, rarely needed)</h3>
+      <p className="hint" style={{ marginTop: 0 }}>
+        Privacy and audit oversight are separate roles, not separate hires: at pilot time they are
+        assigned to existing team members alongside their main role.
+      </p>
+      <UserButtons users={oversight} />
+    </>
+  );
+}
+
+function UserButtons({
+  users,
+}: {
+  users: ReadonlyArray<{ userId: string; displayName: string; roles: string[] }>;
+}) {
   return (
     <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: '0.5rem' }}>
       {users.map((u) => (

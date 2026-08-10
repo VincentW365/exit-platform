@@ -1,10 +1,17 @@
 # Stakeholder Synthetic UAT Report (Directive 6)
 
-**Status: ENVIRONMENT PREPARED - STAKEHOLDER TESTING NOT YET STARTED.**
+**Status: ENVIRONMENT PREPARED - STAKEHOLDER TESTING DEFERRED (DEC-036).**
 
 This report is the capture record for stakeholder-performed synthetic UAT.
-No stakeholder has executed the tests yet; nothing below claims otherwise,
-and no sign-off exists until real stakeholders record their results here.
+On 2026-07-30 the product owner deferred stakeholder execution because the
+stakeholders are not currently available; development continues on the
+accepted engineering-led synthetic UAT evidence (`SyntheticUATReport.md`).
+The environment, dataset and guides stay permanently available so each role
+can run their 20-30 minute slice asynchronously (start with
+`UATQuickStart.md`). No stakeholder has executed the tests yet; nothing
+below claims otherwise, no sign-off exists until real stakeholders record
+their results here, and the pilot readiness UAT gate remains unmet until
+then.
 
 ## Environment under test
 
@@ -64,7 +71,9 @@ TRAINING_OR_PROCESS.
 
 | ID | Severity | Description | Raised by | Scenario | Resolution | Retest | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| _none recorded yet_ | | | | | | | |
+| UAT-F-003 | MEDIUM | Final HR-approved action form PDFs record the Finance checklist as PENDING. Investigated: not a data-loss bug - the assigned Finance participant's checklist was genuinely never filled (confirmed in data for OFF-2026-0001 and the seeded OFF-2026-0009), and HR final approval offered no indication that Finance items were outstanding. No approved rule gates approval on Finance completion (spec Q-6 remains OPEN), so approval must stay possible. | Facilitator | S1/S5 (action form) | Informed-approval warning added to the HR final-approval panel (2026-08-10): when Finance items are PENDING it states how many and that the immutable PDF will record them, advising confirmation with Finance or return of the form. Finance discoverability already improved under UAT-F-002 (assignment-driven dashboard work list). Approved forms stay immutable - OFF-2026-0001's form can only be redone via the audited case-correction path. | OFF-2026-0010 is staged at PENDING_HR with Finance untouched: as HR Manager, verify the warning; as Finance, complete the checklist from the dashboard link; approve and confirm the PDF records the Finance items. | RESOLVED - pending stakeholder retest |
+| UAT-F-002 | MEDIUM | Line Manager had no navigation path to the handover surface: the only link was the case-detail tab bar, which limited-access roles (MANAGER_FORM level, DEC-035/Directive 2 F) never see; the dashboard work list only showed cases with an in-flight action form. | Facilitator | S7 (handover) | Dashboard work list (`assignedFormQueue` + dashboard page, 2026-08-10) is now assignment-driven: every ACTIVE/ON_HOLD/CLEARANCE_REVIEW case where the actor is the assigned Finance/Manager participant is listed, with an "Open handover" link and status for managers. No permission change - the handover service already admitted the assigned manager. | Sign in as the Line Manager; dashboard should list the assigned case with "Open handover"; complete S7 from there. | RESOLVED - pending stakeholder retest |
+| UAT-F-001 | MEDIUM | Rendered document PDFs not business-ready: letter signature block collapsed onto one line and duplicated below; footer overflow emitted a blank trailing page on every document; header lacked letterhead structure. | Facilitator | S1/S4 (documents) | Renderer layout redesign in `packages/db/src/services/renderService.ts` (2026-08-10): letterhead with approved logo + confidentiality tag, business-letter body preserving line breaks, attestation as anchored fine print, ruled two-column action-form body, footer pagination fix. Applied to both letters and the action form. Template wording untouched (versioned HR templates; content changes remain with wording owners). | Re-approve a letter draft (e.g. S4 corrected draft) and the action form; review downloaded PDFs. | RESOLVED - pending stakeholder retest |
 
 Fix within the UAT window: BLOCKER, HIGH, and low-risk in-scope MEDIUM only.
 ENHANCEMENT and TRAINING_OR_PROCESS items are recorded for later
