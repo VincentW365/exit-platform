@@ -56,7 +56,7 @@ export default async function OutboxPage({
       </form>
 
       {rows.length === 0 ? <p className="panel">No outbox records.</p> : null}
-      <div className="panel" style={{ overflowX: 'auto' }}>
+      <div className="panel" style={{ overflowX: 'auto' }} tabIndex={0}>
         <table>
           <caption className="visually-hidden">Outbox records</caption>
           <thead>

@@ -29,7 +29,7 @@ export default async function AuditPage({
           <button type="submit">Filter</button>
         </div>
       </form>
-      <div className="table-wrap">
+      <div className="table-wrap" tabIndex={0}>
         <table className="data">
           <caption>
             Most recent {events.length} events. Metadata is sanitized: no document bodies, personal

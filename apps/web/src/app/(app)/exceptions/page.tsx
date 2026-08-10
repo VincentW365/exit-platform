@@ -81,7 +81,7 @@ export default async function ExceptionsPage({
       {rows.length === 0 ? (
         <p className="panel">No exceptions match this filter.</p>
       ) : (
-        <div className="panel" style={{ overflowX: 'auto' }}>
+        <div className="panel" style={{ overflowX: 'auto' }} tabIndex={0}>
           <table>
             <caption className="visually-hidden">Exceptions</caption>
             <thead>

@@ -41,7 +41,7 @@ export default async function WorkflowDefinitionsPage({
         are immutable; every activated case is pinned to the exact version it started with. HR
         Officers draft; HR Managers activate, supersede and retire.
       </p>
-      <div className="panel" style={{ overflowX: 'auto' }}>
+      <div className="panel" style={{ overflowX: 'auto' }} tabIndex={0}>
         <table>
           <caption className="visually-hidden">Workflow definition versions</caption>
           <thead>

@@ -89,7 +89,7 @@ export default async function CasesPage({
       {rows.length === 0 ? (
         <p className="panel">No cases match your access and filters.</p>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0}>
           <table className="data">
             <caption>
               {rows.length} case{rows.length === 1 ? '' : 's'} (restricted cases you are not

@@ -75,7 +75,7 @@ export default async function ReportsPage({
             {output.title}
           </h2>
           {output.note ? <p className="hint">{output.note}</p> : null}
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto' }} tabIndex={0}>
             <table>
               <caption className="visually-hidden">{output.title}</caption>
               <thead>

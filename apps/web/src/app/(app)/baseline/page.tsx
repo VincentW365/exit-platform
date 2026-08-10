@@ -30,7 +30,7 @@ export default async function BaselinePage() {
       {rows.length === 0 ? (
         <p className="panel">No baseline cases yet.</p>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0}>
           <table className="data">
             <caption>
               {rows.length} baseline case{rows.length === 1 ? '' : 's'}; capture SLA evaluated

@@ -429,7 +429,7 @@ export default async function CaseDetailPage({
             Attachments
           </h2>
           {attachments.length ? (
-            <div className="table-wrap">
+            <div className="table-wrap" tabIndex={0}>
               <table className="data">
                 <caption>Uploaded files (quarantined until scanned)</caption>
                 <thead>
@@ -505,7 +505,7 @@ export default async function CaseDetailPage({
             Baseline facts (manual record of the current process)
           </h2>
           {baselineEvents.length ? (
-            <div className="table-wrap">
+            <div className="table-wrap" tabIndex={0}>
               <table className="data">
                 <caption>Recorded facts; corrections supersede, originals stay visible</caption>
                 <thead>
@@ -637,21 +637,22 @@ export default async function CaseDetailPage({
         <h2 id="audit-h" style={{ marginTop: 0 }}>
           Audit timeline
         </h2>
-        <ul className="timeline">
-          {audit.map((e) => (
-            <li key={e.id}>
-              <span className="meta">{formatInstant(e.occurredAt)}</span>
-              <br />
-              <strong>{e.eventType.replaceAll('_', ' ').toLowerCase()}</strong> - {e.result}
-              {e.actorId ? (
-                <span className="meta">
-                  {' '}
-                  by {users.find((u) => u.userId === e.actorId)?.displayName ?? 'user'}
-                </span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        <p className="hint">
+          Newest first ({audit.length} event(s)); the complete history is immutable evidence.
+        </p>
+        <div className="timeline-scroll" tabIndex={0}>
+          <ul className="timeline">
+            {[...audit].reverse().map((e) => (
+              <li key={e.id}>
+                <strong>{e.eventType.replaceAll('_', ' ').toLowerCase()}</strong> - {e.result}
+                {e.actorId ? (
+                  <> by {users.find((u) => u.userId === e.actorId)?.displayName ?? 'user'}</>
+                ) : null}{' '}
+                <span className="meta">{formatInstant(e.occurredAt)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </section>
     </>
   );

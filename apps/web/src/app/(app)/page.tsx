@@ -35,7 +35,7 @@ export default async function DashboardPage() {
             <h2 id="assigned-h" style={{ marginTop: 0 }}>
               Your assigned offboarding work
             </h2>
-            <div className="table-wrap">
+            <div className="table-wrap" tabIndex={0}>
               <table className="data">
                 <caption>Cases where you are the assigned Finance or Manager participant</caption>
                 <thead>
@@ -154,21 +154,21 @@ export default async function DashboardPage() {
         <h2 id="counts-h" style={{ marginTop: 0 }}>
           Operational cases you can see
         </h2>
-        <div className="actions-row">
+        <div className="stat-grid">
           {statusOrder.map((s) => (
-            <p key={s} style={{ margin: 0 }}>
-              <StatusBadge status={s} />{' '}
-              <strong style={{ fontSize: '1.3rem' }}>{dash.countsByStatus[s] ?? 0}</strong>
-            </p>
+            <div key={s} className="stat">
+              <span className="stat__value">{dash.countsByStatus[s] ?? 0}</span>
+              <StatusBadge status={s} />
+            </div>
           ))}
-          <p style={{ margin: 0 }}>
-            <span className="badge badge--warning">Baseline open</span>{' '}
-            <strong style={{ fontSize: '1.3rem' }}>{dash.baselineOpenCount}</strong>
-          </p>
-          <p style={{ margin: 0 }}>
-            <span className="badge badge--neutral">Training/test records</span>{' '}
-            <strong style={{ fontSize: '1.3rem' }}>{dash.nonOperationalCount}</strong>
-          </p>
+          <div className="stat">
+            <span className="stat__value">{dash.baselineOpenCount}</span>
+            <span className="badge badge--warning">Baseline open</span>
+          </div>
+          <div className="stat">
+            <span className="stat__value">{dash.nonOperationalCount}</span>
+            <span className="badge badge--neutral">Training/test records</span>
+          </div>
         </div>
         <p className="hint">
           Counts include only cases your access permits; restricted cases you are not assigned to
@@ -183,7 +183,7 @@ export default async function DashboardPage() {
         {dash.upcomingDepartures.length === 0 ? (
           <p>No approved departures with an effective time in the next 30 days.</p>
         ) : (
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0}>
             <table className="data">
               <caption className="sr-only">Upcoming departures</caption>
               <thead>
@@ -224,7 +224,7 @@ export default async function DashboardPage() {
         <h2 id="wf-h" style={{ marginTop: 0 }}>
           Workflow operations
         </h2>
-        <div className="actions-row">
+        <div className="stat-grid">
           {(
             [
               ['Active workflows', s3.queues.activeWorkflows, 'badge--info'],
@@ -256,10 +256,10 @@ export default async function DashboardPage() {
               ['Completed cases', s3.queues.completedCases, 'badge--success'],
             ] as const
           ).map(([label, count, cls]) => (
-            <p key={label} style={{ margin: 0 }}>
-              <span className={`badge ${cls}`}>{label}</span>{' '}
-              <strong style={{ fontSize: '1.3rem' }}>{count}</strong>
-            </p>
+            <div key={label} className="stat">
+              <span className="stat__value">{count}</span>
+              <span className={`badge ${cls}`}>{label}</span>
+            </div>
           ))}
         </div>
         {s3.queues.criticalAccessTasks.length > 0 ? (
@@ -350,7 +350,7 @@ export default async function DashboardPage() {
         <h2 id="work-h" style={{ marginTop: 0 }}>
           Documents, forms and surveys
         </h2>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0}>
           <table className="data">
             <caption>Focused work queues (next action, owner, status)</caption>
             <thead>

@@ -79,7 +79,7 @@ export default async function CaseWorkflowPage({
                 v{preview.definition.calendarVersion}. Activation pins this case to exactly this
                 version; later edits never silently change it.
               </p>
-              <div style={{ overflowX: 'auto' }}>
+              <div style={{ overflowX: 'auto' }} tabIndex={0}>
                 <table>
                   <caption className="visually-hidden">Tasks that will be created</caption>
                   <thead>
@@ -264,7 +264,7 @@ export default async function CaseWorkflowPage({
             {inst.overdueTaskCount} overdue -{' '}
             {inst.clearanceReady ? 'READY for clearance' : 'not yet ready for clearance'}
           </p>
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto' }} tabIndex={0}>
             <table>
               <caption className="visually-hidden">Workflow tasks</caption>
               <thead>

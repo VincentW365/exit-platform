@@ -113,6 +113,7 @@ export default async function TemplatesPage({
             <details className="action">
               <summary>View content</summary>
               <pre
+                tabIndex={0}
                 style={{
                   whiteSpace: 'pre-wrap',
                   background: 'var(--muted)',

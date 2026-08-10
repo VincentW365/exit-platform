@@ -89,7 +89,7 @@ export default async function WorkflowDefinitionPage({
         <h2 id="matrix-h" style={{ marginTop: 0 }}>
           Task matrix ({enabledTasks.length} tasks)
         </h2>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto' }} tabIndex={0}>
           <table>
             <caption className="visually-hidden">Task definitions</caption>
             <thead>

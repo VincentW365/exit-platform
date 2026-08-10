@@ -34,7 +34,7 @@ export default async function ReasonsPage({
         approval before operational use. Retiring a category never alters prior cases; reporting
         groups aggregate without exposing restricted reason notes.
       </p>
-      <div className="panel" style={{ overflowX: 'auto' }}>
+      <div className="panel" style={{ overflowX: 'auto' }} tabIndex={0}>
         <table>
           <caption className="visually-hidden">Reason categories</caption>
           <thead>

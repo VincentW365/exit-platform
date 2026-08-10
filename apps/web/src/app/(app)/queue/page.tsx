@@ -116,9 +116,9 @@ export default async function QueuePage({
 
       <form method="get" action="/queue" className="panel" aria-label="Queue filters">
         <input type="hidden" name="view" value={activeView} />
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'end' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
           {data.departments.length > 1 ? (
-            <div>
+            <div className="field" style={{ maxWidth: '13rem' }}>
               <label htmlFor="qf-dept">Department</label>
               <select id="qf-dept" name="department" defaultValue={sp.department ?? ''}>
                 <option value="">All my departments</option>
@@ -130,7 +130,7 @@ export default async function QueuePage({
               </select>
             </div>
           ) : null}
-          <div>
+          <div className="field" style={{ maxWidth: '18rem' }}>
             <label htmlFor="qf-q">Search (task title or case number)</label>
             <input id="qf-q" name="q" defaultValue={sp.q ?? ''} maxLength={100} />
           </div>
@@ -141,7 +141,7 @@ export default async function QueuePage({
       {data.rows.length === 0 ? (
         <p className="panel">No tasks match this view.</p>
       ) : (
-        <div className="panel" style={{ overflowX: 'auto' }}>
+        <div className="panel" style={{ overflowX: 'auto' }} tabIndex={0}>
           <table>
             <caption className="visually-hidden">Work queue tasks</caption>
             <thead>

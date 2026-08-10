@@ -86,7 +86,7 @@ export default async function CaseAssetsPage({
           added manually below.
         </p>
       ) : (
-        <div className="panel" style={{ overflowX: 'auto' }}>
+        <div className="panel" style={{ overflowX: 'auto' }} tabIndex={0}>
           <table>
             <caption className="visually-hidden">Asset recovery items</caption>
             <thead>

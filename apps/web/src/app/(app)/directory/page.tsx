@@ -49,7 +49,7 @@ export default async function DirectoryPage() {
         <h2 id="dir-dept-h" style={{ marginTop: 0 }}>
           Departments and locations
         </h2>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0}>
           <table className="data">
             <caption className="visually-hidden">Records per department</caption>
             <thead>

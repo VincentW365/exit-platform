@@ -92,6 +92,12 @@ a {
   color: var(--brand-blue);
 }
 
+/* Checksums and references are long unbreakable tokens; always allow them
+   to wrap instead of forcing horizontal scroll. */
+code {
+  overflow-wrap: anywhere;
+}
+
 h1 {
   font-size: 1.45rem;
   font-weight: 700;
@@ -386,12 +392,23 @@ table.data th,
   overflow-wrap: normal;
   word-break: keep-all;
 }
+table.data td,
+.panel table td {
+  /* Genuinely overflowing tokens (checksums, references) may break, but
+     ordinary words never wrap mid-word ("NORMAL", not "NORMA L"). */
+  overflow-wrap: break-word;
+  word-break: normal;
+}
 table.data tbody tr:hover,
 .panel table tbody tr:hover {
   background: #f7f9fc;
 }
 .table-wrap {
   overflow-x: auto;
+}
+/* Case-number links in tables stay on one line (no "OFF-2026-" / "0001"). */
+table a[href*='/cases/'] {
+  white-space: nowrap;
 }
 
 /* --- badges (icon/text + colour, never colour alone) ---------------------- */
@@ -428,6 +445,31 @@ table.data tbody tr:hover,
   background: var(--danger-bg);
   color: var(--danger);
   border-color: #eaa9a3;
+}
+
+/* --- stat tiles ----------------------------------------------------------- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.7rem;
+}
+.stat {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 0.6rem 0.8rem;
+  display: grid;
+  gap: 0.3rem;
+  justify-items: start;
+  box-shadow: var(--shadow-sm);
+}
+.stat__value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.05;
+}
+.stat .badge {
+  white-space: normal;
 }
 
 .banner-restricted {
@@ -650,6 +692,13 @@ details.action form {
   margin-top: 0.6rem;
 }
 
+.timeline-scroll {
+  max-height: 30rem;
+  overflow-y: auto;
+  /* The item dots extend left of the list; keep them inside the clip box. */
+  padding-left: 10px;
+  padding-right: 0.5rem;
+}
 ul.timeline {
   list-style: none;
   margin: 0;
@@ -657,14 +706,14 @@ ul.timeline {
   border-left: 3px solid var(--border);
 }
 ul.timeline li {
-  padding: 0.4rem 0 0.4rem 1rem;
+  padding: 0.3rem 0 0.3rem 1rem;
   position: relative;
 }
 ul.timeline li::before {
   content: '';
   position: absolute;
   left: -8px;
-  top: 0.85rem;
+  top: 0.62rem;
   width: 10px;
   height: 10px;
   background: var(--brand-blue);

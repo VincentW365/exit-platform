@@ -88,7 +88,7 @@ export default async function AdminPage({
           <h2 id="roles-h" style={{ marginTop: 0 }}>
             Users and roles (SYSTEM_ADMIN)
           </h2>
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0}>
             <table className="data">
               <caption>
                 Active users; self-service role changes are refused and every change is audited
@@ -199,7 +199,7 @@ export default async function AdminPage({
             Improvement automation stays disabled for Stage 1 baseline capture (DEC-007 /
             IC-S1-004). Changes are audited.
           </p>
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0}>
             <table className="data">
               <caption>Automation feature flags</caption>
               <thead>
@@ -376,7 +376,7 @@ export default async function AdminPage({
         <h2 id="int-h" style={{ marginTop: 0 }}>
           Integration status
         </h2>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0}>
           <table className="data">
             <caption>
               All integrations are stubs; nothing is configured with live credentials

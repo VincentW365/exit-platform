@@ -95,7 +95,7 @@ const CRUMB_LABELS: Record<string, string> = {
 function crumbLabel(segment: string, prev: string | undefined): string {
   const known = CRUMB_LABELS[segment];
   if (known) return known;
-  if (/^[a-z0-9]{16,}$/i.test(segment)) {
+  if (/^[a-z0-9][a-z0-9-]{15,}$/i.test(segment)) {
     if (prev === 'cases') return 'Case';
     if (prev === 'tasks') return 'Task';
     return 'Detail';

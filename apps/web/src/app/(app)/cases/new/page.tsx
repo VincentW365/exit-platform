@@ -64,7 +64,7 @@ export default async function NewCasePage({
           search.results.length === 0 ? (
             <p>No employee matches &quot;{q}&quot;.</p>
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap" tabIndex={0}>
               <table className="data">
                 <caption>
                   Local employee source cache, queried {formatInstant(search.retrievedAt)}
