@@ -1,20 +1,22 @@
-/* Design tokens per docs/ux/DesignSystemAndAccessibility.md:
-   light working canvas, navy navigation, accessible blue accents, yellow used
-   sparingly, status never conveyed by colour alone. */
+/* Design system per docs/ux/DesignSystemAndAccessibility.md:
+   professional light canvas, deep-navy navigation, accessible blue accents,
+   gold used sparingly, status never conveyed by colour alone.
+   All colour pairs meet WCAG 1.4.3 (>= 4.5:1); verified by the axe scans in
+   the e2e visual suites. */
 :root {
   --brand-navy: #12263f;
   --brand-navy-2: #1b3a5e;
+  --brand-navy-deep: #0d1c30;
   --brand-blue: #1859a9;
   --brand-blue-dark: #113f7e;
   --brand-yellow: #f5b700;
-  --canvas: #f6f8fa;
+  --canvas: #f2f4f8;
   --panel: #ffffff;
   --muted: #eef1f5;
   --text: #16212e;
   --text-2: #44546a;
-  --border: #c9d2dd;
-  /* Status colours validated against their tinted backgrounds for WCAG 1.4.3
-     (>= 4.5:1); verified by the axe scan in e2e/acceptance-visual.spec.ts. */
+  --border: #dde3eb;
+  --border-strong: #c3cdd9;
   --success: #116329;
   --success-bg: #e6f4ea;
   --warning: #7a5200;
@@ -22,7 +24,11 @@
   --danger: #b42318;
   --danger-bg: #fdecea;
   --focus: #114fa8;
-  --radius: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 6px 16px rgba(16, 24, 40, 0.1);
+  --sidebar-w: 248px;
 }
 
 * {
@@ -45,7 +51,7 @@ body {
     'Helvetica Neue',
     Arial,
     sans-serif;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 /* Keyboard access (WCAG 2.4.7 / 2.4.11): visible, unclipped focus ring. */
@@ -55,7 +61,8 @@ body {
   border-radius: 2px;
 }
 
-.sr-only {
+.sr-only,
+.visually-hidden {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -86,75 +93,213 @@ a {
 }
 
 h1 {
-  font-size: 1.5rem;
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   margin: 0 0 1rem;
 }
 h2 {
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   margin: 1.5rem 0 0.5rem;
 }
 h3 {
-  font-size: 1.05rem;
+  font-size: 1rem;
   margin: 1rem 0 0.5rem;
 }
 
-/* --- shell ---------------------------------------------------------------- */
-.site-header {
-  background: var(--brand-navy);
-  color: #fff;
-  border-bottom: 3px solid var(--brand-yellow);
+/* --- application shell ---------------------------------------------------- */
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  min-height: 100vh;
 }
-.site-header__inner {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0.6rem 1rem;
+
+.sidebar {
+  background: linear-gradient(180deg, var(--brand-navy) 0%, var(--brand-navy-deep) 100%);
+  color: #d6e2f0;
+  padding: 1rem 0.9rem 1.5rem;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem 1.25rem;
+  flex-direction: column;
+  gap: 1.25rem;
 }
-.site-header__brand {
-  font-weight: 700;
-  font-size: 1.05rem;
-  color: #fff;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-/* Approved brand logo (Directive 5.1 H): fixed height, intrinsic aspect
-   ratio, white plate so the mark stays legible on the dark header. */
-.site-header__logo {
-  height: 36px;
-  width: auto;
-  display: block;
-  background: #fff;
-  border-radius: 4px;
-  padding: 2px 4px;
-}
-.site-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-}
-.site-nav a {
-  color: #dbe7f5;
-  text-decoration: none;
-  padding: 0.35rem 0.6rem;
-  border-radius: var(--radius);
-}
-.site-nav a:hover,
-.site-nav a[aria-current='page'] {
-  background: var(--brand-navy-2);
-  color: #fff;
-}
-.site-header__user {
-  margin-left: auto;
+
+.sidebar__brand {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.02rem;
+  text-decoration: none;
+  padding: 0.25rem 0.35rem;
+}
+.sidebar__logo {
+  height: 40px;
+  width: auto;
+  display: block;
+  background: #fff;
+  border-radius: 6px;
+  padding: 2px 5px;
+}
+
+.side-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+.side-nav__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.side-nav__title {
+  margin: 0 0 0.25rem;
+  padding: 0 0.65rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #9db4cf;
+}
+.nav-link {
+  display: block;
+  color: #d6e2f0;
+  text-decoration: none;
+  font-size: 0.94rem;
+  padding: 0.42rem 0.65rem;
+  border-radius: 6px;
+  border-left: 3px solid transparent;
+}
+.nav-link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.nav-link[aria-current='page'] {
+  background: rgba(255, 255, 255, 0.1);
+  border-left-color: var(--brand-yellow);
+  color: #fff;
+  font-weight: 600;
+}
+
+.app-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  padding: 0.5rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+.topbar__user {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+.topbar__identity {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  font-size: 0.85rem;
+  text-align: right;
+}
+.topbar__roles {
+  color: var(--text-2);
+  font-size: 0.75rem;
+}
+
+.backlink {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.backlink:hover {
+  background: var(--muted);
+}
+
+.crumbs ol {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  font-size: 0.86rem;
+}
+.crumbs li {
+  display: flex;
+  align-items: center;
+}
+.crumbs li + li::before {
+  content: '/';
+  color: var(--border-strong);
+  padding: 0 0.4rem;
+}
+.crumbs a {
+  color: var(--text-2);
+  text-decoration: none;
+}
+.crumbs a:hover {
+  color: var(--brand-blue);
+  text-decoration: underline;
+}
+.crumbs [aria-current='page'] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Mobile drawer */
+.mobile-menu {
+  display: none;
+}
+.mobile-menu__toggle {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  font-weight: 600;
   font-size: 0.9rem;
-  color: #dbe7f5;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.mobile-menu__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 28, 48, 0.55);
+  border: 0;
+  z-index: 50;
+  cursor: pointer;
+}
+.mobile-menu__drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(280px, 85vw);
+  overflow-y: auto;
+  background: linear-gradient(180deg, var(--brand-navy) 0%, var(--brand-navy-deep) 100%);
+  z-index: 60;
+  padding: 1rem 0.9rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  box-shadow: var(--shadow-md);
 }
 
 .env-banner {
@@ -164,6 +309,7 @@ h3 {
   text-align: center;
   padding: 0.3rem 1rem;
   font-size: 0.85rem;
+  margin: 0;
 }
 /* Directive 5.1 G.4: unmistakable live-directory warning. */
 .env-banner--live {
@@ -172,33 +318,41 @@ h3 {
   border-bottom: 1px solid #5c130a;
   font-weight: 700;
 }
+
 /* Sign-in branding (Directive 5.1 H.8). */
 .signin-logo {
   height: 72px;
   width: auto;
   display: block;
-  margin: 0 auto 0.75rem;
+  margin: 1.5rem auto 0.75rem;
 }
 
 main {
-  max-width: 1100px;
+  width: 100%;
+  max-width: 1160px;
   margin: 0 auto;
-  padding: 1.25rem 1rem 3rem;
+  padding: 1.5rem 1.5rem 3.5rem;
 }
 
 /* --- panels / tables ------------------------------------------------------ */
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1rem 1.25rem;
+  border-radius: var(--radius-lg);
+  padding: 1.1rem 1.35rem;
   margin-bottom: 1.25rem;
+  box-shadow: var(--shadow-sm);
   /* Long unbreakable tokens (migration names, checksums, references) must
      wrap on narrow viewports instead of forcing horizontal scroll. */
   overflow-wrap: anywhere;
 }
+.panel > h2:first-child,
+.panel > h3:first-child {
+  margin-top: 0;
+}
 
-table.data {
+table.data,
+.panel table {
   width: 100%;
   border-collapse: collapse;
   background: var(--panel);
@@ -210,14 +364,31 @@ table.data caption {
   padding: 0.5rem 0;
 }
 table.data th,
-table.data td {
-  border: 1px solid var(--border);
-  padding: 0.45rem 0.6rem;
+table.data td,
+.panel table th,
+.panel table td {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0.55rem 0.7rem;
   text-align: left;
   vertical-align: top;
 }
-table.data th {
-  background: var(--muted);
+table.data th,
+.panel table th {
+  background: transparent;
+  border-bottom: 2px solid var(--border-strong);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  /* Headers may wrap between words but never inside one (no "PROVID ER"). */
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+table.data tbody tr:hover,
+.panel table tbody tr:hover {
+  background: #f7f9fc;
 }
 .table-wrap {
   overflow-x: auto;
@@ -226,9 +397,9 @@ table.data th {
 /* --- badges (icon/text + colour, never colour alone) ---------------------- */
 .badge {
   display: inline-block;
-  padding: 0.1rem 0.5rem;
+  padding: 0.12rem 0.55rem;
   border-radius: 999px;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
   border: 1px solid transparent;
   white-space: nowrap;
@@ -236,7 +407,7 @@ table.data th {
 .badge--neutral {
   background: var(--muted);
   color: var(--text-2);
-  border-color: var(--border);
+  border-color: var(--border-strong);
 }
 .badge--info {
   background: #e8f0fb;
@@ -278,6 +449,39 @@ table.data th {
   margin-bottom: 1rem;
 }
 
+/* --- case tabs ------------------------------------------------------------ */
+.case-tabs {
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 1.25rem;
+}
+.case-tabs ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+}
+.case-tabs a {
+  display: block;
+  padding: 0.5rem 0.85rem;
+  color: var(--text-2);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.92rem;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  border-radius: 6px 6px 0 0;
+}
+.case-tabs a:hover {
+  color: var(--brand-blue);
+  background: #f2f6fb;
+}
+.case-tabs a[aria-current='page'] {
+  color: var(--brand-blue);
+  border-bottom-color: var(--brand-blue);
+}
+
 /* --- forms ---------------------------------------------------------------- */
 form.stack,
 .stack {
@@ -305,12 +509,17 @@ input[type='date'],
 select,
 textarea {
   font: inherit;
-  padding: 0.45rem 0.6rem;
-  border: 1px solid var(--border);
+  padding: 0.48rem 0.65rem;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: #fff;
   color: var(--text);
   width: 100%;
+}
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: #9fb0c4;
 }
 fieldset {
   border: 1px solid var(--border);
@@ -335,6 +544,10 @@ button,
   cursor: pointer;
   text-decoration: none;
   display: inline-block;
+  box-shadow: var(--shadow-sm);
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
 }
 button:hover,
 .button:hover {
@@ -345,11 +558,20 @@ button.secondary,
   background: #fff;
   color: var(--brand-blue);
 }
+button.secondary:hover,
+.button.secondary:hover {
+  background: #f2f6fb;
+}
 button.danger,
 .button.danger {
   background: #fff;
   color: var(--danger);
   border-color: var(--danger);
+}
+button.compact,
+.button.compact {
+  padding: 0.32rem 0.75rem;
+  font-size: 0.85rem;
 }
 button:disabled {
   opacity: 0.55;
@@ -402,12 +624,27 @@ button:disabled {
 details.action {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.4rem 0.7rem;
+  padding: 0.45rem 0.8rem;
   background: var(--panel);
+  box-shadow: var(--shadow-sm);
 }
 details.action summary {
   cursor: pointer;
   font-weight: 600;
+  list-style: none;
+}
+details.action summary::-webkit-details-marker {
+  display: none;
+}
+details.action summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 0.45rem;
+  color: var(--brand-blue);
+  transition: transform 120ms ease;
+}
+details.action[open] summary::before {
+  transform: rotate(90deg);
 }
 details.action form {
   margin-top: 0.6rem;
@@ -438,11 +675,34 @@ ul.timeline li::before {
   font-size: 0.85rem;
 }
 
+.hint {
+  color: var(--text-2);
+}
+
+/* --- responsive ----------------------------------------------------------- */
+@media (max-width: 1023px) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sidebar {
+    display: none;
+  }
+  .mobile-menu {
+    display: block;
+  }
+}
+
 @media (max-width: 640px) {
   .kv {
     grid-template-columns: 1fr;
   }
-  .site-header__user {
-    margin-left: 0;
+  .topbar {
+    padding: 0.5rem 0.85rem;
+  }
+  .topbar__roles {
+    display: none;
+  }
+  main {
+    padding: 1rem 0.85rem 3rem;
   }
 }

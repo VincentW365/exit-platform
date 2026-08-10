@@ -15,29 +15,11 @@ export function CaseNav({ caseId, active }: { caseId: string; active: string }) 
     { href: `/cases/${caseId}#audit-h`, key: 'audit', label: 'Audit' },
   ];
   return (
-    <nav aria-label="Case sections" className="panel" style={{ padding: '0.4rem 0.75rem' }}>
-      <ul
-        style={{
-          listStyle: 'none',
-          margin: 0,
-          padding: 0,
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '0.25rem',
-        }}
-      >
+    <nav aria-label="Case sections" className="case-tabs">
+      <ul>
         {tabs.map((t) => (
           <li key={t.key}>
-            <Link
-              href={t.href}
-              aria-current={active === t.key ? 'page' : undefined}
-              className="button secondary"
-              style={
-                active === t.key
-                  ? { background: 'var(--brand-blue)', color: '#fff' }
-                  : { border: '1px solid transparent' }
-              }
-            >
+            <Link href={t.href} aria-current={active === t.key ? 'page' : undefined}>
               {t.label}
             </Link>
           </li>
