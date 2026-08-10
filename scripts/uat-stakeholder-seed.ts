@@ -30,6 +30,31 @@ async function main(): Promise<void> {
   const officer = await actorFor('hr-officer', 'HR_OFFICER');
   const manager = await actorFor('hr-manager', 'HR_MANAGER');
 
+  // Disposable IT responder for the Scenario 11 deactivation drill. Created
+  // here (not in the base seed) because only the UAT dataset needs him; the
+  // upsert makes rebuilds idempotent and re-enables him after a drill.
+  const devon = await prisma.user.upsert({
+    where: { identitySubject: 'dev|it-responder-b' },
+    create: {
+      identitySubject: 'dev|it-responder-b',
+      displayName: 'Devon Temple',
+      workEmail: 'devon.temple@example.test',
+    },
+    update: { displayName: 'Devon Temple', isActive: true },
+  });
+  const devonRole = await prisma.roleAssignment.findFirst({
+    where: { userId: devon.id, role: 'IT_RESPONDER' as never, revokedAt: null },
+  });
+  if (!devonRole) {
+    await prisma.roleAssignment.create({
+      data: {
+        userId: devon.id,
+        role: 'IT_RESPONDER' as never,
+        reason: `${LABEL} - Scenario 11 disposable IT responder.`,
+      },
+    });
+  }
+
   const note = async (actor: never, caseId: string, text: string) =>
     db.addNote(actor, caseId, `${LABEL} - ${text}`, 'HR_AND_OVERSIGHT');
 
