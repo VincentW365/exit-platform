@@ -62,6 +62,29 @@ const DEV_USERS: ReadonlyArray<{ slug: string; name: string; email: string; role
     email: 'marley.thompson@example.test',
     roles: ['SYSTEM_ADMIN'],
   },
+  // Directive 6.1 (B/F): synthetic directory managers get application
+  // accounts (matching workEmail) so hierarchy-derived manager routing
+  // resolves end-to-end in development without any real data.
+  {
+    slug: 'ops-manager',
+    name: 'Samira Cole',
+    email: 'samira.cole@example.test',
+    roles: ['LINE_MANAGER'],
+  },
+  {
+    slug: 'warehouse-manager',
+    name: 'Rowan Achebe',
+    email: 'rowan.achebe@example.test',
+    roles: ['LINE_MANAGER'],
+  },
+  // Disposable second IT responder: the user-deactivation drill (UAT
+  // Scenario 11) disables and re-enables this account.
+  {
+    slug: 'it-responder-b',
+    name: 'Devon Temple',
+    email: 'devon.temple@example.test',
+    roles: ['IT_RESPONDER'],
+  },
 ];
 
 const FEATURE_FLAGS: ReadonlyArray<{ key: string; description: string }> = [

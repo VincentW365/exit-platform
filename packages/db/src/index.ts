@@ -38,4 +38,7 @@ export * from './services/scheduledReportService.ts';
 export * from './services/retentionService.ts';
 export * from './services/backupService.ts';
 export * from './services/fallbackService.ts';
+export * from './services/orgService.ts';
+export * from './services/caseAssignmentService.ts';
+export * from './services/caseProgressService.ts';
 export { newPrefixedObjectKey } from './storage.ts';

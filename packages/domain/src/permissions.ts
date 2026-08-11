@@ -143,7 +143,11 @@ export type CaseAction =
   | 'handover.waive'
   | 'exception.view'
   | 'exception.resolve'
-  | 'exception.approveSecurity';
+  | 'exception.approveSecurity'
+  // Directive 6.1: organization-aware assignment (E/F/J).
+  | 'case.assignOfficer'
+  | 'case.manageManager'
+  | 'case.confirmAssignment';
 
 export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessContext): boolean {
   // Limited participant surfaces (no full case view required).
@@ -238,6 +242,15 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
       return hrOnCase || (view && hasRole(actor, 'AUDITOR', 'PRIVACY_OFFICER'));
     case 'audit.viewCase':
       return view;
+    // Directive 6.1 (E): officer assignment is HR-Manager authority.
+    case 'case.assignOfficer':
+      return hrManager && (c.classification !== 'RESTRICTED' || isHrParticipant(actor, c));
+    // Directive 6.1 (F/J): manager derivation/refresh and plan confirmation
+    // are HR case work; the OVERRIDE path is additionally restricted to the
+    // HR Manager in the service.
+    case 'case.manageManager':
+    case 'case.confirmAssignment':
+      return hrOnCase;
     default:
       return false;
   }
@@ -293,14 +306,22 @@ export type GlobalAction =
   | 'support.use'
   | 'support.manage'
   | 'sop.view'
-  | 'health.view';
+  | 'health.view'
+  // Directive 6.1: audit centre + organization administration.
+  | 'audit.viewTechnical'
+  | 'audit.export'
+  | 'org.view'
+  | 'admin.organization';
 
 const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   'case.create': ['HR_MANAGER', 'HR_OFFICER'],
   'case.list': ['HR_MANAGER', 'HR_OFFICER', 'AUDITOR', 'PRIVACY_OFFICER'],
   'baseline.viewDashboard': ['HR_MANAGER', 'HR_OFFICER'],
   'baseline.export': ['HR_MANAGER', 'HR_OFFICER'],
-  'audit.viewGlobal': ['AUDITOR', 'PRIVACY_OFFICER'],
+  // Directive 6.1 (K): the Audit Centre serves HR_MANAGER as a primary
+  // audience; restricted-case rows are minimized in the service for viewers
+  // without case access.
+  'audit.viewGlobal': ['AUDITOR', 'PRIVACY_OFFICER', 'HR_MANAGER'],
   'admin.roles': ['SYSTEM_ADMIN'],
   'admin.flags': ['SYSTEM_ADMIN'],
   'admin.calendar': ['HR_MANAGER'],
@@ -368,6 +389,14 @@ const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
     'SYSTEM_ADMIN',
   ],
   'health.view': ['SYSTEM_ADMIN', 'HR_MANAGER', 'AUDITOR'],
+  // Directive 6.1 (K): SYSTEM_ADMIN sees technical events only (never HR case
+  // content - enforced in the service as technical categories AND no caseId).
+  'audit.viewTechnical': ['SYSTEM_ADMIN'],
+  'audit.export': ['HR_MANAGER', 'AUDITOR', 'PRIVACY_OFFICER'],
+  // Directive 6.1 (C/D): organization health for HR; the administration page
+  // is shared HR-business / technical like /admin.
+  'org.view': ['HR_MANAGER', 'HR_OFFICER'],
+  'admin.organization': ['HR_MANAGER', 'SYSTEM_ADMIN'],
 };
 
 export function can(actor: Actor, action: GlobalAction): boolean {

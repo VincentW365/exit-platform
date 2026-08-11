@@ -23,6 +23,27 @@
 | PRIVACY_OFFICER | Reviews data protection, access, retention, breach, and data-subject matters. | Privacy-relevant records and incidents. | Review classifications, retention, access logs, data-sharing records, privacy notices, deletion/legal hold, and breach-support records. | No routine operational edits except privacy workflows; cannot change HR decisions. |
 | SYSTEM_ADMIN | Maintains technical configuration and platform availability. | Technical administration; business-record access is denied by default. | Manage deployments, integrations, health settings, feature flags, technical users, and configuration where assigned. | No default access to HR case content. Break-glass access requires explicit approval, time limitation, reason, and enhanced audit. |
 
+### Directive 6.1 implementation note (2026-08-11)
+
+- **Case ownership (E):** every case distinguishes the accountable owner
+  (HR Manager) from the operational owner (`assignedOfficerId`); the HR
+  Manager assigns/reassigns manually with reason and full audit. Activation
+  requires the assignment plan: officer + resolved manager (or audited
+  override) + six recorded confirmations.
+- **Manager routing (F):** LINE_MANAGER behaviour derives from the
+  directory's employee→manager relationship; access remains assignment-
+  scoped (the routed manager sees exactly the routed case's work).
+- **Department queues (G/H/I):** IT/Finance tasks start unassigned in their
+  queues; department responders may claim, return to queue, and assign
+  unassigned work within their department; reassignment of held work stays
+  HR-Manager authority. No assignment operation moves a due date.
+- **Audit Centre (K):** `audit.viewGlobal` now includes HR_MANAGER with
+  service-level minimization of restricted-case rows; new
+  `audit.viewTechnical` gives SYSTEM_ADMIN technical categories only with no
+  case linkage; `audit.export` (HR_MANAGER/AUDITOR/PRIVACY_OFFICER) is
+  itself audited. New `org.view` / `admin.organization` gate the
+  organization health surfaces.
+
 ### Small-team staffing note (dual-hatting, DEC-037)
 
 Roles are permission sets, not headcount. At Bert's scale the operational

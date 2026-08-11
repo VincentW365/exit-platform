@@ -25,7 +25,13 @@ import {
   syncEmployees,
 } from '../src/services/bamboohrService.ts';
 import { getCase } from '../src/services/caseService.ts';
-import { createUser, resetDb, seedStage3Fixtures, VALID_DRAFT } from './helpers.ts';
+import {
+  createUser,
+  readyAssignment,
+  resetDb,
+  seedStage3Fixtures,
+  VALID_DRAFT,
+} from './helpers.ts';
 
 const prisma = getPrisma();
 
@@ -33,6 +39,7 @@ let officer: Awaited<ReturnType<typeof createUser>>;
 let manager: Awaited<ReturnType<typeof createUser>>;
 let sysAdmin: Awaited<ReturnType<typeof createUser>>;
 let victim: Awaited<ReturnType<typeof createUser>>;
+let lineMgr: Awaited<ReturnType<typeof createUser>>;
 
 const TEST_DRAFT = {
   ...VALID_DRAFT,
@@ -45,6 +52,7 @@ async function makeActiveCase(overrides: Record<string, unknown> = {}): Promise<
   const created = await createDraft(officer.actor, { ...TEST_DRAFT, ...overrides });
   await transitionCase(officer.actor, created.caseId, 'submit');
   await transitionCase(manager.actor, created.caseId, 'approve');
+  await readyAssignment(created.caseId, manager.actor, officer.userId, lineMgr.userId);
   await activateCase(manager.actor, created.caseId);
   return created.caseId;
 }
@@ -65,6 +73,7 @@ beforeAll(async () => {
   manager = await createUser('S4 Manager', 'HR_MANAGER');
   sysAdmin = await createUser('S4 SysAdmin', 'SYSTEM_ADMIN');
   victim = await createUser('S4 Victim', 'IT_RESPONDER');
+  lineMgr = await createUser('S4 Line Manager', 'LINE_MANAGER');
 });
 
 afterAll(() => {

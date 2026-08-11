@@ -149,7 +149,12 @@ function header(doc: InstanceType<typeof PDFDocument>, confidentiality: string):
 
   const ruleY = Math.max(contentBottom, top + 34) + 14;
   doc.moveTo(left, ruleY).lineTo(right, ruleY).lineWidth(1).strokeColor(RULE).stroke();
-  doc.moveTo(left, ruleY).lineTo(left + 76, ruleY).lineWidth(2.25).strokeColor(ACCENT).stroke();
+  doc
+    .moveTo(left, ruleY)
+    .lineTo(left + 76, ruleY)
+    .lineWidth(2.25)
+    .strokeColor(ACCENT)
+    .stroke();
 
   doc.x = left;
   doc.y = ruleY + 28;

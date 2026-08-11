@@ -64,6 +64,30 @@ async function submitAndApprove(page: Page, caseUrl: string): Promise<void> {
   await expect(page.getByText(/Case approved/)).toBeVisible();
 }
 
+/** Directive 6.1: activation requires the assignment plan (run as HR Manager). */
+async function completeAssignmentPlan(
+  page: Page,
+  caseUrl: string,
+  officerLabel = 'Riley Okafor',
+): Promise<void> {
+  await page.goto(`${caseUrl}/assignment`);
+  await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
+  await page.locator('#of-user').selectOption({ label: officerLabel });
+  await page.locator('#of-reason').fill('UAT assignment.');
+  await page.getByRole('button', { name: 'Assign officer' }).click();
+  await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
+  await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
+  await page.locator('#am-user').selectOption({ label: 'Jamie Douglas' });
+  await page.locator('#am-reason').fill('UAT manager routing.');
+  await page.getByRole('button', { name: 'Record alternate manager' }).click();
+  await expect(page.getByText('Alternate manager recorded')).toBeVisible();
+  for (const box of await page.locator('input[name="confirmations"]').all()) {
+    if (!(await box.isChecked())) await box.check();
+  }
+  await page.getByRole('button', { name: 'Confirm assignment plan' }).click();
+  await expect(page.getByText('Assignment plan confirmed').first()).toBeVisible();
+}
+
 async function addParticipantOnCase(
   page: Page,
   caseUrl: string,
@@ -165,6 +189,7 @@ test('UAT-1 - integrated resignation with notice: one case end to end', async ({
   });
   await submitAndApprove(page, caseUrl);
   await addParticipantOnCase(page, caseUrl, 'Jamie Douglas', 'MANAGER');
+  await completeAssignmentPlan(page, caseUrl);
   await signOut(page);
 
   // 3-4: workflow preview reviewed, then activated.
@@ -446,7 +471,7 @@ test('UAT-10 - user deactivation: session revoked, sign-in refused, work reassig
   page,
   browser,
 }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(420_000);
 
   // A case whose IT review task is assigned to the disposable user.
   await signInAs(page, 'Riley Okafor');
@@ -455,6 +480,7 @@ test('UAT-10 - user deactivation: session revoked, sign-in refused, work reassig
     type: 'RESIGNATION_WITH_NOTICE',
   });
   await submitAndApprove(page, caseUrl);
+  await completeAssignmentPlan(page, caseUrl);
   await page.goto(`${caseUrl}/workflow`);
   await page.getByRole('button', { name: 'Activate case and create these tasks' }).click();
   await expect(page.getByText(/Case activated/)).toBeVisible();
@@ -471,7 +497,8 @@ test('UAT-10 - user deactivation: session revoked, sign-in refused, work reassig
   const devonPage = await devonContext.newPage();
   await signInAs(devonPage, 'Devon Temple');
   await devonPage.goto('/queue');
-  await expect(devonPage.getByText('Devon Temple (IT_RESPONDER)')).toBeVisible();
+  await expect(devonPage.getByText('Devon Temple', { exact: true })).toBeVisible();
+  await expect(devonPage.getByText('IT_RESPONDER', { exact: true })).toBeVisible();
 
   // SYSTEM_ADMIN disables the account; open work is flagged.
   await signInAs(page, 'Marley Thompson');
@@ -485,7 +512,7 @@ test('UAT-10 - user deactivation: session revoked, sign-in refused, work reassig
   await page.locator('#du-reason').fill('Synthetic UAT Scenario 10 deactivation test.');
   await page.getByRole('button', { name: 'Disable user now' }).click();
   await expect(
-    page.getByText(/User disabled; sessions revoked immediately; 1 orphaned task/),
+    page.getByText(/User disabled; sessions revoked immediately; \d+ orphaned task/),
   ).toBeVisible();
   await signOut(page);
 

@@ -48,7 +48,13 @@ import {
 import { setFlag } from '../src/services/adminService.ts';
 import { syncEmployees } from '../src/services/bamboohrService.ts';
 import { generateAccessReview } from '../src/services/identityService.ts';
-import { createUser, resetDb, seedStage3Fixtures, VALID_DRAFT } from './helpers.ts';
+import {
+  createUser,
+  readyAssignment,
+  resetDb,
+  seedStage3Fixtures,
+  VALID_DRAFT,
+} from './helpers.ts';
 
 const prisma = getPrisma();
 
@@ -56,6 +62,7 @@ let officer: Awaited<ReturnType<typeof createUser>>;
 let manager: Awaited<ReturnType<typeof createUser>>;
 let sysAdmin: Awaited<ReturnType<typeof createUser>>;
 let privacy: Awaited<ReturnType<typeof createUser>>;
+let lineMgr: Awaited<ReturnType<typeof createUser>>;
 
 const TEST_DRAFT = {
   ...VALID_DRAFT,
@@ -74,6 +81,7 @@ beforeAll(async () => {
   manager = await createUser('S4B Manager', 'HR_MANAGER');
   sysAdmin = await createUser('S4B SysAdmin', 'SYSTEM_ADMIN');
   privacy = await createUser('S4B Privacy', 'PRIVACY_OFFICER');
+  lineMgr = await createUser('S4B Line Manager', 'LINE_MANAGER');
 });
 
 async function makeCase(overrides: Record<string, unknown> = {}, approve = true) {
@@ -162,6 +170,7 @@ describe('taxonomy and calendar (X.15, X.16)', () => {
 
   it('calendar approval + preview never rewrite existing due dates (X.16)', async () => {
     const caseId = await makeCase({ employeeSourceId: 'EMP-TEST-002' });
+    await readyAssignment(caseId, manager.actor, officer.userId, lineMgr.userId);
     await activateCase(manager.actor, caseId);
     const before = await prisma.workflowTask.findFirstOrThrow({
       where: { caseId, dueAt: { not: null } },

@@ -103,6 +103,25 @@ export const VALID_DRAFT = {
 } as const;
 
 /**
+ * Directive 6.1 (E/F/J): activation now requires an assigned HR Officer,
+ * resolved manager routing and the six confirmations. Tests and seeds that
+ * only need an ACTIVE case call this between approval and activation.
+ */
+export async function readyAssignment(
+  caseId: string,
+  hrManagerActor: Actor,
+  officerUserId: string,
+  lineManagerUserId: string,
+): Promise<void> {
+  const { assignOfficer, overrideManager, confirmAssignmentPlan } =
+    await import('../src/services/caseAssignmentService.ts');
+  const { CONFIRMATION_KEYS } = await import('@exit/domain');
+  await assignOfficer(hrManagerActor, caseId, officerUserId, 'Integration test assignment.');
+  await overrideManager(hrManagerActor, caseId, lineManagerUserId, 'Integration test routing.');
+  await confirmAssignmentPlan(hrManagerActor, caseId, [...CONFIRMATION_KEYS]);
+}
+
+/**
  * Stage 3 fixtures: development workflow definitions, notification templates,
  * asset catalogue and issued assets (all synthetic). resetDb truncates them,
  * so tests re-seed explicitly.

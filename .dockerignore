@@ -23,3 +23,4 @@ tmp
 hr-offboarding-sensitive-source
 **/*.docx
 **/*.doc
+uat-local-real-person-mapping.json

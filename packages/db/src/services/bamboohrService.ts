@@ -37,6 +37,10 @@ export interface BambooEmployee extends EmployeeFieldSet {
   sourceId: string;
   active: boolean;
   managerName: string | null;
+  /** Directive 6.1 (B): approved organization fields kept end-to-end. */
+  managerSourceId?: string | null;
+  division?: string | null;
+  employeeNumber?: string | null;
 }
 
 export interface BambooAdapter {
@@ -62,6 +66,8 @@ class FixtureBambooAdapter implements BambooAdapter {
   }
   async listEmployees(): Promise<BambooEmployee[]> {
     if (fixtureOverride) return fixtureOverride;
+    // Directive 6.1 (B): the fixture emits the full synthetic organization
+    // graph so hierarchy routing is exercised without any live data.
     return SYNTHETIC_EMPLOYEES.map((e) => ({
       sourceId: e.sourceId,
       displayName: e.displayName,
@@ -69,8 +75,11 @@ class FixtureBambooAdapter implements BambooAdapter {
       jobTitle: e.jobTitle,
       department: e.department,
       location: e.location,
-      active: true,
-      managerName: 'Jamie Douglas',
+      active: e.active ?? true,
+      managerName: e.managerName ?? null,
+      managerSourceId: e.managerSourceId ?? null,
+      division: e.division ?? null,
+      employeeNumber: e.employeeNumber ?? null,
     }));
   }
 }
@@ -180,6 +189,9 @@ export class LiveBambooDirectoryAdapter implements BambooAdapter {
         location: mapped.location,
         active: mapped.active,
         managerName: mapped.managerName,
+        managerSourceId: mapped.managerSourceId,
+        division: mapped.division,
+        employeeNumber: mapped.employeeNumber,
       });
     }
     return rows;
@@ -230,6 +242,13 @@ export async function syncEmployees(actor: Actor) {
             department: e.department,
             location: e.location,
             retrievedAt: now,
+            // Directive 6.1 (B): typed organization columns.
+            managerName: e.managerName,
+            managerSourceId: e.managerSourceId ?? null,
+            division: e.division ?? null,
+            employeeNumber: e.employeeNumber ?? null,
+            active: e.active,
+            lastSyncedAt: now,
             // Minimum mapped fields only - never a raw API response (D.4).
             payload: {
               active: e.active,
@@ -251,13 +270,27 @@ export async function syncEmployees(actor: Actor) {
           },
           e,
         );
-        if (diff.length > 0) {
+        // Directive 6.1: organization fields participate in change detection
+        // (field names only - values stay out of sync evidence).
+        const orgChanges: string[] = [];
+        if ((existing.managerName ?? null) !== (e.managerName ?? null))
+          orgChanges.push('managerName');
+        if ((existing.managerSourceId ?? null) !== (e.managerSourceId ?? null))
+          orgChanges.push('managerSourceId');
+        if ((existing.division ?? null) !== (e.division ?? null)) orgChanges.push('division');
+        if ((existing.employeeNumber ?? null) !== (e.employeeNumber ?? null))
+          orgChanges.push('employeeNumber');
+        if (existing.active !== e.active) orgChanges.push('active');
+        if (diff.length > 0 || orgChanges.length > 0) {
           // Differences are recorded before overwrite. For LIVE data the
           // evidence keeps changed FIELD NAMES only - values (names, emails)
           // stay out of operational sync evidence (D.5).
           diffs.push({
             sourceId: e.sourceId,
-            changes: adapter.mode === 'live' ? diff.map((d) => d.field) : diff,
+            changes:
+              adapter.mode === 'live'
+                ? [...diff.map((d) => d.field), ...orgChanges]
+                : [...diff, ...orgChanges.map((field) => ({ field, changed: true }))],
           });
           await prisma.employeeSourceRecord.update({
             where: { id: existing.id },
@@ -268,6 +301,12 @@ export async function syncEmployees(actor: Actor) {
               department: e.department,
               location: e.location,
               retrievedAt: now,
+              managerName: e.managerName,
+              managerSourceId: e.managerSourceId ?? null,
+              division: e.division ?? null,
+              employeeNumber: e.employeeNumber ?? null,
+              active: e.active,
+              lastSyncedAt: now,
               payload: {
                 active: e.active,
                 managerName: e.managerName,
@@ -278,12 +317,92 @@ export async function syncEmployees(actor: Actor) {
           });
           updated += 1;
         } else {
+          await prisma.employeeSourceRecord.update({
+            where: { id: existing.id },
+            data: { lastSyncedAt: now },
+          });
           unchanged += 1;
         }
       }
     } catch {
       failed += 1; // row-level failure never aborts the run; count only
     }
+  }
+
+  // Directive 6.1 (B): resolve name-only manager references to directory ids
+  // where the name is unique within the source system. Ambiguity stays null
+  // and surfaces as an org-validation finding, never a guess.
+  const nameRows = await prisma.employeeSourceRecord.findMany({
+    where: { sourceSystem, NOT: { displayName: { startsWith: 'PURGED-' } } },
+    select: {
+      id: true,
+      sourceId: true,
+      displayName: true,
+      managerName: true,
+      managerSourceId: true,
+    },
+  });
+  const idsByName = new Map<string, string[]>();
+  for (const r of nameRows) {
+    const list = idsByName.get(r.displayName) ?? [];
+    list.push(r.sourceId);
+    idsByName.set(r.displayName, list);
+  }
+  for (const r of nameRows) {
+    if (r.managerSourceId || !r.managerName) continue;
+    const candidates = idsByName.get(r.managerName) ?? [];
+    if (candidates.length === 1 && candidates[0] !== r.sourceId) {
+      await prisma.employeeSourceRecord.update({
+        where: { id: r.id },
+        data: { managerSourceId: candidates[0] },
+      });
+    }
+  }
+
+  // Directive 6.1 (F): a post-activation manager change is FLAGGED for HR
+  // review exactly once - existing case work is never silently reassigned.
+  const openCases = await prisma.offboardingCase.findMany({
+    where: {
+      status: { in: ['ACTIVE', 'ON_HOLD'] },
+      employeeSourceSystem: sourceSystem,
+      managerChangeFlaggedAt: null,
+      managerConfirmedAt: { not: null },
+    },
+    select: {
+      id: true,
+      caseNumber: true,
+      employeeSourceId: true,
+      managerName: true,
+      managerSourceId: true,
+    },
+  });
+  const feedById = new Map(employees.map((e) => [e.sourceId, e]));
+  for (const c of openCases) {
+    const feed = feedById.get(c.employeeSourceId);
+    if (!feed) continue;
+    const changed =
+      (feed.managerSourceId ?? null) !== (c.managerSourceId ?? null)
+        ? Boolean(feed.managerSourceId ?? c.managerSourceId)
+        : (feed.managerName ?? null) !== (c.managerName ?? null);
+    if (!changed) continue;
+    await prisma.offboardingCase.update({
+      where: { id: c.id },
+      data: { managerChangeFlaggedAt: now },
+    });
+    await appendAudit(prisma, {
+      eventType: 'HIERARCHY_CHANGE_FLAGGED',
+      actorType: 'SYSTEM',
+      objectType: 'OffboardingCase',
+      objectId: c.id,
+      caseId: c.id,
+      result: 'SUCCESS',
+      correlationId,
+      metadata: {
+        caseNumber: c.caseNumber,
+        previousManagerName: c.managerName,
+        directoryManagerName: feed.managerName,
+      },
+    });
   }
 
   const run = await prisma.employeeSyncRun.create({
@@ -385,7 +504,8 @@ export async function reconciliationReport(actor: Actor) {
         sourceId: rec.sourceId,
         detail: 'Department or location changed in the source since the last sync.',
       });
-    const cachedManager = (rec.payload as { managerName?: string } | null)?.managerName ?? null;
+    const cachedManager =
+      rec.managerName ?? (rec.payload as { managerName?: string } | null)?.managerName ?? null;
     if (cachedManager !== null && cachedManager !== src.managerName)
       findings.push({
         kind: 'CHANGED_MANAGER',
@@ -540,6 +660,14 @@ export async function scheduledDirectorySyncIfEnabled(): Promise<'disabled' | 'r
     const sourceSystem = SOURCE_SYSTEM_FOR_MODE[adapter.mode];
     const now = new Date();
     for (const e of employees) {
+      const orgColumns = {
+        managerName: e.managerName,
+        managerSourceId: e.managerSourceId ?? null,
+        division: e.division ?? null,
+        employeeNumber: e.employeeNumber ?? null,
+        active: e.active,
+        lastSyncedAt: now,
+      };
       await prisma.employeeSourceRecord.upsert({
         where: { sourceSystem_sourceId: { sourceSystem, sourceId: e.sourceId } },
         create: {
@@ -551,6 +679,7 @@ export async function scheduledDirectorySyncIfEnabled(): Promise<'disabled' | 'r
           department: e.department,
           location: e.location,
           retrievedAt: now,
+          ...orgColumns,
           payload: {
             active: e.active,
             managerName: e.managerName,
@@ -565,6 +694,7 @@ export async function scheduledDirectorySyncIfEnabled(): Promise<'disabled' | 'r
           department: e.department,
           location: e.location,
           retrievedAt: now,
+          ...orgColumns,
           payload: {
             active: e.active,
             managerName: e.managerName,

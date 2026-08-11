@@ -123,14 +123,18 @@ const EXPECTED: Record<string, Record<Role, Outcome>> = {
     SYSTEM_ADMIN: 'FORBIDDEN',
   },
   globalAuditFeed: {
-    HR_MANAGER: 'FORBIDDEN',
+    // Directive 6.1 (K): HR_MANAGER joined the Audit Centre audience
+    // (restricted-case rows are minimized inside the service) and
+    // SYSTEM_ADMIN receives the TECHNICAL feed only (technical categories,
+    // never rows linked to a case - asserted in directive61AuditCentre).
+    HR_MANAGER: 'ALLOW',
     HR_OFFICER: 'FORBIDDEN',
     IT_RESPONDER: 'FORBIDDEN',
     FINANCE_RESPONDER: 'FORBIDDEN',
     LINE_MANAGER: 'FORBIDDEN',
     AUDITOR: 'ALLOW',
     PRIVACY_OFFICER: 'ALLOW',
-    SYSTEM_ADMIN: 'FORBIDDEN',
+    SYSTEM_ADMIN: 'ALLOW',
   },
   normalCaseAudit: {
     HR_MANAGER: 'ALLOW',

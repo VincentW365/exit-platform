@@ -16,6 +16,30 @@ async function signOut(page: Page): Promise<void> {
   await page.waitForURL('**/signin');
 }
 
+/** Directive 6.1: activation requires the assignment plan (run as HR Manager). */
+async function completeAssignmentPlan(
+  page: Page,
+  caseUrl: string,
+  officerLabel = 'Riley Okafor',
+): Promise<void> {
+  await page.goto(`${caseUrl}/assignment`);
+  await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
+  await page.locator('#of-user').selectOption({ label: officerLabel });
+  await page.locator('#of-reason').fill('E2E assignment.');
+  await page.getByRole('button', { name: 'Assign officer' }).click();
+  await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
+  await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
+  await page.locator('#am-user').selectOption({ label: 'Jamie Douglas' });
+  await page.locator('#am-reason').fill('E2E manager routing.');
+  await page.getByRole('button', { name: 'Record alternate manager' }).click();
+  await expect(page.getByText('Alternate manager recorded')).toBeVisible();
+  for (const box of await page.locator('input[name="confirmations"]').all()) {
+    if (!(await box.isChecked())) await box.check();
+  }
+  await page.getByRole('button', { name: 'Confirm assignment plan' }).click();
+  await expect(page.getByText('Assignment plan confirmed').first()).toBeVisible();
+}
+
 async function createTestCase(
   page: Page,
   opts: { employeeQuery: string; type: string },
@@ -55,6 +79,7 @@ test('Scenario 1 - notification delivery through development capture', async ({ 
   await page.goto(caseUrl);
   await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
+  await completeAssignmentPlan(page, caseUrl);
   await page.goto(`${caseUrl}/workflow`);
   await page.getByRole('button', { name: 'Activate case and create these tasks' }).click();
   await expect(page.getByText(/Case activated/)).toBeVisible();

@@ -1,5 +1,12 @@
 # User Acceptance Test Plan (Synthetic UAT)
 
+> **Directive 6.1:** realistic (aliased) stakeholder UAT on the organization-
+> aware platform is specified in
+> `RealisticStakeholderUATWalkthrough.md` and
+> `RealisticUATAssignmentMatrix.md`. This plan remains the synthetic
+> baseline; the realistic pass adds real organizational patterns under the
+> alias/purge safeguards and never replaces the synthetic evidence.
+
 Structured acceptance testing of the offboarding platform by the pilot user
 group, using SYNTHETIC data only (EMP-TEST employees, TEST record purpose).
 Passing this plan is a pilot readiness gate (`readiness.uatPassed` is set by

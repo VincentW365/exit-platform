@@ -26,6 +26,70 @@ function hrVisibilityWhere(actor: Actor) {
   };
 }
 
+/**
+ * Directive 6.1 (AD): the dashboard's "needs attention now" row - critical,
+ * overdue, pending-approval and routing problems, before operational metrics.
+ */
+export async function attentionSummary(actor: Actor) {
+  if (!can(actor, 'baseline.viewDashboard')) throw ServiceError.forbidden();
+  const prisma = getPrisma();
+  const visibility = hrVisibilityWhere(actor);
+  const now = new Date();
+  const endOfToday = new Date(now);
+  endOfToday.setHours(23, 59, 59, 999);
+  const openStatuses = ['READY', 'IN_PROGRESS', 'BLOCKED'] as const;
+  const liveTask = {
+    case: { is: { AND: [visibility, { recordPurpose: 'OPERATIONAL' as const }] } },
+    status: { in: [...openStatuses] },
+  };
+
+  const [
+    criticalTasks,
+    overdueTasks,
+    dueToday,
+    pendingApproval,
+    missingManager,
+    hierarchyFlags,
+    unassignedDept,
+  ] = await Promise.all([
+    prisma.workflowTask.count({
+      where: { ...liveTask, OR: [{ priority: 'CRITICAL' }, { escalationLevel: { gt: 0 } }] },
+    }),
+    prisma.workflowTask.count({ where: { ...liveTask, dueAt: { lt: now } } }),
+    prisma.workflowTask.count({ where: { ...liveTask, dueAt: { gte: now, lte: endOfToday } } }),
+    prisma.offboardingCase.count({
+      where: { AND: [visibility, { status: 'PENDING_HR_REVIEW', recordPurpose: 'OPERATIONAL' }] },
+    }),
+    prisma.offboardingCase.count({
+      where: {
+        AND: [
+          visibility,
+          {
+            status: { in: ['DRAFT', 'PENDING_HR_REVIEW', 'APPROVED'] },
+            recordPurpose: 'OPERATIONAL',
+            managerUserId: null,
+          },
+        ],
+      },
+    }),
+    prisma.offboardingCase.count({
+      where: { AND: [visibility, { managerChangeFlaggedAt: { not: null } }] },
+    }),
+    prisma.workflowTask.count({
+      where: { ...liveTask, assigneeId: null, department: { in: ['IT', 'FINANCE'] } },
+    }),
+  ]);
+  return {
+    criticalTasks,
+    overdueTasks,
+    dueToday,
+    pendingApproval,
+    missingManager,
+    hierarchyFlags,
+    unassignedDept,
+  };
+}
+
 export async function hrDashboard(actor: Actor) {
   if (!can(actor, 'baseline.viewDashboard')) throw ServiceError.forbidden();
   const prisma = getPrisma();

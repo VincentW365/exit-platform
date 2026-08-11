@@ -63,6 +63,30 @@ async function submitAndApprove(page: Page, caseUrl: string): Promise<void> {
   await expect(page.getByText(/Case approved/)).toBeVisible();
 }
 
+/** Directive 6.1: activation requires the assignment plan (run as HR Manager). */
+async function completeAssignmentPlan(
+  page: Page,
+  caseUrl: string,
+  officerLabel = 'Riley Okafor',
+): Promise<void> {
+  await page.goto(`${caseUrl}/assignment`);
+  await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
+  await page.locator('#of-user').selectOption({ label: officerLabel });
+  await page.locator('#of-reason').fill('E2E assignment.');
+  await page.getByRole('button', { name: 'Assign officer' }).click();
+  await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
+  await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
+  await page.locator('#am-user').selectOption({ label: 'Jamie Douglas' });
+  await page.locator('#am-reason').fill('E2E manager routing.');
+  await page.getByRole('button', { name: 'Record alternate manager' }).click();
+  await expect(page.getByText('Alternate manager recorded')).toBeVisible();
+  for (const box of await page.locator('input[name="confirmations"]').all()) {
+    if (!(await box.isChecked())) await box.check();
+  }
+  await page.getByRole('button', { name: 'Confirm assignment plan' }).click();
+  await expect(page.getByText('Assignment plan confirmed').first()).toBeVisible();
+}
+
 async function addParticipantOnCase(
   page: Page,
   caseUrl: string,
@@ -180,6 +204,7 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
   });
   await submitAndApprove(page, caseUrl);
   await addParticipantOnCase(page, caseUrl, 'Jamie Douglas', 'MANAGER');
+  await completeAssignmentPlan(page, caseUrl);
   await signOut(page);
 
   // HR activates from the read-only preview (B.8): tasks, owners, due dates.
@@ -369,6 +394,7 @@ test('Scenario 2 - immediate resignation: urgent tasks, overdue access, blocked 
     effectiveAt: '2026-07-28T14:00', // already past: revocation immediately overdue (G.2)
   });
   await submitAndApprove(page, caseUrl);
+  await completeAssignmentPlan(page, caseUrl);
   await signOut(page);
 
   await signInAs(page, 'Riley Okafor');
@@ -439,6 +465,9 @@ test('Scenario 3 - restricted termination: undiscoverable, minimum-data IT task,
   await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
   await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
+  // Restricted case: the manager keeps operational ownership herself so the
+  // non-participant discovery assertions below stay meaningful.
+  await completeAssignmentPlan(page, caseUrl, 'Dana Field');
   await page.goto(`${caseUrl}/workflow`);
   await page.getByRole('button', { name: 'Activate case and create these tasks' }).click();
   await expect(page.getByText(/Case activated/)).toBeVisible();
@@ -495,6 +524,7 @@ test('Scenario 4 - exception handling: blocker raised, escalated, HR resolves wi
     effectiveAt: '2026-07-28T14:00',
   });
   await submitAndApprove(page, caseUrl);
+  await completeAssignmentPlan(page, caseUrl);
   await signOut(page);
   await signInAs(page, 'Riley Okafor');
   await page.goto(`${caseUrl}/workflow`);
@@ -550,6 +580,7 @@ test('Scenario 5 - asset exception: lost/unresolved assets, no pay effect, disti
     confirmedLastDay: true,
   });
   await submitAndApprove(page, caseUrl);
+  await completeAssignmentPlan(page, caseUrl);
   await signOut(page);
   await signInAs(page, 'Riley Okafor');
   await page.goto(`${caseUrl}/workflow`);

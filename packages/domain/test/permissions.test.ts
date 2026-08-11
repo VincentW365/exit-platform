@@ -130,10 +130,16 @@ describe('global actions', () => {
     }
   });
 
-  it('global audit feed is oversight-only; admin console is SYSTEM_ADMIN-only', () => {
+  it('audit centre audiences (Directive 6.1 K); admin console is SYSTEM_ADMIN-only', () => {
     for (const role of ROLES) {
+      // HR_MANAGER joined the global audit audience in Directive 6.1; the
+      // service minimizes restricted-case rows they cannot view.
       expect(can(actor('u', role), 'audit.viewGlobal'), role).toBe(
-        role === 'AUDITOR' || role === 'PRIVACY_OFFICER',
+        role === 'AUDITOR' || role === 'PRIVACY_OFFICER' || role === 'HR_MANAGER',
+      );
+      expect(can(actor('u', role), 'audit.viewTechnical'), role).toBe(role === 'SYSTEM_ADMIN');
+      expect(can(actor('u', role), 'audit.export'), role).toBe(
+        role === 'AUDITOR' || role === 'PRIVACY_OFFICER' || role === 'HR_MANAGER',
       );
       expect(can(actor('u', role), 'admin.roles'), role).toBe(role === 'SYSTEM_ADMIN');
       expect(can(actor('u', role), 'admin.flags'), role).toBe(role === 'SYSTEM_ADMIN');

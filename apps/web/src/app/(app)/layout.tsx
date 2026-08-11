@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { BRAND, can } from '@exit/domain';
-import { liveDirectoryPresence } from '@exit/db';
+import { getSystemConfigValue, liveDirectoryPresence } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { logoutAction } from '@/app/signin/actions';
 import { ActiveLink, BackButton, Breadcrumbs, MobileMenu } from '@/components/chrome';
@@ -8,6 +8,9 @@ import { ActiveLink, BackButton, Breadcrumbs, MobileMenu } from '@/components/ch
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, actor } = await requireAuth();
   const liveDirectory = await liveDirectoryPresence().catch(() => ({ present: false, records: 0 }));
+  const aliasActive = await getSystemConfigValue('uat.aliasActive')
+    .then((v) => v === true)
+    .catch(() => false);
 
   // Small-team navigation: grouped sidebar. Users with Administration access
   // reach Templates, Workflows and Baseline through the hub; everyone else
@@ -25,7 +28,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (can(actor, 'reports.view')) insight.push({ href: '/reports', label: 'Reports' });
   if (!hasAdminHub && can(actor, 'baseline.viewDashboard'))
     insight.push({ href: '/baseline', label: 'Baseline' });
-  if (can(actor, 'audit.viewGlobal')) insight.push({ href: '/audit', label: 'Audit feed' });
+  if (can(actor, 'audit.viewGlobal') || can(actor, 'audit.viewTechnical'))
+    insight.push({ href: '/audit', label: 'Audit centre' });
 
   const manage: Item[] = [];
   if (!hasAdminHub && can(actor, 'template.view'))
@@ -84,6 +88,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {liveDirectory.present ? (
           <p className="env-banner env-banner--live" role="alert">
             LIVE HR DIRECTORY DATA — DO NOT USE FOR SCREENSHOTS OR TEST EVIDENCE
+          </p>
+        ) : null}
+        {aliasActive ? (
+          <p className="env-banner env-banner--live" role="alert">
+            REAL DIRECTORY MAPPING ACTIVE — UAT ONLY
           </p>
         ) : null}
 

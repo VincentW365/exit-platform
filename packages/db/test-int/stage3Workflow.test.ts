@@ -26,7 +26,13 @@ import {
 } from '../src/services/notificationService.ts';
 import { runStage3Sweep } from '../src/services/workflowSweepService.ts';
 import { ServiceError } from '../src/errors.ts';
-import { createUser, resetDb, seedStage3Fixtures, VALID_DRAFT } from './helpers.ts';
+import {
+  createUser,
+  readyAssignment,
+  resetDb,
+  seedStage3Fixtures,
+  VALID_DRAFT,
+} from './helpers.ts';
 
 const prisma = getPrisma();
 
@@ -52,6 +58,7 @@ async function makeActiveCase(
   const created = await createDraft(officer.actor, { ...TEST_DRAFT, ...overrides });
   await transitionCase(officer.actor, created.caseId, 'submit');
   await transitionCase(manager.actor, created.caseId, 'approve');
+  await readyAssignment(created.caseId, manager.actor, officer.userId, lineMgr.userId);
   await activateCase(activator.actor, created.caseId);
   return created.caseId;
 }
@@ -102,6 +109,7 @@ describe('workflow activation and pinning (T.1, T.2, T.25, B/C)', () => {
     expect(access.dueAt?.toISOString()).toBe('2026-08-14T22:00:00.000Z'); // exact effective time
     expect(access.waiverAllowed).toBe(false);
 
+    await readyAssignment(created.caseId, manager.actor, officer.userId, lineMgr.userId);
     await activateCase(officer.actor, created.caseId);
     const instance = await prisma.workflowInstance.findFirstOrThrow({
       where: { caseId: created.caseId },
@@ -152,6 +160,7 @@ describe('workflow activation and pinning (T.1, T.2, T.25, B/C)', () => {
     });
     await transitionCase(manager.actor, term.caseId, 'submit');
     await transitionCase(manager.actor, term.caseId, 'approve');
+    await readyAssignment(term.caseId, manager.actor, officer.userId, lineMgr.userId);
     await activateCase(manager.actor, term.caseId);
     const termInstance = await prisma.workflowInstance.findFirstOrThrow({
       where: { caseId: term.caseId },
@@ -416,6 +425,7 @@ describe('restricted termination non-discovery (T.23, H)', () => {
     termCaseId = term.caseId;
     await transitionCase(manager.actor, termCaseId, 'submit');
     await transitionCase(manager.actor, termCaseId, 'approve');
+    await readyAssignment(termCaseId, manager.actor, manager.userId, lineMgr.userId);
     await activateCase(manager.actor, termCaseId);
   });
 

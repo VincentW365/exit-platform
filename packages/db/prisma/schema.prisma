@@ -180,6 +180,8 @@ model User {
   roleAssignments    RoleAssignment[] @relation("assignee")
   ownedCases         OffboardingCase[] @relation("caseOwner")
   createdCases       OffboardingCase[] @relation("caseCreator")
+  officerCases       OffboardingCase[] @relation("caseOfficer")
+  managedCases       OffboardingCase[] @relation("caseManager")
   participations     CaseParticipant[] @relation("participantUser")
 
   @@map("app_user")
@@ -218,8 +220,18 @@ model EmployeeSourceRecord {
   location     String?
   retrievedAt  DateTime
   payload      Json
+  // Directive 6.1 (A/B): organization graph columns promoted from the payload
+  // so hierarchy-driven routing and validation query real columns. Only the
+  // approved minimum fields; the payload is retained for provenance.
+  managerName     String?
+  managerSourceId String?
+  division        String?
+  employeeNumber  String?
+  active          Boolean   @default(true)
+  lastSyncedAt    DateTime?
 
   @@unique([sourceSystem, sourceId])
+  @@index([sourceSystem, managerSourceId])
   @@map("employee_source_record")
 }
 
@@ -270,6 +282,30 @@ model OffboardingCase {
   createdById String @db.Uuid
   createdBy   User   @relation("caseCreator", fields: [createdById], references: [id])
 
+  /// Directive 6.1 (E): operational HR Officer ownership, assigned manually by
+  /// the accountable HR Manager before workflow activation.
+  assignedOfficerId String? @db.Uuid
+  assignedOfficer   User?   @relation("caseOfficer", fields: [assignedOfficerId], references: [id])
+
+  /// Directive 6.1 (F): manager routing derived from the synchronized
+  /// directory, reviewed and confirmed by HR before activation. The name and
+  /// source id are directory provenance; managerUserId is the resolved
+  /// application account that receives manager-owned tasks.
+  managerName            String?
+  managerSourceId        String?
+  managerUserId          String?            @db.Uuid
+  managerUser            User?              @relation("caseManager", fields: [managerUserId], references: [id])
+  managerSource          CaseManagerSource?
+  managerConfirmedAt     DateTime?
+  managerConfirmedById   String?            @db.Uuid
+  /// Set once when a later directory sync disagrees with the confirmed
+  /// manager; HR reviews and re-confirms (never silently reassigned).
+  managerChangeFlaggedAt DateTime?
+
+  /// Directive 6.1 (J): the six assignment-plan confirmations
+  /// {key: {at, byId}} captured before activation.
+  activationConfirmations Json?
+
   /// Stage 4 (P): identity fields anonymized through the approved privacy
   /// workflow; audit and structural evidence are preserved.
   anonymizedAt   DateTime?
@@ -302,11 +338,19 @@ model OffboardingCase {
 
   @@index([status])
   @@index([ownerId])
+  @@index([assignedOfficerId])
   @@index([effectiveSeparationAt])
   @@index([measurementCohort, recordPurpose])
   @@index([employeeSourceId])
   @@index([departureType])
   @@map("offboarding_case")
+}
+
+/// Directive 6.1 (F): provenance of the case's manager routing.
+enum CaseManagerSource {
+  DIRECTORY
+  OVERRIDE
+  MANUAL
 }
 
 /// Immutable snapshot captured exactly once at approval (REQ-CASE-004).

@@ -16,6 +16,7 @@ import {
   snapshotChecksum,
   submitReadinessErrors,
   SyntheticEmployeeSourceAdapter,
+  SYNTHETIC_EMPLOYEES,
   SNAPSHOT_SCHEMA_VERSION,
   type Actor,
   type CaseAccessContext,
@@ -286,6 +287,71 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
   if (!employee) throw ServiceError.validation(['Selected employee was not found in the source.']);
   const retrievedAt = new Date();
 
+  // Directive 6.1 (F): derive the reporting manager from the synchronized
+  // directory at draft creation. The relationship is provenance for HR review
+  // - never an automatic grant; activation still requires confirmation.
+  const prismaEarly = getPrisma();
+  const sourceRow = await prismaEarly.employeeSourceRecord.findUnique({
+    where: {
+      sourceSystem_sourceId: { sourceSystem: employee.sourceSystem, sourceId: employee.sourceId },
+    },
+    select: {
+      managerName: true,
+      managerSourceId: true,
+      division: true,
+      employeeNumber: true,
+      active: true,
+      lastSyncedAt: true,
+    },
+  });
+  const fixture =
+    employee.sourceSystem === 'SYNTHETIC'
+      ? SYNTHETIC_EMPLOYEES.find((s) => s.sourceId === employee.sourceId)
+      : null;
+  const derivedManagerName = sourceRow?.managerName ?? fixture?.managerName ?? null;
+  const derivedManagerSourceId = sourceRow?.managerSourceId ?? fixture?.managerSourceId ?? null;
+  let derivedManagerUserId: string | null = null;
+  if (derivedManagerName || derivedManagerSourceId) {
+    const managerRecord = derivedManagerSourceId
+      ? await prismaEarly.employeeSourceRecord.findUnique({
+          where: {
+            sourceSystem_sourceId: {
+              sourceSystem: employee.sourceSystem,
+              sourceId: derivedManagerSourceId,
+            },
+          },
+          select: { workEmail: true, displayName: true },
+        })
+      : null;
+    const managerFixture =
+      employee.sourceSystem === 'SYNTHETIC' && derivedManagerSourceId
+        ? SYNTHETIC_EMPLOYEES.find((s) => s.sourceId === derivedManagerSourceId)
+        : null;
+    const managerEmail = managerRecord?.workEmail ?? managerFixture?.workEmail ?? null;
+    // Resolution requires an ACTIVE application account holding LINE_MANAGER
+    // (assignment-scoped manager authority, Directive 6.1 D); otherwise the
+    // plan shows the directory manager with no account and HR overrides.
+    const candidates = await prismaEarly.user.findMany({
+      where: {
+        isActive: true,
+        roleAssignments: { some: { role: 'LINE_MANAGER', revokedAt: null } },
+        OR: [
+          ...(managerEmail ? [{ workEmail: managerEmail }] : []),
+          ...(derivedManagerName ? [{ displayName: derivedManagerName }] : []),
+        ],
+      },
+      select: { id: true, workEmail: true, displayName: true },
+      take: 3,
+    });
+    const emailMatch = managerEmail
+      ? candidates.find((u) => u.workEmail.toLowerCase() === managerEmail.toLowerCase())
+      : undefined;
+    const nameMatches = derivedManagerName
+      ? candidates.filter((u) => u.displayName === derivedManagerName)
+      : [];
+    derivedManagerUserId = emailMatch?.id ?? (nameMatches.length === 1 ? nameMatches[0]!.id : null);
+  }
+
   const cohortErrors = cohortPurposeErrors({
     measurementCohort: input.measurementCohort,
     recordPurpose: input.recordPurpose,
@@ -334,16 +400,23 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
         department: employee.department,
         location: employee.location,
         retrievedAt,
-        payload: { ...employee },
+        managerName: derivedManagerName,
+        managerSourceId: derivedManagerSourceId,
+        division: fixture?.division ?? null,
+        employeeNumber: fixture?.employeeNumber ?? null,
+        active: fixture?.active ?? true,
+        payload: { ...employee, managerName: derivedManagerName },
       },
       update: {
+        // Refresh the basics only. Organization columns and the payload are
+        // OWNED by the sync path - overwriting them here destroyed manager
+        // provenance (Directive 6.1 bug fix).
         displayName: employee.displayName,
         workEmail: employee.workEmail,
         jobTitle: employee.jobTitle,
         department: employee.department,
         location: employee.location,
         retrievedAt,
-        payload: { ...employee },
       },
     });
 
@@ -375,6 +448,12 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
         reasonNotes: input.reasonNotes || null,
         ownerId: actor.userId,
         createdById: actor.userId,
+        // Directive 6.1 (F): directory-derived manager routing, pending HR
+        // review and confirmation on the Assignment tab.
+        managerName: derivedManagerName,
+        managerSourceId: derivedManagerSourceId,
+        managerUserId: derivedManagerUserId,
+        managerSource: derivedManagerName || derivedManagerSourceId ? 'DIRECTORY' : null,
       },
     });
 
@@ -417,6 +496,28 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
         employeeSourceId: employee.sourceId,
       },
     });
+
+    if (derivedManagerName || derivedManagerSourceId) {
+      await appendAudit(tx, {
+        eventType: 'CASE_MANAGER_DERIVED',
+        actorType: 'USER',
+        actorId: actor.userId,
+        effectiveRoles: actor.roles,
+        objectType: 'OffboardingCase',
+        objectId: c.id,
+        caseId: c.id,
+        result: 'SUCCESS',
+        correlationId,
+        metadata: {
+          caseNumber,
+          managerName: derivedManagerName,
+          managerSourceId: derivedManagerSourceId,
+          resolvedUserId: derivedManagerUserId,
+          sourceSystem: employee.sourceSystem,
+          lastSyncedAt: sourceRow?.lastSyncedAt ?? null,
+        },
+      });
+    }
 
     return c;
   });

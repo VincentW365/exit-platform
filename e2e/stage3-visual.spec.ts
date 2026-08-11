@@ -90,6 +90,26 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
   await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
 
+  // Directive 6.1: complete the assignment plan (officer + manager + confirm).
+  await page.goto(`${caseUrl}/assignment`);
+  await snap(page, '14-assignment-plan', true);
+  await axeCheck(page, 'assignment-plan');
+  await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
+  await page.locator('#of-user').selectOption({ label: 'Riley Okafor' });
+  await page.locator('#of-reason').fill('Visual QA assignment.');
+  await page.getByRole('button', { name: 'Assign officer' }).click();
+  await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
+  await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
+  await page.locator('#am-user').selectOption({ label: 'Jamie Douglas' });
+  await page.locator('#am-reason').fill('Visual QA manager routing.');
+  await page.getByRole('button', { name: 'Record alternate manager' }).click();
+  await expect(page.getByText('Alternate manager recorded')).toBeVisible();
+  for (const box of await page.locator('input[name="confirmations"]').all()) {
+    if (!(await box.isChecked())) await box.check();
+  }
+  await page.getByRole('button', { name: 'Confirm assignment plan' }).click();
+  await expect(page.getByText('Assignment plan confirmed').first()).toBeVisible();
+
   // Read-only workflow preview before activation (B.8).
   await page.goto(`${caseUrl}/workflow`);
   await expect(page.getByText('Workflow preview (read-only, before activation)')).toBeVisible();

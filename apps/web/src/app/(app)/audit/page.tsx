@@ -1,64 +1,292 @@
 import type { Metadata } from 'next';
+import { Fragment } from 'react';
 import { redirect } from 'next/navigation';
-import { can, formatInstant } from '@exit/domain';
-import { listGlobalAudit } from '@exit/db';
+import {
+  auditCategoryOptions,
+  listGlobalAudit,
+  listActiveUsers,
+  type GlobalAuditFilter,
+} from '@exit/db';
+import {
+  beforeAfterPairs,
+  can,
+  formatInstant,
+  humanizeAuditEvent,
+  redactAuditValue,
+  type AuditCategory,
+} from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 
-export const metadata: Metadata = { title: 'Audit feed' };
+export const metadata: Metadata = { title: 'Audit centre' };
 export const dynamic = 'force-dynamic';
 
-export default async function AuditPage({
+const CATEGORY_BADGE: Record<string, string> = {
+  SECURITY: 'badge--danger',
+  ASSIGNMENT: 'badge--info',
+  APPROVAL: 'badge--success',
+  EXCEPTION: 'badge--warning',
+};
+
+function parseDate(v: string | undefined, endOfDay = false): Date | undefined {
+  if (!v) return undefined;
+  const d = new Date(`${v}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}`);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+export default async function AuditCentrePage({
   searchParams,
 }: {
-  searchParams: Promise<{ eventType?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const { actor } = await requireAuth();
-  if (!can(actor, 'audit.viewGlobal')) redirect('/unauthorized');
-  const { eventType } = await searchParams;
-  const events = await listGlobalAudit(actor, { eventType: eventType || undefined });
+  if (!can(actor, 'audit.viewGlobal') && !can(actor, 'audit.viewTechnical'))
+    redirect('/unauthorized');
+  const sp = await searchParams;
+  const technicalOnly = !can(actor, 'audit.viewGlobal');
+
+  const filter: GlobalAuditFilter = {
+    from: parseDate(sp.from),
+    to: parseDate(sp.to, true),
+    actorId: sp.actor || undefined,
+    category: (sp.category as AuditCategory) || undefined,
+    eventType: sp.eventType || undefined,
+    caseNumber: sp.caseNumber || undefined,
+    result: (sp.result as GlobalAuditFilter['result']) || undefined,
+    recordPurpose: (sp.purpose as GlobalAuditFilter['recordPurpose']) || undefined,
+    cursor: sp.cursor || undefined,
+    take: 50,
+  };
+  const [{ rows, nextCursor, summary }, users] = await Promise.all([
+    listGlobalAudit(actor, filter),
+    can(actor, 'audit.viewGlobal') ? listActiveUsers().catch(() => []) : Promise.resolve([]),
+  ]);
+
+  const olderHref = (() => {
+    if (!nextCursor) return null;
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (v && k !== 'cursor') p.set(k, v);
+    p.set('cursor', nextCursor);
+    return `/audit?${p.toString()}`;
+  })();
+  const exportHref = (() => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (v && k !== 'cursor') p.set(k, v);
+    return `/api/audit-export?${p.toString()}`;
+  })();
 
   return (
     <>
-      <h1>Audit feed (read-only oversight)</h1>
-      <form method="get" className="panel actions-row" aria-label="Filter audit events">
-        <div className="field" style={{ maxWidth: '20rem' }}>
-          <label htmlFor="a-type">Event type (exact, optional)</label>
-          <input id="a-type" name="eventType" type="text" defaultValue={eventType ?? ''} />
+      <h1>Audit centre</h1>
+      <p className="hint" role="note">
+        The complete, append-only business audit trail
+        {technicalOnly
+          ? ' - technical events only (identity, configuration, system); HR case content is never shown here.'
+          : ' - every case, assignment, approval and security event with who, what, why and when.'}
+      </p>
+
+      <div className="stat-grid" style={{ marginBottom: '1rem' }}>
+        <div className="stat">
+          <span className="stat__value tabular-nums">{summary.today}</span>
+          <span className="badge badge--info">Events today</span>
         </div>
-        <div style={{ alignSelf: 'end' }}>
+        <div className="stat">
+          <span className="stat__value tabular-nums">{summary.assignments}</span>
+          <span className="badge badge--info">Assignment changes</span>
+        </div>
+        <div className="stat">
+          <span className="stat__value tabular-nums">{summary.approvals}</span>
+          <span className="badge badge--success">Approvals</span>
+        </div>
+        <div className="stat">
+          <span className="stat__value tabular-nums">{summary.security}</span>
+          <span className="badge badge--danger">Security events</span>
+        </div>
+        <div className="stat">
+          <span className="stat__value tabular-nums">{summary.denied}</span>
+          <span className="badge badge--warning">Denied attempts</span>
+        </div>
+      </div>
+
+      <form method="get" className="panel filter-toolbar" aria-label="Audit filters">
+        <div className="field" style={{ maxWidth: '10rem' }}>
+          <label htmlFor="af-from">From (date)</label>
+          <input id="af-from" type="date" name="from" defaultValue={sp.from ?? ''} />
+        </div>
+        <div className="field" style={{ maxWidth: '10rem' }}>
+          <label htmlFor="af-to">To (date)</label>
+          <input id="af-to" type="date" name="to" defaultValue={sp.to ?? ''} />
+        </div>
+        <div className="field" style={{ maxWidth: '12rem' }}>
+          <label htmlFor="af-category">Category</label>
+          <select id="af-category" name="category" defaultValue={sp.category ?? ''}>
+            <option value="">Any</option>
+            {auditCategoryOptions().map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+        {!technicalOnly ? (
+          <div className="field" style={{ maxWidth: '13rem' }}>
+            <label htmlFor="af-actor">Actor</label>
+            <select id="af-actor" name="actor" defaultValue={sp.actor ?? ''}>
+              <option value="">Any</option>
+              {users.map((u) => (
+                <option key={u.userId} value={u.userId}>
+                  {u.displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        {!technicalOnly ? (
+          <div className="field" style={{ maxWidth: '11rem' }}>
+            <label htmlFor="af-case">Case number</label>
+            <input
+              id="af-case"
+              name="caseNumber"
+              defaultValue={sp.caseNumber ?? ''}
+              maxLength={20}
+            />
+          </div>
+        ) : null}
+        <div className="field" style={{ maxWidth: '10rem' }}>
+          <label htmlFor="af-result">Outcome</label>
+          <select id="af-result" name="result" defaultValue={sp.result ?? ''}>
+            <option value="">Any</option>
+            <option value="SUCCESS">SUCCESS</option>
+            <option value="DENIED">DENIED</option>
+            <option value="FAILURE">FAILURE</option>
+          </select>
+        </div>
+        <div className="field" style={{ maxWidth: '11rem' }}>
+          <label htmlFor="af-purpose">Record purpose</label>
+          <select id="af-purpose" name="purpose" defaultValue={sp.purpose ?? ''}>
+            <option value="">Any</option>
+            <option value="OPERATIONAL">OPERATIONAL</option>
+            <option value="TRAINING">TRAINING</option>
+            <option value="TEST">TEST</option>
+          </select>
+        </div>
+        <div className="field" style={{ maxWidth: '14rem' }}>
+          <label htmlFor="a-type">Event type (exact)</label>
+          <input id="a-type" name="eventType" defaultValue={sp.eventType ?? ''} maxLength={60} />
+        </div>
+        <div style={{ alignSelf: 'flex-end', display: 'flex', gap: '0.5rem' }}>
           <button type="submit">Filter</button>
+          {can(actor, 'audit.export') ? (
+            <a className="button secondary" href={exportHref}>
+              Export CSV (audited)
+            </a>
+          ) : null}
         </div>
       </form>
-      <div className="table-wrap" tabIndex={0}>
-        <table className="data">
-          <caption>
-            Most recent {events.length} events. Metadata is sanitized: no document bodies, personal
-            addresses, tokens or survey content is ever recorded.
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">When (America/Jamaica)</th>
-              <th scope="col">Event</th>
-              <th scope="col">Object</th>
-              <th scope="col">Result</th>
-              <th scope="col">Roles</th>
-            </tr>
-          </thead>
-          <tbody>
-            {events.map((e) => (
-              <tr key={e.id}>
-                <td>{formatInstant(e.occurredAt)}</td>
-                <td>{e.eventType}</td>
-                <td>
-                  {e.objectType} <span className="hint">{e.objectId.slice(0, 8)}</span>
-                </td>
-                <td>{e.result}</td>
-                <td className="hint">{e.effectiveRoles.join(', ')}</td>
+
+      {rows.length === 0 ? (
+        <div className="panel empty">
+          <p>
+            <strong>No audit events match these filters.</strong>
+          </p>
+          <p className="hint">Widen the date range or clear a filter to see more history.</p>
+        </div>
+      ) : (
+        <div className="panel" style={{ overflowX: 'auto' }} tabIndex={0}>
+          <table className="table-sticky">
+            <caption className="visually-hidden">Audit events</caption>
+            <thead>
+              <tr>
+                <th scope="col">When (America/Jamaica)</th>
+                <th scope="col">Category</th>
+                <th scope="col">What happened</th>
+                <th scope="col">Case</th>
+                <th scope="col">Outcome</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {rows.map((e) => (
+                <tr key={e.id}>
+                  <td className="tabular-nums">{formatInstant(e.occurredAt)}</td>
+                  <td>
+                    <span className={`badge ${CATEGORY_BADGE[e.category] ?? 'badge--neutral'}`}>
+                      {e.category}
+                    </span>
+                  </td>
+                  <td>
+                    {e.minimized ? (
+                      <em>Restricted-case event - content requires explicit assignment.</em>
+                    ) : (
+                      <>
+                        {humanizeAuditEvent({
+                          eventType: e.eventType as never,
+                          result: e.result as never,
+                          actorDisplayName: e.actorDisplayName,
+                          actorType: e.actorType,
+                          metadata: e.metadata,
+                        })}
+                        <details className="action" style={{ marginTop: '0.3rem' }}>
+                          <summary>Details</summary>
+                          <dl className="kv" style={{ marginTop: '0.4rem' }}>
+                            <dt>Event</dt>
+                            <dd>
+                              <code>{e.eventType}</code>
+                            </dd>
+                            <dt>Object</dt>
+                            <dd>
+                              {e.objectType} <code>{e.objectId.slice(0, 8)}</code>
+                            </dd>
+                            <dt>Roles</dt>
+                            <dd>{e.effectiveRoles.join(', ') || '-'}</dd>
+                            <dt>Correlation</dt>
+                            <dd>
+                              <code>{e.correlationId.slice(0, 8)}</code>
+                            </dd>
+                            {beforeAfterPairs(e.metadata).map((p) => (
+                              <Fragment key={`ba-${p.label}`}>
+                                <dt>{p.label} (before → after)</dt>
+                                <dd>
+                                  {p.before} → {p.after}
+                                </dd>
+                              </Fragment>
+                            ))}
+                            {Object.entries(e.metadata).map(([k, v]) => (
+                              <Fragment key={`md-${k}`}>
+                                <dt>{k}</dt>
+                                <dd>{redactAuditValue(k, v)}</dd>
+                              </Fragment>
+                            ))}
+                          </dl>
+                        </details>
+                      </>
+                    )}
+                  </td>
+                  <td>{e.caseNumber ?? '-'}</td>
+                  <td>
+                    <span
+                      className={`badge ${
+                        e.result === 'SUCCESS'
+                          ? 'badge--success'
+                          : e.result === 'RESTRICTED'
+                            ? 'badge--neutral'
+                            : 'badge--danger'
+                      }`}
+                    >
+                      {e.result}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {olderHref ? (
+            <p style={{ marginTop: '0.75rem' }}>
+              <a className="button secondary" href={olderHref}>
+                Older events →
+              </a>
+            </p>
+          ) : null}
+        </div>
+      )}
     </>
   );
 }

@@ -4,6 +4,7 @@ import Link from 'next/link';
 export function CaseNav({ caseId, active }: { caseId: string; active: string }) {
   const tabs = [
     { href: `/cases/${caseId}`, key: 'overview', label: 'Overview' },
+    { href: `/cases/${caseId}/assignment`, key: 'assignment', label: 'Assignment' },
     { href: `/cases/${caseId}/workflow`, key: 'workflow', label: 'Workflow' },
     { href: `/cases/${caseId}/documents`, key: 'documents', label: 'Documents' },
     { href: `/cases/${caseId}/action-form`, key: 'action-form', label: 'Action Form' },

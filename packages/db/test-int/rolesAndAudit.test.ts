@@ -51,12 +51,14 @@ describe('audit access', () => {
     await expect(listCaseAudit(admin.actor, caseId)).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
     const feed = await listGlobalAudit(auditor.actor, {});
-    expect(feed.length).toBeGreaterThan(0);
+    expect(feed.rows.length).toBeGreaterThan(0);
+    // Directive 6.1: HR OFFICERS stay excluded from the global feed
+    // (HR_MANAGER joined the audience with restricted-row minimization).
     await expect(listGlobalAudit(officer.actor, {})).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
   it('role-change denials are themselves audited (ACCESS_DENIED)', async () => {
     const feed = await listGlobalAudit(auditor.actor, { eventType: 'ACCESS_DENIED' });
-    expect(feed.length).toBeGreaterThan(0);
+    expect(feed.rows.length).toBeGreaterThan(0);
   });
 });

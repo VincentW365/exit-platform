@@ -8,7 +8,7 @@ import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { getPrisma } from '../src/client.ts';
 import { LocalStorageAdapter, setStorageForTests } from '../src/storage.ts';
-import { addParticipant, createDraft, transitionCase } from '../src/services/caseService.ts';
+import { createDraft, transitionCase } from '../src/services/caseService.ts';
 import { activateCase } from '../src/services/workflowService.ts';
 import { completeAccessTask, completeTask, reassignTask } from '../src/services/taskService.ts';
 import {
@@ -41,7 +41,13 @@ import {
   updateActionFormHr,
 } from '../src/services/actionFormService.ts';
 import { stage3Dashboard } from '../src/services/dashboardService.ts';
-import { createUser, resetDb, seedStage3Fixtures, VALID_DRAFT } from './helpers.ts';
+import {
+  createUser,
+  readyAssignment,
+  resetDb,
+  seedStage3Fixtures,
+  VALID_DRAFT,
+} from './helpers.ts';
 
 const prisma = getPrisma();
 
@@ -72,6 +78,7 @@ async function makeActiveCase(overrides: Record<string, unknown> = {}): Promise<
   const created = await createDraft(officer.actor, { ...TEST_DRAFT, ...overrides });
   await transitionCase(officer.actor, created.caseId, 'submit');
   await transitionCase(manager.actor, created.caseId, 'approve');
+  await readyAssignment(created.caseId, manager.actor, officer.userId, lineMgr.userId);
   await activateCase(manager.actor, created.caseId);
   return created.caseId;
 }
@@ -171,13 +178,8 @@ describe('handover (T.15, T.16, T.17, M)', () => {
   let caseId: string;
   beforeAll(async () => {
     caseId = await makeActiveCase({ employeeSourceId: 'EMP-TEST-004' });
-    await addParticipant(
-      manager.actor,
-      caseId,
-      lineMgr.userId,
-      'MANAGER',
-      'Direct manager of the departing employee.',
-    );
+    // Directive 6.1 (F): activation auto-adds the confirmed manager as the
+    // MANAGER participant, so no manual addParticipant is needed here.
   });
 
   it('credential-like content is rejected (T.17, M.2/M.3)', async () => {
@@ -233,13 +235,7 @@ describe('clearance gate and completion (T.18-T.22, T.24, O)', () => {
 
   beforeAll(async () => {
     caseId = await makeActiveCase({ employeeSourceId: 'EMP-TEST-005' });
-    await addParticipant(
-      manager.actor,
-      caseId,
-      lineMgr.userId,
-      'MANAGER',
-      'Direct manager of the departing employee.',
-    );
+    // MANAGER participant is auto-added at activation (Directive 6.1 F).
   });
 
   it('clearance is blocked while required work is open (T.18-T.20)', async () => {

@@ -8,6 +8,8 @@
 *.p12
 secrets/
 credentials/
+# Realistic-UAT alias mapping: real-person data stays local (Directive 6.1 T)
+uat-local-real-person-mapping.json
 
 # Dependencies and build
 node_modules/

@@ -6,11 +6,14 @@ import { formatInstant, CREDENTIAL_WARNING } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import {
+  assignTaskDetailAction,
   blockTaskAction,
+  claimTaskDetailAction,
   completeAccessTaskAction,
   completeTaskAction,
   correctTaskAction,
   reassignTaskAction,
+  returnTaskDetailAction,
   startTaskAction,
   unblockTaskAction,
   updateAccessSystemsAction,
@@ -52,7 +55,7 @@ export default async function TaskPage({
   const isAccess = t.taskKind === 'ACCESS_REVOCATION';
   const open = ['READY', 'IN_PROGRESS', 'BLOCKED'].includes(t.status);
   const overdue = data.overdue;
-  const users = data.canReassign ? await listActiveUsers().catch(() => []) : [];
+  const users = data.canReassign || data.canAssign ? await listActiveUsers().catch(() => []) : [];
 
   return (
     <>
@@ -77,6 +80,8 @@ export default async function TaskPage({
               t.caseNumber
             )}
           </dd>
+          <dt>Assignee</dt>
+          <dd>{data.assigneeName ?? 'Unassigned (department queue)'}</dd>
           <dt>Employee</dt>
           <dd>{t.employeeDisplayName}</dd>
           {t.departureType ? (
@@ -280,6 +285,50 @@ export default async function TaskPage({
             <label htmlFor="w-reason">Waiver reason (required, audited)</label>
             <textarea id="w-reason" name="reason" rows={2} required maxLength={2000} />
             <button type="submit">Waive task</button>
+          </form>
+        </details>
+      ) : null}
+
+      {data.canClaim ? (
+        <form action={claimTaskDetailAction} style={{ display: 'inline-block' }}>
+          <input type="hidden" name="taskId" value={id} />
+          <button type="submit">Claim this task</button>
+        </form>
+      ) : null}
+
+      {data.canAssign ? (
+        <details className="action">
+          <summary>Assign to a responder</summary>
+          <form action={assignTaskDetailAction}>
+            <input type="hidden" name="taskId" value={id} />
+            <label htmlFor="as-user">Assignee ({t.department} responders)</label>
+            <select id="as-user" name="assigneeId" required>
+              {users.map((u) => (
+                <option key={u.userId} value={u.userId}>
+                  {u.displayName} ({u.roles.join(', ')})
+                </option>
+              ))}
+            </select>
+            <label htmlFor="as-reason">Reason (required, audited)</label>
+            <textarea id="as-reason" name="reason" rows={2} required maxLength={500} />
+            <button type="submit">Assign task</button>
+          </form>
+        </details>
+      ) : null}
+
+      {data.canReturn ? (
+        <details className="action">
+          <summary>Return to department queue</summary>
+          <form action={returnTaskDetailAction}>
+            <input type="hidden" name="taskId" value={id} />
+            <label htmlFor="rq-reason">Reason (required, audited)</label>
+            <textarea id="rq-reason" name="reason" rows={2} required maxLength={500} />
+            <p className="hint">
+              History and the due date are preserved; the SLA clock never resets.
+            </p>
+            <button type="submit" className="secondary">
+              Return task to queue
+            </button>
           </form>
         </details>
       ) : null}

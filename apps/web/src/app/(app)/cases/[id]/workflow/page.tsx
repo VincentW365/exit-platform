@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   ServiceError,
+  getAssignmentPlan,
   getCaseWorkflow,
   previewWorkflowForCase,
   previewEffectiveChangeImpact,
@@ -54,6 +55,12 @@ export default async function CaseWorkflowPage({
   }
 
   const preview = data.canActivate ? await previewWorkflowForCase(actor, id) : null;
+  // Directive 6.1 (J): surface assignment-plan blockers next to activation.
+  const assignmentBlockers = data.canActivate
+    ? await getAssignmentPlan(actor, id)
+        .then((p) => p.blockers)
+        .catch(() => [])
+    : [];
   const impact =
     data.caseStatus === 'ACTIVE' || data.caseStatus === 'ON_HOLD'
       ? await previewEffectiveChangeImpact(actor, id)
@@ -67,6 +74,20 @@ export default async function CaseWorkflowPage({
       </h1>
       <CaseNav caseId={id} active="workflow" />
       <Feedback err={sp.err} ok={sp.ok} />
+
+      {preview && assignmentBlockers.length > 0 ? (
+        <div className="banner-baseline" role="status">
+          <strong>Activation is blocked by the assignment plan:</strong>
+          <ul style={{ margin: '0.25rem 0 0 1.1rem' }}>
+            {assignmentBlockers.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+          <p style={{ margin: '0.4rem 0 0' }}>
+            <Link href={`/cases/${id}/assignment`}>Open the Assignment tab</Link> to resolve these.
+          </p>
+        </div>
+      ) : null}
 
       {preview ? (
         <section className="panel" aria-labelledby="preview-h">

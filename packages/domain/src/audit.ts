@@ -192,6 +192,19 @@ export const AUDIT_EVENT_TYPES = [
   'FALLBACK_RECONCILED',
   'SUPPORT_TICKET_CHANGED',
   'TRAINING_RECORDED',
+  // Directive 6.1: organization-aware assignment (E-H, M)
+  'TASK_CLAIMED',
+  'TASK_ASSIGNED',
+  'TASK_RETURNED_TO_QUEUE',
+  'CASE_OFFICER_ASSIGNED',
+  'CASE_OFFICER_REASSIGNED',
+  'CASE_MANAGER_DERIVED',
+  'CASE_MANAGER_OVERRIDDEN',
+  'CASE_MANAGER_CONFIRMED',
+  'HIERARCHY_CHANGE_FLAGGED',
+  // Directive 6.1: audit centre (K, O)
+  'AUDIT_SEARCHED',
+  'AUDIT_EXPORTED',
 ] as const;
 
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];

@@ -38,6 +38,10 @@ async function main(): Promise<void> {
   });
   const officer = { userId: officerRow.id, roles: ['HR_OFFICER'] as never };
   const manager = { userId: managerRow.id, roles: ['HR_MANAGER'] as never };
+  const lineManagerRow = await prisma.user.findUniqueOrThrow({
+    where: { identitySubject: 'dev|line-manager' },
+  });
+  const { CONFIRMATION_KEYS } = await import('../packages/domain/src/index.ts');
 
   const started = Date.now();
   let created = 0;
@@ -62,6 +66,10 @@ async function main(): Promise<void> {
     await db.transitionCase(manager as never, caseId, 'approve');
 
     if (i % 2 === 0) {
+      // Directive 6.1: activation requires the assignment plan.
+      await db.assignOfficer(manager as never, caseId, officerRow.id, 'Perf smoke assignment.');
+      await db.overrideManager(manager as never, caseId, lineManagerRow.id, 'Perf smoke routing.');
+      await db.confirmAssignmentPlan(manager as never, caseId, [...CONFIRMATION_KEYS]);
       await db.activateCase(officer as never, caseId);
       activated++;
     }

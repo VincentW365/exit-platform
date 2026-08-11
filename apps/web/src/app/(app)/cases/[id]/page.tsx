@@ -1,8 +1,18 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { BASELINE_EVENT_TYPES, MISSING_REASONS, formatDateOnly, formatInstant } from '@exit/domain';
+import {
+  BASELINE_EVENT_TYPES,
+  MISSING_REASONS,
+  TIMELINE_CHIPS,
+  formatDateOnly,
+  formatInstant,
+  humanizeAuditEvent,
+  type TimelineChip,
+} from '@exit/domain';
 import {
   ServiceError,
+  caseProgress,
   getCase,
   listActiveUsers,
   listAttachments,
@@ -12,6 +22,8 @@ import {
 } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { CaseNav } from './CaseNav';
+import { CaseHeader } from '@/components/CaseHeader';
+import { ProgressStrip } from '@/components/ProgressStrip';
 import {
   ClassificationBadge,
   Feedback,
@@ -64,24 +76,50 @@ export default async function CaseDetailPage({
   }
   const { case: c, capabilities: cap } = data;
 
+  const activeChip: TimelineChip = (TIMELINE_CHIPS as readonly string[]).includes(
+    sp.auditChip ?? '',
+  )
+    ? (sp.auditChip as TimelineChip)
+    : 'ALL';
   const [attachments, baselineEvents, audit, notes, users] = await Promise.all([
     listAttachments(actor, id),
     cap.canRecordBaseline ? listBaselineEvents(actor, id) : Promise.resolve([]),
-    listCaseAudit(actor, id),
+    listCaseAudit(actor, id, { chip: activeChip }),
     listNotes(actor, id),
     listActiveUsers(),
   ]);
 
   const dt = (d: Date | null) => (d ? formatInstant(d) : '-');
+  const nameOf = (userId: string | null | undefined) =>
+    userId ? (users.find((u) => u.userId === userId)?.displayName ?? null) : null;
+  const progress = await caseProgress(actor, id).catch(() => []);
 
   return (
     <>
-      <h1>
-        {c.caseNumber} - {c.employeeDisplayName}
-      </h1>
+      <CaseHeader
+        data={{
+          caseId: id,
+          caseNumber: c.caseNumber,
+          status: c.status,
+          classification: c.classification,
+          recordPurpose: c.recordPurpose,
+          measurementCohort: c.measurementCohort,
+          employeeDisplayName: c.employeeDisplayName,
+          jobTitle: c.jobTitle,
+          department: c.department,
+          location: c.location,
+          departureType: c.departureType,
+          effectiveSeparationAt: c.effectiveSeparationAt,
+          ownerName: nameOf(c.ownerId) ?? 'HR Manager',
+          officerName: nameOf((c as { assignedOfficerId?: string | null }).assignedOfficerId),
+          managerName: (c as { managerName?: string | null }).managerName ?? null,
+          managerUserName: nameOf((c as { managerUserId?: string | null }).managerUserId),
+        }}
+      />
       <Feedback err={sp.err} ok={sp.ok} />
       {c.classification === 'RESTRICTED' ? <RestrictedBanner /> : null}
       <CaseNav caseId={id} active="overview" />
+      {progress.length > 0 ? <ProgressStrip stages={progress} /> : null}
 
       <section className="panel" aria-labelledby="summary-h">
         <h2 id="summary-h" style={{ marginTop: 0 }}>
@@ -635,19 +673,54 @@ export default async function CaseDetailPage({
 
       <section className="panel" aria-labelledby="audit-h">
         <h2 id="audit-h" style={{ marginTop: 0 }}>
-          Audit timeline
+          Audit history
         </h2>
         <p className="hint">
           Newest first ({audit.length} event(s)); the complete history is immutable evidence.
+          Low-level system noise is hidden by default.
         </p>
+        <nav aria-label="Audit filters" style={{ marginBottom: '0.6rem' }}>
+          <ul
+            style={{
+              listStyle: 'none',
+              margin: 0,
+              padding: 0,
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.25rem',
+            }}
+          >
+            {TIMELINE_CHIPS.map((chip) => (
+              <li key={chip}>
+                <Link
+                  href={`/cases/${id}?auditChip=${chip}#audit-h`}
+                  className="button secondary compact"
+                  aria-current={activeChip === chip ? 'page' : undefined}
+                  style={
+                    activeChip === chip
+                      ? { background: 'var(--brand-blue)', color: '#fff' }
+                      : { border: '1px solid transparent' }
+                  }
+                >
+                  {chip.charAt(0) + chip.slice(1).toLowerCase()}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
         <div className="timeline-scroll" tabIndex={0}>
           <ul className="timeline">
             {[...audit].reverse().map((e) => (
               <li key={e.id}>
-                <strong>{e.eventType.replaceAll('_', ' ').toLowerCase()}</strong> - {e.result}
-                {e.actorId ? (
-                  <> by {users.find((u) => u.userId === e.actorId)?.displayName ?? 'user'}</>
-                ) : null}{' '}
+                {humanizeAuditEvent({
+                  eventType: e.eventType as never,
+                  result: e.result,
+                  actorType: e.actorType,
+                  actorDisplayName: e.actorId
+                    ? (users.find((u) => u.userId === e.actorId)?.displayName ?? null)
+                    : null,
+                  metadata: e.metadata as never,
+                })}{' '}
                 <span className="meta">{formatInstant(e.occurredAt)}</span>
               </li>
             ))}

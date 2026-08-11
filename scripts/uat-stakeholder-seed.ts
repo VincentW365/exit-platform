@@ -78,9 +78,33 @@ async function main(): Promise<void> {
     });
   };
 
+  // Directive 6.1 (E/F/J): activation requires the assignment plan. The seed
+  // assigns the HR Officer, routes manager tasks to the dev line manager
+  // (audited override where derivation did not resolve), and confirms.
+  const lineManager = await prisma.user.findUniqueOrThrow({
+    where: { identitySubject: 'dev|line-manager' },
+  });
+  const { CONFIRMATION_KEYS } = await import('../packages/domain/src/index.ts');
+  const readyAssignment = async (caseId: string) => {
+    await db.assignOfficer(
+      manager as never,
+      caseId,
+      (officer as { userId: string }).userId,
+      `${LABEL} - operational officer assignment.`,
+    );
+    await db.overrideManager(
+      manager as never,
+      caseId,
+      lineManager.id,
+      `${LABEL} - manager routing for the UAT dataset.`,
+    );
+    await db.confirmAssignmentPlan(manager as never, caseId, [...CONFIRMATION_KEYS]);
+  };
+
   const approveAndActivate = async (caseId: string) => {
     await db.transitionCase(officer as never, caseId, 'submit');
     await db.transitionCase(manager as never, caseId, 'approve');
+    await readyAssignment(caseId);
     await db.activateCase(officer as never, caseId);
   };
 

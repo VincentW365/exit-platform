@@ -44,6 +44,7 @@ export default async function AdminPage({
   const locations = isHrConfig ? await listConfigItems('LOCATION') : [];
 
   const hubLinks: Array<{ href: string; label: string; kind: 'business' | 'technical' }> = [
+    { href: '/admin/organization', label: 'Organization and assignment mapping', kind: 'business' },
     { href: '/admin/workflows', label: 'Workflow definitions', kind: 'business' },
     { href: '/admin/templates', label: 'Document templates', kind: 'business' },
     { href: '/baseline', label: 'Baseline dashboard', kind: 'business' },

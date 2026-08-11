@@ -52,6 +52,7 @@ describe('BambooHR directory field policy (C)', () => {
       division: 'Retail',
       location: 'Kingston',
       managerName: 'Jamie Douglas',
+      managerSourceId: null,
       employeeNumber: 'EMP-TEST-001',
       active: true,
     });

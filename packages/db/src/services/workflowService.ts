@@ -6,6 +6,7 @@
  * index); holds pause only eligible tasks; every change is audited.
  */
 import {
+  activationConfirmationErrors,
   canActOnCase,
   checkTransition,
   computeTaskDue,
@@ -129,6 +130,25 @@ export async function activateCase(actor: Actor, caseId: string) {
     ]);
   }
 
+  // Directive 6.1 (E/F/J): activation requires the assignment plan - an
+  // operational HR Officer, resolved manager routing (or audited override),
+  // and the six confirmations recorded after the last manager change.
+  if (!c.assignedOfficerId) {
+    throw ServiceError.validation([
+      'An HR Officer must be assigned before activation (Assignment tab; HR Manager assigns).',
+    ]);
+  }
+  if (!c.managerUserId) {
+    throw ServiceError.validation([
+      'MISSING MANAGER — ACTION REQUIRED: derive the manager from the directory or assign an audited alternate on the Assignment tab before activation.',
+    ]);
+  }
+  const confirmationBlockers = activationConfirmationErrors(
+    (c.activationConfirmations ?? null) as never,
+    c.managerChangeFlaggedAt ?? null,
+  );
+  if (confirmationBlockers.length) throw ServiceError.validation(confirmationBlockers);
+
   const def = await getActiveDefinitionForType(c.departureType);
   if (!def) {
     await openException(caseId, {
@@ -195,6 +215,9 @@ export async function activateCase(actor: Actor, caseId: string) {
           waiverAllowed: t.waiverAllowed,
           waiverAuthority: t.waiverAuthority,
           status: 'NOT_READY',
+          // Directive 6.1 (F): manager-owned tasks route automatically to the
+          // confirmed manager; IT/Finance start in their department queues.
+          assigneeId: t.department === 'LINE_MANAGER' ? c.managerUserId : null,
           dependsOnCodes: t.dependsOnCodes,
           pausesOnHold: t.pausesOnHold,
           blockPausesSla: t.blockPausesSla,
@@ -220,13 +243,45 @@ export async function activateCase(actor: Actor, caseId: string) {
     const handoverRequired = def.taskDefs.some(
       (t) => t.department === 'LINE_MANAGER' && t.required && t.taskCode.includes('HANDOVER'),
     );
+    // Directive 6.1 (F): the confirmed manager becomes the MANAGER participant
+    // automatically (assignment-scoped access to exactly this case).
     const managerParticipant = c.participants.find((p) => p.participantRole === 'MANAGER');
+    if (c.managerUserId && !managerParticipant) {
+      const alreadyParticipating = c.participants.some((p) => p.userId === c.managerUserId);
+      if (!alreadyParticipating) {
+        await tx.caseParticipant.create({
+          data: {
+            caseId,
+            userId: c.managerUserId,
+            participantRole: 'MANAGER',
+            reason: 'Auto-added at activation: confirmed manager routing (Directive 6.1 F).',
+            addedById: actor.userId,
+          },
+        });
+        await appendAudit(tx, {
+          eventType: 'CASE_PARTICIPANT_ADDED',
+          actorType: 'USER',
+          actorId: actor.userId,
+          effectiveRoles: actor.roles,
+          objectType: 'CaseParticipant',
+          objectId: c.managerUserId,
+          caseId,
+          result: 'SUCCESS',
+          correlationId,
+          metadata: {
+            caseNumber: c.caseNumber,
+            participantRole: 'MANAGER',
+            reason: 'Auto-added at activation: confirmed manager routing.',
+          },
+        });
+      }
+    }
     await tx.handoverRecord.upsert({
       where: { caseId },
       create: {
         caseId,
         requiredForClearance: handoverRequired,
-        managerId: managerParticipant?.userId ?? null,
+        managerId: c.managerUserId ?? managerParticipant?.userId ?? null,
       },
       update: {},
     });
@@ -281,6 +336,9 @@ export async function activateCase(actor: Actor, caseId: string) {
         workflowType: def.workflowType,
         definitionVersion: def.version,
         configChecksum: def.configChecksum,
+        assignedOfficerId: c.assignedOfficerId,
+        managerUserId: c.managerUserId,
+        managerSource: c.managerSource,
         taskCount: def.taskDefs.length,
         assetItemsCreated: issued.length,
       },
@@ -703,6 +761,13 @@ export async function changeDepartureTypeAfterActivation(
           waiverAllowed: t.waiverAllowed,
           waiverAuthority: t.waiverAuthority,
           status: carryForward ? prior!.status : 'NOT_READY',
+          // Directive 6.1 (F): manager routing carries into the superseding
+          // workflow (evidence keeps the ORIGINAL completing actor).
+          assigneeId: carryForward
+            ? prior!.assigneeId
+            : t.department === 'LINE_MANAGER'
+              ? c.managerUserId
+              : null,
           dependsOnCodes: t.dependsOnCodes,
           pausesOnHold: t.pausesOnHold,
           blockPausesSla: t.blockPausesSla,

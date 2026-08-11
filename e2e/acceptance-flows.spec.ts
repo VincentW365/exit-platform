@@ -64,8 +64,8 @@ test('J.3 return with reason -> correction -> resubmit; history preserved', asyn
 
   // Original history remains: two submissions and one return in the timeline.
   const timeline = page.locator('ul.timeline').last();
-  await expect(timeline.getByText('case submitted', { exact: false })).toHaveCount(2);
-  await expect(timeline.getByText('case returned to draft', { exact: false })).toHaveCount(1);
+  await expect(timeline.getByText('submitted the case', { exact: false })).toHaveCount(2);
+  await expect(timeline.getByText('returned the case to draft', { exact: false })).toHaveCount(1);
   await signOut(page);
 });
 

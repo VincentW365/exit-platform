@@ -4,11 +4,14 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import {
   ServiceError,
+  assignTask,
   blockTask,
+  claimTask,
   completeAccessTask,
   completeTask,
   correctCompletedTask,
   reassignTask,
+  returnTaskToQueue,
   startTask,
   unblockTask,
   updateAccessSystems,
@@ -52,6 +55,27 @@ export async function startTaskAction(formData: FormData): Promise<void> {
   await run(formData, async (actor, _fd, taskId) => {
     await startTask(actor, taskId);
     return 'Task started.';
+  });
+}
+
+export async function claimTaskDetailAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, _fd, taskId) => {
+    await claimTask(actor, taskId);
+    return 'Task claimed - it is now assigned to you (audited).';
+  });
+}
+
+export async function assignTaskDetailAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd, taskId) => {
+    await assignTask(actor, taskId, str(fd, 'assigneeId'), str(fd, 'reason'));
+    return 'Task assigned (audited).';
+  });
+}
+
+export async function returnTaskDetailAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd, taskId) => {
+    await returnTaskToQueue(actor, taskId, str(fd, 'reason'));
+    return 'Task returned to the department queue (audited).';
   });
 }
 

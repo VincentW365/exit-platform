@@ -21,3 +21,7 @@ export * from './pilot.ts';
 export * from './operations.ts';
 export * from './bambooDirectory.ts';
 export * from './branding.ts';
+export * from './auditCategories.ts';
+export * from './auditHumanize.ts';
+export * from './orgGraph.ts';
+export * from './assignment.ts';

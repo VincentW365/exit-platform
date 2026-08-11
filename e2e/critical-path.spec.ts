@@ -61,9 +61,9 @@ test('HR officer creates and submits; HR manager approves with snapshot; IT sees
   await expect(page.getByText('Approved').first()).toBeVisible();
   await expect(page.getByText(/captured .* \(checksum/)).toBeVisible();
 
-  // Audit timeline shows the full trail.
-  await expect(page.getByText('case created', { exact: false }).first()).toBeVisible();
-  await expect(page.getByText('case approved', { exact: false }).first()).toBeVisible();
+  // Audit history shows the full trail (humanized sentences, Directive 6.1).
+  await expect(page.getByText('created the case', { exact: false }).first()).toBeVisible();
+  await expect(page.getByText('approved the case', { exact: false }).first()).toBeVisible();
   await signOut(page);
 
   // --- IT responder: least privilege --------------------------------------

@@ -21,6 +21,10 @@ export const BAMBOO_ALLOWED_SOURCE_FIELDS = [
   'location',
   'jobTitle',
   'supervisor',
+  // Directive 6.1 (A): the manager RELATIONSHIP is an approved field; the id
+  // variants let the org graph resolve managers without name matching.
+  'supervisorId',
+  'supervisorEId',
   'status',
 ] as const;
 
@@ -51,6 +55,8 @@ export interface DirectoryEmployee {
   division: string | null;
   location: string | null;
   managerName: string | null;
+  /** Directory id of the supervisor when the API provides it (Directive 6.1 B). */
+  managerSourceId: string | null;
   employeeNumber: string | null;
   active: boolean;
 }
@@ -84,6 +90,14 @@ export function mapBambooDirectoryEmployee(raw: Record<string, unknown>): Direct
     division: str(raw['division']),
     location: str(raw['location']),
     managerName: str(raw['supervisor']),
+    managerSourceId:
+      str(raw['supervisorEId']) ??
+      str(raw['supervisorId']) ??
+      (typeof raw['supervisorEId'] === 'number'
+        ? String(raw['supervisorEId'])
+        : typeof raw['supervisorId'] === 'number'
+          ? String(raw['supervisorId'])
+          : null),
     employeeNumber: str(raw['employeeNumber']),
     // The public directory returns active employees; honour an explicit
     // status field when present.

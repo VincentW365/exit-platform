@@ -198,6 +198,28 @@ export async function getTask(actor: Actor, taskId: string) {
       t.taskKind !== 'ACCESS_REVOCATION',
     canReassign: canActOnCase(actor, 'task.hrManage', ctx),
     canCorrect: canActOnCase(actor, 'task.correct', ctx) && t.status === 'COMPLETED',
+    // Directive 6.1 (G/H): queue lifecycle capabilities.
+    canClaim:
+      canWorkOnTask(actor, t, ctx) &&
+      t.assigneeId === null &&
+      t.status === 'READY' &&
+      t.department !== 'LINE_MANAGER',
+    canAssign:
+      (canActOnCase(actor, 'task.hrManage', ctx) || canWorkOnTask(actor, t, ctx)) &&
+      t.assigneeId === null &&
+      ['READY', 'IN_PROGRESS', 'BLOCKED'].includes(t.status),
+    canReturn:
+      (canActOnCase(actor, 'task.hrManage', ctx) || t.assigneeId === actor.userId) &&
+      t.assigneeId !== null &&
+      ['READY', 'IN_PROGRESS', 'BLOCKED'].includes(t.status),
+    assigneeName: t.assigneeId
+      ? ((
+          await getPrisma().user.findUnique({
+            where: { id: t.assigneeId },
+            select: { displayName: true },
+          })
+        )?.displayName ?? null)
+      : null,
   };
 }
 
@@ -240,6 +262,27 @@ async function transition(
     'Blocker reason': fields.reason,
   });
   if (credErrors.length) throw ServiceError.validation(credErrors);
+
+  // Directive 6.1 (G/M): reassignment validates the target and records who
+  // had the work before - the audit answers who-had/who-has/why/when.
+  let assignmentMeta: Record<string, unknown> = {};
+  if (action === 'reassign') {
+    const target = await validateAssignmentTarget(t.department, fields.assigneeId ?? '');
+    const prisma = getPrisma();
+    const prev = t.assigneeId
+      ? await prisma.user.findUnique({
+          where: { id: t.assigneeId },
+          select: { displayName: true },
+        })
+      : null;
+    assignmentMeta = {
+      previousAssigneeId: t.assigneeId,
+      previousAssigneeName: prev?.displayName ?? null,
+      newAssigneeId: target.id,
+      newAssigneeName: target.displayName,
+      dueAt: t.dueAt,
+    };
+  }
 
   const now = new Date();
   const correlationId = newCorrelationId();
@@ -336,6 +379,7 @@ async function transition(
         action,
         reason: fields.reason ?? null,
         assigneeId: fields.assigneeId ?? null,
+        ...assignmentMeta,
       },
     });
   });
@@ -386,6 +430,206 @@ export const waiveTask = (actor: Actor, taskId: string, reason: string) =>
   transition(actor, taskId, 'waive', { reason });
 export const reassignTask = (actor: Actor, taskId: string, assigneeId: string, reason: string) =>
   transition(actor, taskId, 'reassign', { assigneeId, reason });
+
+// --- Directive 6.1 (G/H/I): department-queue claim / assign / return ---------
+
+/** Roles allowed to hold work in each department (generic routing model). */
+const DEPARTMENT_ASSIGNEE_ROLES: Record<TaskDepartment, readonly string[]> = {
+  HR: ['HR_OFFICER', 'HR_MANAGER'],
+  IT: ['IT_RESPONDER'],
+  FINANCE: ['FINANCE_RESPONDER'],
+  LINE_MANAGER: ['LINE_MANAGER'],
+};
+
+async function validateAssignmentTarget(department: TaskDepartment, userId: string) {
+  if (!userId) throw ServiceError.validation(['Select the person to assign.']);
+  const target = await getPrisma().user.findUnique({
+    where: { id: userId },
+    include: { roleAssignments: { where: { revokedAt: null }, select: { role: true } } },
+  });
+  if (!target || !target.isActive)
+    throw ServiceError.validation(['The selected user does not exist or is inactive.']);
+  const allowed = DEPARTMENT_ASSIGNEE_ROLES[department];
+  if (!target.roleAssignments.some((r) => allowed.includes(r.role as string)))
+    throw ServiceError.validation([
+      `The assignee must hold a ${department} responder role (${allowed.join(' or ')}).`,
+    ]);
+  return { id: target.id, displayName: target.displayName };
+}
+
+/**
+ * G: a department responder claims an UNASSIGNED, released task from the
+ * queue. SLA/due dates never change; the exact revocation deadline stands.
+ */
+export async function claimTask(actor: Actor, taskId: string): Promise<void> {
+  const { t, ctx } = await loadTask(taskId);
+  const access = taskAccessFor(actor, t, ctx);
+  if (access === 'NONE') {
+    await auditDenied(actor, 'ACCESS_DENIED', 'WorkflowTask', taskId);
+    throw ServiceError.notFound();
+  }
+  if (!canWorkOnTask(actor, t, ctx)) throw ServiceError.forbidden();
+  if (t.assigneeId)
+    throw ServiceError.validation([
+      'The task is already assigned; ask for a reassignment or a return to the queue.',
+    ]);
+  if (t.status !== 'READY')
+    throw ServiceError.validation(['Only released, not-yet-started tasks can be claimed.']);
+  if (!['ACTIVE', 'CLEARANCE_PENDING'].includes(t.instance.status))
+    throw ServiceError.conflict('The workflow is not active.');
+  const prisma = getPrisma();
+  const me = await prisma.user.findUnique({
+    where: { id: actor.userId },
+    select: { displayName: true },
+  });
+  const correlationId = newCorrelationId();
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.workflowTask.updateMany({
+      where: { id: taskId, rowVersion: t.rowVersion, status: t.status, assigneeId: null },
+      data: { assigneeId: actor.userId, rowVersion: { increment: 1 } },
+    });
+    if (updated.count === 0)
+      throw ServiceError.conflict('The task was claimed by someone else; refresh the queue.');
+    await appendAudit(tx, {
+      eventType: 'TASK_CLAIMED',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'WorkflowTask',
+      objectId: taskId,
+      caseId: t.caseId,
+      result: 'SUCCESS',
+      correlationId,
+      metadata: {
+        taskCode: t.taskCode,
+        newAssigneeId: actor.userId,
+        newAssigneeName: me?.displayName ?? null,
+        dueAt: t.dueAt,
+      },
+    });
+  });
+}
+
+/**
+ * G/H: assign an UNASSIGNED task to a named responder. The HR Manager may
+ * assign any open task; a department responder may distribute unassigned
+ * work within their own department.
+ */
+export async function assignTask(
+  actor: Actor,
+  taskId: string,
+  assigneeUserId: string,
+  reason: string,
+): Promise<void> {
+  const { t, ctx } = await loadTask(taskId);
+  const access = taskAccessFor(actor, t, ctx);
+  if (access === 'NONE') {
+    await auditDenied(actor, 'ACCESS_DENIED', 'WorkflowTask', taskId);
+    throw ServiceError.notFound();
+  }
+  const hrManage = canActOnCase(actor, 'task.hrManage', ctx);
+  if (!hrManage && !canWorkOnTask(actor, t, ctx)) throw ServiceError.forbidden();
+  if (!reason.trim()) throw ServiceError.validation(['A reason is required (audited).']);
+  if (t.assigneeId)
+    throw ServiceError.validation(['The task is already assigned; use reassignment instead.']);
+  if (!['READY', 'IN_PROGRESS', 'BLOCKED'].includes(t.status))
+    throw ServiceError.validation(['Only open tasks can be assigned.']);
+  if (!['ACTIVE', 'CLEARANCE_PENDING'].includes(t.instance.status))
+    throw ServiceError.conflict('The workflow is not active.');
+  const target = await validateAssignmentTarget(t.department, assigneeUserId);
+  const correlationId = newCorrelationId();
+  await getPrisma().$transaction(async (tx) => {
+    const updated = await tx.workflowTask.updateMany({
+      where: { id: taskId, rowVersion: t.rowVersion, status: t.status, assigneeId: null },
+      data: { assigneeId: target.id, rowVersion: { increment: 1 } },
+    });
+    if (updated.count === 0)
+      throw ServiceError.conflict('The task was changed by someone else; reload and retry.');
+    await appendAudit(tx, {
+      eventType: 'TASK_ASSIGNED',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'WorkflowTask',
+      objectId: taskId,
+      caseId: t.caseId,
+      result: 'SUCCESS',
+      correlationId,
+      metadata: {
+        taskCode: t.taskCode,
+        previousAssigneeId: null,
+        newAssigneeId: target.id,
+        newAssigneeName: target.displayName,
+        reason,
+        dueAt: t.dueAt,
+      },
+    });
+  });
+}
+
+/**
+ * G: the current assignee (or the HR Manager) returns a task to its
+ * department queue. Work history is preserved; the SLA clock never resets.
+ */
+export async function returnTaskToQueue(
+  actor: Actor,
+  taskId: string,
+  reason: string,
+): Promise<void> {
+  const { t, ctx } = await loadTask(taskId);
+  const access = taskAccessFor(actor, t, ctx);
+  if (access === 'NONE') {
+    await auditDenied(actor, 'ACCESS_DENIED', 'WorkflowTask', taskId);
+    throw ServiceError.notFound();
+  }
+  const hrManage = canActOnCase(actor, 'task.hrManage', ctx);
+  if (!hrManage && t.assigneeId !== actor.userId) throw ServiceError.forbidden();
+  if (!reason.trim()) throw ServiceError.validation(['A reason is required (audited).']);
+  if (!t.assigneeId) throw ServiceError.validation(['The task is not assigned to anyone.']);
+  if (!['READY', 'IN_PROGRESS', 'BLOCKED'].includes(t.status))
+    throw ServiceError.validation(['Only open tasks can be returned to the queue.']);
+  const credErrors = credentialFieldErrors({ 'Return reason': reason });
+  if (credErrors.length) throw ServiceError.validation(credErrors);
+  const prisma = getPrisma();
+  const prev = await prisma.user.findUnique({
+    where: { id: t.assigneeId },
+    select: { displayName: true },
+  });
+  const wasInProgress = t.status === 'IN_PROGRESS';
+  const correlationId = newCorrelationId();
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.workflowTask.updateMany({
+      where: { id: taskId, rowVersion: t.rowVersion, status: t.status },
+      data: {
+        assigneeId: null,
+        // Not progressing while unowned; startedAt/startedById stay as history.
+        ...(wasInProgress ? { status: 'READY' } : {}),
+        rowVersion: { increment: 1 },
+      },
+    });
+    if (updated.count === 0)
+      throw ServiceError.conflict('The task was changed by someone else; reload and retry.');
+    await appendAudit(tx, {
+      eventType: 'TASK_RETURNED_TO_QUEUE',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'WorkflowTask',
+      objectId: taskId,
+      caseId: t.caseId,
+      result: 'SUCCESS',
+      correlationId,
+      metadata: {
+        taskCode: t.taskCode,
+        previousAssigneeId: t.assigneeId,
+        previousAssigneeName: prev?.displayName ?? null,
+        reason,
+        dueAt: t.dueAt,
+        wasInProgress,
+      },
+    });
+  });
+}
 
 /** D.12/D.13: authorized correction of a completed task - append-only record. */
 export async function correctCompletedTask(
@@ -618,6 +862,10 @@ export const queueFilterSchema = z.object({
       'assignedToMe',
       'unassigned',
       'all',
+      // Directive 6.1 (G): quick views - myTasks aliases assignedToMe;
+      // critical covers CRITICAL priority or escalated open work.
+      'myTasks',
+      'critical',
     ])
     .default('all'),
   departureType: z
@@ -700,7 +948,13 @@ export async function listMyQueue(actor: Actor, rawFilter: unknown = {}) {
           taskKind: 'ACCESS_REVOCATION' as const,
         };
       case 'assignedToMe':
+      case 'myTasks':
         return { assigneeId: actor.userId, status: { notIn: ['NOT_READY'] as const } };
+      case 'critical':
+        return {
+          status: { in: ['READY', 'IN_PROGRESS', 'BLOCKED'] as const },
+          OR: [{ priority: 'CRITICAL' as const }, { escalationLevel: { gt: 0 } }],
+        };
       case 'unassigned':
         return { assigneeId: null, status: { in: ['READY', 'IN_PROGRESS', 'BLOCKED'] as const } };
       case 'reassigned':
@@ -750,6 +1004,17 @@ export async function listMyQueue(actor: Actor, rawFilter: unknown = {}) {
     },
   });
 
+  // Directive 6.1 (G): responders see WHO holds each task, not just a UUID.
+  const assigneeIds = [...new Set(rows.map((t) => t.assigneeId).filter((v): v is string => !!v))];
+  const assigneeNames = new Map(
+    (
+      await getPrisma().user.findMany({
+        where: { id: { in: assigneeIds } },
+        select: { id: true, displayName: true },
+      })
+    ).map((u) => [u.id, u.displayName]),
+  );
+
   return {
     departments,
     rows: rows.map((t) => {
@@ -775,7 +1040,10 @@ export async function listMyQueue(actor: Actor, rawFilter: unknown = {}) {
         overdueMinutes,
         blockedReason: t.blockedReason,
         assigneeId: t.assigneeId,
+        assigneeName: t.assigneeId ? (assigneeNames.get(t.assigneeId) ?? null) : null,
         assignedToMe: t.assigneeId === actor.userId,
+        canClaimHere:
+          t.assigneeId === null && t.status === 'READY' && t.department !== 'LINE_MANAGER',
         caseNumber: t.case.caseNumber,
         employeeDisplayName: t.case.employeeDisplayName,
         nextAction:

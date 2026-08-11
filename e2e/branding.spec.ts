@@ -33,23 +33,27 @@ test('brand asset and accessible alt text on sign-in and application shell', asy
   ).toEqual([]);
   await noOverflow(page, 'signin desktop');
 
-  // Application shell branding after sign-in (H.8/H.10).
+  // Application shell branding after sign-in (H.8/H.10) - the logo lives in
+  // the sidebar since the shell redesign.
   await page.getByRole('button', { name: 'Sign in as Dana Field' }).click();
   await page.waitForURL('**/');
   await expect(
-    page.locator('header').getByRole('img', { name: "Bert's Auto Parts" }),
+    page.locator('.sidebar').getByRole('img', { name: "Bert's Auto Parts" }),
   ).toBeVisible();
   await noOverflow(page, 'dashboard desktop');
 
   // The logo is intentionally NOT repeated across content panels (H.9).
   expect(await page.getByRole('img', { name: "Bert's Auto Parts" }).count()).toBe(1);
 
-  // Mobile usability (H.11/K.20).
+  // Mobile usability (H.11/K.20): the brand sits in the drawer menu.
   await page.setViewportSize(MOBILE);
   await page.goto('/');
-  await expect(
-    page.locator('header').getByRole('img', { name: "Bert's Auto Parts" }),
-  ).toBeVisible();
+  await page.getByRole('button', { name: 'Menu' }).click();
+  await expect(page.getByRole('img', { name: "Bert's Auto Parts" }).first()).toBeVisible();
+  // The backdrop spans the viewport; click the strip right of the drawer.
+  await page
+    .getByRole('button', { name: 'Close the menu' })
+    .click({ position: { x: 330, y: 300 } });
   await noOverflow(page, 'dashboard mobile');
   await page.goto('/cases/new');
   await noOverflow(page, 'case creation mobile');

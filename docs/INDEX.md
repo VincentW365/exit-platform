@@ -42,6 +42,9 @@
 | Delivery | `docs/delivery/StakeholderUATGuide.md` | Directive 6: stakeholder access, scenario dataset, live-demo procedure, questionnaire. |
 | Delivery | `docs/delivery/UATQuickStart.md` | Plain-language stakeholder walkthrough of the UAT scenarios (start here as a tester). |
 | Delivery | `docs/delivery/StakeholderSyntheticUATReport.md` | Directive 6: stakeholder UAT capture record (pending stakeholder execution). |
+| Delivery | `docs/delivery/RealisticUATDesignBuildRecord.md` | Directive 6.1 build record: organization routing, Audit Centre, realistic UAT design, UI refinement. |
+| Operations | `docs/operations/RealisticStakeholderUATWalkthrough.md` | Directive 6.1: 16-part facilitator walkthrough for realistic (aliased) UAT. |
+| Operations | `docs/operations/RealisticUATAssignmentMatrix.md` | Directive 6.1: alias/scenario/routing matrix for realistic UAT (no real names). |
 | Architecture | `docs/architecture/Architecture.md` | System context and modular-monolith design. |
 | Architecture | `docs/architecture/DomainModel.md` | Domain boundaries and invariants. |
 | Architecture | `docs/architecture/DataModel.md` | Proposed logical entities and relationships. |

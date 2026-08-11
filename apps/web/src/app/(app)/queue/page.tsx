@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { ServiceError, listMyQueue } from '@exit/db';
 import { formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
+import { Feedback } from '@/components/ui';
+import { claimTaskAction, returnTaskAction } from './actions';
 
 export const metadata: Metadata = { title: 'My work queue' };
 export const dynamic = 'force-dynamic';
@@ -75,14 +77,61 @@ export default async function QueuePage({
     if (sp.q) p.set('q', sp.q);
     return `/queue?${p.toString()}`;
   };
+  // Current filters, preserved across claim/return round-trips.
+  const queryString = (() => {
+    const p = new URLSearchParams();
+    p.set('view', activeView);
+    if (sp.department) p.set('department', sp.department);
+    if (sp.q) p.set('q', sp.q);
+    return p.toString();
+  })();
 
   return (
     <>
       <h1>My work queue</h1>
+      <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint">
         Departments visible to you: {data.departments.join(', ') || 'none'}. Tasks show only the
         minimum information needed to do the work; a task never grants wider case access.
       </p>
+
+      <nav aria-label="Quick views" className="panel" style={{ padding: '0.4rem 0.75rem' }}>
+        <ul
+          style={{
+            listStyle: 'none',
+            margin: 0,
+            padding: 0,
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '0.25rem',
+          }}
+        >
+          {(
+            [
+              ['myTasks', 'My tasks'],
+              ['unassigned', 'Unassigned'],
+              ['all', 'All authorized'],
+              ['critical', 'Critical'],
+              ['overdue', 'Overdue tasks'],
+            ] as const
+          ).map(([key, label]) => (
+            <li key={key}>
+              <Link
+                href={mkHref(key)}
+                className="button secondary"
+                aria-current={activeView === key ? 'page' : undefined}
+                style={
+                  activeView === key
+                    ? { background: 'var(--brand-blue)', color: '#fff' }
+                    : { border: '1px solid transparent' }
+                }
+              >
+                {label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
 
       <nav aria-label="Queue views" className="panel" style={{ padding: '0.4rem 0.75rem' }}>
         <ul
@@ -150,6 +199,7 @@ export default async function QueuePage({
                 <th scope="col">Case / employee</th>
                 <th scope="col">Department</th>
                 <th scope="col">Status</th>
+                <th scope="col">Assignee</th>
                 <th scope="col">Priority</th>
                 <th scope="col">Due</th>
                 <th scope="col">Next action</th>
@@ -200,11 +250,38 @@ export default async function QueuePage({
                     ) : null}
                     {r.blockedReason ? <p className="hint">Blocker: {r.blockedReason}</p> : null}
                   </td>
+                  <td>
+                    {r.assigneeName ?? <span className="hint">Unassigned</span>}
+                    {r.assignedToMe ? <span className="hint"> (you)</span> : null}
+                  </td>
                   <td>{r.priority}</td>
                   <td>{r.dueAt ? formatInstant(r.dueAt) : '-'}</td>
                   <td>
                     {r.nextAction}
                     {r.assignedToMe ? <span className="hint"> (assigned to you)</span> : null}
+                    {r.canClaimHere ? (
+                      <form action={claimTaskAction} style={{ marginTop: '0.35rem' }}>
+                        <input type="hidden" name="taskId" value={r.id} />
+                        <input type="hidden" name="query" value={queryString} />
+                        <button type="submit" className="secondary compact">
+                          Claim
+                        </button>
+                      </form>
+                    ) : null}
+                    {r.assignedToMe && ['READY', 'IN_PROGRESS', 'BLOCKED'].includes(r.status) ? (
+                      <details className="action" style={{ marginTop: '0.35rem' }}>
+                        <summary>Return to queue</summary>
+                        <form action={returnTaskAction} className="stack">
+                          <input type="hidden" name="taskId" value={r.id} />
+                          <input type="hidden" name="query" value={queryString} />
+                          <label htmlFor={`rtq-${r.id}`}>Reason (required, audited)</label>
+                          <input id={`rtq-${r.id}`} name="reason" required maxLength={500} />
+                          <button type="submit" className="secondary compact">
+                            Return task
+                          </button>
+                        </form>
+                      </details>
+                    ) : null}
                   </td>
                 </tr>
               ))}

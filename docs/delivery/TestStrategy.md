@@ -260,6 +260,18 @@ Urgent access removal proceeds through approved manual process and is reconciled
 
 Auditor reconstructs the entire case without modifying it and sees appropriate redaction.
 
+### Directive 6.1 additions (2026-08-11)
+
+New suites: `packages/domain/test/orgGraph.test.ts` and
+`auditCategories.test.ts` (unit); `packages/db/test-int/directive61OrgSync
+.test.ts`, `directive61Assignment.test.ts`, `directive61AuditCentre.test.ts`
+(integration); `e2e/directive61-flows.spec.ts` and `e2e/directive61-visual
+.spec.ts` (E2E incl. 1440/1280/768/375 responsive + axe). The synthetic
+fixture directory now carries a manager graph (11 EMP-TEST employees) so
+organization-aware routing is fully testable with synthetic data; activation
+in every suite goes through the shared assignment-plan step. Realistic
+(aliased) UAT is facilitator-run and never part of automated suites.
+
 ## 9. Defect severity
 
 | Severity | Definition | Release treatment |

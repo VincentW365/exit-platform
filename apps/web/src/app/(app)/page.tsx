@@ -1,7 +1,13 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { can, formatInstant, hasRole } from '@exit/domain';
-import { assignedFormQueue, hrDashboard, stage2Dashboard, stage3Dashboard } from '@exit/db';
+import {
+  assignedFormQueue,
+  attentionSummary,
+  hrDashboard,
+  stage2Dashboard,
+  stage3Dashboard,
+} from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { BaselineBanner, ClassificationBadge, StatusBadge } from '@/components/ui';
 
@@ -86,12 +92,13 @@ export default async function DashboardPage() {
           {can(actor, 'audit.viewGlobal') ? (
             <p>
               Your oversight tools: <Link href="/cases">case register (read-only)</Link> and the{' '}
-              <Link href="/audit">audit feed</Link>.
+              <Link href="/audit">Audit centre</Link>.
             </p>
           ) : can(actor, 'admin.roles') ? (
             <p>
               System administration does not include HR case access (least privilege). Go to{' '}
-              <Link href="/admin">Administration</Link>.
+              <Link href="/admin">Administration</Link> or the technical{' '}
+              <Link href="/audit">Audit centre</Link>.
             </p>
           ) : (
             <p>
@@ -107,6 +114,7 @@ export default async function DashboardPage() {
   const dash = await hrDashboard(actor);
   const s2 = await stage2Dashboard(actor);
   const s3 = await stage3Dashboard(actor);
+  const attention = await attentionSummary(actor);
   const statusOrder = [
     'DRAFT',
     'PENDING_HR_REVIEW',
@@ -149,6 +157,51 @@ export default async function DashboardPage() {
     <>
       <h1>HR dashboard</h1>
       <BaselineBanner />
+
+      <section className="panel attention-row" aria-labelledby="attn-h">
+        <h2 id="attn-h" style={{ marginTop: 0 }}>
+          Needs attention now
+        </h2>
+        <div className="stat-grid">
+          {(
+            [
+              [
+                'Critical / escalated',
+                attention.criticalTasks,
+                '/queue?view=critical',
+                'badge--danger',
+              ],
+              ['Overdue tasks', attention.overdueTasks, '/queue?view=overdue', 'badge--danger'],
+              [
+                'Pending approval',
+                attention.pendingApproval,
+                '/cases?status=PENDING_HR_REVIEW',
+                'badge--warning',
+              ],
+              ['Due today', attention.dueToday, '/queue?view=dueToday', 'badge--warning'],
+              ['Missing manager', attention.missingManager, '/admin/organization', 'badge--danger'],
+              [
+                'Hierarchy changes',
+                attention.hierarchyFlags,
+                '/admin/organization',
+                'badge--warning',
+              ],
+              [
+                'Unassigned IT/Finance',
+                attention.unassignedDept,
+                '/queue?view=unassigned',
+                'badge--info',
+              ],
+            ] as const
+          ).map(([label, count, href, cls]) => (
+            <Link key={label} href={href} className="stat stat--link">
+              <span className="stat__value tabular-nums">{count}</span>
+              <span className={`badge ${count > 0 ? cls : 'badge--success'}`}>{label}</span>
+            </Link>
+          ))}
+        </div>
+        <p className="hint">Operational records only; each tile opens the filtered work surface.</p>
+      </section>
 
       <section className="panel" aria-labelledby="counts-h">
         <h2 id="counts-h" style={{ marginTop: 0 }}>
