@@ -28,7 +28,12 @@ export default async function WorkflowDefinitionsPage({
     defs = await listWorkflowDefinitions(actor);
   } catch (e) {
     if (e instanceof ServiceError && e.code === 'FORBIDDEN')
-      return <p className="panel">Workflow definitions require an HR or oversight role.</p>;
+      return (
+        <>
+          <h1>Access restricted</h1>
+          <p className="panel">Workflow definitions require an HR or oversight role.</p>
+        </>
+      );
     throw e;
   }
 

@@ -20,7 +20,7 @@ async function signOut(page: Page): Promise<void> {
 async function completeAssignmentPlan(
   page: Page,
   caseUrl: string,
-  officerLabel = 'Riley Okafor',
+  officerLabel = 'HR Officer',
 ): Promise<void> {
   await page.goto(`${caseUrl}/assignment`);
   await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
@@ -29,7 +29,7 @@ async function completeAssignmentPlan(
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
-  await page.locator('#am-user').selectOption({ label: 'Jamie Douglas' });
+  await page.locator('#am-user').selectOption({ label: 'Line Manager' });
   await page.locator('#am-reason').fill('E2E manager routing.');
   await page.getByRole('button', { name: 'Record alternate manager' }).click();
   await expect(page.getByText('Alternate manager recorded')).toBeVisible();
@@ -66,7 +66,7 @@ async function createTestCase(
 test('Scenario 1 - notification delivery through development capture', async ({ page }) => {
   test.setTimeout(300_000);
   // HR builds an ACTIVE TEST case and approves an IT notification.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const { url: caseUrl } = await createTestCase(page, {
     employeeQuery: 'avery',
     type: 'RESIGNATION_WITH_NOTICE',
@@ -75,7 +75,7 @@ test('Scenario 1 - notification delivery through development capture', async ({ 
   await page.getByRole('button', { name: 'Submit for HR review' }).click();
   await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
   await signOut(page);
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
   await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
@@ -115,7 +115,7 @@ test('Scenario 1 - notification delivery through development capture', async ({ 
 test('Scenario 2 - integration administration with strict role separation', async ({ page }) => {
   test.setTimeout(240_000);
   // Technical admin: system config + health; NO case content.
-  await signInAs(page, 'Marley Thompson');
+  await signInAs(page, 'System Administrator');
   await page.goto('/admin/system');
   await expect(page.getByText('System administration (technical)')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Set a configuration value' }).click();
@@ -132,7 +132,7 @@ test('Scenario 2 - integration administration with strict role separation', asyn
   await signOut(page);
 
   // HR Manager: business configuration; NOT the technical area.
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto('/admin/recipients');
   await expect(page.getByText('Notification recipient directory')).toBeVisible();
   await expect(page.getByText('capture://it-offboarding').first()).toBeVisible();
@@ -143,7 +143,7 @@ test('Scenario 2 - integration administration with strict role separation', asyn
 
 test('Scenario 3 - pilot readiness gates, activation and suspension', async ({ page }) => {
   test.setTimeout(240_000);
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto('/admin/pilot');
   await expect(page.getByText('Readiness gates')).toBeVisible();
   // Gates show real failures in a fresh development environment.
@@ -172,7 +172,7 @@ test('Scenario 3 - pilot readiness gates, activation and suspension', async ({ p
 
 test('Scenario 4 - BambooHR fixture sync and reconciliation', async ({ page }) => {
   test.setTimeout(240_000);
-  await signInAs(page, 'Marley Thompson');
+  await signInAs(page, 'System Administrator');
   await page.goto('/admin/system');
   await page.getByRole('button', { name: /Run directory sync \(fixture adapter\)/ }).click();
   await expect(page.getByText(/Employee sync \(fixture adapter\)/)).toBeVisible();
@@ -184,7 +184,7 @@ test('Scenario 4 - BambooHR fixture sync and reconciliation', async ({ page }) =
 
 test('Scenario 5 - privacy and retention operations', async ({ page }) => {
   test.setTimeout(240_000);
-  await signInAs(page, 'Rowan Silvera');
+  await signInAs(page, 'Privacy Officer');
   await page.goto('/admin/privacy');
   await expect(page.getByText('Privacy, retention and data-subject operations')).toBeVisible();
 
@@ -210,7 +210,7 @@ test('Scenario 5 - privacy and retention operations', async ({ page }) => {
 
 test('Scenario 6 - backup and restore verification', async ({ page }) => {
   test.setTimeout(300_000);
-  await signInAs(page, 'Marley Thompson');
+  await signInAs(page, 'System Administrator');
   await page.goto('/admin/system');
   await page.getByRole('button', { name: 'Create database backup (pg_dump)' }).click();
   await expect(page.getByText(/Backup created \(\d+ bytes/)).toBeVisible();
@@ -222,7 +222,7 @@ test('Scenario 6 - backup and restore verification', async ({ page }) => {
 
 test('Scenario 7 - restricted reporting with suppression', async ({ page }) => {
   test.setTimeout(240_000);
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto('/reports?report=voluntaryInvoluntary&purpose=TEST');
   await expect(page.getByText('Voluntary vs involuntary departures').first()).toBeVisible();
   await expect(page.getByText(/Small groups below \d+ are suppressed/)).toBeVisible();

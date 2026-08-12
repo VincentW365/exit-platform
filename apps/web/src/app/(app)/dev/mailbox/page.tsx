@@ -15,9 +15,12 @@ export default async function DevMailboxPage() {
   } catch (e) {
     if (e instanceof ServiceError)
       return (
-        <p className="panel">
-          The development mailbox is not available for your role or environment.
-        </p>
+        <>
+          <h1>Access restricted</h1>
+          <p className="panel">
+            The development mailbox is not available for your role or environment.
+          </p>
+        </>
       );
     throw e;
   }

@@ -45,7 +45,12 @@ export default async function ContinuityPage({
     data = await continuityOverview(actor);
   } catch (e) {
     if (e instanceof ServiceError)
-      return <p className="panel">The continuity centre requires an authorized role.</p>;
+      return (
+        <>
+          <h1>Access restricted</h1>
+          <p className="panel">The continuity centre requires an authorized role.</p>
+        </>
+      );
     throw e;
   }
 

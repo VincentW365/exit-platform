@@ -48,7 +48,7 @@ test('stage 2 surfaces: visual + axe sweep', async ({ page }) => {
   test.setTimeout(240_000);
   await page.setViewportSize(DESKTOP);
 
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
 
   // Dashboard with the new queues/metrics.
   await snap(page, '01-dashboard-stage2', true);

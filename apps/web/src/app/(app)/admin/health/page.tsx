@@ -10,7 +10,12 @@ export const dynamic = 'force-dynamic';
 export default async function HealthPage() {
   const { actor } = await requireAuth();
   if (!can(actor, 'health.view'))
-    return <p className="panel">The health dashboard requires an authorized role.</p>;
+    return (
+      <>
+        <h1>Access restricted</h1>
+        <p className="panel">The health dashboard requires an authorized role.</p>
+      </>
+    );
   const health = await collectHealth();
 
   return (

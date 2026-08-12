@@ -53,7 +53,12 @@ export default async function CaseDocumentsPage({
   } catch (e) {
     if (e instanceof ServiceError && e.code === 'NOT_FOUND') notFound();
     if (e instanceof ServiceError && e.code === 'FORBIDDEN')
-      return <p className="panel">This area requires explicit case assignment.</p>;
+      return (
+        <>
+          <h1>Access restricted</h1>
+          <p className="panel">This area requires explicit case assignment.</p>
+        </>
+      );
     throw e;
   }
   const c = caseData.case;

@@ -41,7 +41,7 @@ test('UAT tablet spot-check: representative surfaces per role', async ({ page })
   test.setTimeout(300_000);
   await page.setViewportSize(TABLET);
 
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await tabletCheck(page, '01-dashboard');
   await page.goto('/cases');
   await tabletCheck(page, '02-case-list');
@@ -53,12 +53,12 @@ test('UAT tablet spot-check: representative surfaces per role', async ({ page })
   await tabletCheck(page, '05-continuity');
   await signOut(page);
 
-  await signInAs(page, 'Sam Chen');
+  await signInAs(page, 'IT Responder');
   await page.goto('/queue');
   await tabletCheck(page, '06-department-queue');
   await signOut(page);
 
-  await signInAs(page, 'Marley Thompson');
+  await signInAs(page, 'System Administrator');
   await page.goto('/admin/health');
   await tabletCheck(page, '07-health');
   await signOut(page);

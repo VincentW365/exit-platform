@@ -37,10 +37,10 @@ async function main(): Promise<void> {
     where: { identitySubject: 'dev|it-responder-b' },
     create: {
       identitySubject: 'dev|it-responder-b',
-      displayName: 'Devon Temple',
+      displayName: 'Second IT Responder',
       workEmail: 'devon.temple@example.test',
     },
-    update: { displayName: 'Devon Temple', isActive: true },
+    update: { displayName: 'Second IT Responder', isActive: true },
   });
   const devonRole = await prisma.roleAssignment.findFirst({
     where: { userId: devon.id, role: 'IT_RESPONDER' as never, revokedAt: null },

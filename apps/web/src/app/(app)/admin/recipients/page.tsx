@@ -25,7 +25,12 @@ export default async function RecipientsPage({
     recipients = await listRecipients(actor);
   } catch (e) {
     if (e instanceof ServiceError)
-      return <p className="panel">The recipient directory requires an authorized role.</p>;
+      return (
+        <>
+          <h1>Access restricted</h1>
+          <p className="panel">The recipient directory requires an authorized role.</p>
+        </>
+      );
     throw e;
   }
   const canEdit = can(actor, 'recipients.editBusiness') || can(actor, 'recipients.editTechnical');

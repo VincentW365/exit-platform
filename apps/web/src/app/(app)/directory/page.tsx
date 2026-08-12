@@ -13,7 +13,12 @@ export default async function DirectoryPage() {
     data = await directoryOverview(actor);
   } catch (e) {
     if (e instanceof ServiceError)
-      return <p className="panel">The organization directory is limited to authorized HR roles.</p>;
+      return (
+        <>
+          <h1>Access restricted</h1>
+          <p className="panel">The organization directory is limited to authorized HR roles.</p>
+        </>
+      );
     throw e;
   }
 

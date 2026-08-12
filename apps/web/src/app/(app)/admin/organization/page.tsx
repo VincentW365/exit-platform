@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ServiceError, getOrgOverview } from '@exit/db';
+import { ServiceError, getOrgOverview, keyOfficeholders } from '@exit/db';
 import { can, formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
@@ -31,11 +31,18 @@ export default async function OrganizationAdminPage({
   const sp = await searchParams;
 
   let data: Awaited<ReturnType<typeof getOrgOverview>>;
+  let officeholders: Awaited<ReturnType<typeof keyOfficeholders>>;
   try {
     data = await getOrgOverview(actor);
+    officeholders = await keyOfficeholders(actor);
   } catch (e) {
     if (e instanceof ServiceError)
-      return <p className="panel">Organization mapping requires an authorized role.</p>;
+      return (
+        <>
+          <h1>Access restricted</h1>
+          <p className="panel">Organization mapping requires an authorized role.</p>
+        </>
+      );
     throw e;
   }
   const r = data.report;
@@ -109,6 +116,47 @@ export default async function OrganizationAdminPage({
                     </td>
                     <td>{f.subject}</td>
                     <td>{f.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="panel" aria-labelledby="office-h">
+        <h2 id="office-h">Key officeholders (from the directory)</h2>
+        {officeholders.length === 0 ? (
+          <p className="hint">
+            No officeholders resolved yet. After a directory synchronization this table names who
+            actually holds each key function (HR Manager, Finance Manager, IT lead) based on
+            department and position - nothing is hard-coded.
+          </p>
+        ) : (
+          <div className="table-wrap" tabIndex={0}>
+            <table className="data">
+              <caption className="visually-hidden">Key officeholders</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Function</th>
+                  <th scope="col">Person</th>
+                  <th scope="col">Position</th>
+                  <th scope="col">Department</th>
+                  <th scope="col">Location</th>
+                  <th scope="col">Direct reports</th>
+                </tr>
+              </thead>
+              <tbody>
+                {officeholders.map((o) => (
+                  <tr key={`${o.office}-${o.person.sourceId}`}>
+                    <td>
+                      <strong>{o.office}</strong>
+                    </td>
+                    <td>{o.person.displayName}</td>
+                    <td>{o.person.jobTitle ?? '-'}</td>
+                    <td>{o.person.department ?? '-'}</td>
+                    <td>{o.person.location ?? '-'}</td>
+                    <td className="tabular-nums">{o.directReports}</td>
                   </tr>
                 ))}
               </tbody>

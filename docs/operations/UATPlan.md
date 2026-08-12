@@ -25,13 +25,13 @@ the System Administrator only after the HR Manager signs the results).
 
 | Role | Participant (synthetic account) | Modules |
 | --- | --- | --- |
-| HR Manager | Dana Field | Approvals, clearance, pilot admin, reports |
-| HR Officer | Riley Okafor | Case intake, documents, notifications, reports |
-| IT | Sam Chen | Queue, access revocation, assets |
-| Finance | Alex Romero | Queue, clearance inputs |
-| Line Manager | Jamie Douglas | Handover, queue |
-| Privacy Officer | Rowan Silvera | Privacy/retention operations |
-| System Administrator | Marley Thompson | System admin, health, backup |
+| HR Manager | HR Manager | Approvals, clearance, pilot admin, reports |
+| HR Officer | HR Officer | Case intake, documents, notifications, reports |
+| IT | IT Responder | Queue, access revocation, assets |
+| Finance | Finance Responder | Queue, clearance inputs |
+| Line Manager | Line Manager | Handover, queue |
+| Privacy Officer | Privacy Officer | Privacy/retention operations |
+| System Administrator | System Administrator | System admin, health, backup |
 
 Prerequisites: seeded development database; training module for the
 participant's role completed (recorded in the Operations centre); this plan

@@ -122,7 +122,7 @@ export default async function QueuePage({
                 aria-current={activeView === key ? 'page' : undefined}
                 style={
                   activeView === key
-                    ? { background: 'var(--brand-blue)', color: '#fff' }
+                    ? { background: 'var(--accent)', color: 'var(--on-accent)' }
                     : { border: '1px solid transparent' }
                 }
               >
@@ -152,7 +152,7 @@ export default async function QueuePage({
                 aria-current={activeView === key ? 'page' : undefined}
                 style={
                   activeView === key
-                    ? { background: 'var(--brand-blue)', color: '#fff' }
+                    ? { background: 'var(--accent)', color: 'var(--on-accent)' }
                     : { border: '1px solid transparent' }
                 }
               >

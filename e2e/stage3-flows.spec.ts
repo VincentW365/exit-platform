@@ -57,7 +57,7 @@ async function submitAndApprove(page: Page, caseUrl: string): Promise<void> {
   await page.getByRole('button', { name: 'Submit for HR review' }).click();
   await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
   await signOut(page);
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
   await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
@@ -67,7 +67,7 @@ async function submitAndApprove(page: Page, caseUrl: string): Promise<void> {
 async function completeAssignmentPlan(
   page: Page,
   caseUrl: string,
-  officerLabel = 'Riley Okafor',
+  officerLabel = 'HR Officer',
 ): Promise<void> {
   await page.goto(`${caseUrl}/assignment`);
   await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
@@ -76,7 +76,7 @@ async function completeAssignmentPlan(
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
-  await page.locator('#am-user').selectOption({ label: 'Jamie Douglas' });
+  await page.locator('#am-user').selectOption({ label: 'Line Manager' });
   await page.locator('#am-reason').fill('E2E manager routing.');
   await page.getByRole('button', { name: 'Record alternate manager' }).click();
   await expect(page.getByText('Alternate manager recorded')).toBeVisible();
@@ -196,19 +196,19 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
   test.setTimeout(600_000);
 
   // HR creates and routes the case; HR Manager approves and assigns the manager.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const { url: caseUrl, number: caseNo } = await createTestCase(page, {
     employeeQuery: 'avery',
     type: 'RESIGNATION_WITH_NOTICE',
     confirmedLastDay: true,
   });
   await submitAndApprove(page, caseUrl);
-  await addParticipantOnCase(page, caseUrl, 'Jamie Douglas', 'MANAGER');
+  await addParticipantOnCase(page, caseUrl, 'Line Manager', 'MANAGER');
   await completeAssignmentPlan(page, caseUrl);
   await signOut(page);
 
   // HR activates from the read-only preview (B.8): tasks, owners, due dates.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/workflow`);
   await expect(page.getByText('Workflow preview (read-only, before activation)')).toBeVisible();
   await expect(page.getByText('EXACT TIME').first()).toBeVisible();
@@ -252,7 +252,7 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
   await signOut(page);
 
   // HR Manager approves the letter (renders the controlled PDF).
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/documents`);
   await page.getByRole('button', { name: 'Approve exact version (attested)' }).click();
   await expect(page.getByText('Document approved; the final PDF has been rendered.')).toBeVisible();
@@ -260,12 +260,12 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
     page,
     caseUrl,
     'Approve the action form (manager)',
-    'Jamie Douglas (LINE_MANAGER)',
+    'Line Manager (LINE_MANAGER)',
   );
   await signOut(page);
 
   // The line manager: handover record, form approval, duty reassignment.
-  await signInAs(page, 'Jamie Douglas');
+  await signInAs(page, 'Line Manager');
   await page.goto(`${caseUrl}/handover`);
   await expect(
     page.getByText(/Do not enter passwords, access codes, private keys/).first(),
@@ -288,7 +288,7 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
   await signOut(page);
 
   // Manager duties task released by the handover plan; assign then complete.
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/action-form`);
   await page.getByRole('button', { name: /Give HR final approval/ }).click();
   await expect(page.getByText(/HR final approval recorded/)).toBeVisible();
@@ -296,17 +296,17 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
     page,
     caseUrl,
     'Reassign open duties and deadlines',
-    'Jamie Douglas (LINE_MANAGER)',
+    'Line Manager (LINE_MANAGER)',
   );
   await completeTaskFromWorkflow(page, caseUrl, 'Approve the final action form');
   await signOut(page);
 
-  await signInAs(page, 'Jamie Douglas');
+  await signInAs(page, 'Line Manager');
   await completeTaskViaQueue(page, caseNo, 'Reassign open duties and deadlines');
   await signOut(page);
 
   // IT: review, then the exact-time revocation with recorded early authority.
-  await signInAs(page, 'Sam Chen');
+  await signInAs(page, 'IT Responder');
   await completeTaskViaQueue(page, caseNo, 'Review systems and access requiring removal');
   await page.goto(`/queue?view=all&q=${caseNo}`);
   await page
@@ -323,7 +323,7 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
   await signOut(page);
 
   // Finance: acknowledgement and the external workpaper records.
-  await signInAs(page, 'Alex Romero');
+  await signInAs(page, 'Finance Responder');
   await completeTaskViaQueue(page, caseNo, 'Acknowledge offboarding case');
   await completeTaskViaQueue(page, caseNo, 'Initiate external final-pay workpaper');
   await completeTaskViaQueue(
@@ -335,7 +335,7 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
   await signOut(page);
 
   // HR: benefits applicability, notifications, assets, HRIS and survey tasks.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await completeTaskFromWorkflow(page, caseUrl, 'Determine Sagicor group-health applicability');
   await completeTaskFromWorkflow(page, caseUrl, 'Determine NCB group-life applicability');
   await completeTaskFromWorkflow(
@@ -372,7 +372,7 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
   await expect(page.getByText(/Case moved to clearance review/)).toBeVisible();
   await signOut(page);
 
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/clearance`);
   await page.getByRole('button', { name: 'Approve final clearance' }).click();
   await expect(page.getByText(/Final clearance approved/)).toBeVisible();
@@ -386,7 +386,7 @@ test('Scenario 2 - immediate resignation: urgent tasks, overdue access, blocked 
   page,
 }) => {
   test.setTimeout(240_000);
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const { url: caseUrl } = await createTestCase(page, {
     employeeQuery: 'casey',
     type: 'IMMEDIATE_RESIGNATION',
@@ -397,7 +397,7 @@ test('Scenario 2 - immediate resignation: urgent tasks, overdue access, blocked 
   await completeAssignmentPlan(page, caseUrl);
   await signOut(page);
 
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/workflow`);
   await page.getByRole('button', { name: 'Activate case and create these tasks' }).click();
   await expect(page.getByText(/Case activated/)).toBeVisible();
@@ -417,7 +417,7 @@ test('Scenario 2 - immediate resignation: urgent tasks, overdue access, blocked 
   await signOut(page);
 
   // IT sees the critical overdue task in its queue.
-  await signInAs(page, 'Sam Chen');
+  await signInAs(page, 'IT Responder');
   await page.goto('/queue?view=criticalOverdue');
   await expect(
     page.getByRole('link', { name: 'Immediate or exact-time access revocation' }).first(),
@@ -425,7 +425,7 @@ test('Scenario 2 - immediate resignation: urgent tasks, overdue access, blocked 
   await signOut(page);
 
   // Handover is manager-recorded or HR-Manager waived (G.11).
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/handover`);
   await page
     .locator('details.action > summary', { hasText: 'Waive handover (HR Manager)' })
@@ -450,7 +450,7 @@ test('Scenario 3 - restricted termination: undiscoverable, minimum-data IT task,
 }) => {
   test.setTimeout(240_000);
   // The HR Manager runs the restricted case (explicit participation only).
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   const soon = new Date(Date.now() + 30 * 60_000);
   const pad = (n: number) => String(n).padStart(2, '0');
   const effectiveLocal = `${soon.getFullYear()}-${pad(soon.getMonth() + 1)}-${pad(soon.getDate())}T${pad(soon.getHours())}:${pad(soon.getMinutes())}`;
@@ -467,7 +467,7 @@ test('Scenario 3 - restricted termination: undiscoverable, minimum-data IT task,
   await expect(page.getByText(/Case approved/)).toBeVisible();
   // Restricted case: the manager keeps operational ownership herself so the
   // non-participant discovery assertions below stay meaningful.
-  await completeAssignmentPlan(page, caseUrl, 'Dana Field');
+  await completeAssignmentPlan(page, caseUrl, 'HR Manager');
   await page.goto(`${caseUrl}/workflow`);
   await page.getByRole('button', { name: 'Activate case and create these tasks' }).click();
   await expect(page.getByText(/Case activated/)).toBeVisible();
@@ -487,7 +487,7 @@ test('Scenario 3 - restricted termination: undiscoverable, minimum-data IT task,
   await signOut(page);
 
   // A non-participant HR officer cannot discover the case anywhere (H.3).
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto(caseUrl);
   await expect(page.getByText('Page or record not found')).toBeVisible();
   await page.goto('/queue');
@@ -498,7 +498,7 @@ test('Scenario 3 - restricted termination: undiscoverable, minimum-data IT task,
 
   // IT receives ONLY the minimum-data access task (H.4): no departure type,
   // no case link, but the identity needed to act.
-  await signInAs(page, 'Sam Chen');
+  await signInAs(page, 'IT Responder');
   await page.goto(`/queue?view=all&q=${caseNo}`);
   await expect(page.getByText('TERMINATION')).toHaveCount(0);
   await page
@@ -516,7 +516,7 @@ test('Scenario 4 - exception handling: blocker raised, escalated, HR resolves wi
   page,
 }) => {
   test.setTimeout(240_000);
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const { url: caseUrl, number: caseNo } = await createTestCase(page, {
     employeeQuery: 'taylor',
     type: 'IMMEDIATE_RESIGNATION',
@@ -526,14 +526,14 @@ test('Scenario 4 - exception handling: blocker raised, escalated, HR resolves wi
   await submitAndApprove(page, caseUrl);
   await completeAssignmentPlan(page, caseUrl);
   await signOut(page);
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/workflow`);
   await page.getByRole('button', { name: 'Activate case and create these tasks' }).click();
   await expect(page.getByText(/Case activated/)).toBeVisible();
   await signOut(page);
 
   // IT records partial completion: one system cannot be removed (I.10).
-  await signInAs(page, 'Sam Chen');
+  await signInAs(page, 'IT Responder');
   await page.goto(`/queue?view=all&q=${caseNo}`);
   await page
     .getByRole('link', { name: 'Immediate or exact-time access revocation' })
@@ -547,7 +547,7 @@ test('Scenario 4 - exception handling: blocker raised, escalated, HR resolves wi
   await signOut(page);
 
   // The CRITICAL exception appears in the HR exception feed.
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto('/exceptions?status=OPEN&severity=CRITICAL');
   await expect(page.getByText(/Access revocation incomplete/).first()).toBeVisible();
 
@@ -573,7 +573,7 @@ test('Scenario 5 - asset exception: lost/unresolved assets, no pay effect, disti
   page,
 }) => {
   test.setTimeout(240_000);
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const { url: caseUrl } = await createTestCase(page, {
     employeeQuery: 'jordan',
     type: 'RESIGNATION_WITH_NOTICE',
@@ -582,7 +582,7 @@ test('Scenario 5 - asset exception: lost/unresolved assets, no pay effect, disti
   await submitAndApprove(page, caseUrl);
   await completeAssignmentPlan(page, caseUrl);
   await signOut(page);
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/workflow`);
   await page.getByRole('button', { name: 'Activate case and create these tasks' }).click();
   await expect(page.getByText(/Case activated/)).toBeVisible();
@@ -610,7 +610,7 @@ test('Scenario 5 - asset exception: lost/unresolved assets, no pay effect, disti
   await signOut(page);
 
   // The lost-asset review exception is visible to HR with no pay instruction.
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto('/exceptions?status=OPEN');
   await expect(page.getByText(/Asset lost/).first()).toBeVisible();
   await expect(page.getByText(/no payroll instruction/).first()).toBeVisible();

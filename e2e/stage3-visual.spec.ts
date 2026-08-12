@@ -55,7 +55,7 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
   await page.setViewportSize(DESKTOP);
 
   // HR dashboard with the workflow-operations block.
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await snap(page, '01-dashboard-stage3', true);
   await axeCheck(page, 'dashboard-stage3');
 
@@ -95,12 +95,12 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
   await snap(page, '14-assignment-plan', true);
   await axeCheck(page, 'assignment-plan');
   await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
-  await page.locator('#of-user').selectOption({ label: 'Riley Okafor' });
+  await page.locator('#of-user').selectOption({ label: 'HR Officer' });
   await page.locator('#of-reason').fill('Visual QA assignment.');
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
-  await page.locator('#am-user').selectOption({ label: 'Jamie Douglas' });
+  await page.locator('#am-user').selectOption({ label: 'Line Manager' });
   await page.locator('#am-reason').fill('Visual QA manager routing.');
   await page.getByRole('button', { name: 'Record alternate manager' }).click();
   await expect(page.getByText('Alternate manager recorded')).toBeVisible();
@@ -123,7 +123,7 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
 
   // Exact-time access task detail (IT view via the department queue).
   await signOut(page);
-  await signInAs(page, 'Sam Chen');
+  await signInAs(page, 'IT Responder');
   await page.goto(`/queue?view=all&q=${caseNo}`);
   await snap(page, '06-department-queue', true);
   await axeCheck(page, 'department-queue');
@@ -148,7 +148,7 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
   await signOut(page);
 
   // Notifications, assets, handover, clearance and the exception feed.
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/notifications`);
   await page.locator('details.action > summary', { hasText: 'Prepare a notification' }).click();
   await snap(page, '09-notifications', true);

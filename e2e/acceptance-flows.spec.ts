@@ -37,7 +37,7 @@ async function createDraftCase(
 }
 
 test('J.3 return with reason -> correction -> resubmit; history preserved', async ({ page }) => {
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const caseUrl = await createDraftCase(page, {
     employeeQuery: 'jordan',
     type: 'IMMEDIATE_RESIGNATION',
@@ -46,7 +46,7 @@ test('J.3 return with reason -> correction -> resubmit; history preserved', asyn
   await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
   await signOut(page);
 
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
   await page.getByText('Return for correction').click();
   await page.getByLabel('Reason (required)').first().fill('Effective time must be end of shift.');
@@ -54,7 +54,7 @@ test('J.3 return with reason -> correction -> resubmit; history preserved', asyn
   await expect(page.getByText('Case returned to draft for correction.')).toBeVisible();
   await signOut(page);
 
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto(caseUrl);
   await page.getByLabel(/Effective separation \(exact date and time\)/).fill('2026-08-14T18:00');
   await page.getByRole('button', { name: 'Save draft changes' }).click();
@@ -70,7 +70,7 @@ test('J.3 return with reason -> correction -> resubmit; history preserved', asyn
 });
 
 test('J.4 void requires a reason; history and audit remain visible', async ({ page }) => {
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   const caseUrl = await createDraftCase(page, {
     employeeQuery: 'taylor',
     type: 'RESIGNATION_WITH_NOTICE',
@@ -94,7 +94,7 @@ test('J.4 void requires a reason; history and audit remain visible', async ({ pa
 test('J.5 restricted termination: assignment-gated access; no discovery for others', async ({
   page,
 }) => {
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   const caseUrl = await createDraftCase(page, { employeeQuery: 'morgan', type: 'TERMINATION' });
   await expect(page.getByText(/RESTRICTED case - visible to explicitly assigned/)).toBeVisible();
   const caseNumber = (await page
@@ -103,7 +103,7 @@ test('J.5 restricted termination: assignment-gated access; no discovery for othe
   await signOut(page);
 
   // Unassigned HR officer: absent from list and search; direct URL -> not found.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto('/cases');
   await expect(page.getByText(caseNumber)).toHaveCount(0);
   // Search by the restricted employee's name must not surface THIS case
@@ -116,7 +116,7 @@ test('J.5 restricted termination: assignment-gated access; no discovery for othe
   await signOut(page);
 
   // Departmental + admin roles: nothing anywhere.
-  for (const who of ['Sam Chen', 'Marley Thompson']) {
+  for (const who of ['IT Responder', 'System Administrator']) {
     await signInAs(page, who);
     await page.goto(caseUrl);
     await expect(page.getByText('Page or record not found')).toBeVisible();
@@ -124,7 +124,7 @@ test('J.5 restricted termination: assignment-gated access; no discovery for othe
   }
 
   // Auditor: minimized discovery row without identity; content refused.
-  await signInAs(page, 'Quinn Baptiste');
+  await signInAs(page, 'Auditor');
   await page.goto('/cases');
   await expect(page.getByText(caseNumber)).toBeVisible();
   await expect(page.getByText('(restricted case)').first()).toBeVisible();
@@ -133,11 +133,11 @@ test('J.5 restricted termination: assignment-gated access; no discovery for othe
   await signOut(page);
 
   // Explicit assignment opens access for the assigned HR officer.
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
   await page.locator('details.action > summary', { hasText: 'Add participant' }).click();
   const officerValue = await page
-    .locator('#p-user option', { hasText: 'Riley Okafor' })
+    .locator('#p-user option', { hasText: 'HR Officer' })
     .getAttribute('value');
   await page.getByLabel('User').selectOption(officerValue!);
   await page.locator('#p-reason').fill('Assigned to support preparation.');
@@ -145,7 +145,7 @@ test('J.5 restricted termination: assignment-gated access; no discovery for othe
   await expect(page.getByText('Participant added.')).toBeVisible();
   await signOut(page);
 
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto(caseUrl);
   await expect(page.getByRole('heading', { name: new RegExp(caseNumber) })).toBeVisible();
   await signOut(page);
@@ -154,7 +154,7 @@ test('J.5 restricted termination: assignment-gated access; no discovery for othe
 test('J.6+J.8 cohort/purpose exclusion and audited export without restricted rows', async ({
   page,
 }) => {
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   // A TEST-purpose record must not enter operational reporting.
   await createDraftCase(page, {
     employeeQuery: 'casey',
@@ -176,7 +176,7 @@ test('J.6+J.8 cohort/purpose exclusion and audited export without restricted row
   await signOut(page);
 
   // Unauthorized roles cannot export.
-  await signInAs(page, 'Sam Chen');
+  await signInAs(page, 'IT Responder');
   const denied = await page.request.get('/api/baseline-export');
   expect(denied.status()).toBe(403);
   await signOut(page);
@@ -185,7 +185,7 @@ test('J.6+J.8 cohort/purpose exclusion and audited export without restricted row
 test('J.7 attachment upload with clearly-labelled development scan transition', async ({
   page,
 }) => {
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const caseUrl = await createDraftCase(page, {
     employeeQuery: 'avery',
     type: 'RESIGNATION_WITH_NOTICE',
@@ -209,7 +209,7 @@ test('J.7 attachment upload with clearly-labelled development scan transition', 
   await signOut(page);
 
   // Unauthorized role: download denied without disclosure.
-  await signInAs(page, 'Alex Romero');
+  await signInAs(page, 'Finance Responder');
   const denied = await page.request.get(href!);
   expect([403, 404]).toContain(denied.status());
   await signOut(page);
@@ -217,7 +217,7 @@ test('J.7 attachment upload with clearly-labelled development scan transition', 
 });
 
 test('J.9 logout invalidates the session for protected routes', async ({ page }) => {
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto('/cases');
   await expect(page.getByRole('heading', { name: 'Offboarding cases' })).toBeVisible();
   await signOut(page);

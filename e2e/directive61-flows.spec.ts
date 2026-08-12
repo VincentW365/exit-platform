@@ -44,7 +44,7 @@ test('Scenario F - missing manager blocks activation until an audited override',
 }) => {
   test.setTimeout(300_000);
   // EMP-TEST-009 (Kai Mendes) has NO manager in the synthetic directory.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const { url: caseUrl } = await createTestCase(page, {
     employeeQuery: 'kai',
     type: 'RESIGNATION_WITH_NOTICE',
@@ -54,7 +54,7 @@ test('Scenario F - missing manager blocks activation until an audited override',
   await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
   await signOut(page);
 
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
   await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
@@ -65,12 +65,12 @@ test('Scenario F - missing manager blocks activation until an audited override',
 
   // Assign the officer, then resolve the manager with an audited override.
   await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
-  await page.locator('#of-user').selectOption({ label: 'Riley Okafor' });
+  await page.locator('#of-user').selectOption({ label: 'HR Officer' });
   await page.locator('#of-reason').fill('Scenario F assignment.');
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
-  await page.locator('#am-user').selectOption({ label: 'Jamie Douglas' });
+  await page.locator('#am-user').selectOption({ label: 'Line Manager' });
   await page.locator('#am-reason').fill('Directory records no manager for this employee.');
   await page.getByRole('button', { name: 'Record alternate manager' }).click();
   await expect(page.getByText('Alternate manager recorded')).toBeVisible();
@@ -95,7 +95,7 @@ test('Scenario D - IT queue claim, return to queue and reclaim through the UI', 
   page,
 }) => {
   test.setTimeout(300_000);
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const { url: caseUrl, number: caseNo } = await createTestCase(page, {
     employeeQuery: 'avery',
     type: 'RESIGNATION_WITH_NOTICE',
@@ -104,18 +104,18 @@ test('Scenario D - IT queue claim, return to queue and reclaim through the UI', 
   await page.getByRole('button', { name: 'Submit for HR review' }).click();
   await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
   await signOut(page);
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
   await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
   await page.goto(`${caseUrl}/assignment`);
   await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
-  await page.locator('#of-user').selectOption({ label: 'Riley Okafor' });
+  await page.locator('#of-user').selectOption({ label: 'HR Officer' });
   await page.locator('#of-reason').fill('Scenario D assignment.');
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
-  await page.locator('#am-user').selectOption({ label: 'Jamie Douglas' });
+  await page.locator('#am-user').selectOption({ label: 'Line Manager' });
   await page.locator('#am-reason').fill('Scenario D routing.');
   await page.getByRole('button', { name: 'Record alternate manager' }).click();
   await expect(page.getByText('Alternate manager recorded')).toBeVisible();
@@ -130,7 +130,7 @@ test('Scenario D - IT queue claim, return to queue and reclaim through the UI', 
   await signOut(page);
 
   // IT responder A claims from the unassigned view.
-  await signInAs(page, 'Sam Chen');
+  await signInAs(page, 'IT Responder');
   await page.goto(`/queue?view=unassigned&q=${caseNo}`);
   const row = page
     .locator('tr', { hasText: 'Review systems and access requiring removal' })
@@ -140,7 +140,7 @@ test('Scenario D - IT queue claim, return to queue and reclaim through the UI', 
 
   // My-tasks view shows the claimed task with the assignee name.
   await page.goto(`/queue?view=myTasks&q=${caseNo}`);
-  await expect(page.getByText('Sam Chen').first()).toBeVisible();
+  await expect(page.getByText('IT Responder').first()).toBeVisible();
 
   // Return it to the queue with a reason; it becomes claimable again.
   const mine = page
@@ -163,7 +163,7 @@ test('Scenario D - IT queue claim, return to queue and reclaim through the UI', 
 test('Scenario I - audit investigation in the Audit Centre', async ({ page }) => {
   test.setTimeout(240_000);
   // The HR Manager investigates recent assignment activity.
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto('/audit');
   await expect(page.getByRole('heading', { name: 'Audit centre' })).toBeVisible();
   await expect(page.getByText('Events today')).toBeVisible();
@@ -179,7 +179,7 @@ test('Scenario I - audit investigation in the Audit Centre', async ({ page }) =>
   await signOut(page);
 
   // The auditor investigates a specific case end to end.
-  await signInAs(page, 'Quinn Baptiste');
+  await signInAs(page, 'Auditor');
   await page.goto('/audit');
   await expect(page.getByRole('heading', { name: 'Audit centre' })).toBeVisible();
   await page.locator('#af-result').selectOption('DENIED');
@@ -192,7 +192,7 @@ test('Scenario I - audit investigation in the Audit Centre', async ({ page }) =>
   await signOut(page);
 
   // SYSTEM_ADMIN sees the technical feed - never case content.
-  await signInAs(page, 'Marley Thompson');
+  await signInAs(page, 'System Administrator');
   await page.goto('/audit');
   await expect(page.getByText(/technical events only/)).toBeVisible();
   await expect(page.getByText(/OFF-\d{4}-\d{4}/)).toHaveCount(0);

@@ -50,9 +50,12 @@ describe('sync persists the approved organization columns (AM 1, 4)', () => {
     const rec = await prisma.employeeSourceRecord.findUniqueOrThrow({
       where: { sourceSystem_sourceId: { sourceSystem: 'SYNTHETIC', sourceId: 'EMP-TEST-001' } },
     });
-    expect(rec.managerName).toBe('Samira Cole');
+    expect(rec.managerName).toBe('Operations Manager');
     expect(rec.managerSourceId).toBe('EMP-TEST-007');
-    expect(rec.division).toBe('Retail');
+    // Fixtures mirror the real directory, which maintains no divisions
+    // (DEC-040); the column stays exercised by the explicit-fixture test
+    // below.
+    expect(rec.division).toBeNull();
     expect(rec.employeeNumber).toBe('1001');
     expect(rec.active).toBe(true);
     expect(rec.lastSyncedAt).not.toBeNull();
@@ -72,6 +75,7 @@ describe('sync persists the approved organization columns (AM 1, 4)', () => {
         jobTitle: 'T',
         department: 'Sales',
         location: 'Kingston',
+        division: 'Test Division',
         active: true,
         managerName: 'Named Manager',
       },
@@ -122,6 +126,9 @@ describe('sync persists the approved organization columns (AM 1, 4)', () => {
       where: { sourceSystem_sourceId: { sourceSystem: 'SYNTHETIC', sourceId: 'NAME-1' } },
     });
     expect(resolved.managerSourceId).toBe('NAME-2');
+    // Division persistence still exercised even though standard fixtures
+    // carry none (DEC-040).
+    expect(resolved.division).toBe('Test Division');
     const ambiguous = await prisma.employeeSourceRecord.findUniqueOrThrow({
       where: { sourceSystem_sourceId: { sourceSystem: 'SYNTHETIC', sourceId: 'AMB-1' } },
     });
@@ -133,7 +140,7 @@ describe('createDraft preserves manager provenance (AM 3, 12)', () => {
   it('derives the manager at draft creation and never destroys sync columns', async () => {
     const created = await createDraft(officer.actor, TEST_DRAFT);
     const c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: created.caseId } });
-    expect(c.managerName).toBe('Samira Cole');
+    expect(c.managerName).toBe('Operations Manager');
     expect(c.managerSourceId).toBe('EMP-TEST-007');
     expect(c.managerSource).toBe('DIRECTORY');
     // No LINE_MANAGER app account matches in this DB -> unresolved.
@@ -142,20 +149,20 @@ describe('createDraft preserves manager provenance (AM 3, 12)', () => {
     const rec = await prisma.employeeSourceRecord.findUniqueOrThrow({
       where: { sourceSystem_sourceId: { sourceSystem: 'SYNTHETIC', sourceId: 'EMP-TEST-001' } },
     });
-    expect(rec.managerName).toBe('Samira Cole');
-    expect((rec.payload as { managerName?: string }).managerName).toBe('Samira Cole');
+    expect(rec.managerName).toBe('Operations Manager');
+    expect((rec.payload as { managerName?: string }).managerName).toBe('Operations Manager');
     const derived = await prisma.auditEvent.findFirst({
       where: { caseId: created.caseId, eventType: 'CASE_MANAGER_DERIVED' },
     });
     expect(derived).not.toBeNull();
-    expect((derived!.metadata as { managerName?: string }).managerName).toBe('Samira Cole');
+    expect((derived!.metadata as { managerName?: string }).managerName).toBe('Operations Manager');
   });
 
   it('resolves managerUserId when a LINE_MANAGER account matches by email', async () => {
     const samira = await prisma.user.create({
       data: {
         identitySubject: 'test|samira-manager',
-        displayName: 'Samira Cole',
+        displayName: 'Operations Manager',
         workEmail: 'samira.cole@example.test',
         roleAssignments: { create: [{ role: 'LINE_MANAGER', reason: 'test fixture' }] },
       },

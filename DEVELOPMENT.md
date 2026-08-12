@@ -78,7 +78,10 @@ $rt  = "C:\...\hr-offboarding-local-runtime\postgres"
 
 # reset the TEST database (safe; the harness re-migrates automatically):
 #   as exit_admin: DROP DATABASE exitplatform_test; CREATE DATABASE exitplatform_test OWNER exit_migrate;
-# reset the DEV database: same pattern, then re-run migrate:deploy, grants.sql and pnpm db:seed.
+# reset the DEV database - one command (DEC-041):
+#   pnpm exec tsx scripts/reset-environment.ts uat --yes    (UAT dataset)
+#   pnpm exec tsx scripts/reset-environment.ts fresh --yes  (zero-case clean state)
+#   pnpm exec tsx scripts/reset-environment.ts status       (read-only check)
 # recovery: if the cluster is corrupt, delete $rt\data entirely and redo the
 # one-time setup - everything in it is synthetic and reproducible.
 ```

@@ -698,7 +698,7 @@ export default async function CaseDetailPage({
                   aria-current={activeChip === chip ? 'page' : undefined}
                   style={
                     activeChip === chip
-                      ? { background: 'var(--brand-blue)', color: '#fff' }
+                      ? { background: 'var(--accent)', color: 'var(--on-accent)' }
                       : { border: '1px solid transparent' }
                   }
                 >

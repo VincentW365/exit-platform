@@ -42,7 +42,12 @@ export default async function SystemAdminPage({
   const { actor } = await requireAuth();
   const sp = await searchParams;
   if (!can(actor, 'admin.system'))
-    return <p className="panel">System administration requires the SYSTEM_ADMIN role.</p>;
+    return (
+      <>
+        <h1>Access restricted</h1>
+        <p className="panel">System administration requires the SYSTEM_ADMIN role.</p>
+      </>
+    );
 
   let config: Awaited<ReturnType<typeof listSystemConfig>> = [];
   let users: Awaited<ReturnType<typeof listActiveUsers>> = [];

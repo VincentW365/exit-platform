@@ -35,7 +35,7 @@ test('brand asset and accessible alt text on sign-in and application shell', asy
 
   // Application shell branding after sign-in (H.8/H.10) - the logo lives in
   // the sidebar since the shell redesign.
-  await page.getByRole('button', { name: 'Sign in as Dana Field' }).click();
+  await page.getByRole('button', { name: 'Sign in as HR Manager' }).click();
   await page.waitForURL('**/');
   await expect(
     page.locator('.sidebar').getByRole('img', { name: "Bert's Auto Parts" }),
@@ -69,7 +69,7 @@ test('directory page is HR-scoped and the employee selector shows provenance', a
 
   // HR Officer: directory + provenance-badged employee search.
   await page.goto('/signin');
-  await page.getByRole('button', { name: 'Sign in as Riley Okafor' }).click();
+  await page.getByRole('button', { name: 'Sign in as HR Officer' }).click();
   await page.waitForURL('**/');
   await page.goto('/directory');
   await expect(page.getByText('Organization directory (case preparation)')).toBeVisible();
@@ -87,7 +87,7 @@ test('directory page is HR-scoped and the employee selector shows provenance', a
   await page.waitForURL('**/signin');
 
   // SYSTEM_ADMIN: no directory access, but technical status on /admin/system.
-  await page.getByRole('button', { name: 'Sign in as Marley Thompson' }).click();
+  await page.getByRole('button', { name: 'Sign in as System Administrator' }).click();
   await page.waitForURL('**/');
   await page.goto('/directory');
   await expect(

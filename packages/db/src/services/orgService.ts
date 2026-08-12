@@ -160,6 +160,55 @@ export async function managerChainOf(
   };
 }
 
+export interface Officeholder {
+  readonly office: string;
+  readonly person: DirectoryPersonRef;
+  readonly directReports: number;
+}
+
+/**
+ * Key officeholders derived from the synchronized directory (owner request:
+ * "you should know who the HR manager is"). Pure title/department heuristics
+ * over whatever is synced - fixture or live - so no name is ever hard-coded.
+ */
+export async function keyOfficeholders(actor: Actor): Promise<Officeholder[]> {
+  if (!can(actor, 'org.view') && !can(actor, 'admin.organization')) throw ServiceError.forbidden();
+  const people = await loadPeople();
+  const graph = buildOrgGraph(people);
+  const reports = (id: string) => (graph.directReports.get(id) ?? []).length;
+  const active = people.filter((p) => p.active);
+  const titled = (p: OrgPerson, ...words: string[]) => {
+    const t = (p.jobTitle ?? '').toLowerCase();
+    return words.some((w) => t.includes(w));
+  };
+  const inDept = (p: OrgPerson, ...names: string[]) => {
+    const d = (p.department ?? '').toLowerCase();
+    return names.some((n) => d.includes(n));
+  };
+  const offices: Array<{ office: string; match: (p: OrgPerson) => boolean }> = [
+    { office: 'HR Manager', match: (p) => inDept(p, 'human resources') && titled(p, 'manager') },
+    { office: 'HR Officer', match: (p) => inDept(p, 'human resources') && titled(p, 'officer') },
+    {
+      office: 'Finance Manager',
+      match: (p) => inDept(p, 'finance') && titled(p, 'manager', 'controller'),
+    },
+    {
+      office: 'IT Lead',
+      // Exact department match: substring would catch "Audit".
+      match: (p) =>
+        (p.department ?? '').toLowerCase() === 'it' && titled(p, 'manager', 'lead', 'senior'),
+    },
+    { office: 'Operations Manager', match: (p) => titled(p, 'operations manager') },
+  ];
+  const holders: Officeholder[] = [];
+  for (const o of offices) {
+    for (const p of active.filter(o.match)) {
+      holders.push({ office: o.office, person: toRef(p), directReports: reports(p.sourceId) });
+    }
+  }
+  return holders;
+}
+
 /** F: activated cases whose directory manager drifted since confirmation. */
 export async function listHierarchyChangeWarnings(actor: Actor): Promise<HierarchyWarning[]> {
   if (!can(actor, 'org.view') && !can(actor, 'admin.organization')) throw ServiceError.forbidden();

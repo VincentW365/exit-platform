@@ -229,6 +229,39 @@ export async function listConfigItems(kind: 'DEPARTMENT' | 'LOCATION') {
   });
 }
 
+/**
+ * Intake option lists: the admin-managed config values UNIONED with every
+ * department/location present on active directory records, so a synced
+ * directory (fixture or live) always yields choosable, correctly-spelled
+ * org units and a synced employee's own values are never silently replaced
+ * by the first option (DEC-040). Values are org-unit names, never people.
+ */
+export async function listOrgUnitOptions(): Promise<{
+  departments: string[];
+  locations: string[];
+}> {
+  const prisma = getPrisma();
+  const [config, records] = await Promise.all([
+    prisma.configListItem.findMany({ where: { isActive: true } }),
+    prisma.employeeSourceRecord.findMany({
+      where: { active: true, NOT: { displayName: { startsWith: 'PURGED-' } } },
+      select: { department: true, location: true },
+    }),
+  ]);
+  const departments = new Set<string>();
+  const locations = new Set<string>();
+  for (const c of config) {
+    if (c.kind === 'DEPARTMENT') departments.add(c.value);
+    else locations.add(c.value);
+  }
+  for (const r of records) {
+    if (r.department) departments.add(r.department);
+    if (r.location) locations.add(r.location);
+  }
+  const sort = (s: Set<string>) => [...s].sort((a, b) => a.localeCompare(b));
+  return { departments: sort(departments), locations: sort(locations) };
+}
+
 export async function addConfigItem(actor: Actor, kind: 'DEPARTMENT' | 'LOCATION', value: string) {
   if (!can(actor, 'admin.configLists')) throw ServiceError.forbidden();
   const v = value.trim();

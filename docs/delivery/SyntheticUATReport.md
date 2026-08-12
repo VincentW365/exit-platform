@@ -24,14 +24,14 @@ NODE_ENV=development throughout; every live adapter fail-closed.
 
 | Role | Synthetic tester |
 | --- | --- |
-| HR_MANAGER | Dana Field |
-| HR_OFFICER | Riley Okafor |
-| IT_RESPONDER | Sam Chen (+ disposable Devon Temple for Scenario 10) |
-| FINANCE_RESPONDER | Alex Romero |
-| LINE_MANAGER | Jamie Douglas |
-| PRIVACY_OFFICER | Rowan Silvera |
-| AUDITOR | Quinn Baptiste |
-| SYSTEM_ADMIN | Marley Thompson |
+| HR_MANAGER | HR Manager |
+| HR_OFFICER | HR Officer |
+| IT_RESPONDER | IT Responder (+ disposable Second IT Responder for Scenario 10) |
+| FINANCE_RESPONDER | Finance Responder |
+| LINE_MANAGER | Line Manager |
+| PRIVACY_OFFICER | Privacy Officer |
+| AUDITOR | Auditor |
+| SYSTEM_ADMIN | System Administrator |
 
 Synthetic employees: EMP-TEST-001..005 (Avery Brown et al.). Every case used
 record purpose TEST.

@@ -49,7 +49,7 @@ test('directive 6.1 surfaces: responsive + axe sweep', async ({ page }) => {
   test.setTimeout(600_000);
   await page.setViewportSize({ width: 1280, height: 800 });
 
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   // Dashboard with the attention row.
   await sweep(page, '01-dashboard-attention');
 
@@ -72,7 +72,7 @@ test('directive 6.1 surfaces: responsive + axe sweep', async ({ page }) => {
   await sweep(page, '05-audit-centre');
   await signOut(page);
 
-  await signInAs(page, 'Sam Chen');
+  await signInAs(page, 'IT Responder');
   await page.goto('/queue?view=unassigned');
   await sweep(page, '06-it-queue-claim');
   await signOut(page);

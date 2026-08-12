@@ -25,7 +25,12 @@ export default async function PilotPage({
     data = await getPilotOverview(actor);
   } catch (e) {
     if (e instanceof ServiceError)
-      return <p className="panel">Pilot readiness requires an authorized role.</p>;
+      return (
+        <>
+          <h1>Access restricted</h1>
+          <p className="panel">Pilot readiness requires an authorized role.</p>
+        </>
+      );
     throw e;
   }
   const current = data.records.find((r) => !r.supersededAt);

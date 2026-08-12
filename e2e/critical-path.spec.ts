@@ -21,7 +21,7 @@ test('HR officer creates and submits; HR manager approves with snapshot; IT sees
   page,
 }) => {
   // --- HR officer: create the draft -------------------------------------
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await expect(page.getByRole('heading', { name: 'HR dashboard' })).toBeVisible();
 
   await page.goto('/cases/new');
@@ -52,7 +52,7 @@ test('HR officer creates and submits; HR manager approves with snapshot; IT sees
   await signOut(page);
 
   // --- HR manager: approve ------------------------------------------------
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
   await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
   await expect(
@@ -67,7 +67,7 @@ test('HR officer creates and submits; HR manager approves with snapshot; IT sees
   await signOut(page);
 
   // --- IT responder: least privilege --------------------------------------
-  await signInAs(page, 'Sam Chen');
+  await signInAs(page, 'IT Responder');
   await expect(
     page.getByText(/Departmental work queues arrive with the Stage 3 workflow engine/),
   ).toBeVisible();

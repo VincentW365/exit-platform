@@ -194,7 +194,7 @@ describe('handover (T.15, T.16, T.17, M)', () => {
     await updateHandover(lineMgr.actor, caseId, {
       dutiesToReassign: 'Daily service scheduling; parts counter escalations.',
       openWorkDeadlines: 'August stock count preparation (due 20 Aug).',
-      replacementOwner: 'Jamie Douglas (interim).',
+      replacementOwner: 'Line Manager (interim).',
       keyDocumentLocations: 'Service records in the branch office cabinet B.',
     });
     await transitionHandover(lineMgr.actor, caseId, 'complete');

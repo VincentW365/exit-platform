@@ -39,7 +39,12 @@ export default async function AssignmentPage({
   } catch (e) {
     if (e instanceof ServiceError && e.code === 'NOT_FOUND') notFound();
     if (e instanceof ServiceError && e.code === 'FORBIDDEN') {
-      return <p className="panel">The assignment plan requires case access.</p>;
+      return (
+        <>
+          <h1>Access restricted</h1>
+          <p className="panel">The assignment plan requires case access.</p>
+        </>
+      );
     }
     throw e;
   }

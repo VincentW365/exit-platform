@@ -322,7 +322,7 @@ describe('BambooHR fixture sync and reconciliation (X.10, X.11)', () => {
         department: 'Administration', // changed
         location: 'Kingston',
         active: true,
-        managerName: 'Jamie Douglas',
+        managerName: 'Line Manager',
       },
     ]);
     const result = await syncEmployees(sysAdmin.actor);

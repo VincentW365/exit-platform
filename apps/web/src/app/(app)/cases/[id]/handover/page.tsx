@@ -35,7 +35,12 @@ export default async function CaseHandoverPage({
   } catch (e) {
     if (e instanceof ServiceError && e.code === 'NOT_FOUND') notFound();
     if (e instanceof ServiceError && e.code === 'FORBIDDEN')
-      return <p className="panel">This area requires case assignment.</p>;
+      return (
+        <>
+          <h1>Access restricted</h1>
+          <p className="panel">This area requires case assignment.</p>
+        </>
+      );
     throw e;
   }
   const r = data.record;

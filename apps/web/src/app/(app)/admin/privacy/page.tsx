@@ -29,7 +29,12 @@ export default async function PrivacyPage({
     data = await privacyOverview(actor);
   } catch (e) {
     if (e instanceof ServiceError)
-      return <p className="panel">Privacy operations require an authorized role.</p>;
+      return (
+        <>
+          <h1>Access restricted</h1>
+          <p className="panel">Privacy operations require an authorized role.</p>
+        </>
+      );
     throw e;
   }
   const canOperate = can(actor, 'privacy.operate');

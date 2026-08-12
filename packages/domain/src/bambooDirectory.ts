@@ -67,6 +67,13 @@ const str = (v: unknown): string | null => {
   return t.length ? t : null;
 };
 
+// BambooHR renders an unset list field as the literal string "None"; treat it
+// as absent so org statistics and validation never count a phantom unit.
+const unitName = (v: unknown): string | null => {
+  const s = str(v);
+  return s && s.toLowerCase() !== 'none' ? s : null;
+};
+
 /**
  * Map ONE raw directory row to the approved minimum shape. Returns null when
  * the row has no usable identifier or name. Every field not explicitly mapped
@@ -86,9 +93,9 @@ export function mapBambooDirectoryEmployee(raw: Record<string, unknown>): Direct
     displayName,
     workEmail: str(raw['workEmail']),
     jobTitle: str(raw['jobTitle']),
-    department: str(raw['department']),
-    division: str(raw['division']),
-    location: str(raw['location']),
+    department: unitName(raw['department']),
+    division: unitName(raw['division']),
+    location: unitName(raw['location']),
     managerName: str(raw['supervisor']),
     managerSourceId:
       str(raw['supervisorEId']) ??

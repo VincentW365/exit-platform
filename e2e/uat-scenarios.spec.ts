@@ -58,7 +58,7 @@ async function submitAndApprove(page: Page, caseUrl: string): Promise<void> {
   await page.getByRole('button', { name: 'Submit for HR review' }).click();
   await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
   await signOut(page);
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
   await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
@@ -68,7 +68,7 @@ async function submitAndApprove(page: Page, caseUrl: string): Promise<void> {
 async function completeAssignmentPlan(
   page: Page,
   caseUrl: string,
-  officerLabel = 'Riley Okafor',
+  officerLabel = 'HR Officer',
 ): Promise<void> {
   await page.goto(`${caseUrl}/assignment`);
   await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
@@ -77,7 +77,7 @@ async function completeAssignmentPlan(
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
-  await page.locator('#am-user').selectOption({ label: 'Jamie Douglas' });
+  await page.locator('#am-user').selectOption({ label: 'Line Manager' });
   await page.locator('#am-reason').fill('UAT manager routing.');
   await page.getByRole('button', { name: 'Record alternate manager' }).click();
   await expect(page.getByText('Alternate manager recorded')).toBeVisible();
@@ -182,18 +182,18 @@ test('UAT-1 - integrated resignation with notice: one case end to end', async ({
   test.setTimeout(600_000);
 
   // 1-2: HR Officer creates; HR Manager approves with snapshot.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const { url: caseUrl, number: caseNo } = await createTestCase(page, {
     employeeQuery: 'avery',
     type: 'RESIGNATION_WITH_NOTICE',
   });
   await submitAndApprove(page, caseUrl);
-  await addParticipantOnCase(page, caseUrl, 'Jamie Douglas', 'MANAGER');
+  await addParticipantOnCase(page, caseUrl, 'Line Manager', 'MANAGER');
   await completeAssignmentPlan(page, caseUrl);
   await signOut(page);
 
   // 3-4: workflow preview reviewed, then activated.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/workflow`);
   await expect(page.getByText('Workflow preview (read-only, before activation)')).toBeVisible();
   await page.getByRole('button', { name: 'Activate case and create these tasks' }).click();
@@ -235,7 +235,7 @@ test('UAT-1 - integrated resignation with notice: one case end to end', async ({
   await signOut(page);
 
   // 6-7: HR Manager approves the document; PDF renders and downloads.
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/documents`);
   await page.getByRole('button', { name: 'Approve exact version (attested)' }).click();
   await expect(page.getByText('Document approved; the final PDF has been rendered.')).toBeVisible();
@@ -262,12 +262,12 @@ test('UAT-1 - integrated resignation with notice: one case end to end', async ({
     page,
     caseUrl,
     'Approve the action form (manager)',
-    'Jamie Douglas (LINE_MANAGER)',
+    'Line Manager (LINE_MANAGER)',
   );
   await signOut(page);
 
   // 10: manager completes handover and approves the form.
-  await signInAs(page, 'Jamie Douglas');
+  await signInAs(page, 'Line Manager');
   await page.goto(`${caseUrl}/handover`);
   await page.locator('#ho-dutiesToReassign').fill('Parts counter scheduling and escalations.');
   await page.locator('#ho-openWorkDeadlines').fill('August stock count preparation.');
@@ -286,7 +286,7 @@ test('UAT-1 - integrated resignation with notice: one case end to end', async ({
   await signOut(page);
 
   // 8 (final): HR Manager gives HR final approval; duties task to manager.
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/action-form`);
   await page.getByRole('button', { name: /Give HR final approval/ }).click();
   await expect(page.getByText(/HR final approval recorded/)).toBeVisible();
@@ -294,17 +294,17 @@ test('UAT-1 - integrated resignation with notice: one case end to end', async ({
     page,
     caseUrl,
     'Reassign open duties and deadlines',
-    'Jamie Douglas (LINE_MANAGER)',
+    'Line Manager (LINE_MANAGER)',
   );
   await completeTaskFromWorkflow(page, caseUrl, 'Approve the final action form');
   await signOut(page);
 
-  await signInAs(page, 'Jamie Douglas');
+  await signInAs(page, 'Line Manager');
   await completeTaskViaQueue(page, caseNo, 'Reassign open duties and deadlines');
   await signOut(page);
 
   // 9: IT works its queue - review, then exact-time revocation.
-  await signInAs(page, 'Sam Chen');
+  await signInAs(page, 'IT Responder');
   await completeTaskViaQueue(page, caseNo, 'Review systems and access requiring removal');
   await page.goto(`/queue?view=all&q=${caseNo}`);
   await page
@@ -318,7 +318,7 @@ test('UAT-1 - integrated resignation with notice: one case end to end', async ({
   await signOut(page);
 
   // Finance tasks.
-  await signInAs(page, 'Alex Romero');
+  await signInAs(page, 'Finance Responder');
   await completeTaskViaQueue(page, caseNo, 'Acknowledge offboarding case');
   await completeTaskViaQueue(page, caseNo, 'Initiate external final-pay workpaper');
   await completeTaskViaQueue(
@@ -330,7 +330,7 @@ test('UAT-1 - integrated resignation with notice: one case end to end', async ({
   await signOut(page);
 
   // 11 + 13: HR closes remaining tasks, assets returned, survey issued.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await completeTaskFromWorkflow(page, caseUrl, 'Determine Sagicor group-health applicability');
   await completeTaskFromWorkflow(page, caseUrl, 'Determine NCB group-life applicability');
   await completeTaskFromWorkflow(
@@ -381,7 +381,7 @@ test('UAT-1 - integrated resignation with notice: one case end to end', async ({
   await page.waitForURL('**/survey/thanks');
 
   // 14-15: HR Manager approves final clearance; case completes.
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/clearance`);
   await page.getByRole('button', { name: 'Approve final clearance' }).click();
   await expect(page.getByText(/Final clearance approved/)).toBeVisible();
@@ -397,7 +397,7 @@ test('UAT-1 - integrated resignation with notice: one case end to end', async ({
   await signOut(page);
 
   // 16: reports reflect the completed TEST case without exposing identity.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto('/reports?report=volumeTrend&purpose=TEST');
   await expect(page.getByText('Offboarding volume and trend').first()).toBeVisible();
   await expect(page.locator('table tbody tr').first()).toBeVisible();
@@ -409,21 +409,21 @@ test('UAT-4 - document correction: invalidation, supersede, re-approval', async 
 
   // Approved case with an approved, rendered document (maker-checker: the
   // officer drafts and submits; the manager approves).
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const { url: caseUrl } = await createTestCase(page, {
     employeeQuery: 'taylor',
     type: 'RESIGNATION_WITH_NOTICE',
   });
-  await submitAndApprove(page, caseUrl); // ends signed in as Dana Field
+  await submitAndApprove(page, caseUrl); // ends signed in as HR Manager
   await signOut(page);
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/documents`);
   await page.getByRole('button', { name: 'Create resignation document draft' }).click();
   await expect(page.getByText('Draft document created')).toBeVisible();
   await page.getByRole('button', { name: 'Validate and submit for approval' }).click();
   await expect(page.getByText('Document submitted for HR Manager approval.')).toBeVisible();
   await signOut(page);
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/documents`);
   await page.getByRole('button', { name: 'Approve exact version (attested)' }).click();
   await expect(page.getByText('Document approved; the final PDF has been rendered.')).toBeVisible();
@@ -452,12 +452,12 @@ test('UAT-4 - document correction: invalidation, supersede, re-approval', async 
   // 5-6: the new version requires a fresh submission (officer) and a fresh
   // approval (manager) - the UAT-D1 fix makes this work with one manager.
   await signOut(page);
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/documents`);
   await page.getByRole('button', { name: 'Validate and submit for approval' }).click();
   await expect(page.getByText('Document submitted for HR Manager approval.')).toBeVisible();
   await signOut(page);
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/documents`);
   await page.getByRole('button', { name: 'Approve exact version (attested)' }).click();
   await expect(page.getByText('Document approved; the final PDF has been rendered.')).toBeVisible();
@@ -474,7 +474,7 @@ test('UAT-10 - user deactivation: session revoked, sign-in refused, work reassig
   test.setTimeout(420_000);
 
   // A case whose IT review task is assigned to the disposable user.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const { url: caseUrl, number: caseNo } = await createTestCase(page, {
     employeeQuery: 'jordan',
     type: 'RESIGNATION_WITH_NOTICE',
@@ -488,27 +488,27 @@ test('UAT-10 - user deactivation: session revoked, sign-in refused, work reassig
     page,
     caseUrl,
     'Review systems and access requiring removal',
-    'Devon Temple (IT_RESPONDER)',
+    'Second IT Responder (IT_RESPONDER)',
   );
   await signOut(page);
 
   // The disposable user holds a LIVE session in a second browser context.
   const devonContext = await (browser as Browser).newContext();
   const devonPage = await devonContext.newPage();
-  await signInAs(devonPage, 'Devon Temple');
+  await signInAs(devonPage, 'Second IT Responder');
   await devonPage.goto('/queue');
-  await expect(devonPage.getByText('Devon Temple', { exact: true })).toBeVisible();
+  await expect(devonPage.getByText('Second IT Responder', { exact: true })).toBeVisible();
   await expect(devonPage.getByText('IT_RESPONDER', { exact: true })).toBeVisible();
 
   // SYSTEM_ADMIN disables the account; open work is flagged.
-  await signInAs(page, 'Marley Thompson');
+  await signInAs(page, 'System Administrator');
   await page.goto('/admin/system');
   await page
     .locator('details.action > summary', {
       hasText: 'Disable a user (revokes sessions immediately)',
     })
     .click();
-  await page.locator('#du-user').selectOption({ label: 'Devon Temple (IT_RESPONDER)' });
+  await page.locator('#du-user').selectOption({ label: 'Second IT Responder (IT_RESPONDER)' });
   await page.locator('#du-reason').fill('Synthetic UAT Scenario 10 deactivation test.');
   await page.getByRole('button', { name: 'Disable user now' }).click();
   await expect(
@@ -519,17 +519,19 @@ test('UAT-10 - user deactivation: session revoked, sign-in refused, work reassig
   // The live session is rejected at once and sign-in is no longer offered.
   await devonPage.goto('/queue');
   await devonPage.waitForURL('**/signin**');
-  await expect(devonPage.getByRole('button', { name: 'Sign in as Devon Temple' })).toHaveCount(0);
-  await expect(devonPage.getByRole('button', { name: 'Sign in as Dana Field' })).toBeVisible();
+  await expect(
+    devonPage.getByRole('button', { name: 'Sign in as Second IT Responder' }),
+  ).toHaveCount(0);
+  await expect(devonPage.getByRole('button', { name: 'Sign in as HR Manager' })).toBeVisible();
   await devonContext.close();
 
   // HR Manager reassigns the orphaned task to an active IT responder.
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await reassignTaskFromWorkflow(
     page,
     caseUrl,
     'Review systems and access requiring removal',
-    'Sam Chen (IT_RESPONDER)',
+    'IT Responder (IT_RESPONDER)',
   );
   // Audit evidence for the whole episode is on the case timeline.
   await page.goto(caseUrl);
@@ -542,7 +544,7 @@ test('UAT-11 - outage and manual fallback: FB refs, one-time reconciliation, gat
 }) => {
   test.setTimeout(240_000);
 
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto('/continuity');
   await expect(page.getByText('Blank fallback forms (print and use manually)')).toBeVisible();
 

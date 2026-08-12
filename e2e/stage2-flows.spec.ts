@@ -60,7 +60,7 @@ test('Scenario 1 - resignation document: draft, approve, render, authorized down
   page,
 }) => {
   test.setTimeout(120_000);
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const caseUrl = await createTestCase(page, {
     employeeQuery: 'avery',
     type: 'RESIGNATION_WITH_NOTICE',
@@ -75,7 +75,7 @@ test('Scenario 1 - resignation document: draft, approve, render, authorized down
   await expect(page.getByText('Avery Brown').first()).toBeVisible(); // preview shows exact content
   await signOut(page);
 
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/documents`);
   await page.getByRole('button', { name: 'Approve exact version (attested)' }).click();
   await expect(page.getByText('Document approved; the final PDF has been rendered.')).toBeVisible();
@@ -92,7 +92,7 @@ test('Scenario 1 - resignation document: draft, approve, render, authorized down
   await signOut(page);
 
   // Unauthorized download: IT responder gets a non-disclosing failure.
-  await signInAs(page, 'Sam Chen');
+  await signInAs(page, 'IT Responder');
   const denied = await page.request.get(pdfHref!);
   expect([403, 404]).toContain(denied.status());
   await signOut(page);
@@ -102,7 +102,7 @@ test('Scenario 2 - action form: HR -> Finance -> Manager -> HR final, PDF and au
   page,
 }) => {
   test.setTimeout(180_000);
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const caseUrl = await createTestCase(page, {
     employeeQuery: 'jordan',
     type: 'IMMEDIATE_RESIGNATION',
@@ -110,13 +110,13 @@ test('Scenario 2 - action form: HR -> Finance -> Manager -> HR final, PDF and au
   await signOut(page);
 
   // HR Manager assigns finance + manager participants.
-  await signInAs(page, 'Dana Field');
-  await addParticipantOnCase(page, caseUrl, 'Alex Romero', 'FINANCE');
-  await addParticipantOnCase(page, caseUrl, 'Jamie Douglas', 'MANAGER');
+  await signInAs(page, 'HR Manager');
+  await addParticipantOnCase(page, caseUrl, 'Finance Responder', 'FINANCE');
+  await addParticipantOnCase(page, caseUrl, 'Line Manager', 'MANAGER');
   await signOut(page);
 
   // HR officer completes the draft.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/action-form`);
   await page.getByRole('button', { name: 'Create action form' }).click();
   await expect(page.getByText('Action form draft created.')).toBeVisible();
@@ -139,7 +139,7 @@ test('Scenario 2 - action form: HR -> Finance -> Manager -> HR final, PDF and au
   await signOut(page);
 
   // Finance completes its checklist.
-  await signInAs(page, 'Alex Romero');
+  await signInAs(page, 'Finance Responder');
   await page.goto(`${caseUrl}/action-form`);
   await expect(page.getByText(/minimum information required for your assigned role/)).toBeVisible();
   for (const key of [
@@ -158,14 +158,14 @@ test('Scenario 2 - action form: HR -> Finance -> Manager -> HR final, PDF and au
   await signOut(page);
 
   // Officer submits for manager approval.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/action-form`);
   await page.getByRole('button', { name: 'Submit for manager approval' }).click();
   await expect(page.getByText('Form submitted for manager approval.')).toBeVisible();
   await signOut(page);
 
   // Assigned manager approves from the minimum view.
-  await signInAs(page, 'Jamie Douglas');
+  await signInAs(page, 'Line Manager');
   await page.goto(`${caseUrl}/action-form`);
   await expect(page.getByText(/minimum information/)).toBeVisible();
   await expect(page.getByText('General HR remarks')).toHaveCount(0); // F.4 restriction
@@ -174,7 +174,7 @@ test('Scenario 2 - action form: HR -> Finance -> Manager -> HR final, PDF and au
   await signOut(page);
 
   // HR Manager gives final approval; PDF is available; audit shows steps.
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/action-form`);
   await page.getByRole('button', { name: /Give HR final approval/ }).click();
   await expect(page.getByText(/HR final approval recorded/)).toBeVisible();
@@ -196,7 +196,7 @@ test('Scenario 3 - exit survey: invitation, token completion, duplicate neutral,
   page,
 }) => {
   test.setTimeout(150_000);
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   const caseUrl = await createTestCase(page, {
     employeeQuery: 'taylor',
     type: 'RESIGNATION_WITH_NOTICE',
@@ -229,14 +229,14 @@ test('Scenario 3 - exit survey: invitation, token completion, duplicate neutral,
   await expect(page.getByText('Survey not available')).toBeVisible();
 
   // HR can view the response.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/survey`);
   await expect(page.getByText('COMPLETED').first()).toBeVisible();
   await expect(page.getByText('Response (restricted HR data)')).toBeVisible();
   await signOut(page);
 
   // Line manager cannot view it (no case access at all).
-  await signInAs(page, 'Jamie Douglas');
+  await signInAs(page, 'Line Manager');
   await page.goto(`${caseUrl}/survey`);
   await expect(page.getByText('Page or record not found')).toBeVisible();
   await signOut(page);
@@ -244,12 +244,12 @@ test('Scenario 3 - exit survey: invitation, token completion, duplicate neutral,
 
 test('Scenario 4 - restricted termination: new surfaces disclose nothing', async ({ page }) => {
   test.setTimeout(120_000);
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   const caseUrl = await createTestCase(page, { employeeQuery: 'morgan', type: 'TERMINATION' });
   await signOut(page);
 
   // Unassigned HR officer: all Stage 2 surfaces behave as not-found.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   for (const path of ['/documents', '/action-form', '/survey']) {
     await page.goto(`${caseUrl}${path}`);
     await expect(page.getByText('Page or record not found')).toBeVisible();
@@ -257,7 +257,7 @@ test('Scenario 4 - restricted termination: new surfaces disclose nothing', async
   await signOut(page);
 
   // Departmental and admin roles: same non-disclosure.
-  for (const who of ['Sam Chen', 'Marley Thompson']) {
+  for (const who of ['IT Responder', 'System Administrator']) {
     await signInAs(page, who);
     await page.goto(`${caseUrl}/documents`);
     await expect(page.getByText('Page or record not found')).toBeVisible();

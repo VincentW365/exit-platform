@@ -29,21 +29,23 @@ needs 20-30 minutes and can run their slice whenever they have time.
 
 | Role | Synthetic account | Landing surface | Primary scenarios |
 | --- | --- | --- | --- |
-| HR Officer | Riley Okafor | Dashboard → Cases / New case | S1, S2, S4, S6, S9 |
-| HR Manager | Dana Field | Dashboard → Cases / Reports / Administration | S1-S4, S8, S13, S14 |
-| IT Responder | Sam Chen | My queue | S1, S2, S5 |
-| Finance Responder | Alex Romero | My queue | S1, S5 |
-| Line Manager | Jamie Douglas | My queue / handover | S1, S7(handover) |
-| Privacy Officer | Rowan Silvera | Administration → Privacy | S8(survey privacy) |
-| Auditor | Quinn Baptiste | Audit feed / case history | cross-scenario |
-| System Administrator | Marley Thompson | Administration → System / Health | S11, S12, integration status |
-| (fixture for S11) | Devon Temple | - | disabled during Scenario 11 |
+| HR Officer | HR Officer | Dashboard → Cases / New case | S1, S2, S4, S6, S9 |
+| HR Manager | HR Manager | Dashboard → Cases / Reports / Administration | S1-S4, S8, S13, S14 |
+| IT Responder | IT Responder | My queue | S1, S2, S5 |
+| Finance Responder | Finance Responder | My queue | S1, S5 |
+| Line Manager | Line Manager | My queue / handover | S1, S7(handover) |
+| Privacy Officer | Privacy Officer | Administration → Privacy | S8(survey privacy) |
+| Auditor | Auditor | Audit feed / case history | cross-scenario |
+| System Administrator | System Administrator | Administration → System / Health | S11, S12, integration status |
+| (fixture for S11) | Second IT Responder | - | disabled during Scenario 11 |
 
 ## 2. Prepared synthetic scenario data (section B)
 
-Rebuild at any time: reset the dev database (DEVELOPMENT.md), `pnpm db:seed`,
-`pnpm exec tsx scripts/uat-stakeholder-seed.ts`, then
-`pnpm exec playwright test e2e/uat-scenarios.spec.ts -g "UAT-1"`.
+Rebuild at any time with one command (DEC-041):
+`pnpm exec tsx scripts/reset-environment.ts uat --yes`, then
+`pnpm exec playwright test e2e/uat-scenarios.spec.ts -g "UAT-1"` for the
+completed-case artifacts. (`... fresh --yes` gives the zero-case
+production-readiness state instead; `... status` is a read-only check.)
 
 | Case | Scenario |
 | --- | --- |
@@ -58,8 +60,8 @@ Rebuild at any time: reset the dev database (DEVELOPMENT.md), `pnpm db:seed`,
 | OFF-2026-0009 | S7+S9 - COMPLETED case with rendered documents, captured IT notification (dev mailbox) and completed exit survey: use for reports and history review. |
 | OFF-2026-0010 | Spare ACTIVE case (left by the automated deactivation drill); usable for Scenario 11 reassignment practice. A CLOSED synthetic outage drill is also visible on the Continuity page as a worked example. |
 
-Scenario 11 (user deactivation): reassign an open task to Devon Temple, then
-as Marley Thompson disable that account and watch the session revoke and the
+Scenario 11 (user deactivation): reassign an open task to Second IT Responder, then
+as System Administrator disable that account and watch the session revoke and the
 orphaned task get reassigned. Scenario 12 (fallback): declare a synthetic
 outage on the Continuity page, record FB entries, reconcile once, close.
 Scenario 13: Reports → run any report with purpose TEST, export CSV.
@@ -73,7 +75,7 @@ The fixture adapter serves EMP-TEST employees; nothing leaves the machine.
 **Option 2 - private live demonstration (authorized HR only).** Facilitator
 procedure, in this exact order:
 
-1. `/admin/system` (Marley): confirm credential status "configured"; press
+1. `/admin/system` (System Administrator): confirm credential status "configured"; press
    "Test connection (read-only)" - the result shows aggregate counts only.
 2. Set configuration `bamboohr.mode` = `live`, then "Run directory sync
    (live adapter)". The RED banner appears: "LIVE HR DIRECTORY DATA — DO NOT

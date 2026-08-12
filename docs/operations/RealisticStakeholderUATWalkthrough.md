@@ -143,12 +143,27 @@ confirm small-group suppression and no restricted-case leakage.
 
 ## Part 16 - Purge, reset and evidence
 
-1. `pnpm exec tsx scripts/uat-alias.ts purge` - deletes the local mapping,
-   clears the mapping banner, and (prompted) purges the live directory cache
-   (`PURGED-` anonymization). Set `bamboohr.mode` back to `fixture`.
-2. Verify BOTH red banners are gone.
-3. `pnpm exec tsx scripts/scan-real-names.ts` must pass (no real name from
+One command handles every clear-down need (DEC-041):
+
+```
+pnpm exec tsx scripts/reset-environment.ts status            # read-only state check
+pnpm exec tsx scripts/reset-environment.ts purge-live --yes  # remove real data, keep cases
+pnpm exec tsx scripts/reset-environment.ts uat --yes         # full rebuild + UAT dataset
+pnpm exec tsx scripts/reset-environment.ts fresh --yes       # production-readiness clean slate
+```
+
+- `purge-live` deletes the local alias mapping, anonymizes the live cache,
+  lowers both red banners and returns the directory to fixture mode - the
+  same effect as `scripts/uat-alias.ts purge --purge-directory`.
+- `uat` and `fresh` drop and recreate the development database (migrations,
+  grants, seed), so nothing real can survive them; `fresh` is the state a
+  production go-live starts from - zero cases, zero real data.
+
+After any UAT round that touched live data:
+
+1. Run `purge-live` (or a full rebuild) and verify BOTH red banners are gone.
+2. `pnpm exec tsx scripts/scan-real-names.ts` must pass (no real name from
    the mapping appears in any tracked file).
-4. Record results by alias in `StakeholderSyntheticUATReport.md`; screenshots
+3. Record results by alias in `StakeholderSyntheticUATReport.md`; screenshots
    only from banner-free synthetic state, stored under gitignored
    `artifacts/stakeholder-uat/`.

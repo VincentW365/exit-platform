@@ -4,6 +4,7 @@
    All colour pairs meet WCAG 1.4.3 (>= 4.5:1); verified by the axe scans in
    the e2e visual suites. */
 :root {
+  color-scheme: light;
   --brand-navy: #12263f;
   --brand-navy-2: #1b3a5e;
   --brand-navy-deep: #0d1c30;
@@ -19,11 +20,28 @@
   --border-strong: #c3cdd9;
   --success: #116329;
   --success-bg: #e6f4ea;
+  --success-border: #9fd3ae;
   --warning: #7a5200;
   --warning-bg: #fff8e1;
+  --warning-border: #e2c96e;
   --danger: #b42318;
   --danger-bg: #fdecea;
+  --danger-border: #eaa9a3;
   --focus: #114fa8;
+  /* Semantic aliases so dark mode can retune roles independently:
+     --accent   solid action surfaces (buttons, timeline dots) - white text on it
+     --link     accent-coloured TEXT on canvas/panel surfaces
+     --on-accent  text placed on --accent / dark navy surfaces */
+  --accent: var(--brand-blue);
+  --accent-hover: #134a8c;
+  --link: var(--brand-blue);
+  --on-accent: #ffffff;
+  --accent-soft: #f2f6fb;
+  --panel-hover: #f7f9fc;
+  --info-bg: #e8f0fb;
+  --info-border: #b3cdec;
+  --input-bg: #ffffff;
+  --input-border-hover: #9fb0c4;
   --radius: 8px;
   --radius-lg: 12px;
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
@@ -94,7 +112,7 @@ body {
   left: -9999px;
   top: 0;
   background: var(--brand-navy);
-  color: #fff;
+  color: var(--on-accent);
   padding: 0.6rem 1rem;
   z-index: 100;
 }
@@ -104,7 +122,7 @@ body {
 }
 
 a {
-  color: var(--brand-blue);
+  color: var(--link);
 }
 
 /* Checksums and references are long unbreakable tokens; always allow them
@@ -282,7 +300,7 @@ h3 {
   text-decoration: none;
 }
 .crumbs a:hover {
-  color: var(--brand-blue);
+  color: var(--link);
   text-decoration: underline;
 }
 .crumbs [aria-current='page'] {
@@ -331,7 +349,7 @@ h3 {
 .env-banner {
   background: var(--warning-bg);
   color: var(--warning);
-  border-bottom: 1px solid #e2c96e;
+  border-bottom: 1px solid var(--warning-border);
   text-align: center;
   padding: 0.3rem 1rem;
   font-size: 0.85rem;
@@ -345,12 +363,173 @@ h3 {
   font-weight: 700;
 }
 
-/* Sign-in branding (Directive 5.1 H.8). */
+/* --- sign-in -------------------------------------------------------------
+   Split enterprise layout: navy brand panel + focused sign-in column. The
+   brand panel keeps the fixed navy identity in both themes; the sign-in
+   column follows the theme tokens. */
+main.signin {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(20rem, 1fr) minmax(0, 1.35fr);
+}
+.signin__brand {
+  background: linear-gradient(160deg, var(--brand-navy) 0%, var(--brand-navy-deep) 90%);
+  color: #d6e2f0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 3rem 2.75rem 1.5rem;
+  border-right: 4px solid var(--brand-yellow);
+}
+.signin__logo-box {
+  display: inline-block;
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  box-shadow: var(--shadow-md);
+}
 .signin-logo {
-  height: 72px;
+  height: 64px;
   width: auto;
   display: block;
-  margin: 1.5rem auto 0.75rem;
+}
+.signin__product {
+  margin: 1.5rem 0 0.4rem;
+  font-size: 1.45rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+.signin__tagline {
+  margin: 0;
+  max-width: 26rem;
+  color: #b9c9dd;
+  line-height: 1.6;
+}
+.signin__points {
+  list-style: none;
+  margin: 2rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+  font-size: 0.92rem;
+}
+.signin__points li::before {
+  content: '—';
+  color: var(--brand-yellow);
+  margin-right: 0.6rem;
+}
+.signin__foot {
+  margin: 2.5rem 0 0;
+  color: #8ba3c0;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.signin__panel {
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem 1.5rem 3rem;
+  background: var(--canvas);
+}
+.signin__panel-top {
+  display: flex;
+  justify-content: flex-end;
+}
+.signin__card {
+  width: 100%;
+  max-width: 36rem;
+  margin: 4vh auto 0;
+}
+.signin__subhead {
+  margin-top: var(--space-2);
+}
+.signin__group-title {
+  margin: 1.6rem 0 0.3rem;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.signin__users {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+.signin__user {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.signin__user:hover {
+  border-color: var(--input-border-hover);
+  box-shadow: var(--shadow-md);
+}
+.signin__user-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.65rem 0.9rem;
+}
+.signin__avatar {
+  flex: none;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--brand-navy);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.03em;
+}
+.signin__user-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.signin__user-meta .hint {
+  font-size: var(--text-xs);
+}
+@media (max-width: 900px) {
+  main.signin {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .signin__brand {
+    border-right: 0;
+    border-bottom: 4px solid var(--brand-yellow);
+    padding: 1.75rem 1.5rem;
+  }
+  .signin__points {
+    display: none;
+  }
+  .signin__foot {
+    margin-top: 1.25rem;
+  }
+  .signin__card {
+    margin-top: 1rem;
+  }
+}
+@media (max-width: 560px) {
+  .signin__user-row {
+    flex-wrap: wrap;
+  }
+  .signin__user-row button {
+    width: 100%;
+  }
 }
 
 main {
@@ -421,7 +600,7 @@ table.data td,
 }
 table.data tbody tr:hover,
 .panel table tbody tr:hover {
-  background: #f7f9fc;
+  background: var(--panel-hover);
 }
 .table-wrap {
   overflow-x: auto;
@@ -447,24 +626,24 @@ table a[href*='/cases/'] {
   border-color: var(--border-strong);
 }
 .badge--info {
-  background: #e8f0fb;
-  color: var(--brand-blue);
-  border-color: #b3cdec;
+  background: var(--info-bg);
+  color: var(--link);
+  border-color: var(--info-border);
 }
 .badge--success {
   background: var(--success-bg);
   color: var(--success);
-  border-color: #9fd3ae;
+  border-color: var(--success-border);
 }
 .badge--warning {
   background: var(--warning-bg);
   color: var(--warning);
-  border-color: #e2c96e;
+  border-color: var(--warning-border);
 }
 .badge--danger {
   background: var(--danger-bg);
   color: var(--danger);
-  border-color: #eaa9a3;
+  border-color: var(--danger-border);
 }
 
 /* --- stat tiles ----------------------------------------------------------- */
@@ -504,7 +683,7 @@ table a[href*='/cases/'] {
 
 .banner-baseline {
   background: var(--warning-bg);
-  border: 1px solid #e2c96e;
+  border: 1px solid var(--warning-border);
   color: var(--warning);
   border-radius: var(--radius);
   padding: 0.6rem 1rem;
@@ -536,12 +715,12 @@ table a[href*='/cases/'] {
   border-radius: 6px 6px 0 0;
 }
 .case-tabs a:hover {
-  color: var(--brand-blue);
-  background: #f2f6fb;
+  color: var(--link);
+  background: var(--accent-soft);
 }
 .case-tabs a[aria-current='page'] {
-  color: var(--brand-blue);
-  border-bottom-color: var(--brand-blue);
+  color: var(--link);
+  border-bottom-color: var(--link);
 }
 
 /* --- forms ---------------------------------------------------------------- */
@@ -574,14 +753,14 @@ textarea {
   padding: 0.48rem 0.65rem;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  background: #fff;
+  background: var(--input-bg);
   color: var(--text);
   width: 100%;
 }
 input:hover,
 select:hover,
 textarea:hover {
-  border-color: #9fb0c4;
+  border-color: var(--input-border-hover);
 }
 fieldset {
   border: 1px solid var(--border);
@@ -600,9 +779,9 @@ button,
   font-weight: 600;
   padding: 0.5rem 1rem;
   border-radius: var(--radius);
-  border: 1px solid var(--brand-blue);
-  background: var(--brand-blue);
-  color: #fff;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
   cursor: pointer;
   text-decoration: none;
   display: inline-block;
@@ -613,20 +792,20 @@ button,
 }
 button:hover,
 .button:hover {
-  background: #134a8c;
+  background: var(--accent-hover);
 }
 button.secondary,
 .button.secondary {
-  background: #fff;
-  color: var(--brand-blue);
+  background: var(--panel);
+  color: var(--link);
 }
 button.secondary:hover,
 .button.secondary:hover {
-  background: #f2f6fb;
+  background: var(--accent-soft);
 }
 button.danger,
 .button.danger {
-  background: #fff;
+  background: var(--panel);
   color: var(--danger);
   border-color: var(--danger);
 }
@@ -702,7 +881,7 @@ details.action summary::before {
   content: '▸';
   display: inline-block;
   margin-right: 0.45rem;
-  color: var(--brand-blue);
+  color: var(--link);
   transition: transform 120ms ease;
 }
 details.action[open] summary::before {
@@ -736,7 +915,7 @@ ul.timeline li::before {
   top: 0.62rem;
   width: 10px;
   height: 10px;
-  background: var(--brand-blue);
+  background: var(--accent);
   border-radius: 50%;
 }
 .timeline .meta {
@@ -849,7 +1028,7 @@ ul.timeline li::before {
   border-top: 3px solid var(--border-strong);
 }
 .progress-chip:hover {
-  background: #f2f6fb;
+  background: var(--accent-soft);
 }
 .progress-chip__label {
   display: block;
@@ -865,7 +1044,7 @@ ul.timeline li::before {
   border-top-color: var(--success);
 }
 .progress-chip--active {
-  border-top-color: var(--brand-blue);
+  border-top-color: var(--accent);
 }
 .progress-chip--blocked {
   border-top-color: var(--danger);
@@ -886,7 +1065,143 @@ ul.timeline li::before {
   color: var(--text);
 }
 .stat--link:hover {
-  background: #f2f6fb;
+  background: var(--accent-soft);
+}
+
+/* --- dark theme ------------------------------------------------------------
+   Same navy/gold identity on dark surfaces. Applied when the visitor's system
+   prefers dark (unless they chose light) or when they chose dark explicitly.
+   The two blocks below are intentionally identical; keep them in sync.
+   All pairs hold WCAG 1.4.3 (>= 4.5:1) - verified by the dark axe scan in
+   e2e/dark-mode.spec.ts. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --canvas: #0e1624;
+    --panel: #172236;
+    --muted: #223046;
+    --text: #e9eef5;
+    --text-2: #a9b7c9;
+    --border: #2b3b54;
+    --border-strong: #46596f;
+    --success: #86d9a1;
+    --success-bg: #12291c;
+    --success-border: #2e5c40;
+    --warning: #e9c975;
+    --warning-bg: #2d2410;
+    --warning-border: #6b5a26;
+    --danger: #f5a8a0;
+    --danger-bg: #331a17;
+    --danger-border: #7a3a33;
+    --focus: #8ab8ee;
+    --accent-hover: #2e6cb8;
+    --link: #8ab8ee;
+    --accent-soft: #20304a;
+    --panel-hover: #1c2940;
+    --info-bg: #1a2c47;
+    --info-border: #34527a;
+    --input-bg: #101a2b;
+    --input-border-hover: #5c718a;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.55);
+  }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: #0e1624;
+  --panel: #172236;
+  --muted: #223046;
+  --text: #e9eef5;
+  --text-2: #a9b7c9;
+  --border: #2b3b54;
+  --border-strong: #46596f;
+  --success: #86d9a1;
+  --success-bg: #12291c;
+  --success-border: #2e5c40;
+  --warning: #e9c975;
+  --warning-bg: #2d2410;
+  --warning-border: #6b5a26;
+  --danger: #f5a8a0;
+  --danger-bg: #331a17;
+  --danger-border: #7a3a33;
+  --focus: #8ab8ee;
+  --accent-hover: #2e6cb8;
+  --link: #8ab8ee;
+  --accent-soft: #20304a;
+  --panel-hover: #1c2940;
+  --info-bg: #1a2c47;
+  --info-border: #34527a;
+  --input-bg: #101a2b;
+  --input-border-hover: #5c718a;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.55);
+}
+
+/* Theme toggle sits in the topbar next to the identity block. */
+.theme-toggle {
+  white-space: nowrap;
+}
+
+/* Topbar quick case search (Enter submits to /cases?q=…). */
+.topbar__search {
+  flex: 0 1 13rem;
+  min-width: 8rem;
+}
+.topbar__search input {
+  padding: 0.32rem 0.65rem;
+  font-size: var(--text-sm);
+}
+
+/* --- print ----------------------------------------------------------------
+   Case pages print as clean business summaries: chrome and interactive
+   controls are removed and tokens are forced to the light palette so a
+   dark-mode screen never produces a dark printout. */
+@media print {
+  :root,
+  :root[data-theme='dark'] {
+    color-scheme: light;
+    --canvas: #ffffff;
+    --panel: #ffffff;
+    --muted: #f0f0f0;
+    --text: #000000;
+    --text-2: #333333;
+    --border: #bbbbbb;
+    --border-strong: #888888;
+    --shadow-sm: none;
+    --shadow-md: none;
+  }
+  .sidebar,
+  .topbar,
+  .mobile-menu,
+  .skip-link,
+  .env-banner,
+  .case-tabs,
+  .actions-row,
+  details.action,
+  button,
+  .button,
+  .theme-toggle {
+    display: none !important;
+  }
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  main {
+    max-width: 100%;
+    padding: 0;
+  }
+  .panel {
+    break-inside: avoid;
+    box-shadow: none;
+  }
+  .timeline-scroll {
+    max-height: none;
+    overflow: visible;
+  }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
 /* --- responsive ----------------------------------------------------------- */

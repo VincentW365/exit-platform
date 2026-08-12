@@ -55,7 +55,7 @@ test('stage 4 surfaces: visual + axe sweep', async ({ page }) => {
   await page.setViewportSize(DESKTOP);
 
   // Business administration surfaces (HR Manager).
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto('/admin');
   await snap(page, '01-administration-centre', true);
   await axeCheck(page, 'administration-centre');
@@ -101,7 +101,7 @@ test('stage 4 surfaces: visual + axe sweep', async ({ page }) => {
   await signOut(page);
 
   // Technical administration surfaces (System Administrator).
-  await signInAs(page, 'Marley Thompson');
+  await signInAs(page, 'System Administrator');
   await page.goto('/admin/system');
   await snap(page, '12-system-administration', true);
   await axeCheck(page, 'system-administration');
@@ -112,7 +112,7 @@ test('stage 4 surfaces: visual + axe sweep', async ({ page }) => {
   await signOut(page);
 
   // Privacy operations surface (Privacy Officer).
-  await signInAs(page, 'Rowan Silvera');
+  await signInAs(page, 'Privacy Officer');
   await page.goto('/admin/privacy');
   await snap(page, '14-privacy-retention', true);
   await axeCheck(page, 'privacy-retention');

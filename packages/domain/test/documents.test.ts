@@ -62,7 +62,7 @@ describe('field snapshot and substitution (section C)', () => {
       jobTitle: 'Parts Sales Associate',
       department: 'Sales',
       location: 'Kingston',
-      managerName: 'Jamie Douglas',
+      managerName: 'Line Manager',
       receivedAt: new Date('2026-07-20T14:00:00Z'),
       proposedLastDay: null,
       confirmedLastDay: new Date('2026-08-14T00:00:00Z'),

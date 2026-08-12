@@ -29,7 +29,12 @@ export default async function SupportPage({
     bundle = await diagnosticBundle(actor);
   } catch (e) {
     if (e instanceof ServiceError)
-      return <p className="panel">Support requires an authenticated application role.</p>;
+      return (
+        <>
+          <h1>Access restricted</h1>
+          <p className="panel">Support requires an authenticated application role.</p>
+        </>
+      );
     throw e;
   }
 

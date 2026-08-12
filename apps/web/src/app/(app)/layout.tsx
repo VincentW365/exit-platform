@@ -1,12 +1,16 @@
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { BRAND, can } from '@exit/domain';
 import { getSystemConfigValue, liveDirectoryPresence } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { logoutAction } from '@/app/signin/actions';
 import { ActiveLink, BackButton, Breadcrumbs, MobileMenu } from '@/components/chrome';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, actor } = await requireAuth();
+  const themeCookie = (await cookies()).get('exit_theme')?.value;
+  const theme = themeCookie === 'dark' || themeCookie === 'light' ? themeCookie : null;
   const liveDirectory = await liveDirectoryPresence().catch(() => ({ present: false, records: 0 }));
   const aliasActive = await getSystemConfigValue('uat.aliasActive')
     .then((v) => v === true)
@@ -113,11 +117,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </MobileMenu>
           <BackButton />
           <Breadcrumbs />
+          {can(actor, 'case.list') ? (
+            <form action="/cases" method="get" role="search" className="topbar__search">
+              <label className="sr-only" htmlFor="topbar-q">
+                Find a case by number or employee
+              </label>
+              <input
+                id="topbar-q"
+                type="search"
+                name="q"
+                placeholder="Find case…"
+                autoComplete="off"
+              />
+            </form>
+          ) : null}
           <div className="topbar__user">
             <span className="topbar__identity">
               <strong>{user.displayName}</strong>
               <span className="topbar__roles">{user.roles.join(', ') || 'no role'}</span>
             </span>
+            <ThemeToggle initial={theme} />
             <form action={logoutAction}>
               <button type="submit" className="secondary compact">
                 Sign out

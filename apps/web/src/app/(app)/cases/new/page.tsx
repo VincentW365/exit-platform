@@ -2,7 +2,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { can, formatInstant } from '@exit/domain';
-import { listConfigItems, searchEmployees } from '@exit/db';
+import { listOrgUnitOptions, searchEmployees } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import { createCaseAction, createManualEmployeeAction } from '../actions';
@@ -29,10 +29,16 @@ export default async function NewCasePage({
 
   const search = q ? await searchEmployees(actor, q) : null;
   const selected = search?.results.find((e) => e.sourceId === selectedId) ?? null;
-  const [departments, locations] = await Promise.all([
-    listConfigItems('DEPARTMENT'),
-    listConfigItems('LOCATION'),
-  ]);
+  // Config values plus every org unit in the synced directory; the selected
+  // employee's own values are always present so the defaults never silently
+  // fall back to the first option (DEC-040).
+  const units = await listOrgUnitOptions();
+  const departments = [
+    ...new Set([...units.departments, ...(selected?.department ? [selected.department] : [])]),
+  ].sort((a, b) => a.localeCompare(b));
+  const locations = [
+    ...new Set([...units.locations, ...(selected?.location ? [selected.location] : [])]),
+  ].sort((a, b) => a.localeCompare(b));
 
   return (
     <>
@@ -220,8 +226,8 @@ export default async function NewCasePage({
                 required
               >
                 {departments.map((d) => (
-                  <option key={d.id} value={d.value}>
-                    {d.value}
+                  <option key={d} value={d}>
+                    {d}
                   </option>
                 ))}
               </select>
@@ -235,8 +241,8 @@ export default async function NewCasePage({
                 required
               >
                 {locations.map((l) => (
-                  <option key={l.id} value={l.value}>
-                    {l.value}
+                  <option key={l} value={l}>
+                    {l}
                   </option>
                 ))}
               </select>

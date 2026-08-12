@@ -272,6 +272,24 @@ organization-aware routing is fully testable with synthetic data; activation
 in every suite goes through the shared assignment-plan step. Realistic
 (aliased) UAT is facilitator-run and never part of automated suites.
 
+### Gap-proofing and theme additions (2026-08-11, owner-directed)
+
+Deployment-gap protection, permanent from this point on:
+
+- `packages/db/test-int/processCompleteness.test.ts` - every seeded workflow
+  type (resignation with notice, immediate resignation, restricted
+  termination) is driven from draft to COMPLETED using services only; a task
+  with no completion path fails the suite naming the stuck task codes.
+- `e2e/route-coverage.spec.ts` - every application route renders for every
+  role (content or a polite denial - never a 500, an error boundary, or a
+  dead page), plus every case tab on a live case.
+- `e2e/dark-mode.spec.ts` - theme toggle, persistence, dark-palette axe
+  scans, and the topbar quick case search.
+
+UAT accounts are function-named (DEC-040): specs sign in as "HR Manager",
+"Second IT Responder", etc. The environment is rebuilt with
+`scripts/reset-environment.ts` (status | purge-live | uat | fresh, DEC-041).
+
 ## 9. Defect severity
 
 | Severity | Definition | Release treatment |

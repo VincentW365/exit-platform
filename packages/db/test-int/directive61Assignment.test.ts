@@ -146,7 +146,7 @@ describe('manager routing and the activation gate (F/J; AM 14-18)', () => {
       where: { caseId, eventType: 'CASE_MANAGER_OVERRIDDEN' },
     });
     const meta = e!.metadata as Record<string, unknown>;
-    expect(meta['originalManagerName']).toBe('Samira Cole');
+    expect(meta['originalManagerName']).toBe('Operations Manager');
     expect(meta['replacementUserId']).toBe(lineMgr2.userId);
     expect(meta['reason']).toBe('Manager on leave during UAT.');
     const c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: caseId } });

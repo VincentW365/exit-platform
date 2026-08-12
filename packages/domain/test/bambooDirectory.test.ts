@@ -22,7 +22,7 @@ describe('BambooHR directory field policy (C)', () => {
     department: 'Sales',
     division: 'Retail',
     location: 'Kingston',
-    supervisor: 'Jamie Douglas',
+    supervisor: 'Line Manager',
     employeeNumber: 'EMP-TEST-001',
     status: 'Active',
     // Everything below MUST be discarded (C: forbidden categories).
@@ -51,7 +51,7 @@ describe('BambooHR directory field policy (C)', () => {
       department: 'Sales',
       division: 'Retail',
       location: 'Kingston',
-      managerName: 'Jamie Douglas',
+      managerName: 'Line Manager',
       managerSourceId: null,
       employeeNumber: 'EMP-TEST-001',
       active: true,

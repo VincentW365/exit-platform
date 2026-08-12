@@ -116,7 +116,7 @@ describe('humanizeAuditEvent (M: who had it, who has it, why)', () => {
       const text = humanizeAuditEvent({
         eventType,
         result: 'SUCCESS',
-        actorDisplayName: 'Dana Field',
+        actorDisplayName: 'HR Manager',
         actorType: 'USER',
         metadata,
       });

@@ -13,52 +13,56 @@ const { getPrisma } = await import('./client.ts');
 
 const prisma = getPrisma();
 
+// UAT accounts are named by FUNCTION, not by fictional people (owner
+// decision, DEC-040): testers sign in as the role they are exercising and
+// audit trails read as "HR Manager approved the case". Login slugs and
+// synthetic emails are unchanged - only display names carry the function.
 const DEV_USERS: ReadonlyArray<{ slug: string; name: string; email: string; roles: string[] }> = [
   {
     slug: 'hr-manager',
-    name: 'Dana Field',
+    name: 'HR Manager',
     email: 'dana.field@example.test',
     roles: ['HR_MANAGER'],
   },
   {
     slug: 'hr-officer',
-    name: 'Riley Okafor',
+    name: 'HR Officer',
     email: 'riley.okafor@example.test',
     roles: ['HR_OFFICER'],
   },
   {
     slug: 'it-responder',
-    name: 'Sam Chen',
+    name: 'IT Responder',
     email: 'sam.chen@example.test',
     roles: ['IT_RESPONDER'],
   },
   {
     slug: 'finance-responder',
-    name: 'Alex Romero',
+    name: 'Finance Responder',
     email: 'alex.romero@example.test',
     roles: ['FINANCE_RESPONDER'],
   },
   {
     slug: 'line-manager',
-    name: 'Jamie Douglas',
+    name: 'Line Manager',
     email: 'jamie.douglas@example.test',
     roles: ['LINE_MANAGER'],
   },
   {
     slug: 'auditor',
-    name: 'Quinn Baptiste',
+    name: 'Auditor',
     email: 'quinn.baptiste@example.test',
     roles: ['AUDITOR'],
   },
   {
     slug: 'privacy-officer',
-    name: 'Rowan Silvera',
+    name: 'Privacy Officer',
     email: 'rowan.silvera@example.test',
     roles: ['PRIVACY_OFFICER'],
   },
   {
     slug: 'system-admin',
-    name: 'Marley Thompson',
+    name: 'System Administrator',
     email: 'marley.thompson@example.test',
     roles: ['SYSTEM_ADMIN'],
   },
@@ -67,13 +71,13 @@ const DEV_USERS: ReadonlyArray<{ slug: string; name: string; email: string; role
   // resolves end-to-end in development without any real data.
   {
     slug: 'ops-manager',
-    name: 'Samira Cole',
+    name: 'Operations Manager',
     email: 'samira.cole@example.test',
     roles: ['LINE_MANAGER'],
   },
   {
     slug: 'warehouse-manager',
-    name: 'Rowan Achebe',
+    name: 'Warehouse Manager',
     email: 'rowan.achebe@example.test',
     roles: ['LINE_MANAGER'],
   },
@@ -81,7 +85,7 @@ const DEV_USERS: ReadonlyArray<{ slug: string; name: string; email: string; role
   // Scenario 11) disables and re-enables this account.
   {
     slug: 'it-responder-b',
-    name: 'Devon Temple',
+    name: 'Second IT Responder',
     email: 'devon.temple@example.test',
     roles: ['IT_RESPONDER'],
   },
@@ -215,8 +219,21 @@ async function main(): Promise<void> {
     });
   }
 
-  const departments = ['Sales', 'Warehouse', 'Finance', 'Service', 'IT', 'Administration'];
-  const locations = ['Kingston', 'Montego Bay'];
+  // Company org-unit names (branches and functions), NOT personal data: the
+  // owner directed that reference data match the real company structure
+  // (DEC-040). After a live directory sync the intake lists additionally
+  // include every department/location present in the directory.
+  const departments = [
+    'Sales',
+    'Warehouse',
+    'Finance Department',
+    'Service Centre',
+    'IT',
+    'Operations',
+    'Human Resources',
+    'Call Centre',
+  ];
+  const locations = ['Molynes Road', 'Camp Road', 'Main Warehouse', 'Hagley Park'];
   const sysAdmin = await prisma.user.findUnique({ where: { identitySubject: 'dev|hr-manager' } });
   for (const d of departments) {
     await prisma.configListItem.upsert({

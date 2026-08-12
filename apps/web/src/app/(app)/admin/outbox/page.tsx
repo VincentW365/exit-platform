@@ -36,7 +36,12 @@ export default async function OutboxPage({
     rows = await listOutbox(actor, { status: sp.status });
   } catch (e) {
     if (e instanceof ServiceError)
-      return <p className="panel">The outbox monitor requires an authorized role.</p>;
+      return (
+        <>
+          <h1>Access restricted</h1>
+          <p className="panel">The outbox monitor requires an authorized role.</p>
+        </>
+      );
     throw e;
   }
   const canResolve = can(actor, 'outbox.resolve');

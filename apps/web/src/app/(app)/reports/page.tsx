@@ -17,7 +17,12 @@ export default async function ReportsPage({
   const { actor } = await requireAuth();
   const sp = await searchParams;
   if (!can(actor, 'reports.view'))
-    return <p className="panel">The reporting centre requires an authorized role.</p>;
+    return (
+      <>
+        <h1>Access restricted</h1>
+        <p className="panel">The reporting centre requires an authorized role.</p>
+      </>
+    );
 
   const selected = sp.report && REPORT_CATALOG.some((r) => r.key === sp.report) ? sp.report : null;
   let output: Awaited<ReturnType<typeof runReport>> | null = null;

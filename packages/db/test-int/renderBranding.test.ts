@@ -23,7 +23,7 @@ const LETTER_INPUT = {
   templateVersion: 'v1',
   documentVersion: 'v1',
   bodyText: 'Synthetic branding verification letter for Avery Brown (EMP-TEST-001).',
-  approverName: 'Dana Field',
+  approverName: 'HR Manager',
   approverTitle: 'HR Manager',
   approvedAt: new Date('2026-07-30T12:00:00.000Z'),
   attestationNote: 'Synthetic attestation.',

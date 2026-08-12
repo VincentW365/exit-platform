@@ -59,7 +59,7 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
   await axeCheck(page, 'signin');
 
   // Prepare a case as HR officer for detail-page capture.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await snap(page, '02-hr-dashboard');
   await axeCheck(page, 'dashboard');
 
@@ -95,7 +95,7 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
   await signOut(page);
 
   // HR manager: approve, attachments area, audit timeline, admin.
-  await signInAs(page, 'Dana Field');
+  await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
   await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
   await expect(page.getByText(/snapshot has been captured/)).toBeVisible();
@@ -125,21 +125,21 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
   await signOut(page);
 
   // Restricted case: unauthorized outcomes.
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   await page.goto(restrictedUrl);
   await snap(page, '14b-restricted-unauthorized-hr');
   await axeCheck(page, 'not-found');
   await signOut(page);
 
   // Oversight: audit feed.
-  await signInAs(page, 'Quinn Baptiste');
+  await signInAs(page, 'Auditor');
   await page.goto('/audit');
   await snap(page, '09-audit-feed');
   await axeCheck(page, 'audit-feed');
   await signOut(page);
 
   // Unauthorized page as departmental role.
-  await signInAs(page, 'Sam Chen');
+  await signInAs(page, 'IT Responder');
   await page.goto('/cases');
   await page.waitForURL('**/unauthorized');
   await snap(page, '12-unauthorized');
@@ -159,7 +159,7 @@ test('keyboard access and 200% zoom function (spot checks)', async ({ page }) =>
   const active = await page.evaluate(() => document.activeElement?.textContent ?? '');
   expect(active.length).toBeGreaterThan(0);
 
-  await signInAs(page, 'Riley Okafor');
+  await signInAs(page, 'HR Officer');
   // 200% zoom equivalent: halve the viewport CSS pixels via device scale.
   await page.setViewportSize({ width: 640, height: 400 });
   await page.goto('/cases');

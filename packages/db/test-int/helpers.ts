@@ -133,7 +133,7 @@ export async function seedStage3Fixtures(): Promise<void> {
     await prisma.user.create({
       data: {
         identitySubject: 'dev|hr-manager',
-        displayName: 'Dana Field',
+        displayName: 'HR Manager',
         workEmail: `dana.field-${randomUUID().slice(0, 8)}@example.test`,
         roleAssignments: { create: [{ role: 'HR_MANAGER', reason: 'integration test fixture' }] },
       },
