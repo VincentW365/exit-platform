@@ -11,7 +11,7 @@
  *               presence and the current directory mode. Never changes state.
  *   purge-live  Removes real (live BambooHR) directory data WITHOUT touching
  *               cases: anonymizes the live cache, deletes the local alias
- *               mapping if present, lowers both UAT banners and returns the
+ *               mapping if present, lowers the live banner and returns the
  *               directory to synthetic (fixture) mode.
  *   uat         Full rebuild for UAT: drops and recreates the development
  *               database, applies migrations + least-privilege grants, seeds
@@ -75,17 +75,12 @@ async function status(): Promise<void> {
     db.liveDirectoryPresence(),
   ]);
   const mode = (await db.getSystemConfigValue('bamboohr.mode')) ?? 'fixture';
-  const aliasFlag = (await db.getSystemConfigValue('uat.aliasActive')) === true;
   console.log('Environment status:');
   console.log(`  cases:                  ${cases}`);
   console.log(`  directory records:      ${directory}`);
   console.log(`  user accounts:          ${users}`);
   console.log(`  directory mode:         ${mode}`);
   console.log(`  live records present:   ${live.present ? `yes (${live.records})` : 'no'}`);
-  console.log(
-    `  alias mapping file:     ${existsSync(MAPPING_PATH) ? 'PRESENT (local only)' : 'absent'}`,
-  );
-  console.log(`  alias banner active:    ${aliasFlag ? 'yes' : 'no'}`);
   await prisma.$disconnect();
 }
 
@@ -98,10 +93,10 @@ async function purgeLive(): Promise<void> {
   if (!admin) fail('no active SYSTEM_ADMIN account exists.');
   const actor = { userId: admin.id, roles: ['SYSTEM_ADMIN'] as never };
   if (existsSync(MAPPING_PATH)) {
+    // Legacy alias-flow artifact (retired by DEC-043) - always cleaned up.
     unlinkSync(MAPPING_PATH);
-    console.log('Local alias mapping file deleted.');
+    console.log('Legacy local alias mapping file deleted.');
   }
-  await db.setSystemConfig(actor, 'uat.aliasActive', false, 'Environment reset: live data purge.');
   const result = await db.purgeLiveDirectory(actor);
   console.log(
     `Live directory purged: ${result.anonymized} record(s) anonymized (${result.referencedKept} case-referenced kept as PURGED markers).`,
@@ -112,7 +107,7 @@ async function purgeLive(): Promise<void> {
     'fixture',
     'Environment reset: live data purge.',
   );
-  console.log('Directory mode returned to fixture (synthetic). Both banners lowered.');
+  console.log('Directory mode returned to fixture (synthetic). Live banner lowered.');
   await prisma.$disconnect();
 }
 
@@ -129,7 +124,12 @@ async function rebuild(withUatDataset: boolean, migrateUrl: URL, devDbName: stri
   // there (pnpm keeps package dependencies isolated).
   const { createRequire } = await import('node:module');
   const requireFromDb = createRequire(path.join(ROOT, 'packages', 'db', 'package.json'));
-  const { Client } = requireFromDb('pg') as typeof import('pg');
+  type PgClientCtor = new (config: { connectionString: string }) => {
+    connect(): Promise<void>;
+    query(sql: string): Promise<unknown>;
+    end(): Promise<void>;
+  };
+  const { Client } = requireFromDb('pg') as { Client: PgClientCtor };
   const maintenanceUrl = new URL(migrateUrl.href);
   maintenanceUrl.pathname = '/postgres';
   const client = new Client({ connectionString: maintenanceUrl.href });

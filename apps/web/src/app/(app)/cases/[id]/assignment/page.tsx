@@ -303,21 +303,31 @@ export default async function AssignmentPage({
               <thead>
                 <tr>
                   <th scope="col">Task</th>
-                  <th scope="col">Department</th>
-                  <th scope="col">Initial owner</th>
-                  <th scope="col">Due rule</th>
+                  <th scope="col">Owning queue</th>
+                  <th scope="col">Assignee</th>
+                  <th scope="col">Due</th>
                   <th scope="col">Priority</th>
+                  <th scope="col">Dependency</th>
                   <th scope="col">Required</th>
                 </tr>
               </thead>
               <tbody>
                 {plan.workflow.taskSummary.map((t) => (
-                  <tr key={t.title}>
+                  <tr key={t.taskCode}>
                     <td>{t.title}</td>
-                    <td>{t.department}</td>
-                    <td>{t.initialOwner}</td>
-                    <td>{t.dueRule}</td>
+                    <td>{t.owningQueue}</td>
+                    <td>{t.assignee}</td>
+                    <td className="tabular-nums" title={t.dueRule ?? undefined}>
+                      {t.dueAt ? formatInstant(t.dueAt) : (t.dueRule ?? '-')}
+                    </td>
                     <td>{t.priority}</td>
+                    <td>
+                      {t.dependsOn.length > 0 ? (
+                        <code>{t.dependsOn.join(', ')}</code>
+                      ) : (
+                        <span className="hint">-</span>
+                      )}
+                    </td>
                     <td>{t.required ? 'Mandatory' : 'Optional'}</td>
                   </tr>
                 ))}

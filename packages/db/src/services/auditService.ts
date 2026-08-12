@@ -17,7 +17,7 @@ import {
   type AuditEventType,
   type TimelineChip,
 } from '@exit/domain';
-import { can, canViewCase, hasRole } from '@exit/domain';
+import { can, canViewCase } from '@exit/domain';
 import type { PrismaClient } from '../client.ts';
 import { getPrisma } from '../client.ts';
 import { csvCell } from '../csv.ts';
@@ -161,8 +161,8 @@ export interface GlobalAuditRow {
 }
 
 /**
- * Global Audit Centre feed. AUDITOR/PRIVACY_OFFICER see everything;
- * HR_MANAGER rows on restricted cases outside their participation are
+ * Global Audit Centre feed (DEC-042 model). HR_MANAGER is the business
+ * audience; rows on restricted cases outside their participation are
  * MINIMIZED (timestamp + category only); SYSTEM_ADMIN uses the technical
  * path: technical categories AND no case linkage - never HR case content.
  */
@@ -178,9 +178,7 @@ export async function listGlobalAudit(actor: Actor, filter: GlobalAuditFilter = 
     : null;
 
   // caseNumber lookup is guarded by case visibility: a restricted case the
-  // viewer cannot see yields an empty result, not an existence leak. Global
-  // oversight (AUDITOR / PRIVACY_OFFICER) retains full audit visibility.
-  const oversightViewer = hasRole(actor, 'AUDITOR', 'PRIVACY_OFFICER');
+  // viewer cannot see yields an empty result, not an existence leak.
   let caseIdFilter: string | null | undefined;
   if (filter.caseNumber?.trim()) {
     const c = await prisma.offboardingCase.findUnique({
@@ -194,12 +192,11 @@ export async function listGlobalAudit(actor: Actor, filter: GlobalAuditFilter = 
     });
     const visible =
       c &&
-      (oversightViewer ||
-        canViewCase(actor, {
-          ownerId: c.ownerId,
-          classification: c.classification,
-          participantUserIds: c.participants.map((p) => p.userId),
-        }));
+      canViewCase(actor, {
+        ownerId: c.ownerId,
+        classification: c.classification,
+        participantUserIds: c.participants.map((p) => p.userId),
+      });
     if (!visible) return { rows: [], nextCursor: null, summary: emptySummary() };
     caseIdFilter = c.id;
   }
@@ -287,12 +284,10 @@ export async function listGlobalAudit(actor: Actor, filter: GlobalAuditFilter = 
     ).map((c) => [c.id, c]),
   );
 
-  const oversight = oversightViewer;
   const mapped: GlobalAuditRow[] = page.map((e) => {
     const c = e.caseId ? cases.get(e.caseId) : undefined;
     const visible =
       !c ||
-      oversight ||
       canViewCase(actor, {
         ownerId: c.ownerId,
         classification: c.classification,

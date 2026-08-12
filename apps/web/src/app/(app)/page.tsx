@@ -7,6 +7,7 @@ import {
   hrDashboard,
   stage2Dashboard,
   stage3Dashboard,
+  timed,
 } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { BaselineBanner, ClassificationBadge, StatusBadge } from '@/components/ui';
@@ -89,12 +90,7 @@ export default async function DashboardPage() {
           </section>
         ) : null}
         <section className="panel">
-          {can(actor, 'audit.viewGlobal') ? (
-            <p>
-              Your oversight tools: <Link href="/cases">case register (read-only)</Link> and the{' '}
-              <Link href="/audit">Audit centre</Link>.
-            </p>
-          ) : can(actor, 'admin.roles') ? (
+          {can(actor, 'admin.roles') ? (
             <p>
               System administration does not include HR case access (least privilege). Go to{' '}
               <Link href="/admin">Administration</Link> or the technical{' '}
@@ -111,10 +107,14 @@ export default async function DashboardPage() {
     );
   }
 
-  const dash = await hrDashboard(actor);
-  const s2 = await stage2Dashboard(actor);
-  const s3 = await stage3Dashboard(actor);
-  const attention = await attentionSummary(actor);
+  // Directive 6.2 (AB): one parallel round trip instead of four serial ones;
+  // EXIT_TIMING=1 logs each service's duration in development.
+  const [dash, s2, s3, attention] = await Promise.all([
+    timed('dashboard.hr', () => hrDashboard(actor)),
+    timed('dashboard.stage2', () => stage2Dashboard(actor)),
+    timed('dashboard.stage3', () => stage3Dashboard(actor)),
+    timed('dashboard.attention', () => attentionSummary(actor)),
+  ]);
   const statusOrder = [
     'DRAFT',
     'PENDING_HR_REVIEW',
@@ -200,7 +200,70 @@ export default async function DashboardPage() {
             </Link>
           ))}
         </div>
+        {s3.queues.criticalAccessTasks.length > 0 ? (
+          <>
+            <h3>Critical access-revocation tasks</h3>
+            <ul>
+              {s3.queues.criticalAccessTasks.map((t) => (
+                <li key={t.id}>
+                  <span className="badge badge--danger">CRITICAL</span>{' '}
+                  <Link href={`/tasks/${t.id}`}>{t.title}</Link> -{' '}
+                  <Link href={`/cases/${t.case.id}/workflow`}>{t.case.caseNumber}</Link> - due{' '}
+                  {t.dueAt ? formatInstant(t.dueAt) : '-'} ({t.status}, escalation level{' '}
+                  {t.escalationLevel})
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
+        {exceptions.length > 0 ? (
+          <>
+            <h3>Also needs review</h3>
+            <ul>
+              {exceptions.map((e, i) => (
+                <li key={i}>
+                  <span
+                    className={`badge ${e.severity === 'danger' ? 'badge--danger' : 'badge--warning'}`}
+                  >
+                    {e.severity === 'danger' ? 'FAILED' : 'ATTENTION'}
+                  </span>{' '}
+                  {e.label} - <Link href={e.href}>{e.caseNumber}</Link>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
         <p className="hint">Operational records only; each tile opens the filtered work surface.</p>
+      </section>
+
+      <section className="panel" aria-labelledby="today-h">
+        <h2 id="today-h" style={{ marginTop: 0 }}>
+          Today
+        </h2>
+        <div className="stat-grid">
+          {(
+            [
+              ['Tasks due today', s3.queues.tasksDueToday, '/queue?view=dueToday'],
+              [
+                'Notifications ready for manual send',
+                s3.queues.notificationsReadyForManualSend,
+                '/admin/outbox',
+              ],
+              [
+                'Cases ready for clearance',
+                s3.queues.casesReadyForClearance,
+                '/cases?status=ACTIVE',
+              ],
+            ] as const
+          ).map(([label, count, href]) => (
+            <Link key={label} href={href} className="stat stat--link">
+              <span className="stat__value tabular-nums">{count}</span>
+              <span className={`badge ${count > 0 ? 'badge--info' : 'badge--success'}`}>
+                {label}
+              </span>
+            </Link>
+          ))}
+        </div>
       </section>
 
       <section className="panel" aria-labelledby="counts-h">
@@ -275,32 +338,22 @@ export default async function DashboardPage() {
 
       <section className="panel" aria-labelledby="wf-h">
         <h2 id="wf-h" style={{ marginTop: 0 }}>
-          Workflow operations
+          Process health - workflow operations
         </h2>
         <div className="stat-grid">
           {(
             [
               ['Active workflows', s3.queues.activeWorkflows, 'badge--info'],
-              ['Tasks due today', s3.queues.tasksDueToday, 'badge--warning'],
               ['Tasks due this week', s3.queues.tasksDueThisWeek, 'badge--neutral'],
-              ['Overdue tasks', s3.queues.overdueTasks, 'badge--danger'],
-              ['Critical access tasks', s3.queues.criticalAccessTasks.length, 'badge--danger'],
-              ['Blocked tasks', s3.queues.blockedTasks, 'badge--warning'],
               ['Unassigned manager tasks', s3.queues.pendingDepartmentOwnership, 'badge--warning'],
               [
                 'Notifications awaiting approval',
                 s3.queues.notificationsAwaitingApproval,
                 'badge--warning',
               ],
-              [
-                'Notifications ready for manual send',
-                s3.queues.notificationsReadyForManualSend,
-                'badge--info',
-              ],
               ['Assets outstanding', s3.queues.assetsOutstanding, 'badge--warning'],
               ['Asset exceptions', s3.queues.assetExceptions, 'badge--warning'],
               ['Handovers outstanding', s3.queues.handoversOutstanding, 'badge--warning'],
-              ['Cases ready for clearance', s3.queues.casesReadyForClearance, 'badge--success'],
               [
                 'Cases blocked from clearance',
                 s3.queues.casesBlockedFromClearance,
@@ -315,22 +368,6 @@ export default async function DashboardPage() {
             </div>
           ))}
         </div>
-        {s3.queues.criticalAccessTasks.length > 0 ? (
-          <>
-            <h3>Critical access-revocation tasks</h3>
-            <ul>
-              {s3.queues.criticalAccessTasks.map((t) => (
-                <li key={t.id}>
-                  <span className="badge badge--danger">CRITICAL</span>{' '}
-                  <Link href={`/tasks/${t.id}`}>{t.title}</Link> -{' '}
-                  <Link href={`/cases/${t.case.id}/workflow`}>{t.case.caseNumber}</Link> - due{' '}
-                  {t.dueAt ? formatInstant(t.dueAt) : '-'} ({t.status}, escalation level{' '}
-                  {t.escalationLevel})
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : null}
         <dl className="kv" style={{ marginTop: '0.75rem' }}>
           <dt>Task SLA compliance</dt>
           <dd>
@@ -401,7 +438,7 @@ export default async function DashboardPage() {
 
       <section className="panel" aria-labelledby="work-h">
         <h2 id="work-h" style={{ marginTop: 0 }}>
-          Documents, forms and surveys
+          Process health - documents, forms and surveys
         </h2>
         <div className="table-wrap" tabIndex={0}>
           <table className="data">
@@ -546,26 +583,6 @@ export default async function DashboardPage() {
           rendering success does not by itself prove field accuracy - HR review does.
         </p>
       </section>
-
-      {exceptions.length > 0 ? (
-        <section className="panel" aria-labelledby="exc-h">
-          <h2 id="exc-h" style={{ marginTop: 0 }}>
-            Exceptions
-          </h2>
-          <ul>
-            {exceptions.map((e, i) => (
-              <li key={i}>
-                <span
-                  className={`badge ${e.severity === 'danger' ? 'badge--danger' : 'badge--warning'}`}
-                >
-                  {e.severity === 'danger' ? 'FAILED' : 'ATTENTION'}
-                </span>{' '}
-                {e.label} - <Link href={e.href}>{e.caseNumber}</Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
 
       <p>
         <Link className="button" href="/cases/new">

@@ -26,6 +26,8 @@ Audit events provide evidence of who did what, to which object, when, under whic
 | AUTH_LOGIN_FAILURE | Identity | Authentication failed | claimed subject if safe, reason category, time, safe device/IP metadata |
 | AUTH_LOGOUT | Identity | Session ended | actor, session ID, reason |
 | AUTH_ROLE_GRANTED | Access | Role/scope granted | subject user, role, scope, approver, effective dates, reason |
+| IDENTITY_USER_CREATED | Identity | Application account created from the synchronized directory (Directive 6.2 role mapping) | actor, subject user, source system/id, department, roles granted, reason |
+| IDENTITY_USER_ENABLED | Identity | Previously disabled account re-enabled | actor, subject user, reason |
 | AUTH_ROLE_REVOKED | Access | Role/scope revoked | subject user, role, scope, actor, reason |
 | AUTH_BREAK_GLASS_REQUESTED | Access | Exceptional access requested | requester, scope, reason, duration |
 | AUTH_BREAK_GLASS_APPROVED | Access | Exceptional access approved | request, approver, conditions, expiry |

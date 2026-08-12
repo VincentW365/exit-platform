@@ -54,7 +54,7 @@ export default async function PilotPage({
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
         PILOT_ACTIVE requires every mandatory gate to pass plus HR Manager and System Administrator
-        approval (Privacy Officer where configured). Activation never processes BASELINE cases
+        approval by two different people (DEC-042). Activation never processes BASELINE cases
         retroactively; suspension stops new automated integration work at once.
       </p>
 
@@ -85,11 +85,7 @@ export default async function PilotPage({
             Created {formatInstant(current.createdAt)} - checksum{' '}
             <code>{current.checksum.slice(0, 16)}...</code> - HR approval{' '}
             {current.hrApprovedAt ? formatInstant(current.hrApprovedAt) : 'pending'} - technical
-            approval {current.adminApprovedAt ? formatInstant(current.adminApprovedAt) : 'pending'}{' '}
-            - privacy approval{' '}
-            {current.privacyApprovedAt
-              ? formatInstant(current.privacyApprovedAt)
-              : 'n/a or pending'}
+            approval {current.adminApprovedAt ? formatInstant(current.adminApprovedAt) : 'pending'}
             {current.activatedAt ? ` - applied ${formatInstant(current.activatedAt)}` : ''}
             {current.suspendedAt ? ` - SUSPENDED ${formatInstant(current.suspendedAt)}` : ''}
           </p>
@@ -106,13 +102,6 @@ export default async function PilotPage({
               <input type="hidden" name="id" value={current.id} />
               <input type="hidden" name="role" value="admin" />
               <button type="submit">Approve (System Administrator)</button>
-            </form>
-          ) : null}{' '}
-          {data.canPrivacyApprove && !current.privacyApprovedAt ? (
-            <form action={approveActivationAction} style={{ display: 'inline-block' }}>
-              <input type="hidden" name="id" value={current.id} />
-              <input type="hidden" name="role" value="privacy" />
-              <button type="submit">Approve (Privacy Officer)</button>
             </form>
           ) : null}{' '}
           {data.canManage && !current.activatedAt ? (

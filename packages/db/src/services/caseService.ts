@@ -23,6 +23,7 @@ import {
   type CaseTransitionAction,
 } from '@exit/domain';
 import { getPrisma } from '../client.ts';
+import { resolveDirectoryManager } from './managerResolution.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
 import { outdateDocumentsForCaseChange } from './documentService.ts';
@@ -120,6 +121,9 @@ export interface EmployeeSearchRow {
   jobTitle: string | null;
   department: string | null;
   location: string | null;
+  /** Directive 6.2 (S): source-data confirmation on the intake screen. */
+  employeeNumber: string | null;
+  managerName: string | null;
   active: boolean;
   lastSyncedAt: Date | null;
 }
@@ -161,7 +165,9 @@ export async function searchEmployees(actor: Actor, query: string) {
     jobTitle: r.jobTitle,
     department: r.department,
     location: r.location,
-    active: ((r.payload as { active?: boolean } | null)?.active ?? true) === true,
+    employeeNumber: r.employeeNumber,
+    managerName: r.managerName,
+    active: r.active,
     lastSyncedAt: r.retrievedAt,
   }));
   // Synthetic fixtures not yet cached in the database stay findable.
@@ -176,7 +182,9 @@ export async function searchEmployees(actor: Actor, query: string) {
       jobTitle: e.jobTitle,
       department: e.department,
       location: e.location,
-      active: true,
+      employeeNumber: e.employeeNumber ?? null,
+      managerName: e.managerName ?? null,
+      active: e.active ?? true,
       lastSyncedAt: null,
     });
   }
@@ -290,67 +298,14 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
   // Directive 6.1 (F): derive the reporting manager from the synchronized
   // directory at draft creation. The relationship is provenance for HR review
   // - never an automatic grant; activation still requires confirmation.
-  const prismaEarly = getPrisma();
-  const sourceRow = await prismaEarly.employeeSourceRecord.findUnique({
-    where: {
-      sourceSystem_sourceId: { sourceSystem: employee.sourceSystem, sourceId: employee.sourceId },
-    },
-    select: {
-      managerName: true,
-      managerSourceId: true,
-      division: true,
-      employeeNumber: true,
-      active: true,
-      lastSyncedAt: true,
-    },
-  });
+  const derived = await resolveDirectoryManager(employee.sourceSystem, employee.sourceId);
+  const derivedManagerName = derived.managerName;
+  const derivedManagerSourceId = derived.managerSourceId;
+  const derivedManagerUserId = derived.managerUserId;
   const fixture =
     employee.sourceSystem === 'SYNTHETIC'
       ? SYNTHETIC_EMPLOYEES.find((s) => s.sourceId === employee.sourceId)
       : null;
-  const derivedManagerName = sourceRow?.managerName ?? fixture?.managerName ?? null;
-  const derivedManagerSourceId = sourceRow?.managerSourceId ?? fixture?.managerSourceId ?? null;
-  let derivedManagerUserId: string | null = null;
-  if (derivedManagerName || derivedManagerSourceId) {
-    const managerRecord = derivedManagerSourceId
-      ? await prismaEarly.employeeSourceRecord.findUnique({
-          where: {
-            sourceSystem_sourceId: {
-              sourceSystem: employee.sourceSystem,
-              sourceId: derivedManagerSourceId,
-            },
-          },
-          select: { workEmail: true, displayName: true },
-        })
-      : null;
-    const managerFixture =
-      employee.sourceSystem === 'SYNTHETIC' && derivedManagerSourceId
-        ? SYNTHETIC_EMPLOYEES.find((s) => s.sourceId === derivedManagerSourceId)
-        : null;
-    const managerEmail = managerRecord?.workEmail ?? managerFixture?.workEmail ?? null;
-    // Resolution requires an ACTIVE application account holding LINE_MANAGER
-    // (assignment-scoped manager authority, Directive 6.1 D); otherwise the
-    // plan shows the directory manager with no account and HR overrides.
-    const candidates = await prismaEarly.user.findMany({
-      where: {
-        isActive: true,
-        roleAssignments: { some: { role: 'LINE_MANAGER', revokedAt: null } },
-        OR: [
-          ...(managerEmail ? [{ workEmail: managerEmail }] : []),
-          ...(derivedManagerName ? [{ displayName: derivedManagerName }] : []),
-        ],
-      },
-      select: { id: true, workEmail: true, displayName: true },
-      take: 3,
-    });
-    const emailMatch = managerEmail
-      ? candidates.find((u) => u.workEmail.toLowerCase() === managerEmail.toLowerCase())
-      : undefined;
-    const nameMatches = derivedManagerName
-      ? candidates.filter((u) => u.displayName === derivedManagerName)
-      : [];
-    derivedManagerUserId = emailMatch?.id ?? (nameMatches.length === 1 ? nameMatches[0]!.id : null);
-  }
 
   const cohortErrors = cohortPurposeErrors({
     measurementCohort: input.measurementCohort,
@@ -514,7 +469,7 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
           managerSourceId: derivedManagerSourceId,
           resolvedUserId: derivedManagerUserId,
           sourceSystem: employee.sourceSystem,
-          lastSyncedAt: sourceRow?.lastSyncedAt ?? null,
+          lastSyncedAt: derived.lastSyncedAt,
         },
       });
     }
@@ -641,10 +596,10 @@ export async function listCases(actor: Actor, rawFilter: unknown = {}) {
   const f = parsed.data;
 
   const isHr = actor.roles.includes('HR_MANAGER') || actor.roles.includes('HR_OFFICER');
-  const isOversight = actor.roles.includes('AUDITOR') || actor.roles.includes('PRIVACY_OFFICER');
 
   // Record-level visibility encoded in the query itself so counts and rows
-  // can never leak (REQ-SEC-008).
+  // can never leak (REQ-SEC-008). DEC-042: with the oversight roles removed,
+  // restricted rows are discoverable only through participation.
   const visibility = isHr
     ? {
         OR: [
@@ -653,9 +608,7 @@ export async function listCases(actor: Actor, rawFilter: unknown = {}) {
           { ownerId: actor.userId },
         ],
       }
-    : isOversight
-      ? {} // oversight discovers all rows; restricted rows are minimized below
-      : { id: { in: [] as string[] } };
+    : { id: { in: [] as string[] } };
 
   const filters = [
     f.status ? { status: f.status } : null,
@@ -1144,11 +1097,12 @@ export async function addParticipant(
   ) {
     throw ServiceError.validation(['HR support participants must hold an HR role.']);
   }
-  if (
-    participantRole === 'OVERSIGHT' &&
-    !targetRoles.some((r) => r === 'AUDITOR' || r === 'PRIVACY_OFFICER')
-  ) {
-    throw ServiceError.validation(['Oversight participants must hold an oversight role.']);
+  if (participantRole === 'OVERSIGHT') {
+    // DEC-042: the oversight roles were removed from the active model; the
+    // participant role remains in the schema for historical rows only.
+    throw ServiceError.validation([
+      'The OVERSIGHT participant role was retired with DEC-042 - add HR, Finance or Manager participants instead.',
+    ]);
   }
   // Stage 2: scoped action-form participants (Directive 2 section F).
   if (participantRole === 'FINANCE' && !targetRoles.includes('FINANCE_RESPONDER')) {
@@ -1280,14 +1234,13 @@ export async function addNote(
 export async function listNotes(actor: Actor, caseId: string) {
   const { ctx } = await loadCaseWithAccess(caseId);
   assertView(actor, ctx);
+  // DEC-042: notes are HR-scoped; the historical HR_AND_OVERSIGHT visibility
+  // value now reads as "HR" (the oversight audience no longer exists).
   const hr =
     (actor.roles.includes('HR_MANAGER') || actor.roles.includes('HR_OFFICER')) &&
     canActOnCase(actor, 'case.addNote', ctx);
-  const oversight = actor.roles.includes('AUDITOR') || actor.roles.includes('PRIVACY_OFFICER');
   const where = hr
     ? { caseId }
-    : oversight
-      ? { caseId, visibility: 'HR_AND_OVERSIGHT' as const }
-      : { caseId, visibility: { in: [] as ('HR_ONLY' | 'HR_AND_OVERSIGHT')[] } };
+    : { caseId, visibility: { in: [] as ('HR_ONLY' | 'HR_AND_OVERSIGHT')[] } };
   return getPrisma().caseNote.findMany({ where, orderBy: { createdAt: 'asc' } });
 }

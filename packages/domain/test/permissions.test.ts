@@ -25,12 +25,10 @@ const restrictedCase: CaseAccessContext = {
   participantUserIds: ['hr-manager-1', 'hr-officer-2'],
 };
 
-describe('record-level visibility (REQ-SEC-007/008)', () => {
-  it('normal cases: HR and oversight roles can view; departments and admin cannot', () => {
+describe('record-level visibility (REQ-SEC-007/008, DEC-042 six-role model)', () => {
+  it('normal cases: HR roles can view; departments and admin cannot', () => {
     expect(canViewCase(actor('x', 'HR_MANAGER'), normalCase)).toBe(true);
     expect(canViewCase(actor('x', 'HR_OFFICER'), normalCase)).toBe(true);
-    expect(canViewCase(actor('x', 'AUDITOR'), normalCase)).toBe(true);
-    expect(canViewCase(actor('x', 'PRIVACY_OFFICER'), normalCase)).toBe(true);
     expect(canViewCase(actor('x', 'IT_RESPONDER'), normalCase)).toBe(false);
     expect(canViewCase(actor('x', 'FINANCE_RESPONDER'), normalCase)).toBe(false);
     expect(canViewCase(actor('x', 'LINE_MANAGER'), normalCase)).toBe(false);
@@ -44,11 +42,9 @@ describe('record-level visibility (REQ-SEC-007/008)', () => {
     // An HR MANAGER who is NOT a participant is denied - role alone is not enough.
     expect(canViewCase(actor('hr-manager-9', 'HR_MANAGER'), restrictedCase)).toBe(false);
     expect(canViewCase(actor('hr-officer-9', 'HR_OFFICER'), restrictedCase)).toBe(false);
-    // Oversight roles see content only when explicitly added as participants.
-    expect(canViewCase(actor('auditor-1', 'AUDITOR'), restrictedCase)).toBe(false);
     // SYSTEM_ADMIN never gains business access by role (REQ-SEC-010).
     expect(canViewCase(actor('admin-1', 'SYSTEM_ADMIN'), restrictedCase)).toBe(false);
-    // A participant row without an HR/oversight role still gets nothing.
+    // A participant row without an HR role still gets nothing.
     const withItParticipant: CaseAccessContext = {
       ...restrictedCase,
       participantUserIds: [...restrictedCase.participantUserIds, 'it-1'],
@@ -56,11 +52,11 @@ describe('record-level visibility (REQ-SEC-007/008)', () => {
     expect(canViewCase(actor('it-1', 'IT_RESPONDER'), withItParticipant)).toBe(false);
   });
 
-  it('discovery of RESTRICTED cases is limited to participants and oversight roles', () => {
+  it('discovery of RESTRICTED cases is participant-only (DEC-042)', () => {
     expect(canDiscoverCase(actor('hr-manager-1', 'HR_MANAGER'), restrictedCase)).toBe(true);
-    expect(canDiscoverCase(actor('auditor-1', 'AUDITOR'), restrictedCase)).toBe(true);
-    expect(canDiscoverCase(actor('privacy-1', 'PRIVACY_OFFICER'), restrictedCase)).toBe(true);
-    // Non-participant HR must not learn the case exists through lists/counts.
+    // Non-participants must not learn the case exists through lists/counts -
+    // there is no longer any role-based discovery path.
+    expect(canDiscoverCase(actor('hr-manager-9', 'HR_MANAGER'), restrictedCase)).toBe(false);
     expect(canDiscoverCase(actor('hr-officer-9', 'HR_OFFICER'), restrictedCase)).toBe(false);
     expect(canDiscoverCase(actor('admin-1', 'SYSTEM_ADMIN'), restrictedCase)).toBe(false);
     expect(canDiscoverCase(actor('it-1', 'IT_RESPONDER'), restrictedCase)).toBe(false);
@@ -80,11 +76,11 @@ describe('case action authorization', () => {
     ] as const) {
       expect(canActOnCase(actor('m', 'HR_MANAGER'), action, normalCase), action).toBe(true);
       expect(canActOnCase(actor('o', 'HR_OFFICER'), action, normalCase), action).toBe(false);
-      expect(canActOnCase(actor('a', 'AUDITOR'), action, normalCase), action).toBe(false);
+      expect(canActOnCase(actor('a', 'SYSTEM_ADMIN'), action, normalCase), action).toBe(false);
     }
   });
 
-  it('working actions are available to HR roles but never to oversight', () => {
+  it('working actions are available to HR roles only', () => {
     for (const action of [
       'case.editDraft',
       'case.submit',
@@ -93,8 +89,8 @@ describe('case action authorization', () => {
       'attachment.upload',
     ] as const) {
       expect(canActOnCase(actor('o', 'HR_OFFICER'), action, normalCase), action).toBe(true);
-      expect(canActOnCase(actor('a', 'AUDITOR'), action, normalCase), action).toBe(false);
-      expect(canActOnCase(actor('p', 'PRIVACY_OFFICER'), action, normalCase), action).toBe(false);
+      expect(canActOnCase(actor('a', 'SYSTEM_ADMIN'), action, normalCase), action).toBe(false);
+      expect(canActOnCase(actor('l', 'LINE_MANAGER'), action, normalCase), action).toBe(false);
     }
   });
 
@@ -112,13 +108,14 @@ describe('case action authorization', () => {
     expect(canActOnCase(actor('hr-officer-1', 'HR_OFFICER'), 'case.viewRehire', normalCase)).toBe(
       false,
     );
-    expect(canActOnCase(actor('a', 'AUDITOR'), 'case.viewRehire', normalCase)).toBe(false);
-    expect(canActOnCase(actor('p', 'PRIVACY_OFFICER'), 'case.viewRehire', normalCase)).toBe(false);
+    expect(canActOnCase(actor('a', 'SYSTEM_ADMIN'), 'case.viewRehire', normalCase)).toBe(false);
   });
 
   it('reason notes are restricted to HR participants (REQ-PRIV-024)', () => {
     expect(canActOnCase(actor('o', 'HR_OFFICER'), 'case.viewReasonNotes', normalCase)).toBe(true);
-    expect(canActOnCase(actor('a', 'AUDITOR'), 'case.viewReasonNotes', normalCase)).toBe(false);
+    expect(canActOnCase(actor('a', 'SYSTEM_ADMIN'), 'case.viewReasonNotes', normalCase)).toBe(
+      false,
+    );
   });
 });
 
@@ -130,17 +127,13 @@ describe('global actions', () => {
     }
   });
 
-  it('audit centre audiences (Directive 6.1 K); admin console is SYSTEM_ADMIN-only', () => {
+  it('audit centre audiences (DEC-042); admin console is SYSTEM_ADMIN-only', () => {
     for (const role of ROLES) {
-      // HR_MANAGER joined the global audit audience in Directive 6.1; the
-      // service minimizes restricted-case rows they cannot view.
-      expect(can(actor('u', role), 'audit.viewGlobal'), role).toBe(
-        role === 'AUDITOR' || role === 'PRIVACY_OFFICER' || role === 'HR_MANAGER',
-      );
+      // HR_MANAGER is the business audit audience; the service minimizes
+      // restricted-case rows they cannot view (DEC-039).
+      expect(can(actor('u', role), 'audit.viewGlobal'), role).toBe(role === 'HR_MANAGER');
       expect(can(actor('u', role), 'audit.viewTechnical'), role).toBe(role === 'SYSTEM_ADMIN');
-      expect(can(actor('u', role), 'audit.export'), role).toBe(
-        role === 'AUDITOR' || role === 'PRIVACY_OFFICER' || role === 'HR_MANAGER',
-      );
+      expect(can(actor('u', role), 'audit.export'), role).toBe(role === 'HR_MANAGER');
       expect(can(actor('u', role), 'admin.roles'), role).toBe(role === 'SYSTEM_ADMIN');
       expect(can(actor('u', role), 'admin.flags'), role).toBe(role === 'SYSTEM_ADMIN');
     }
@@ -153,13 +146,14 @@ describe('global actions', () => {
     }
   });
 
-  it('PRIVACY_OFFICER has oversight but no ordinary HR processing (Directive 0.1 B)', () => {
-    const p = actor('p', 'PRIVACY_OFFICER');
-    expect(can(p, 'audit.viewGlobal')).toBe(true);
-    expect(can(p, 'case.list')).toBe(true);
-    expect(can(p, 'case.create')).toBe(false);
-    expect(canActOnCase(p, 'case.approve', normalCase)).toBe(false);
-    expect(canActOnCase(p, 'case.editDraft', normalCase)).toBe(false);
+  it('privacy/retention operations belong to HR_MANAGER (DEC-042)', () => {
+    for (const role of ROLES) {
+      expect(can(actor('u', role), 'privacy.view'), role).toBe(role === 'HR_MANAGER');
+      expect(can(actor('u', role), 'privacy.operate'), role).toBe(role === 'HR_MANAGER');
+    }
+    // SYSTEM_ADMIN keeps technical administration but never case content.
+    expect(can(actor('u', 'SYSTEM_ADMIN'), 'identity.accessReview')).toBe(true);
+    expect(can(actor('u', 'HR_MANAGER'), 'identity.accessReview')).toBe(false);
   });
 });
 

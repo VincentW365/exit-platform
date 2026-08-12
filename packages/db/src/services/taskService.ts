@@ -23,6 +23,7 @@ import {
   type Actor,
   type AuditEventType,
   type CaseAccessContext,
+  type Role,
   type TaskAction,
   type TaskDepartment,
 } from '@exit/domain';
@@ -80,8 +81,6 @@ function taskAccessFor(
   ctx: CaseAccessContext,
 ): TaskAccess {
   if (canViewCase(actor, ctx) && hasRole(actor, 'HR_MANAGER', 'HR_OFFICER')) return 'HR_FULL';
-  // Read-only oversight sees tasks through the case view, not the queue.
-  if (canViewCase(actor, ctx) && hasRole(actor, 'AUDITOR', 'PRIVACY_OFFICER')) return 'HR_FULL';
   const released = t.status !== 'NOT_READY';
   if (!released) return 'NONE';
   if (t.department === 'IT' && hasRole(actor, 'IT_RESPONDER')) return 'DEPARTMENT';
@@ -253,7 +252,14 @@ async function transition(
   if (!['ACTIVE', 'CLEARANCE_PENDING'].includes(t.instance.status))
     throw ServiceError.conflict('The workflow is not active.');
 
-  const transitionErr = taskTransitionError(action, t, actor, fields.reason);
+  // waiverAuthority narrows to the active Role union: the column's deprecated
+  // enum values (DEC-042) are never written and would simply fail hasRole.
+  const transitionErr = taskTransitionError(
+    action,
+    { ...t, waiverAuthority: t.waiverAuthority as Role },
+    actor,
+    fields.reason,
+  );
   if (transitionErr) throw ServiceError.validation([transitionErr]);
 
   // D.14/D.15: task comments carry safe operational information only.
@@ -1005,6 +1011,7 @@ export async function listMyQueue(actor: Actor, rawFilter: unknown = {}) {
   });
 
   // Directive 6.1 (G): responders see WHO holds each task, not just a UUID.
+  // One batched lookup (assigneeId has no schema relation by design).
   const assigneeIds = [...new Set(rows.map((t) => t.assigneeId).filter((v): v is string => !!v))];
   const assigneeNames = new Map(
     (

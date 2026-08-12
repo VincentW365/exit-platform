@@ -119,7 +119,7 @@ const SOPS: ReadonlyArray<{ module: string; title: string; audience: string; sum
       audience: 'All roles',
       summary: [
         'Raise incidents/service requests in the Support area with SAFE descriptions (no personal data).',
-        'CRITICAL security/privacy incidents escalate immediately to the System Administrator and Privacy Officer.',
+        'CRITICAL security/privacy incidents escalate immediately to the System Administrator and HR Manager.',
         'Diagnostic bundles are PII-free: correlation IDs, versions, codes and states only.',
       ],
     },

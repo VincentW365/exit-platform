@@ -370,7 +370,21 @@ describe('queue access (J, R.8)', () => {
       'LINE_MANAGER',
     ]);
     expect(queueDepartmentsForActor({ userId: 'u', roles: ['SYSTEM_ADMIN'] })).toEqual([]);
-    expect(queueDepartmentsForActor({ userId: 'u', roles: ['AUDITOR'] })).toEqual([]);
+  });
+
+  it('overdue severity honours the configurable HIGH threshold (Directive 6.2 K)', () => {
+    const task = {
+      status: 'READY' as const,
+      taskKind: 'STANDARD' as const,
+      dueAt: new Date('2026-08-01T00:00:00Z'),
+      blockPausesSla: false,
+    };
+    const now = new Date('2026-08-10T00:00:00Z');
+    // Default threshold (3 business days): HIGH.
+    expect(overdueSeverity(task, now, 4).severity).toBe('HIGH');
+    // Raised threshold via configuration: same lateness stays WARNING.
+    expect(overdueSeverity(task, now, 4, 5).severity).toBe('WARNING');
+    expect(overdueSeverity(task, now, 5, 5).severity).toBe('HIGH');
   });
 
   it('workflow instance lifecycle guards', () => {

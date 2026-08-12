@@ -90,6 +90,66 @@ export async function attentionSummary(actor: Actor) {
   };
 }
 
+/**
+ * Directive 6.2 (AJ): operational DIAGNOSTIC metrics - queue health and
+ * process-friction indicators for facilitators. Explicitly not corporate
+ * KPIs; surfaced on the technical health page (health.view).
+ */
+export async function operationalDiagnostics(actor: Actor) {
+  if (!can(actor, 'health.view')) throw ServiceError.forbidden();
+  const prisma = getPrisma();
+  const now = Date.now();
+  const since30d = new Date(now - 30 * 86_400_000);
+  const openStatuses = ['READY', 'IN_PROGRESS', 'BLOCKED'] as const;
+
+  const [unassigned, blocked, reassignments30d, claims30d, officerReassignments30d, exceptions30d] =
+    await Promise.all([
+      prisma.workflowTask.findMany({
+        where: {
+          status: { in: [...openStatuses] },
+          assigneeId: null,
+          department: { in: ['IT', 'FINANCE'] },
+        },
+        select: { createdAt: true },
+      }),
+      prisma.workflowTask.findMany({
+        where: { status: 'BLOCKED' },
+        select: { blockedAt: true, createdAt: true },
+      }),
+      prisma.auditEvent.count({
+        where: { eventType: 'TASK_REASSIGNED', occurredAt: { gte: since30d } },
+      }),
+      prisma.auditEvent.count({
+        where: { eventType: 'TASK_CLAIMED', occurredAt: { gte: since30d } },
+      }),
+      prisma.auditEvent.count({
+        where: { eventType: 'CASE_OFFICER_REASSIGNED', occurredAt: { gte: since30d } },
+      }),
+      prisma.caseException.count({ where: { createdAt: { gte: since30d } } }),
+    ]);
+  const pendingApprovalCases = await prisma.offboardingCase.findMany({
+    where: { status: 'PENDING_HR_REVIEW' },
+    select: { updatedAt: true },
+  });
+  const ageHours = (d: Date) => Math.round((now - d.getTime()) / 3_600_000);
+  const maxAge = (ds: Date[]) => (ds.length ? Math.max(...ds.map(ageHours)) : 0);
+  return {
+    unassignedDeptTasks: unassigned.length,
+    oldestUnassignedHours: maxAge(unassigned.map((t) => t.createdAt)),
+    blockedTasks: blocked.length,
+    oldestBlockedHours: maxAge(blocked.map((t) => t.blockedAt ?? t.createdAt)),
+    approvalsWaiting: pendingApprovalCases.length,
+    oldestApprovalWaitHours: maxAge(pendingApprovalCases.map((c) => c.updatedAt)),
+    taskClaims30d: claims30d,
+    taskReassignments30d: reassignments30d,
+    officerReassignments30d,
+    exceptions30d,
+    // Intake friction facts (S): source-derived vs manually entered fields.
+    intakeSourceDerivedFields: 6, // name, number, title, department, location, manager
+    intakeManualFields: 13,
+  };
+}
+
 export async function hrDashboard(actor: Actor) {
   if (!can(actor, 'baseline.viewDashboard')) throw ServiceError.forbidden();
   const prisma = getPrisma();

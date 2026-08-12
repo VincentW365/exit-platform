@@ -100,7 +100,7 @@ export default async function SystemAdminPage({
         <details className="action">
           <summary>Set a configuration value</summary>
           <form action={setConfigAction}>
-            <label htmlFor="sc-key">Key (e.g. pilot.privacyApprovalRequired)</label>
+            <label htmlFor="sc-key">Key (e.g. sync.scheduledEnabled)</label>
             <input id="sc-key" name="key" required maxLength={80} />
             <label htmlFor="sc-value">Value (true/false, number or text - never a secret)</label>
             <input id="sc-value" name="value" required maxLength={500} />

@@ -49,18 +49,6 @@ const DEV_USERS: ReadonlyArray<{ slug: string; name: string; email: string; role
     roles: ['LINE_MANAGER'],
   },
   {
-    slug: 'auditor',
-    name: 'Auditor',
-    email: 'quinn.baptiste@example.test',
-    roles: ['AUDITOR'],
-  },
-  {
-    slug: 'privacy-officer',
-    name: 'Privacy Officer',
-    email: 'rowan.silvera@example.test',
-    roles: ['PRIVACY_OFFICER'],
-  },
-  {
     slug: 'system-admin',
     name: 'System Administrator',
     email: 'marley.thompson@example.test',
@@ -151,6 +139,30 @@ const TEST_REASONS: ReadonlyArray<{ code: string; label: string }> = [
 ];
 
 async function main(): Promise<void> {
+  // DEC-042: the oversight roles were removed. Retire any accounts from
+  // earlier seeds by revoking their assignments (with reason - history is
+  // preserved, nothing is deleted) and deactivating the sign-in.
+  for (const slug of ['auditor', 'privacy-officer']) {
+    const stale = await prisma.user.findUnique({
+      where: { identitySubject: `dev|${slug}` },
+      include: { roleAssignments: { where: { revokedAt: null } } },
+    });
+    if (stale) {
+      for (const ra of stale.roleAssignments) {
+        await prisma.roleAssignment.update({
+          where: { id: ra.id },
+          data: { revokedAt: new Date(), revokeReason: 'Role retired by DEC-042.' },
+        });
+      }
+      if (stale.isActive) {
+        await prisma.user.update({
+          where: { id: stale.id },
+          data: { isActive: false, provisioningStatus: 'DEACTIVATED', deactivatedAt: new Date() },
+        });
+      }
+    }
+  }
+
   for (const u of DEV_USERS) {
     const user = await prisma.user.upsert({
       where: { identitySubject: `dev|${u.slug}` },

@@ -5,7 +5,15 @@
  * it never forces workflows into a sequence, and NOT_APPLICABLE is a first-
  * class state. Visibility follows the case exactly like getCase.
  */
-import { canDiscoverCase, canViewCase, type Actor, type CaseAccessContext } from '@exit/domain';
+import {
+  canDiscoverCase,
+  canViewCase,
+  computeCaseNextAction,
+  OPEN_TASK_STATUSES,
+  type Actor,
+  type CaseAccessContext,
+  type CaseNextAction,
+} from '@exit/domain';
 import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 
@@ -23,7 +31,20 @@ export interface ProgressStage {
   href: string;
 }
 
+export interface CaseProgressSummary {
+  stages: ProgressStage[];
+  nextAction: CaseNextAction | null;
+}
+
+/** Back-compatible stage list (see caseProgressSummary for the full payload). */
 export async function caseProgress(actor: Actor, caseId: string): Promise<ProgressStage[]> {
+  return (await caseProgressSummary(actor, caseId)).stages;
+}
+
+export async function caseProgressSummary(
+  actor: Actor,
+  caseId: string,
+): Promise<CaseProgressSummary> {
   const prisma = getPrisma();
   const c = await prisma.offboardingCase.findUnique({
     where: { id: caseId },
@@ -46,24 +67,36 @@ export async function caseProgress(actor: Actor, caseId: string): Promise<Progre
     throw ServiceError.notFound();
   }
 
-  const [tasksByDept, documents, handover, assets, invitations, clearance] = await Promise.all([
-    prisma.workflowTask.groupBy({
-      by: ['department', 'status'],
-      where: { caseId },
-      _count: { _all: true },
-    }),
-    prisma.documentInstance.findMany({ where: { caseId }, select: { status: true } }),
-    prisma.handoverRecord.findUnique({
-      where: { caseId },
-      select: { status: true, requiredForClearance: true, notApplicableReason: true },
-    }),
-    prisma.assetRecoveryItem.findMany({ where: { caseId }, select: { status: true } }),
-    prisma.surveyInvitation.findMany({
-      where: { caseId },
-      select: { status: true, completedAt: true },
-    }),
-    prisma.clearanceRecord.count({ where: { caseId } }),
-  ]);
+  const now = new Date();
+  const [tasksByDept, documents, handover, assets, invitations, clearance, taskCounts] =
+    await Promise.all([
+      prisma.workflowTask.groupBy({
+        by: ['department', 'status'],
+        where: { caseId },
+        _count: { _all: true },
+      }),
+      prisma.documentInstance.findMany({ where: { caseId }, select: { status: true } }),
+      prisma.handoverRecord.findUnique({
+        where: { caseId },
+        select: { status: true, requiredForClearance: true, notApplicableReason: true },
+      }),
+      prisma.assetRecoveryItem.findMany({ where: { caseId }, select: { status: true } }),
+      prisma.surveyInvitation.findMany({
+        where: { caseId },
+        select: { status: true, completedAt: true },
+      }),
+      prisma.clearanceRecord.count({ where: { caseId } }),
+      Promise.all([
+        prisma.workflowTask.count({
+          where: { caseId, required: true, status: { in: [...OPEN_TASK_STATUSES] } },
+        }),
+        prisma.workflowTask.count({
+          where: { caseId, status: { in: [...OPEN_TASK_STATUSES] }, dueAt: { lt: now } },
+        }),
+        prisma.workflowTask.count({ where: { caseId, status: 'BLOCKED' } }),
+      ]),
+    ]);
+  const [openRequiredTasks, overdueTasks, blockedTasks] = taskCounts;
 
   const dept = (d: string) => {
     const counts = { open: 0, blocked: 0, done: 0, total: 0 };
@@ -153,7 +186,7 @@ export async function caseProgress(actor: Actor, caseId: string): Promise<Progre
         : { state: 'NOT_STARTED', detail: 'Not yet requested' };
 
   const base = `/cases/${caseId}`;
-  return [
+  const stages: ProgressStage[] = [
     { key: 'CASE', label: 'Case', ...caseState, href: base },
     { key: 'DOCUMENTS', label: 'Documents', ...docState, href: `${base}/documents` },
     { key: 'HANDOVER', label: 'Handover', ...handoverState, href: `${base}/handover` },
@@ -163,4 +196,12 @@ export async function caseProgress(actor: Actor, caseId: string): Promise<Progre
     { key: 'SURVEY', label: 'Survey', ...surveyState, href: `${base}/survey` },
     { key: 'CLEARANCE', label: 'Clearance', ...clearanceState, href: `${base}/clearance` },
   ];
+  const nextAction = computeCaseNextAction(caseId, {
+    status: c.status,
+    stages,
+    openRequiredTasks,
+    overdueTasks,
+    blockedTasks,
+  });
+  return { stages, nextAction };
 }

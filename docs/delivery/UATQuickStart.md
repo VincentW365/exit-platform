@@ -86,7 +86,7 @@ As the **HR Manager**:
 - **S2, OFF-2026-0002 (immediate resignation).** As the IT Responder: the access-removal
   task is OVERDUE. As the HR Manager: Exceptions shows a CRITICAL escalation.
 - **S3, OFF-2026-0003 (restricted termination).** As the HR Officer, the IT Responder, the Finance Responder,
-  the Line Manager, the Auditor and the System Administrator: searching cases, queues, dashboards and reports
+  the Line Manager and the System Administrator: searching cases, queues, dashboards and reports
   finds NOTHING; pasting the case URL gives a plain denial. As the HR Manager it opens
   normally. No termination letter exists; the survey is off.
 - **S4, OFF-2026-0004 (corrected document).** As the HR Officer: the old approved
@@ -103,7 +103,7 @@ As the **HR Manager**:
   outbox → the FAILED_RETRYABLE row for this case; the address is masked;
   "Queue retry" is available.
 - **S9, OFF-2026-0009 (finished case).** As the HR Manager: browse history, documents,
-  captured mail, completed survey. Privacy check: the HR Officer, HR Manager and Privacy Officer can see
+  captured mail, completed survey. Privacy check: the HR Officer and HR Manager can see
   the survey response; the Line Manager, the IT Responder, the Finance Responder and the System Administrator must not. Then Reports:
   run a report with purpose TEST, export CSV, confirm the case appears and
   small groups show "(suppressed)".

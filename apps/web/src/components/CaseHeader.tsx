@@ -6,7 +6,7 @@
 import Link from 'next/link';
 import { formatInstant } from '@exit/domain';
 import { ClassificationBadge, PurposeBadge, StatusBadge } from './ui';
-import type { CaseStatus } from '@exit/domain';
+import type { CaseNextAction, CaseStatus } from '@exit/domain';
 
 export interface CaseHeaderData {
   caseId: string;
@@ -25,30 +25,12 @@ export interface CaseHeaderData {
   officerName: string | null;
   managerName: string | null;
   managerUserName: string | null;
-}
-
-function nextAction(d: CaseHeaderData): { label: string; href: string } | null {
-  switch (d.status) {
-    case 'DRAFT':
-      return { label: 'Complete the draft and submit for HR review', href: `/cases/${d.caseId}` };
-    case 'PENDING_HR_REVIEW':
-      return { label: 'HR Manager review and approval', href: `/cases/${d.caseId}` };
-    case 'APPROVED':
-      return {
-        label: 'Review the assignment plan, then activate the workflow',
-        href: `/cases/${d.caseId}/assignment`,
-      };
-    case 'ACTIVE':
-      return { label: 'Work the open tasks', href: `/cases/${d.caseId}/workflow` };
-    case 'CLEARANCE_REVIEW':
-      return { label: 'Final clearance review', href: `/cases/${d.caseId}/clearance` };
-    default:
-      return null;
-  }
+  /** Work-aware next action (Directive 6.2 U) - from caseProgressSummary. */
+  nextAction?: CaseNextAction | null;
 }
 
 export function CaseHeader({ data }: { data: CaseHeaderData }) {
-  const action = nextAction(data);
+  const action = data.nextAction ?? null;
   return (
     <header className="case-header panel" aria-label="Case summary header">
       <div className="case-header__main">
@@ -87,7 +69,9 @@ export function CaseHeader({ data }: { data: CaseHeaderData }) {
         {action ? (
           <div>
             <dt>Next action</dt>
-            <dd>
+            <dd
+              className={action.tone === 'attention' ? 'case-header__next--attention' : undefined}
+            >
               <Link href={action.href}>{action.label}</Link>
             </dd>
           </div>

@@ -31,8 +31,6 @@ const ROLES: Role[] = [
   'IT_RESPONDER',
   'FINANCE_RESPONDER',
   'LINE_MANAGER',
-  'AUDITOR',
-  'PRIVACY_OFFICER',
   'SYSTEM_ADMIN',
 ];
 
@@ -48,8 +46,6 @@ const EXPECTED: Record<string, Record<Role, Outcome>> = {
     IT_RESPONDER: 'FORBIDDEN',
     FINANCE_RESPONDER: 'FORBIDDEN',
     LINE_MANAGER: 'FORBIDDEN',
-    AUDITOR: 'ALLOW',
-    PRIVACY_OFFICER: 'ALLOW',
     SYSTEM_ADMIN: 'FORBIDDEN',
   },
   employeeSearch: {
@@ -58,8 +54,6 @@ const EXPECTED: Record<string, Record<Role, Outcome>> = {
     IT_RESPONDER: 'FORBIDDEN',
     FINANCE_RESPONDER: 'FORBIDDEN',
     LINE_MANAGER: 'FORBIDDEN',
-    AUDITOR: 'FORBIDDEN',
-    PRIVACY_OFFICER: 'FORBIDDEN',
     SYSTEM_ADMIN: 'FORBIDDEN',
   },
   caseCreate: {
@@ -68,8 +62,6 @@ const EXPECTED: Record<string, Record<Role, Outcome>> = {
     IT_RESPONDER: 'FORBIDDEN',
     FINANCE_RESPONDER: 'FORBIDDEN',
     LINE_MANAGER: 'FORBIDDEN',
-    AUDITOR: 'FORBIDDEN',
-    PRIVACY_OFFICER: 'FORBIDDEN',
     SYSTEM_ADMIN: 'FORBIDDEN',
   },
   normalCaseDetail: {
@@ -78,8 +70,6 @@ const EXPECTED: Record<string, Record<Role, Outcome>> = {
     IT_RESPONDER: 'NOT_FOUND',
     FINANCE_RESPONDER: 'NOT_FOUND',
     LINE_MANAGER: 'NOT_FOUND',
-    AUDITOR: 'ALLOW',
-    PRIVACY_OFFICER: 'ALLOW',
     SYSTEM_ADMIN: 'NOT_FOUND',
   },
   restrictedCaseDetail: {
@@ -88,8 +78,6 @@ const EXPECTED: Record<string, Record<Role, Outcome>> = {
     IT_RESPONDER: 'NOT_FOUND',
     FINANCE_RESPONDER: 'NOT_FOUND',
     LINE_MANAGER: 'NOT_FOUND',
-    AUDITOR: 'FORBIDDEN',
-    PRIVACY_OFFICER: 'FORBIDDEN',
     SYSTEM_ADMIN: 'NOT_FOUND',
   },
   hrDashboard: {
@@ -98,8 +86,6 @@ const EXPECTED: Record<string, Record<Role, Outcome>> = {
     IT_RESPONDER: 'FORBIDDEN',
     FINANCE_RESPONDER: 'FORBIDDEN',
     LINE_MANAGER: 'FORBIDDEN',
-    AUDITOR: 'FORBIDDEN',
-    PRIVACY_OFFICER: 'FORBIDDEN',
     SYSTEM_ADMIN: 'FORBIDDEN',
   },
   baselineDashboard: {
@@ -108,8 +94,6 @@ const EXPECTED: Record<string, Record<Role, Outcome>> = {
     IT_RESPONDER: 'FORBIDDEN',
     FINANCE_RESPONDER: 'FORBIDDEN',
     LINE_MANAGER: 'FORBIDDEN',
-    AUDITOR: 'FORBIDDEN',
-    PRIVACY_OFFICER: 'FORBIDDEN',
     SYSTEM_ADMIN: 'FORBIDDEN',
   },
   baselineExport: {
@@ -118,8 +102,6 @@ const EXPECTED: Record<string, Record<Role, Outcome>> = {
     IT_RESPONDER: 'FORBIDDEN',
     FINANCE_RESPONDER: 'FORBIDDEN',
     LINE_MANAGER: 'FORBIDDEN',
-    AUDITOR: 'FORBIDDEN',
-    PRIVACY_OFFICER: 'FORBIDDEN',
     SYSTEM_ADMIN: 'FORBIDDEN',
   },
   globalAuditFeed: {
@@ -132,8 +114,6 @@ const EXPECTED: Record<string, Record<Role, Outcome>> = {
     IT_RESPONDER: 'FORBIDDEN',
     FINANCE_RESPONDER: 'FORBIDDEN',
     LINE_MANAGER: 'FORBIDDEN',
-    AUDITOR: 'ALLOW',
-    PRIVACY_OFFICER: 'ALLOW',
     SYSTEM_ADMIN: 'ALLOW',
   },
   normalCaseAudit: {
@@ -142,8 +122,6 @@ const EXPECTED: Record<string, Record<Role, Outcome>> = {
     IT_RESPONDER: 'NOT_FOUND',
     FINANCE_RESPONDER: 'NOT_FOUND',
     LINE_MANAGER: 'NOT_FOUND',
-    AUDITOR: 'ALLOW',
-    PRIVACY_OFFICER: 'ALLOW',
     SYSTEM_ADMIN: 'NOT_FOUND',
   },
   normalCaseAttachments: {
@@ -152,8 +130,6 @@ const EXPECTED: Record<string, Record<Role, Outcome>> = {
     IT_RESPONDER: 'NOT_FOUND',
     FINANCE_RESPONDER: 'NOT_FOUND',
     LINE_MANAGER: 'NOT_FOUND',
-    AUDITOR: 'ALLOW',
-    PRIVACY_OFFICER: 'ALLOW',
     SYSTEM_ADMIN: 'NOT_FOUND',
   },
   approveMutation: {
@@ -162,8 +138,6 @@ const EXPECTED: Record<string, Record<Role, Outcome>> = {
     IT_RESPONDER: 'NOT_FOUND',
     FINANCE_RESPONDER: 'NOT_FOUND',
     LINE_MANAGER: 'NOT_FOUND',
-    AUDITOR: 'FORBIDDEN',
-    PRIVACY_OFFICER: 'FORBIDDEN',
     SYSTEM_ADMIN: 'NOT_FOUND',
   },
   adminUsers: {
@@ -172,8 +146,6 @@ const EXPECTED: Record<string, Record<Role, Outcome>> = {
     IT_RESPONDER: 'FORBIDDEN',
     FINANCE_RESPONDER: 'FORBIDDEN',
     LINE_MANAGER: 'FORBIDDEN',
-    AUDITOR: 'FORBIDDEN',
-    PRIVACY_OFFICER: 'FORBIDDEN',
     SYSTEM_ADMIN: 'ALLOW',
   },
 };
@@ -271,10 +243,8 @@ describe('role-by-surface authorization matrix', () => {
     expect(dash.some((r) => r.id === restrictedCaseId)).toBe(false);
     const csv = await baselineExportCsv(actors.get('HR_OFFICER')!.actor);
     expect(csv.includes('Morgan')).toBe(false);
-    // oversight sees only a minimized row, never the employee identity
-    const oversightRows = await listCases(actors.get('AUDITOR')!.actor, {});
-    const row = oversightRows.find((c) => c.id === restrictedCaseId);
-    expect(row?.minimized).toBe(true);
-    expect(JSON.stringify(row)).not.toContain('Morgan');
+    // DEC-042: no role discovers restricted rows - even minimized ones.
+    const adminRows = await listCases(actors.get('SYSTEM_ADMIN')!.actor, {}).catch(() => []);
+    expect(JSON.stringify(adminRows)).not.toContain('Morgan');
   });
 });

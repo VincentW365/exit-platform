@@ -111,8 +111,8 @@ test('stage 4 surfaces: visual + axe sweep', async ({ page }) => {
   await axeCheck(page, 'integration-health');
   await signOut(page);
 
-  // Privacy operations surface (Privacy Officer).
-  await signInAs(page, 'Privacy Officer');
+  // Privacy operations surface (HR Manager per DEC-042).
+  await signInAs(page, 'HR Manager');
   await page.goto('/admin/privacy');
   await snap(page, '14-privacy-retention', true);
   await axeCheck(page, 'privacy-retention');

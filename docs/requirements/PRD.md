@@ -29,8 +29,8 @@ The application is not a payroll engine, legal decision system or autonomous AI 
 | IT_RESPONDER | Performs access and technology-asset tasks. | No access to resignation letters, reasons, pay details, identifiable survey responses, or unrelated cases. |
 | FINANCE_RESPONDER | Performs final-pay and finance clearance tasks. | No access to exit feedback, unrestricted HR notes, or technology/access details. |
 | LINE_MANAGER | Completes handover, duty reassignment, and manager confirmations. | No access to confidential exit responses, HR-only reasons, rehire eligibility, pay details, or termination preparation unless explicitly authorized. |
-| AUDITOR | Performs read-only assurance and control reviews. | Identifiable exit free text and restricted termination content are masked unless separately authorized; no operational changes. |
-| PRIVACY_OFFICER | Reviews data protection, access, retention, breach, and data-subject matters. | No routine operational edits except privacy workflows; cannot change HR decisions. |
+| AUDITOR (RETIRED, DEC-042) | Performs read-only assurance and control reviews. | Identifiable exit free text and restricted termination content are masked unless separately authorized; no operational changes. |
+| PRIVACY_OFFICER (RETIRED, DEC-042 - duties absorbed by HR_MANAGER) | Reviews data protection, access, retention, breach, and data-subject matters. | No routine operational edits except privacy workflows; cannot change HR decisions. |
 | SYSTEM_ADMIN | Maintains technical configuration and platform availability. | No default access to HR case content. Break-glass access requires explicit approval, time limitation, reason, and enhanced audit. |
 
 A departing employee is a limited survey respondent, not an internal application user.

@@ -131,8 +131,8 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
   await axeCheck(page, 'not-found');
   await signOut(page);
 
-  // Oversight: audit feed.
-  await signInAs(page, 'Auditor');
+  // Audit feed (HR Manager audience per DEC-042).
+  await signInAs(page, 'HR Manager');
   await page.goto('/audit');
   await snap(page, '09-audit-feed');
   await axeCheck(page, 'audit-feed');

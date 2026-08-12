@@ -123,15 +123,6 @@ test('J.5 restricted termination: assignment-gated access; no discovery for othe
     await signOut(page);
   }
 
-  // Auditor: minimized discovery row without identity; content refused.
-  await signInAs(page, 'Auditor');
-  await page.goto('/cases');
-  await expect(page.getByText(caseNumber)).toBeVisible();
-  await expect(page.getByText('(restricted case)').first()).toBeVisible();
-  await page.goto(caseUrl);
-  await expect(page.getByText(/content requires explicit assignment/)).toBeVisible();
-  await signOut(page);
-
   // Explicit assignment opens access for the assigned HR officer.
   await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);

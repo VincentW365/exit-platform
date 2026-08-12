@@ -8,9 +8,9 @@
  * Key rules encoded here:
  *  - record-level access considers classification, ownership and explicit
  *    participation, not role name alone;
- *  - RESTRICTED (termination) cases: content requires explicit HR
- *    participation; AUDITOR / PRIVACY_OFFICER may discover their existence as
- *    expressly authorized oversight roles but see minimized rows only;
+ *  - RESTRICTED (termination) cases: content AND discovery require explicit HR
+ *    participation (DEC-042 removed the oversight roles; there is no longer a
+ *    role-based minimized-discovery path);
  *  - SYSTEM_ADMIN has no business-record access by default;
  *  - departmental roles (IT / Finance / line manager) have no case access in
  *    Stage 1 - their queues arrive with the Stage 3 workflow engine.
@@ -41,28 +41,19 @@ export function canViewCase(actor: Actor, c: CaseAccessContext): boolean {
   if (c.classification === 'RESTRICTED') {
     // Explicit assignment only (DEC-035). Roles alone - including HR_MANAGER
     // and SYSTEM_ADMIN - do not grant content access.
-    if (isHrParticipant(actor, c)) return true;
-    // Oversight roles get content only when explicitly added as participants.
-    if (isParticipant(actor, c) && hasRole(actor, 'AUDITOR', 'PRIVACY_OFFICER')) return true;
-    return false;
+    return isHrParticipant(actor, c);
   }
   // CONFIDENTIAL (normal) cases.
-  if (hasRole(actor, 'HR_MANAGER', 'HR_OFFICER')) return true;
-  if (hasRole(actor, 'AUDITOR', 'PRIVACY_OFFICER')) return true; // read-only oversight
-  return false;
+  return hasRole(actor, 'HR_MANAGER', 'HR_OFFICER');
 }
 
 /**
  * Discovery: may the actor learn the case exists (list row, counts)?
- * For RESTRICTED cases, discovery rows must be minimized (no employee name)
- * unless the actor also passes canViewCase.
+ * DEC-042: with the oversight roles removed, discovery is identical to view -
+ * RESTRICTED cases are invisible outside explicit HR participation.
  */
 export function canDiscoverCase(actor: Actor, c: CaseAccessContext): boolean {
-  if (canViewCase(actor, c)) return true;
-  if (c.classification === 'RESTRICTED') {
-    return hasRole(actor, 'AUDITOR', 'PRIVACY_OFFICER'); // expressly authorized oversight
-  }
-  return false;
+  return canViewCase(actor, c);
 }
 
 /**
@@ -182,11 +173,11 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
     case 'form.void':
       return hrManager && (c.classification !== 'RESTRICTED' || isHrParticipant(actor, c));
     case 'doc.download':
-      return hrOnCase || (view && hasRole(actor, 'AUDITOR', 'PRIVACY_OFFICER'));
+      return hrOnCase;
     case 'survey.viewResponses':
-      // Identifiable responses: HR on the case + privacy oversight (read-only).
-      // AUDITOR gets metadata only - enforced by the service masking layer.
-      return hrOnCase || (view && hasRole(actor, 'PRIVACY_OFFICER'));
+      // Identifiable responses: HR on the case (DEC-042 - the separate
+      // privacy-oversight audience was removed with the role).
+      return hrOnCase;
     case 'case.editDraft':
     case 'case.submit':
     case 'case.addNote':
@@ -236,10 +227,10 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
       // everyone else including HR officers, oversight and departments.
       return hrManager && (c.classification !== 'RESTRICTED' || isHrParticipant(actor, c));
     case 'case.viewReasonNotes':
-      // Restricted HR data (REQ-PRIV-024): HR participants only; masked for oversight.
+      // Restricted HR data (REQ-PRIV-024): HR participants only.
       return hrOnCase;
     case 'attachment.download':
-      return hrOnCase || (view && hasRole(actor, 'AUDITOR', 'PRIVACY_OFFICER'));
+      return hrOnCase;
     case 'audit.viewCase':
       return view;
     // Directive 6.1 (E): officer assignment is HR-Manager authority.
@@ -295,7 +286,6 @@ export type GlobalAction =
   | 'pilot.manage'
   | 'pilot.hrApprove'
   | 'pilot.adminApprove'
-  | 'pilot.privacyApprove'
   | 'reports.view'
   | 'reports.export'
   | 'reports.schedule'
@@ -315,36 +305,35 @@ export type GlobalAction =
 
 const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   'case.create': ['HR_MANAGER', 'HR_OFFICER'],
-  'case.list': ['HR_MANAGER', 'HR_OFFICER', 'AUDITOR', 'PRIVACY_OFFICER'],
+  'case.list': ['HR_MANAGER', 'HR_OFFICER'],
   'baseline.viewDashboard': ['HR_MANAGER', 'HR_OFFICER'],
   'baseline.export': ['HR_MANAGER', 'HR_OFFICER'],
-  // Directive 6.1 (K): the Audit Centre serves HR_MANAGER as a primary
-  // audience; restricted-case rows are minimized in the service for viewers
-  // without case access.
-  'audit.viewGlobal': ['AUDITOR', 'PRIVACY_OFFICER', 'HR_MANAGER'],
+  // Directive 6.1 (K) / DEC-042: the Audit Centre serves HR_MANAGER;
+  // restricted-case rows are minimized in the service for viewers without
+  // case access. SYSTEM_ADMIN has the separate technical feed.
+  'audit.viewGlobal': ['HR_MANAGER'],
   'admin.roles': ['SYSTEM_ADMIN'],
   'admin.flags': ['SYSTEM_ADMIN'],
   'admin.calendar': ['HR_MANAGER'],
   'admin.configLists': ['HR_MANAGER'],
   'employeeSource.search': ['HR_MANAGER', 'HR_OFFICER'],
   // Directive 2 B.1/B.2: officers draft, managers activate/supersede/retire.
-  'template.view': ['HR_MANAGER', 'HR_OFFICER', 'AUDITOR', 'PRIVACY_OFFICER'],
+  'template.view': ['HR_MANAGER', 'HR_OFFICER'],
   'template.draft': ['HR_MANAGER', 'HR_OFFICER'],
   'template.activate': ['HR_MANAGER'],
   // Directive 3 B.1/B.2: same split for workflow definitions.
-  'workflowDef.view': ['HR_MANAGER', 'HR_OFFICER', 'AUDITOR', 'PRIVACY_OFFICER'],
+  'workflowDef.view': ['HR_MANAGER', 'HR_OFFICER'],
   'workflowDef.draft': ['HR_MANAGER', 'HR_OFFICER'],
   'workflowDef.activate': ['HR_MANAGER'],
   // Directive 3 J: department queues (record-level filtering happens in the
   // queue service; SYSTEM_ADMIN has no queue - R.8).
   'queue.view': ['HR_MANAGER', 'HR_OFFICER', 'IT_RESPONDER', 'FINANCE_RESPONDER', 'LINE_MANAGER'],
-  'exceptions.viewFeed': ['HR_MANAGER', 'HR_OFFICER', 'AUDITOR', 'PRIVACY_OFFICER'],
+  'exceptions.viewFeed': ['HR_MANAGER', 'HR_OFFICER'],
   // Directive 4: business administration is HR; technical administration is
-  // SYSTEM_ADMIN (never HR case content - I.1-I.3); privacy oversight reviews
-  // privacy configuration (I.4).
+  // SYSTEM_ADMIN (never HR case content - I.1-I.3).
   'admin.system': ['SYSTEM_ADMIN'],
   'admin.integrations': ['SYSTEM_ADMIN'],
-  'recipients.viewBusiness': ['HR_MANAGER', 'HR_OFFICER', 'SYSTEM_ADMIN', 'PRIVACY_OFFICER'],
+  'recipients.viewBusiness': ['HR_MANAGER', 'HR_OFFICER', 'SYSTEM_ADMIN'],
   'recipients.editBusiness': ['HR_MANAGER', 'HR_OFFICER'],
   'recipients.editTechnical': ['SYSTEM_ADMIN'],
   'recipients.approveExternal': ['HR_MANAGER'],
@@ -353,18 +342,18 @@ const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   'outbox.resolve': ['SYSTEM_ADMIN'],
   'mailbox.dev': ['SYSTEM_ADMIN', 'HR_MANAGER', 'HR_OFFICER'],
   'identity.admin': ['SYSTEM_ADMIN'],
-  'identity.accessReview': ['SYSTEM_ADMIN', 'AUDITOR', 'PRIVACY_OFFICER'],
+  'identity.accessReview': ['SYSTEM_ADMIN'],
   'sync.run': ['SYSTEM_ADMIN', 'HR_MANAGER'],
-  'pilot.view': ['HR_MANAGER', 'SYSTEM_ADMIN', 'PRIVACY_OFFICER', 'AUDITOR'],
+  'pilot.view': ['HR_MANAGER', 'SYSTEM_ADMIN'],
   'pilot.manage': ['HR_MANAGER', 'SYSTEM_ADMIN'],
   'pilot.hrApprove': ['HR_MANAGER'],
   'pilot.adminApprove': ['SYSTEM_ADMIN'],
-  'pilot.privacyApprove': ['PRIVACY_OFFICER'],
-  'reports.view': ['HR_MANAGER', 'HR_OFFICER', 'AUDITOR', 'PRIVACY_OFFICER'],
+  'reports.view': ['HR_MANAGER', 'HR_OFFICER'],
   'reports.export': ['HR_MANAGER', 'HR_OFFICER'],
   'reports.schedule': ['HR_MANAGER'],
-  'privacy.view': ['PRIVACY_OFFICER', 'HR_MANAGER', 'AUDITOR'],
-  'privacy.operate': ['PRIVACY_OFFICER', 'HR_MANAGER'],
+  // DEC-042: HR_MANAGER absorbs privacy/retention oversight.
+  'privacy.view': ['HR_MANAGER'],
+  'privacy.operate': ['HR_MANAGER'],
   'backup.operate': ['SYSTEM_ADMIN'],
   'continuity.operate': ['HR_MANAGER', 'SYSTEM_ADMIN'],
   'support.use': [
@@ -373,8 +362,6 @@ const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
     'IT_RESPONDER',
     'FINANCE_RESPONDER',
     'LINE_MANAGER',
-    'AUDITOR',
-    'PRIVACY_OFFICER',
     'SYSTEM_ADMIN',
   ],
   'support.manage': ['SYSTEM_ADMIN'],
@@ -384,15 +371,13 @@ const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
     'IT_RESPONDER',
     'FINANCE_RESPONDER',
     'LINE_MANAGER',
-    'AUDITOR',
-    'PRIVACY_OFFICER',
     'SYSTEM_ADMIN',
   ],
-  'health.view': ['SYSTEM_ADMIN', 'HR_MANAGER', 'AUDITOR'],
+  'health.view': ['SYSTEM_ADMIN', 'HR_MANAGER'],
   // Directive 6.1 (K): SYSTEM_ADMIN sees technical events only (never HR case
   // content - enforced in the service as technical categories AND no caseId).
   'audit.viewTechnical': ['SYSTEM_ADMIN'],
-  'audit.export': ['HR_MANAGER', 'AUDITOR', 'PRIVACY_OFFICER'],
+  'audit.export': ['HR_MANAGER'],
   // Directive 6.1 (C/D): organization health for HR; the administration page
   // is shared HR-business / technical like /admin.
   'org.view': ['HR_MANAGER', 'HR_OFFICER'],

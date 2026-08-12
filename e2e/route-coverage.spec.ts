@@ -41,8 +41,6 @@ const ROLES = [
   'IT Responder',
   'Finance Responder',
   'Line Manager',
-  'Auditor',
-  'Privacy Officer',
   'System Administrator',
 ];
 

@@ -167,7 +167,7 @@ export async function getActionForm(actor: Actor, caseId: string) {
       // no finance content.
       return { ...base, hrChecklist: form.hrChecklist };
     }
-    // FULL HR/oversight view; restricted reason notes / rehire stay on the
+    // FULL HR view; restricted reason notes / rehire stay on the
     // case endpoints with their own masking - the form stores none of them.
     return {
       ...base,

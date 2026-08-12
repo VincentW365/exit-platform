@@ -41,4 +41,5 @@ export * from './services/fallbackService.ts';
 export * from './services/orgService.ts';
 export * from './services/caseAssignmentService.ts';
 export * from './services/caseProgressService.ts';
+export { timed } from './services/timing.ts';
 export { newPrefixedObjectKey } from './storage.ts';

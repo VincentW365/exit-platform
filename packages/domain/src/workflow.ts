@@ -387,10 +387,26 @@ export function lateMinutes(dueAt: Date | null, completedAt: Date): number | nul
 }
 
 // --- escalation defaults (sections I and N) ----------------------------------
+// Directive 6.2 (K): these are DEFAULTS; the sweep reads the audited system
+// configuration keys escalation.accessSecondMinutes,
+// escalation.ordinaryEscalateBusinessDays and
+// escalation.ordinaryHighBusinessDays, falling back to these values.
 
 export const ACCESS_SECOND_ESCALATION_MINUTES = 15;
 export const ORDINARY_ESCALATE_BUSINESS_DAYS = 2;
 export const ORDINARY_HIGH_BUSINESS_DAYS = 3;
+
+export interface EscalationThresholds {
+  accessSecondMinutes: number;
+  ordinaryEscalateBusinessDays: number;
+  ordinaryHighBusinessDays: number;
+}
+
+export const DEFAULT_ESCALATION_THRESHOLDS: EscalationThresholds = {
+  accessSecondMinutes: ACCESS_SECOND_ESCALATION_MINUTES,
+  ordinaryEscalateBusinessDays: ORDINARY_ESCALATE_BUSINESS_DAYS,
+  ordinaryHighBusinessDays: ORDINARY_HIGH_BUSINESS_DAYS,
+};
 
 export type ExceptionSeverity = 'INFO' | 'WARNING' | 'HIGH' | 'CRITICAL';
 
@@ -407,6 +423,7 @@ export function overdueSeverity(
   },
   now: Date,
   businessDaysOverdue: number,
+  highBusinessDays: number = ORDINARY_HIGH_BUSINESS_DAYS,
 ): { overdue: boolean; severity: ExceptionSeverity | null } {
   if (!task.dueAt || !OPEN_TASK_STATUSES.includes(task.status) || task.status === 'NOT_READY')
     return { overdue: false, severity: null };
@@ -415,7 +432,7 @@ export function overdueSeverity(
   if (task.taskKind === 'ACCESS_REVOCATION') return { overdue: true, severity: 'CRITICAL' };
   return {
     overdue: true,
-    severity: businessDaysOverdue >= ORDINARY_HIGH_BUSINESS_DAYS ? 'HIGH' : 'WARNING',
+    severity: businessDaysOverdue >= highBusinessDays ? 'HIGH' : 'WARNING',
   };
 }
 

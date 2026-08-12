@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { collectHealth } from '@exit/db';
+import { collectHealth, operationalDiagnostics } from '@exit/db';
 import { can } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 
@@ -16,7 +16,7 @@ export default async function HealthPage() {
         <p className="panel">The health dashboard requires an authorized role.</p>
       </>
     );
-  const health = await collectHealth();
+  const [health, diagnostics] = await Promise.all([collectHealth(), operationalDiagnostics(actor)]);
 
   return (
     <>
@@ -44,6 +44,38 @@ export default async function HealthPage() {
             </li>
           ))}
         </ul>
+      </section>
+      <section className="panel" aria-labelledby="diag-h">
+        <h2 id="diag-h" style={{ marginTop: 0 }}>
+          Operational diagnostics (Directive 6.2 - not corporate KPIs)
+        </h2>
+        <dl className="kv">
+          <dt>Unassigned IT/Finance tasks</dt>
+          <dd className="tabular-nums">
+            {diagnostics.unassignedDeptTasks} (oldest {diagnostics.oldestUnassignedHours}h)
+          </dd>
+          <dt>Blocked tasks</dt>
+          <dd className="tabular-nums">
+            {diagnostics.blockedTasks} (oldest {diagnostics.oldestBlockedHours}h)
+          </dd>
+          <dt>Cases awaiting HR approval</dt>
+          <dd className="tabular-nums">
+            {diagnostics.approvalsWaiting} (oldest wait {diagnostics.oldestApprovalWaitHours}h)
+          </dd>
+          <dt>Task claims / reassignments (30 days)</dt>
+          <dd className="tabular-nums">
+            {diagnostics.taskClaims30d} / {diagnostics.taskReassignments30d}
+          </dd>
+          <dt>HR officer reassignments (30 days)</dt>
+          <dd className="tabular-nums">{diagnostics.officerReassignments30d}</dd>
+          <dt>Exceptions raised (30 days)</dt>
+          <dd className="tabular-nums">{diagnostics.exceptions30d}</dd>
+          <dt>Case intake data entry</dt>
+          <dd>
+            {diagnostics.intakeSourceDerivedFields} fields copy from the directory;{' '}
+            {diagnostics.intakeManualFields} separation-specific fields are entered by HR
+          </dd>
+        </dl>
       </section>
       <section className="panel" aria-labelledby="metrics-h">
         <h2 id="metrics-h" style={{ marginTop: 0 }}>

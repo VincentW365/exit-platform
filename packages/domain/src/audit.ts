@@ -156,6 +156,9 @@ export const AUDIT_EVENT_TYPES = [
   // Stage 4: identity and sync (E-F)
   'IDENTITY_USER_SYNCED',
   'IDENTITY_USER_DISABLED',
+  // Directive 6.2 (E): directory-mapped account creation and re-enable.
+  'IDENTITY_USER_CREATED',
+  'IDENTITY_USER_ENABLED',
   'IDENTITY_ACCESS_REVIEW',
   'ROLE_EXPIRED_REVOKED',
   'SYNC_RUN_COMPLETED',

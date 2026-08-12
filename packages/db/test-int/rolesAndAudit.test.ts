@@ -9,13 +9,13 @@ import { createUser, resetDb, VALID_DRAFT } from './helpers.ts';
 
 let admin: Awaited<ReturnType<typeof createUser>>;
 let officer: Awaited<ReturnType<typeof createUser>>;
-let auditor: Awaited<ReturnType<typeof createUser>>;
+let hrManager: Awaited<ReturnType<typeof createUser>>;
 
 beforeAll(async () => {
   await resetDb();
   admin = await createUser('Marley Admin', 'SYSTEM_ADMIN');
   officer = await createUser('Riley Officer', 'HR_OFFICER');
-  auditor = await createUser('Quinn Auditor', 'AUDITOR');
+  hrManager = await createUser('Matrix HR Manager', 'HR_MANAGER');
 });
 
 describe('role administration', () => {
@@ -37,28 +37,27 @@ describe('role administration', () => {
 
   it('refuses grants from non-admin roles', async () => {
     await expect(
-      grantRole(officer.actor, auditor.userId, 'HR_OFFICER', 'not allowed'),
+      grantRole(officer.actor, hrManager.userId, 'HR_OFFICER', 'not allowed'),
     ).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 });
 
 describe('audit access', () => {
-  it('case audit follows case visibility; global feed is oversight-only', async () => {
+  it('case audit follows case visibility; global feed is HR-Manager-only (DEC-042)', async () => {
     const { caseId } = await createDraft(officer.actor, VALID_DRAFT);
     const events = await listCaseAudit(officer.actor, caseId);
     expect(events.map((e) => e.eventType)).toContain('CASE_CREATED');
 
     await expect(listCaseAudit(admin.actor, caseId)).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
-    const feed = await listGlobalAudit(auditor.actor, {});
+    const feed = await listGlobalAudit(hrManager.actor, {});
     expect(feed.rows.length).toBeGreaterThan(0);
-    // Directive 6.1: HR OFFICERS stay excluded from the global feed
-    // (HR_MANAGER joined the audience with restricted-row minimization).
+    // HR OFFICERS stay excluded from the global feed.
     await expect(listGlobalAudit(officer.actor, {})).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
   it('role-change denials are themselves audited (ACCESS_DENIED)', async () => {
-    const feed = await listGlobalAudit(auditor.actor, { eventType: 'ACCESS_DENIED' });
+    const feed = await listGlobalAudit(hrManager.actor, { eventType: 'ACCESS_DENIED' });
     expect(feed.rows.length).toBeGreaterThan(0);
   });
 });

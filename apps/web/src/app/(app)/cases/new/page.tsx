@@ -147,14 +147,37 @@ export default async function NewCasePage({
           <h2 id="intake-h" style={{ marginTop: 0 }}>
             Step 2 - intake details for {selected.displayName} ({selected.sourceId})
           </h2>
-          <p className="hint">
-            Source: {SOURCE_LABEL[selected.sourceSystem] ?? selected.sourceSystem}
-            {selected.lastSyncedAt
-              ? `, last synchronized ${formatInstant(selected.lastSyncedAt)}`
-              : ' (not synchronized)'}
-            . Review the pre-populated organizational details before creating the draft - the case
-            is never created automatically from the directory.
-          </p>
+          {/* Directive 6.2 (S): SOURCE DATA is confirmed, never re-typed. */}
+          <div className="panel" style={{ background: 'var(--muted)', boxShadow: 'none' }}>
+            <h3 style={{ marginTop: 0 }}>From the directory (source data)</h3>
+            <dl className="kv">
+              <dt>Employee</dt>
+              <dd>
+                {selected.displayName}
+                {selected.employeeNumber ? ` (#${selected.employeeNumber})` : ''}
+              </dd>
+              <dt>Position</dt>
+              <dd>{selected.jobTitle ?? '-'}</dd>
+              <dt>Department / location</dt>
+              <dd>
+                {selected.department ?? '-'} / {selected.location ?? '-'}
+              </dd>
+              <dt>Direct manager</dt>
+              <dd>{selected.managerName ?? 'none recorded - HR will assign an alternate'}</dd>
+              <dt>Status / source</dt>
+              <dd>
+                {selected.active ? 'Active' : 'Inactive'} -{' '}
+                {SOURCE_LABEL[selected.sourceSystem] ?? selected.sourceSystem}
+                {selected.lastSyncedAt
+                  ? `, last synchronized ${formatInstant(selected.lastSyncedAt)}`
+                  : ' (not synchronized)'}
+              </dd>
+            </dl>
+            <p className="hint" style={{ marginBottom: 0 }}>
+              These values copy onto the case automatically. Change the selections below only to
+              record a deliberate override of the source data.
+            </p>
+          </div>
           <p className="hint">
             Required fields are marked &quot;(required)&quot;. Times are entered and shown in
             America/Jamaica. A draft is created first; you review it before submitting for HR
@@ -326,7 +349,7 @@ export default async function NewCasePage({
               </div>
             </fieldset>
 
-            <div className="actions-row">
+            <div className="actions-row form-footer">
               <button type="submit">Create draft case</button>
               <Link className="button secondary" href="/cases">
                 Cancel

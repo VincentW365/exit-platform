@@ -118,7 +118,7 @@ export async function runReport(
   if (!parsed.success) throw ServiceError.validation(['Invalid report filter.']);
   const f = parsed.data;
   // N.7: only operationally-assigned users see case-level rows; managers and
-  // oversight receive aggregates (enforced per report below).
+  // non-HR viewers receive aggregates (enforced per report below).
   const aggregateOnly = !hasRole(actor, 'HR_MANAGER', 'HR_OFFICER');
   const prisma = getPrisma();
   const where = caseWhere(actor, f);

@@ -16,6 +16,8 @@ export interface ClearanceTaskFact {
   required: boolean;
   status: TaskStatus;
   taskKind: TaskKind;
+  /** Owning department for the grouped decision view; absent → HR bucket. */
+  department?: string;
 }
 
 export interface ClearanceFacts {
@@ -33,11 +35,16 @@ export interface ClearanceFacts {
   accessSecurityExceptionApproved: boolean;
 }
 
+/** Directive 6.2 (Z): the decision-screen grouping for readiness items. */
+export type ClearanceGroup =
+  'HR' | 'Manager' | 'IT' | 'Finance' | 'Assets' | 'Documents' | 'Handover' | 'Security';
+
 export interface ClearanceItem {
   key: string;
   label: string;
   ok: boolean;
   detail: string;
+  group: ClearanceGroup;
 }
 
 export interface ClearanceReadiness {
@@ -47,14 +54,24 @@ export interface ClearanceReadiness {
 
 const DONE: readonly TaskStatus[] = ['COMPLETED', 'WAIVED'];
 
+const DEPT_GROUP: Record<string, { group: ClearanceGroup; label: string }> = {
+  HR: { group: 'HR', label: 'HR tasks' },
+  IT: { group: 'IT', label: 'IT tasks' },
+  FINANCE: { group: 'Finance', label: 'Finance tasks' },
+  LINE_MANAGER: { group: 'Manager', label: 'Manager tasks' },
+};
+
 export function evaluateClearance(f: ClearanceFacts): ClearanceReadiness {
   const items: ClearanceItem[] = [];
 
-  // O.1: every required workflow task completed or validly waived.
+  // O.1: every required workflow task completed or validly waived. The
+  // aggregate item keeps its historical key; per-department items carry the
+  // grouped decision view (Directive 6.2 Z).
   const openRequired = f.tasks.filter((t) => t.required && !DONE.includes(t.status));
   items.push({
     key: 'requiredTasks',
     label: 'Required workflow tasks',
+    group: 'HR',
     ok: openRequired.length === 0,
     detail:
       openRequired.length === 0
@@ -64,6 +81,24 @@ export function evaluateClearance(f: ClearanceFacts): ClearanceReadiness {
             .map((t) => t.title)
             .join('; ')}${openRequired.length > 5 ? '; ...' : ''}`,
   });
+  for (const [dept, meta] of Object.entries(DEPT_GROUP)) {
+    const deptTasks = f.tasks.filter((t) => (t.department ?? 'HR') === dept);
+    if (deptTasks.length === 0) continue;
+    const open = deptTasks.filter((t) => t.required && !DONE.includes(t.status));
+    items.push({
+      key: `tasks:${dept}`,
+      label: meta.label,
+      group: meta.group,
+      ok: open.length === 0,
+      detail:
+        open.length === 0
+          ? `All ${deptTasks.length} task(s) completed or waived.`
+          : `${open.length} open: ${open
+              .slice(0, 4)
+              .map((t) => t.title)
+              .join('; ')}${open.length > 4 ? '; ...' : ''}`,
+    });
+  }
 
   // O.2 / I.10: access revocation completed, or an HR_MANAGER-approved
   // security exception recorded.
@@ -72,6 +107,7 @@ export function evaluateClearance(f: ClearanceFacts): ClearanceReadiness {
   items.push({
     key: 'accessRevocation',
     label: 'IT access revocation',
+    group: 'Security',
     ok: accessDone || (accessTasks.length > 0 && f.accessSecurityExceptionApproved),
     detail: accessDone
       ? 'Access revocation is completed.'
@@ -86,6 +122,7 @@ export function evaluateClearance(f: ClearanceFacts): ClearanceReadiness {
   items.push({
     key: 'documents',
     label: 'Resignation document',
+    group: 'Documents',
     ok: !f.letterRequired || f.letterStatus === 'RENDERED' || f.letterStatus === 'MANUALLY_ISSUED',
     detail: !f.letterRequired
       ? 'No letter is applicable for this departure type.'
@@ -96,18 +133,26 @@ export function evaluateClearance(f: ClearanceFacts): ClearanceReadiness {
   items.push({
     key: 'actionForm',
     label: 'Employee action form',
+    group: 'Documents',
     ok: f.actionFormStatus === 'APPROVED',
     detail: `Action form status: ${f.actionFormStatus ?? 'none'} (APPROVED required).`,
   });
 
   // O.5: every required asset has a documented disposition.
   const assets = assetsSatisfyClearance(f.assets, f.assetUnresolvedExceptionApproved);
-  items.push({ key: 'assets', label: 'Asset dispositions', ok: assets.ok, detail: assets.detail });
+  items.push({
+    key: 'assets',
+    label: 'Asset dispositions',
+    group: 'Assets',
+    ok: assets.ok,
+    detail: assets.detail,
+  });
 
   // O.6: required handover completed / not applicable / validly waived.
   items.push({
     key: 'handover',
     label: 'Knowledge transfer / handover',
+    group: 'Handover',
     ok:
       !f.handoverRequired ||
       (f.handoverStatus !== null && HANDOVER_SATISFIED_STATUSES.includes(f.handoverStatus)),
@@ -121,6 +166,7 @@ export function evaluateClearance(f: ClearanceFacts): ClearanceReadiness {
   items.push({
     key: 'criticalExceptions',
     label: 'Critical exceptions',
+    group: 'Security',
     ok: f.openCriticalExceptionCount === 0,
     detail:
       f.openCriticalExceptionCount === 0

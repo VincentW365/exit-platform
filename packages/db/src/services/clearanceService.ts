@@ -92,6 +92,7 @@ export async function computeClearanceFacts(caseId: string): Promise<{
       required: t.required,
       status: t.status,
       taskKind: t.taskKind,
+      department: t.department,
     })),
     letterStatus: letter?.status ?? null,
     letterRequired: letterType !== null,

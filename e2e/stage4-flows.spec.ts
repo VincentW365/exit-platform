@@ -184,7 +184,8 @@ test('Scenario 4 - BambooHR fixture sync and reconciliation', async ({ page }) =
 
 test('Scenario 5 - privacy and retention operations', async ({ page }) => {
   test.setTimeout(240_000);
-  await signInAs(page, 'Privacy Officer');
+  // DEC-042: privacy/retention operations belong to the HR Manager.
+  await signInAs(page, 'HR Manager');
   await page.goto('/admin/privacy');
   await expect(page.getByText('Privacy, retention and data-subject operations')).toBeVisible();
 

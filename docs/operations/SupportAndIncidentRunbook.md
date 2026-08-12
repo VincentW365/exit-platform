@@ -41,7 +41,7 @@ are an open decision.
 ## Incidents (security/privacy)
 
 - Suspected data exposure, credential leak or unauthorized access: treat as
-  CRITICAL, notify the HR Manager and Privacy Officer immediately, preserve
+  CRITICAL, notify the HR Manager and System Administrator immediately, preserve
   evidence (no database edits - history is immutable by design), record a
   disclosure log entry if personal data left the platform, and record the
   incident review outcome on the ticket.
@@ -51,5 +51,5 @@ are an open decision.
 ## Escalation ladder
 
 Reporter → System Administrator (technical) or HR Manager (business) →
-both + Privacy Officer (privacy impact) → Sponsor (business continuity
+both (privacy impact is HR Manager duty, DEC-042) → Sponsor (business continuity
 decision, suspension of the pilot).

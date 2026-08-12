@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { BRAND, can } from '@exit/domain';
-import { getSystemConfigValue, liveDirectoryPresence } from '@exit/db';
+import { liveDirectoryPresence } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { logoutAction } from '@/app/signin/actions';
 import { ActiveLink, BackButton, Breadcrumbs, MobileMenu } from '@/components/chrome';
@@ -12,9 +12,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const themeCookie = (await cookies()).get('exit_theme')?.value;
   const theme = themeCookie === 'dark' || themeCookie === 'light' ? themeCookie : null;
   const liveDirectory = await liveDirectoryPresence().catch(() => ({ present: false, records: 0 }));
-  const aliasActive = await getSystemConfigValue('uat.aliasActive')
-    .then((v) => v === true)
-    .catch(() => false);
 
   // Small-team navigation: grouped sidebar. Users with Administration access
   // reach Templates, Workflows and Baseline through the hub; everyone else
@@ -87,16 +84,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       <div className="app-main">
         <p className="env-banner">
-          Stage 1 baseline capture - improvement automation disabled - synthetic data only
+          UAT environment - simulated offboarding only - no live external side effects
         </p>
         {liveDirectory.present ? (
           <p className="env-banner env-banner--live" role="alert">
-            LIVE HR DIRECTORY DATA — DO NOT USE FOR SCREENSHOTS OR TEST EVIDENCE
-          </p>
-        ) : null}
-        {aliasActive ? (
-          <p className="env-banner env-banner--live" role="alert">
-            REAL DIRECTORY MAPPING ACTIVE — UAT ONLY
+            LIVE HR DIRECTORY DATA — DO NOT USE REAL NAMES IN SHARED SCREENSHOTS OR EVIDENCE
           </p>
         ) : null}
 

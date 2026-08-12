@@ -43,8 +43,11 @@
 | Delivery | `docs/delivery/UATQuickStart.md` | Plain-language stakeholder walkthrough of the UAT scenarios (start here as a tester). |
 | Delivery | `docs/delivery/StakeholderSyntheticUATReport.md` | Directive 6: stakeholder UAT capture record (pending stakeholder execution). |
 | Delivery | `docs/delivery/RealisticUATDesignBuildRecord.md` | Directive 6.1 build record: organization routing, Audit Centre, realistic UAT design, UI refinement. |
-| Operations | `docs/operations/RealisticStakeholderUATWalkthrough.md` | Directive 6.1: 16-part facilitator walkthrough for realistic (aliased) UAT. |
-| Operations | `docs/operations/RealisticUATAssignmentMatrix.md` | Directive 6.1: alias/scenario/routing matrix for realistic UAT (no real names). |
+| Delivery | `docs/delivery/LiveDataOperationalUATBuildRecord.md` | Directive 6.2 build record: live-data UAT, six-role model, role mapping, workflow effectiveness. |
+| Delivery | `docs/delivery/OperationalEffectivenessReview.md` | Directive 6.2: prioritized operational-inefficiency findings (P0-P4) with implementation status. |
+| Operations | `docs/operations/LiveDataStakeholderUATWalkthrough.md` | Directive 6.2 / DEC-043: 19-part live-data stakeholder UAT walkthrough (real directory, simulated events). |
+| Operations | `docs/operations/RealisticStakeholderUATWalkthrough.md` | RETIRED (DEC-043) - pointer to the live-data walkthrough. |
+| Operations | `docs/operations/RealisticUATAssignmentMatrix.md` | Directive 6.1 (superseded by the live-data walkthrough): alias/scenario/routing matrix. |
 | Architecture | `docs/architecture/Architecture.md` | System context and modular-monolith design. |
 | Architecture | `docs/architecture/DomainModel.md` | Domain boundaries and invariants. |
 | Architecture | `docs/architecture/DataModel.md` | Proposed logical entities and relationships. |

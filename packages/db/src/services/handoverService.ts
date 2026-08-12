@@ -26,7 +26,7 @@ import { loadCaseAccess } from './shared.ts';
 import { autoResolveException } from './exceptionService.ts';
 import { recalcInstanceCounts, releaseEligibleTasks } from './workflowService.ts';
 
-type HandoverAccessLevel = 'HR' | 'MANAGER' | 'OVERSIGHT' | 'NONE';
+type HandoverAccessLevel = 'HR' | 'MANAGER' | 'NONE';
 
 function handoverAccess(
   actor: Actor,
@@ -34,7 +34,6 @@ function handoverAccess(
   record: { managerId: string | null },
 ): HandoverAccessLevel {
   if (canViewCase(actor, ctx) && hasRole(actor, 'HR_MANAGER', 'HR_OFFICER')) return 'HR';
-  if (canViewCase(actor, ctx) && hasRole(actor, 'AUDITOR', 'PRIVACY_OFFICER')) return 'OVERSIGHT';
   // The assigned manager - or a MANAGER participant on the case (M.4/M.8).
   if (
     hasRole(actor, 'LINE_MANAGER') &&

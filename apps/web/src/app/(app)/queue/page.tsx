@@ -9,20 +9,18 @@ import { claimTaskAction, returnTaskAction } from './actions';
 export const metadata: Metadata = { title: 'My work queue' };
 export const dynamic = 'force-dynamic';
 
+// Directive 6.2 (V/W): ONE consolidated filter row. Additional service views
+// (ready, inProgress, dueThisWeek, assignedToMe, reassigned, waived) remain
+// reachable by URL for saved links; the service view keys are unchanged.
 const VIEWS = [
-  ['all', 'All open'],
-  ['ready', 'Ready'],
-  ['inProgress', 'In progress'],
-  ['blocked', 'Blocked'],
-  ['dueToday', 'Due today'],
-  ['dueThisWeek', 'Due this week'],
-  ['overdue', 'Overdue'],
-  ['criticalOverdue', 'Critical overdue'],
-  ['assignedToMe', 'Assigned to me'],
+  ['myTasks', 'My tasks'],
   ['unassigned', 'Unassigned'],
-  ['reassigned', 'Reassigned'],
+  ['dueToday', 'Due today'],
+  ['overdue', 'Overdue'],
+  ['blocked', 'Blocked'],
+  ['critical', 'Critical'],
   ['completed', 'Completed'],
-  ['waived', 'Waived'],
+  ['all', 'All authorized'],
 ] as const;
 
 const TASK_BADGE: Record<string, string> = {
@@ -74,6 +72,7 @@ export default async function QueuePage({
     const p = new URLSearchParams();
     p.set('view', view);
     if (sp.department) p.set('department', sp.department);
+    if (sp.departureType) p.set('departureType', sp.departureType);
     if (sp.q) p.set('q', sp.q);
     return `/queue?${p.toString()}`;
   };
@@ -82,6 +81,7 @@ export default async function QueuePage({
     const p = new URLSearchParams();
     p.set('view', activeView);
     if (sp.department) p.set('department', sp.department);
+    if (sp.departureType) p.set('departureType', sp.departureType);
     if (sp.q) p.set('q', sp.q);
     return p.toString();
   })();
@@ -94,44 +94,6 @@ export default async function QueuePage({
         Departments visible to you: {data.departments.join(', ') || 'none'}. Tasks show only the
         minimum information needed to do the work; a task never grants wider case access.
       </p>
-
-      <nav aria-label="Quick views" className="panel" style={{ padding: '0.4rem 0.75rem' }}>
-        <ul
-          style={{
-            listStyle: 'none',
-            margin: 0,
-            padding: 0,
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '0.25rem',
-          }}
-        >
-          {(
-            [
-              ['myTasks', 'My tasks'],
-              ['unassigned', 'Unassigned'],
-              ['all', 'All authorized'],
-              ['critical', 'Critical'],
-              ['overdue', 'Overdue tasks'],
-            ] as const
-          ).map(([key, label]) => (
-            <li key={key}>
-              <Link
-                href={mkHref(key)}
-                className="button secondary"
-                aria-current={activeView === key ? 'page' : undefined}
-                style={
-                  activeView === key
-                    ? { background: 'var(--accent)', color: 'var(--on-accent)' }
-                    : { border: '1px solid transparent' }
-                }
-              >
-                {label}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
 
       <nav aria-label="Queue views" className="panel" style={{ padding: '0.4rem 0.75rem' }}>
         <ul
@@ -202,6 +164,7 @@ export default async function QueuePage({
                 <th scope="col">Assignee</th>
                 <th scope="col">Priority</th>
                 <th scope="col">Due</th>
+                <th scope="col">Overdue</th>
                 <th scope="col">Next action</th>
               </tr>
             </thead>
@@ -238,16 +201,6 @@ export default async function QueuePage({
                     <span className={`badge ${TASK_BADGE[r.status] ?? 'badge--neutral'}`}>
                       {r.status}
                     </span>
-                    {r.overdueMinutes > 0 ? (
-                      <>
-                        {' '}
-                        <span className="badge badge--danger">
-                          {r.overdueMinutes >= 1440
-                            ? `${Math.floor(r.overdueMinutes / 1440)}d overdue`
-                            : `${r.overdueMinutes}m overdue`}
-                        </span>
-                      </>
-                    ) : null}
                     {r.blockedReason ? <p className="hint">Blocker: {r.blockedReason}</p> : null}
                   </td>
                   <td>
@@ -255,7 +208,18 @@ export default async function QueuePage({
                     {r.assignedToMe ? <span className="hint"> (you)</span> : null}
                   </td>
                   <td>{r.priority}</td>
-                  <td>{r.dueAt ? formatInstant(r.dueAt) : '-'}</td>
+                  <td className="tabular-nums">{r.dueAt ? formatInstant(r.dueAt) : '-'}</td>
+                  <td className="tabular-nums">
+                    {r.overdueMinutes > 0 ? (
+                      <span className="badge badge--danger">
+                        {r.overdueMinutes >= 1440
+                          ? `${Math.floor(r.overdueMinutes / 1440)}d`
+                          : `${r.overdueMinutes}m`}
+                      </span>
+                    ) : (
+                      <span className="hint">-</span>
+                    )}
+                  </td>
                   <td>
                     {r.nextAction}
                     {r.assignedToMe ? <span className="hint"> (assigned to you)</span> : null}

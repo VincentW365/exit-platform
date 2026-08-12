@@ -53,10 +53,11 @@ recorded completions feed the pilot readiness gate.
 - Queue basics, department tasks, the handover module and attestation,
   clearance inputs. No payroll decisions exist in the platform.
 
-### Privacy Officer (SOP-08)
+### HR Manager privacy duties (SOP-08, DEC-042)
 
 - Retention policies and holds, dry runs, anonymization limits, DSR search
-  and package exclusions, disclosure logging.
+  and package exclusions, disclosure logging - absorbed into the HR Manager
+  role since DEC-042 removed the separate Privacy Officer.
 
 ### System Administrator (SOP-09)
 

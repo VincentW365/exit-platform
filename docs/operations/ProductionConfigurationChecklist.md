@@ -73,7 +73,7 @@ Legend: **[ENFORCED]** = the config loader refuses to start;
       production database host (Backup and Restore Runbook), with approved
       RPO/RTO.
 - [ ] [MANUAL] Retention policies, DSR SLAs and legal bases approved by the
-      Privacy Officer (currently OPEN decisions; development values are
+      HR Manager (DEC-042; currently OPEN decisions; development values are
       synthetic).
 - [ ] [MANUAL] Container images rebuilt from the committed Dockerfiles
       (non-root user, HEALTHCHECK) and scanned; images never contain secrets

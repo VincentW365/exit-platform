@@ -68,16 +68,74 @@ export default async function CaseClearancePage({
               <span className="badge badge--warning">NOT READY</span>
             )}
           </h2>
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            {data.readiness.items.map((i) => (
-              <li key={i.key} style={{ marginBottom: '0.35rem' }}>
-                <span className={`badge ${i.ok ? 'badge--success' : 'badge--danger'}`}>
-                  {i.ok ? 'MET' : 'BLOCKED'}
-                </span>{' '}
-                <strong>{i.label}</strong> - {i.detail}
-              </li>
-            ))}
-          </ul>
+          {(() => {
+            // Directive 6.2 (Z): a concise decision screen - conditions
+            // grouped by responsible area, unresolved groups first and
+            // prominent, satisfied groups collapsed.
+            const GROUPS = [
+              'HR',
+              'Manager',
+              'IT',
+              'Finance',
+              'Assets',
+              'Documents',
+              'Handover',
+              'Security',
+            ] as const;
+            const shown = data.readiness!.items.filter((i) => i.key !== 'requiredTasks');
+            const grouped = GROUPS.map((g) => ({
+              group: g,
+              items: shown.filter((i) => i.group === g),
+            })).filter((g) => g.items.length > 0);
+            const unresolved = grouped.filter((g) => g.items.some((i) => !i.ok));
+            const satisfied = grouped.filter((g) => g.items.every((i) => i.ok));
+            return (
+              <>
+                {unresolved.length === 0 ? (
+                  <p className="ok-summary" role="status">
+                    Every condition is satisfied - the case is ready for the final decision.
+                  </p>
+                ) : (
+                  unresolved.map((g) => (
+                    <div key={g.group} style={{ marginBottom: '0.6rem' }}>
+                      <h3 style={{ margin: '0 0 0.25rem' }}>{g.group}</h3>
+                      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                        {g.items.map((i) => (
+                          <li key={i.key} style={{ marginBottom: '0.3rem' }}>
+                            <span className={`badge ${i.ok ? 'badge--success' : 'badge--danger'}`}>
+                              {i.ok ? 'MET' : 'BLOCKED'}
+                            </span>{' '}
+                            <strong>{i.label}</strong> - {i.detail}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))
+                )}
+                {satisfied.length > 0 ? (
+                  <details className="action">
+                    <summary>
+                      {satisfied.length} satisfied group(s):{' '}
+                      {satisfied.map((g) => g.group).join(', ')}
+                    </summary>
+                    {satisfied.map((g) => (
+                      <div key={g.group} style={{ marginBottom: '0.4rem' }}>
+                        <h3 style={{ margin: '0.4rem 0 0.2rem' }}>{g.group}</h3>
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                          {g.items.map((i) => (
+                            <li key={i.key}>
+                              <span className="badge badge--success">MET</span>{' '}
+                              <strong>{i.label}</strong> <span className="hint">- {i.detail}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </details>
+                ) : null}
+              </>
+            );
+          })()}
           <p className="hint">
             Exit-survey status: {data.surveyStatus}. Survey completion is voluntary and NEVER blocks
             clearance.
@@ -87,10 +145,8 @@ export default async function CaseClearancePage({
         <p className="panel">No live workflow exists; the gate applies to active workflows.</p>
       )}
 
-      <section className="panel" aria-labelledby="notif-status-h">
-        <h2 id="notif-status-h" style={{ marginTop: 0 }}>
-          Notification status
-        </h2>
+      <details className="action" style={{ marginBottom: '1rem' }}>
+        <summary>Notification status ({data.notifications.length})</summary>
         {data.notifications.length === 0 ? (
           <p>No notification records.</p>
         ) : (
@@ -103,14 +159,14 @@ export default async function CaseClearancePage({
             ))}
           </ul>
         )}
-      </section>
+      </details>
 
       <section className="panel" aria-labelledby="exc-h">
         <h2 id="exc-h" style={{ marginTop: 0 }}>
           Exceptions ({openExceptions.length} open)
         </h2>
         {data.exceptions.length === 0 ? <p>No exceptions recorded.</p> : null}
-        {data.exceptions.map((e) => (
+        {openExceptions.map((e) => (
           <div key={e.id} style={{ marginBottom: '0.6rem' }}>
             <span className={`badge ${SEV_BADGE[e.severity] ?? 'badge--neutral'}`}>
               {e.severity}
@@ -153,6 +209,30 @@ export default async function CaseClearancePage({
             ) : null}
           </div>
         ))}
+        {data.exceptions.length > openExceptions.length ? (
+          <details className="action">
+            <summary>
+              {data.exceptions.length - openExceptions.length} resolved exception(s)
+            </summary>
+            {data.exceptions
+              .filter((e) => e.status !== 'OPEN')
+              .map((e) => (
+                <div key={e.id} style={{ marginBottom: '0.5rem' }}>
+                  <span className={`badge ${SEV_BADGE[e.severity] ?? 'badge--neutral'}`}>
+                    {e.severity}
+                  </span>{' '}
+                  <span className="badge badge--success">{e.status}</span>{' '}
+                  <strong>{e.title}</strong>
+                  {e.resolution ? (
+                    <p className="hint">
+                      Resolved{e.securityExceptionApproved ? ' as APPROVED SECURITY EXCEPTION' : ''}
+                      : {e.resolution}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+          </details>
+        ) : null}
       </section>
 
       {data.canRequest ? (

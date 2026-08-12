@@ -681,6 +681,19 @@ table a[href*='/cases/'] {
   margin-bottom: 1rem;
 }
 
+/* Directive 6.2 (A): unmistakable simulated-offboarding banner on every
+   TEST/TRAINING case - real names may appear locally, real separations never. */
+.banner-uat {
+  background: var(--brand-navy);
+  border: 2px solid var(--brand-yellow);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 0.6rem 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-bottom: 1rem;
+}
+
 .banner-baseline {
   background: var(--warning-bg);
   border: 1px solid var(--warning-border);
@@ -1002,6 +1015,10 @@ ul.timeline li::before {
   margin: 0;
   font-size: var(--text-base);
 }
+.case-header__next--attention a {
+  font-weight: 650;
+  color: var(--danger);
+}
 
 /* Case progress strip (AC): clickable stage chips, summary only. */
 .progress-strip {
@@ -1140,6 +1157,18 @@ ul.timeline li::before {
 /* Theme toggle sits in the topbar next to the identity block. */
 .theme-toggle {
   white-space: nowrap;
+}
+
+/* Sticky action footer for long forms (Directive 6.2 AG): the primary
+   actions stay visible while the form scrolls. */
+.form-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  padding: 0.6rem 0;
+  margin-top: 0.5rem;
 }
 
 /* Topbar quick case search (Enter submits to /cases?q=…). */

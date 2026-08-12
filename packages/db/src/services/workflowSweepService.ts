@@ -9,13 +9,14 @@
 import {
   businessDaysBetween,
   overdueSeverity,
-  ACCESS_SECOND_ESCALATION_MINUTES,
+  DEFAULT_ESCALATION_THRESHOLDS,
   LIVE_INSTANCE_STATUSES,
   OPEN_ASSET_STATUSES,
 } from '@exit/domain';
 import { getPrisma } from '../client.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
 import { getActiveCalendarInfo } from './adminService.ts';
+import { getSystemConfigValue } from './systemConfigService.ts';
 import { openException } from './exceptionService.ts';
 import { refreshClearanceReadiness } from './clearanceService.ts';
 import { recalcInstanceCounts, releaseEligibleTasks } from './workflowService.ts';
@@ -43,6 +44,26 @@ export async function runStage3Sweep(now: Date = new Date()): Promise<SweepResul
     instancesRecalculated: 0,
   };
   const { calendar } = await getActiveCalendarInfo();
+  // Directive 6.2 (K): configurable escalation thresholds with safe defaults.
+  const numCfg = async (key: string, fallback: number): Promise<number> => {
+    const v = await getSystemConfigValue(key);
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  };
+  const thresholds = {
+    accessSecondMinutes: await numCfg(
+      'escalation.accessSecondMinutes',
+      DEFAULT_ESCALATION_THRESHOLDS.accessSecondMinutes,
+    ),
+    ordinaryEscalateBusinessDays: await numCfg(
+      'escalation.ordinaryEscalateBusinessDays',
+      DEFAULT_ESCALATION_THRESHOLDS.ordinaryEscalateBusinessDays,
+    ),
+    ordinaryHighBusinessDays: await numCfg(
+      'escalation.ordinaryHighBusinessDays',
+      DEFAULT_ESCALATION_THRESHOLDS.ordinaryHighBusinessDays,
+    ),
+  };
 
   // 1. Task release: dependencies + release instants (Q "task release").
   const liveInstances = await prisma.workflowInstance.findMany({
@@ -66,7 +87,7 @@ export async function runStage3Sweep(now: Date = new Date()): Promise<SweepResul
   });
   for (const t of openTasks) {
     const bdOverdue = businessDaysBetween(t.dueAt!, now, calendar);
-    const check = overdueSeverity(t, now, bdOverdue);
+    const check = overdueSeverity(t, now, bdOverdue, thresholds.ordinaryHighBusinessDays);
     if (!check.overdue || !check.severity) continue;
 
     if (t.taskKind === 'ACCESS_REVOCATION') {
@@ -87,7 +108,7 @@ export async function runStage3Sweep(now: Date = new Date()): Promise<SweepResul
 
       // Escalation level 1 at due time; level 2 after the configured interval.
       const minutesOverdue = Math.round((now.getTime() - t.dueAt!.getTime()) / 60_000);
-      const targetLevel = minutesOverdue >= ACCESS_SECOND_ESCALATION_MINUTES ? 2 : 1;
+      const targetLevel = minutesOverdue >= thresholds.accessSecondMinutes ? 2 : 1;
       if (t.escalationLevel < targetLevel) {
         const updated = await prisma.workflowTask.updateMany({
           where: { id: t.id, escalationLevel: t.escalationLevel },
@@ -125,9 +146,9 @@ export async function runStage3Sweep(now: Date = new Date()): Promise<SweepResul
     });
     result.overdueExceptions += 1;
 
-    // N.3: at two business days overdue, escalate to HR_MANAGER + department
-    // owner (recorded on the task; surfaced through the exception feed).
-    if (bdOverdue >= 2 && t.escalationLevel < 1) {
+    // N.3: at the configured business-days threshold, escalate to HR_MANAGER
+    // + department owner (recorded on the task; surfaced through the feed).
+    if (bdOverdue >= thresholds.ordinaryEscalateBusinessDays && t.escalationLevel < 1) {
       await prisma.workflowTask.updateMany({
         where: { id: t.id, escalationLevel: t.escalationLevel },
         data: { escalationLevel: 1, escalatedAt: now, rowVersion: { increment: 1 } },

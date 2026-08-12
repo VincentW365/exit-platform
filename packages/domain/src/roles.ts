@@ -1,6 +1,12 @@
 /**
- * Application roles - the eight-role model from RolesAndPermissions.md.
- * Directive 0.1 section B restored PRIVACY_OFFICER; do not remove it.
+ * Application roles - the six-role model from RolesAndPermissions.md.
+ * DEC-042 (owner instruction, 2026-08-12) removed AUDITOR and PRIVACY_OFFICER
+ * from the active model (superseding the Directive 0.1 section B note):
+ * HR_MANAGER absorbs privacy/retention approvals and survey oversight;
+ * SYSTEM_ADMIN keeps technical administration with no case content. The
+ * database Role enum retains the old values as deprecated so historical
+ * assignments and append-only evidence stay intact - no code path grants or
+ * honours them.
  */
 export const ROLES = [
   'HR_MANAGER',
@@ -8,8 +14,6 @@ export const ROLES = [
   'IT_RESPONDER',
   'FINANCE_RESPONDER',
   'LINE_MANAGER',
-  'AUDITOR',
-  'PRIVACY_OFFICER',
   'SYSTEM_ADMIN',
 ] as const;
 
@@ -21,13 +25,6 @@ export function isRole(value: string): value is Role {
 
 /** Roles that perform HR case work. */
 export const HR_ROLES: readonly Role[] = ['HR_MANAGER', 'HR_OFFICER'];
-
-/**
- * Read-only oversight roles (IC-S1-011: "expressly authorized oversight
- * role"). They may see audit trails within scope; they never perform ordinary
- * HR case processing.
- */
-export const OVERSIGHT_ROLES: readonly Role[] = ['AUDITOR', 'PRIVACY_OFFICER'];
 
 /** An authenticated actor as seen by the policy layer. */
 export interface Actor {

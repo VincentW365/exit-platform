@@ -164,7 +164,7 @@ For every resource/action, test:
 - no assignment;
 - explicit participant;
 - system administrator;
-- auditor/privacy scope;
+- HR Manager privacy/audit scope (DEC-042);
 - list/count/search;
 - detail;
 - mutation;
@@ -258,7 +258,7 @@ Urgent access removal proceeds through approved manual process and is reconciled
 
 ### UAT-10 Audit
 
-Auditor reconstructs the entire case without modifying it and sees appropriate redaction.
+The HR Manager reconstructs the entire case in the Audit Centre; restricted rows outside their participation stay minimized (DEC-042).
 
 ### Directive 6.1 additions (2026-08-11)
 

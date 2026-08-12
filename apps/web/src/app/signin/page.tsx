@@ -85,28 +85,27 @@ export default async function SignInPage({
   );
 }
 
-const OVERSIGHT_ROLES = ['PRIVACY_OFFICER', 'AUDITOR'] as const;
-
 async function DevUserList() {
   const users = await listActiveUsers();
-  // Oversight accounts hold only oversight roles; in a small team these are
-  // dual-hatted onto existing staff at pilot time (RolesAndPermissions.md).
-  const oversight = users.filter(
-    (u) =>
-      u.roles.length > 0 &&
-      u.roles.every((r) => (OVERSIGHT_ROLES as readonly string[]).includes(r)),
-  );
-  const daily = users.filter((u) => !oversight.includes(u));
+  // DEC-042: six-role model. Directory-mapped real staff (identitySubject
+  // bamboo|...) are grouped separately from the function-named accounts so
+  // automated tests keep unambiguous function buttons.
+  const mapped = users.filter((u) => u.identitySubject.startsWith('bamboo|'));
+  const functions = users.filter((u) => !mapped.includes(u));
   return (
     <>
-      <h3 className="signin__group-title">Daily operations</h3>
-      <UserButtons users={daily} />
-      <h3 className="signin__group-title">Oversight (dual-hat roles, rarely needed)</h3>
-      <p className="hint" style={{ marginTop: 0 }}>
-        Privacy and audit oversight are separate roles, not separate hires: at pilot time they are
-        assigned to existing team members alongside their main role.
-      </p>
-      <UserButtons users={oversight} />
+      <h3 className="signin__group-title">Function accounts</h3>
+      <UserButtons users={functions} />
+      {mapped.length > 0 ? (
+        <>
+          <h3 className="signin__group-title">Directory-mapped staff (live UAT)</h3>
+          <p className="hint" style={{ marginTop: 0 }}>
+            Real colleagues mapped to their application responsibilities for live-data UAT. These
+            accounts exist only in this local environment.
+          </p>
+          <UserButtons users={mapped} />
+        </>
+      ) : null}
     </>
   );
 }

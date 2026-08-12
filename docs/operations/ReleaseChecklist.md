@@ -41,7 +41,7 @@ test or an unresolved security finding.
 - [ ] `/api/health` and `/api/ready` verified in the target environment;
       worker heartbeat visible.
 - [ ] All 24 pilot readiness gates PASS; activation proposed and dually
-      approved (HR Manager + System Administrator, plus Privacy Officer
+      approved (HR Manager + System Administrator, two different people
       where configured); rollback plan recorded.
 - [ ] UAT signed off (UATPlan.md) and training completions recorded. The
       automated synthetic execution (docs/delivery/SyntheticUATReport.md)
@@ -51,6 +51,6 @@ test or an unresolved security finding.
 - [ ] Written authorizations on file for every live integration touched
       (email/Graph, identity, BambooHR, storage, scanner) - none exist
       today; the platform stays fail-closed without them.
-- [ ] Retention/DSR decisions approved by the Privacy Officer (currently
+- [ ] Retention/DSR decisions approved by the HR Manager (DEC-042; currently
       OPEN; development values are synthetic).
 - [ ] Decision Register reviewed: no OPEN decision is silently assumed.

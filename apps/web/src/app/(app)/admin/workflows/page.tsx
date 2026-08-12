@@ -31,7 +31,7 @@ export default async function WorkflowDefinitionsPage({
       return (
         <>
           <h1>Access restricted</h1>
-          <p className="panel">Workflow definitions require an HR or oversight role.</p>
+          <p className="panel">Workflow definitions require an HR role.</p>
         </>
       );
     throw e;

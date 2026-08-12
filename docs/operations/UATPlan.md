@@ -30,7 +30,7 @@ the System Administrator only after the HR Manager signs the results).
 | IT | IT Responder | Queue, access revocation, assets |
 | Finance | Finance Responder | Queue, clearance inputs |
 | Line Manager | Line Manager | Handover, queue |
-| Privacy Officer | Privacy Officer | Privacy/retention operations |
+| HR Manager (DEC-042) | HR Manager | Privacy/retention operations |
 | System Administrator | System Administrator | System admin, health, backup |
 
 Prerequisites: seeded development database; training module for the

@@ -226,10 +226,14 @@ export async function listExceptionFeed(
   filter: {
     status?: 'OPEN' | 'RESOLVED';
     severity?: 'INFO' | 'WARNING' | 'HIGH' | 'CRITICAL';
+    exceptionType?: string;
+    ownerDepartment?: 'HR' | 'IT' | 'FINANCE' | 'LINE_MANAGER';
   } = {},
 ) {
   if (!can(actor, 'exceptions.viewFeed')) throw ServiceError.forbidden();
   const isHr = hasRole(actor, 'HR_MANAGER', 'HR_OFFICER');
+  // DEC-042: the feed is HR-only; restricted-case exceptions appear only to
+  // participants (defensive empty set for any other permission holder).
   const caseVisibility = isHr
     ? {
         OR: [
@@ -238,12 +242,14 @@ export async function listExceptionFeed(
           { ownerId: actor.userId },
         ],
       }
-    : {}; // oversight discovers rows; restricted rows are minimized below
+    : { id: { in: [] as string[] } };
   const rows = await getPrisma().caseException.findMany({
     where: {
       case: caseVisibility,
       ...(filter.status ? { status: filter.status } : {}),
       ...(filter.severity ? { severity: filter.severity } : {}),
+      ...(filter.exceptionType ? { exceptionType: filter.exceptionType as never } : {}),
+      ...(filter.ownerDepartment ? { ownerDepartment: filter.ownerDepartment as never } : {}),
     },
     orderBy: [{ status: 'asc' }, { severity: 'desc' }, { createdAt: 'desc' }],
     take: 200,
@@ -260,6 +266,17 @@ export async function listExceptionFeed(
       },
     },
   });
+  // Directive 6.2 (Y): the owner is a PERSON where one exists (the assignee
+  // whose task raised the exception) - resolved in one batched lookup.
+  const ownerIds = [...new Set(rows.map((r) => r.ownerId).filter((v): v is string => !!v))];
+  const owners = ownerIds.length
+    ? await getPrisma().user.findMany({
+        where: { id: { in: ownerIds } },
+        select: { id: true, displayName: true },
+      })
+    : [];
+  const ownerName = (id: string | null) => owners.find((o) => o.id === id)?.displayName ?? null;
+
   const now = Date.now();
   return rows.map((r) => {
     const isParticipant =
@@ -276,6 +293,7 @@ export async function listExceptionFeed(
       title: full ? r.title : `${r.exceptionType} on a restricted case`,
       detail: full ? r.detail : null,
       ownerDepartment: r.ownerDepartment,
+      ownerName: full ? ownerName(r.ownerId) : null,
       dueAt: r.dueAt,
       createdAt: r.createdAt,
       ageMinutes: Math.round((now - r.createdAt.getTime()) / 60_000),

@@ -82,6 +82,9 @@ test('stage 2 surfaces: visual + axe sweep', async ({ page }) => {
 
   await page.goto(`${caseUrl}/action-form`);
   await page.getByRole('button', { name: 'Create action form' }).click();
+  // Streamed metadata (async root layout): wait for the title to land before
+  // the axe scan - a mid-stream snapshot would flag document-title.
+  await expect(page).toHaveTitle(/Action form/);
   await snap(page, '04-action-form', true);
   await axeCheck(page, 'action-form');
 

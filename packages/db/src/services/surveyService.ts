@@ -345,18 +345,18 @@ export async function getCaseSurvey(actor: Actor, caseId: string) {
       canManage: canActOnCase(actor, 'survey.manage', ctx),
       canViewResponses: canActOnCase(actor, 'survey.viewResponses', ctx),
       canRecordVerbal: canActOnCase(actor, 'survey.recordVerbal', ctx),
-      isAuditor: hasRole(actor, 'AUDITOR') && !hasRole(actor, 'HR_MANAGER', 'HR_OFFICER'),
     },
   };
 }
 
-/** Responses with masking: auditors receive metadata only (H access rules). */
+/**
+ * Identifiable responses: HR on the case only (DEC-042 removed the auditor
+ * metadata-only tier with the role). Every view is audited.
+ */
 export async function getInvitationResponse(actor: Actor, invitationId: string) {
   const { inv, ctx } = await loadInvitation(actor, invitationId);
   const canView = canActOnCase(actor, 'survey.viewResponses', ctx);
-  const auditorMetadataOnly =
-    !canView && hasRole(actor, 'AUDITOR') && canActOnCase(actor, 'audit.viewCase', ctx);
-  if (!canView && !auditorMetadataOnly) {
+  if (!canView) {
     await auditDenied(actor, 'ACCESS_DENIED', 'SurveyResponse', invitationId, inv.caseId);
     throw ServiceError.forbidden();
   }
@@ -365,29 +365,21 @@ export async function getInvitationResponse(actor: Actor, invitationId: string) 
     where: { invitationId },
     include: { answers: { include: { question: true } } },
   });
-  if (!response) return { metadata: inv, response: null, masked: auditorMetadataOnly };
+  if (!response) return { metadata: inv, response: null, masked: false };
 
-  if (canView) {
-    await appendAudit(prisma, {
-      eventType: 'SURVEY_RESPONSE_VIEWED',
-      actorType: 'USER',
-      actorId: actor.userId,
-      effectiveRoles: actor.roles,
-      objectType: 'SurveyResponse',
-      objectId: response.id,
-      caseId: inv.caseId,
-      result: 'SUCCESS',
-      correlationId: newCorrelationId(),
-      metadata: { channel: response.channel },
-    });
-    return { metadata: inv, response, masked: false };
-  }
-  // Auditor: channel + timing only, never answers.
-  return {
-    metadata: inv,
-    response: { channel: response.channel, submittedAt: response.submittedAt, answers: [] },
-    masked: true,
-  };
+  await appendAudit(prisma, {
+    eventType: 'SURVEY_RESPONSE_VIEWED',
+    actorType: 'USER',
+    actorId: actor.userId,
+    effectiveRoles: actor.roles,
+    objectType: 'SurveyResponse',
+    objectId: response.id,
+    caseId: inv.caseId,
+    result: 'SUCCESS',
+    correlationId: newCorrelationId(),
+    metadata: { channel: response.channel },
+  });
+  return { metadata: inv, response, masked: false };
 }
 
 // --- public (token) side -----------------------------------------------------

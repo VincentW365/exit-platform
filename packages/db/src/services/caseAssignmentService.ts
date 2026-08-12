@@ -12,6 +12,7 @@ import {
   canActOnCase,
   canDiscoverCase,
   canViewCase,
+  computeTaskDue,
   confirmationErrors,
   CONFIRMATION_KEYS,
   CONFIRMATION_LABELS,
@@ -24,6 +25,8 @@ import {
 import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
+import { getActiveCalendarInfo } from './adminService.ts';
+import { resolveDirectoryManager } from './managerResolution.ts';
 
 async function loadCase(caseId: string) {
   const prisma = getPrisma();
@@ -106,11 +109,15 @@ export interface AssignmentPlan {
     recordPurpose: string;
     taskSummary: Array<{
       title: string;
+      taskCode: string;
       department: string;
       required: boolean;
       priority: string;
+      dueAt: Date | null;
       dueRule: string | null;
-      initialOwner: string;
+      dependsOn: readonly string[];
+      owningQueue: string;
+      assignee: string;
     }>;
   };
   confirmations: {
@@ -177,6 +184,15 @@ export async function getAssignmentPlan(actor: Actor, caseId: string): Promise<A
     where: { workflowType: c.departureType as never, status: 'ACTIVE' },
     include: { taskDefs: { where: { enabled: true }, orderBy: { sortOrder: 'asc' } } },
   });
+  // Projected due instants use the SAME calendar logic activation will use;
+  // "now" stands in for the activation anchor until the case activates.
+  const { calendar: planCalendar } = await getActiveCalendarInfo();
+  const planDates = {
+    receivedAt: c.receivedAt,
+    activationAt: new Date(),
+    effectiveSeparationAt: c.effectiveSeparationAt,
+    confirmedLastDay: c.confirmedLastDay,
+  };
 
   const confirmations = (c.activationConfirmations ?? {}) as ConfirmationState;
   const managerMissing = !c.managerUserId;
@@ -250,19 +266,29 @@ export async function getAssignmentPlan(actor: Actor, caseId: string): Promise<A
       effectiveSeparationAt: c.effectiveSeparationAt,
       classification: c.classification,
       recordPurpose: c.recordPurpose,
-      taskSummary: (activeDef?.taskDefs ?? []).map((t) => ({
-        title: t.title,
-        department: t.department,
-        required: t.required,
-        priority: t.priority,
-        dueRule: `${t.dueBasis} ${t.dueOffsetDays >= 0 ? '+' : ''}${t.dueOffsetDays} ${t.dueOffsetKind}`,
-        initialOwner:
-          t.department === 'LINE_MANAGER'
-            ? (c.managerUser?.displayName ?? 'Manager (unresolved)')
-            : t.department === 'HR'
-              ? (c.assignedOfficer?.displayName ?? 'Assigned HR Officer')
-              : `${t.department} queue`,
-      })),
+      // Directive 6.2 (L): the responsibility plan resolves each task's
+      // owning queue, individual assignee, projected due instant (via the
+      // same calendar logic activation uses) and dependency.
+      taskSummary: (activeDef?.taskDefs ?? []).map((t) => {
+        const due = computeTaskDue(t, planDates, planCalendar);
+        return {
+          title: t.title,
+          taskCode: t.taskCode,
+          department: t.department,
+          required: t.required,
+          priority: t.priority,
+          dueAt: due.dueAt,
+          dueRule: due.rule,
+          dependsOn: t.dependsOnCodes ?? [],
+          owningQueue: t.department === 'LINE_MANAGER' ? 'Manager' : `${t.department} queue`,
+          assignee:
+            t.department === 'LINE_MANAGER'
+              ? (c.managerUser?.displayName ?? 'MISSING MANAGER')
+              : t.department === 'HR'
+                ? (c.assignedOfficer?.displayName ?? 'Assigned HR Officer')
+                : 'Unassigned (claim from queue)',
+        };
+      }),
     },
     confirmations: {
       keys: CONFIRMATION_KEYS.map((key) => ({
@@ -366,48 +392,8 @@ export async function refreshManagerFromDirectory(actor: Actor, caseId: string):
   assertView(actor, ctx);
   if (!canActOnCase(actor, 'case.manageManager', ctx)) throw ServiceError.forbidden();
   const prisma = getPrisma();
-  const source = await prisma.employeeSourceRecord.findUnique({
-    where: {
-      sourceSystem_sourceId: {
-        sourceSystem: c.employeeSourceSystem,
-        sourceId: c.employeeSourceId,
-      },
-    },
-    select: { managerName: true, managerSourceId: true, lastSyncedAt: true },
-  });
-  const managerName = source?.managerName ?? null;
-  const managerSourceId = source?.managerSourceId ?? null;
-  let managerUserId: string | null = null;
-  if (managerSourceId || managerName) {
-    const managerRecord = managerSourceId
-      ? await prisma.employeeSourceRecord.findUnique({
-          where: {
-            sourceSystem_sourceId: {
-              sourceSystem: c.employeeSourceSystem,
-              sourceId: managerSourceId,
-            },
-          },
-          select: { workEmail: true, displayName: true },
-        })
-      : null;
-    const candidates = await prisma.user.findMany({
-      where: {
-        isActive: true,
-        roleAssignments: { some: { role: 'LINE_MANAGER', revokedAt: null } },
-        OR: [
-          ...(managerRecord?.workEmail ? [{ workEmail: managerRecord.workEmail }] : []),
-          ...(managerName ? [{ displayName: managerName }] : []),
-        ],
-      },
-      select: { id: true, workEmail: true, displayName: true },
-      take: 3,
-    });
-    const emailMatch = managerRecord?.workEmail
-      ? candidates.find((u) => u.workEmail.toLowerCase() === managerRecord.workEmail!.toLowerCase())
-      : undefined;
-    const nameMatches = managerName ? candidates.filter((u) => u.displayName === managerName) : [];
-    managerUserId = emailMatch?.id ?? (nameMatches.length === 1 ? nameMatches[0]!.id : null);
-  }
+  const { managerName, managerSourceId, managerUserId, lastSyncedAt } =
+    await resolveDirectoryManager(c.employeeSourceSystem, c.employeeSourceId);
   const correlationId = newCorrelationId();
   await prisma.$transaction(async (tx) => {
     await tx.offboardingCase.update({
@@ -437,7 +423,7 @@ export async function refreshManagerFromDirectory(actor: Actor, caseId: string):
         managerSourceId,
         resolvedUserId: managerUserId,
         sourceSystem: c.employeeSourceSystem,
-        lastSyncedAt: source?.lastSyncedAt ?? null,
+        lastSyncedAt,
         refresh: true,
       },
     });

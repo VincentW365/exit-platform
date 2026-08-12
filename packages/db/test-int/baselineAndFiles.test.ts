@@ -28,7 +28,7 @@ const prisma = getPrisma();
 const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37, 0x0a, 0x25]);
 
 let officer: Awaited<ReturnType<typeof createUser>>;
-let auditor: Awaited<ReturnType<typeof createUser>>;
+let lineMgr: Awaited<ReturnType<typeof createUser>>;
 let baselineCaseId: string;
 let baselineCaseNumber: string;
 
@@ -36,7 +36,7 @@ beforeAll(async () => {
   await resetDb();
   setStorageForTests(new LocalStorageAdapter(mkdtempSync(path.join(tmpdir(), 'exit-store-'))));
   officer = await createUser('Riley Officer', 'HR_OFFICER');
-  auditor = await createUser('Quinn Auditor', 'AUDITOR');
+  lineMgr = await createUser('Matrix Line Manager', 'LINE_MANAGER');
   const created = await createDraft(officer.actor, VALID_DRAFT);
   baselineCaseId = created.caseId;
   baselineCaseNumber = created.caseNumber;
@@ -127,9 +127,9 @@ describe('baseline facts (BaselineDataCapturePlan)', () => {
     expect(exportAudit).not.toBeNull();
   });
 
-  it('oversight cannot record baseline facts or export', async () => {
+  it('non-HR roles cannot record baseline facts or export', async () => {
     await expect(
-      recordBaselineEvent(auditor.actor, baselineCaseId, {
+      recordBaselineEvent(lineMgr.actor, baselineCaseId, {
         eventType: 'PROCESS_COMPLETED',
         occurredAt: new Date('2026-07-25T14:00:00.000Z'),
         missingReason: null,
@@ -137,8 +137,8 @@ describe('baseline facts (BaselineDataCapturePlan)', () => {
         detail: null,
         evidenceRef: null,
       }),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
-    await expect(baselineExportCsv(auditor.actor)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(baselineExportCsv(lineMgr.actor)).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 });
 

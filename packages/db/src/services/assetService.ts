@@ -31,7 +31,7 @@ export async function listCaseAssets(actor: Actor, caseId: string) {
     include: { issuedAsset: { select: { issuedAt: true, issuingDepartment: true } } },
   });
   // L.10 / R.5: serial numbers and identifiers only for authorized users
-  // (HR case workers; oversight sees the list without identifiers).
+  // (HR case workers on the case).
   const showIdentifiers = canActOnCase(actor, 'asset.manage', ctx);
   const now = Date.now();
   return {

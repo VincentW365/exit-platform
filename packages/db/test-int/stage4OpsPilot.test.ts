@@ -80,7 +80,8 @@ beforeAll(async () => {
   officer = await createUser('S4B Officer', 'HR_OFFICER');
   manager = await createUser('S4B Manager', 'HR_MANAGER');
   sysAdmin = await createUser('S4B SysAdmin', 'SYSTEM_ADMIN');
-  privacy = await createUser('S4B Privacy', 'PRIVACY_OFFICER');
+  // DEC-042: HR_MANAGER absorbs privacy/retention operations.
+  privacy = await createUser('S4B Privacy HRM', 'HR_MANAGER');
   lineMgr = await createUser('S4B Line Manager', 'LINE_MANAGER');
 });
 

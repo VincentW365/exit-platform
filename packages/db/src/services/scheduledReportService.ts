@@ -6,7 +6,7 @@
  * generated storage and - in development - the capture mailbox. Nothing is
  * ever sent by live email unless delivery is approved and active.
  */
-import { can, type Actor } from '@exit/domain';
+import { can, isRole, type Actor, type Role } from '@exit/domain';
 import { z } from 'zod';
 import { getConfig } from '@exit/config';
 import { getPrisma } from '../client.ts';
@@ -133,7 +133,8 @@ export async function runDueSchedules(now: Date = new Date()): Promise<number> {
       });
       const actor: Actor = {
         userId: creator.id,
-        roles: creator.roleAssignments.map((r) => r.role),
+        // Deprecated enum literals (DEC-042) are filtered out of actor roles.
+        roles: creator.roleAssignments.map((r) => r.role).filter((r): r is Role => isRole(r)),
       };
       const csv = await exportReportCsv(actor, s.reportKey, s.filters);
       const objectKey = newPrefixedObjectKey('generated');

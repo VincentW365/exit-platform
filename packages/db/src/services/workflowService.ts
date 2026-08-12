@@ -618,7 +618,7 @@ export async function reopenCase(actor: Actor, caseId: string, reason: string, p
       data: {
         caseId,
         authorId: actor.userId,
-        visibility: 'HR_AND_OVERSIGHT',
+        visibility: 'HR_ONLY',
         body: `REACTIVATION PLAN (case reopened): ${plan}`,
       },
     });

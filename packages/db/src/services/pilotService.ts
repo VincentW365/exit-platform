@@ -4,10 +4,11 @@
  * The environment activation state lives in system_config
  * ('activation.state'); every change is backed by an immutable-core
  * PilotActivation record with the required approvals. PILOT_ACTIVE demands
- * every mandatory gate to pass (M) plus HR + SYSTEM_ADMIN approval (and
- * PRIVACY_OFFICER where configured). BASELINE cases are never processed
- * retroactively (L.6): activation gates apply only to actions taken after
- * activation, and BASELINE cohorts remain excluded by automationPermitted.
+ * every mandatory gate to pass (M) plus HR + SYSTEM_ADMIN approval by two
+ * different people (DEC-042 retired the separate privacy tier). BASELINE
+ * cases are never processed retroactively (L.6): activation gates apply only
+ * to actions taken after activation, and BASELINE cohorts remain excluded by
+ * automationPermitted.
  */
 import {
   activationChecksum,
@@ -303,18 +304,14 @@ export async function proposeActivation(actor: Actor, rawInput: unknown) {
   return record;
 }
 
-/** L.3/L.4: role-specific approvals on the pending record. */
-export async function approveActivation(
-  actor: Actor,
-  activationId: string,
-  role: 'hr' | 'admin' | 'privacy',
-) {
-  const permission =
-    role === 'hr'
-      ? 'pilot.hrApprove'
-      : role === 'admin'
-        ? 'pilot.adminApprove'
-        : 'pilot.privacyApprove';
+/**
+ * L.3: role-specific approvals on the pending record. DEC-042 retired the
+ * separate privacy approval tier with the PRIVACY_OFFICER role; dual control
+ * is HR Manager + System Administrator, enforced as two DIFFERENT people at
+ * apply time.
+ */
+export async function approveActivation(actor: Actor, activationId: string, role: 'hr' | 'admin') {
+  const permission = role === 'hr' ? 'pilot.hrApprove' : 'pilot.adminApprove';
   if (!can(actor, permission)) throw ServiceError.forbidden();
   const prisma = getPrisma();
   const row = await prisma.pilotActivation.findUnique({ where: { id: activationId } });
@@ -322,9 +319,7 @@ export async function approveActivation(
   const data =
     role === 'hr'
       ? { hrApprovedById: actor.userId, hrApprovedAt: new Date() }
-      : role === 'admin'
-        ? { adminApprovedById: actor.userId, adminApprovedAt: new Date() }
-        : { privacyApprovedById: actor.userId, privacyApprovedAt: new Date() };
+      : { adminApprovedById: actor.userId, adminApprovedAt: new Date() };
   await prisma.$transaction(async (tx) => {
     await tx.pilotActivation.update({
       where: { id: activationId },
@@ -346,7 +341,7 @@ export async function approveActivation(
 
 /**
  * L.2: apply the proposed state. PILOT_ACTIVE (and beyond) demands mandatory
- * gates + HR and SYSTEM_ADMIN approval (+ privacy where configured).
+ * gates + HR and SYSTEM_ADMIN approval by two different people (DEC-042).
  */
 export async function applyActivation(actor: Actor, activationId: string) {
   if (!can(actor, 'pilot.manage')) throw ServiceError.forbidden();
@@ -362,10 +357,11 @@ export async function applyActivation(actor: Actor, activationId: string) {
       throw ServiceError.validation([
         'PILOT activation requires both HR Manager and System Administrator approval (L.3).',
       ]);
-    const privacyRequired = (await getSystemConfigValue('pilot.privacyApprovalRequired')) === true;
-    if (privacyRequired && !row.privacyApprovedById)
+    // DEC-042: genuine two-person control - a dual-hatted account cannot
+    // self-approve both tiers.
+    if (row.hrApprovedById === row.adminApprovedById)
       throw ServiceError.validation([
-        'Privacy Officer approval is required by configuration (L.4).',
+        'The HR and System Administrator approvals must come from two different people.',
       ]);
     const gates = await evaluateReadinessGates();
     const blockers = evaluateGateBlockers(gates);
@@ -473,7 +469,6 @@ export async function getPilotOverview(actor: Actor) {
     records,
     canHrApprove: can(actor, 'pilot.hrApprove'),
     canAdminApprove: can(actor, 'pilot.adminApprove'),
-    canPrivacyApprove: can(actor, 'pilot.privacyApprove'),
     canManage: can(actor, 'pilot.manage'),
   };
 }

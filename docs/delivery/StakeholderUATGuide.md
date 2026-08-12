@@ -34,8 +34,7 @@ needs 20-30 minutes and can run their slice whenever they have time.
 | IT Responder | IT Responder | My queue | S1, S2, S5 |
 | Finance Responder | Finance Responder | My queue | S1, S5 |
 | Line Manager | Line Manager | My queue / handover | S1, S7(handover) |
-| Privacy Officer | Privacy Officer | Administration → Privacy | S8(survey privacy) |
-| Auditor | Auditor | Audit feed / case history | cross-scenario |
+| HR Manager (privacy/audit duties, DEC-042) | HR Manager | Administration → Privacy; Audit centre | S8, cross-scenario |
 | System Administrator | System Administrator | Administration → System / Health | S11, S12, integration status |
 | (fixture for S11) | Second IT Responder | - | disabled during Scenario 11 |
 
@@ -103,10 +102,9 @@ Work your scenarios, then judge your area:
   minimum data, and that NO payroll calculation/deduction exists.
 - **Line Manager:** assigned tasks, handover, duty reassignment, form
   approval, restricted-field protection.
-- **Privacy Officer:** privacy dashboard, retention/holds, disclosures,
-  survey-response restrictions, access reviews.
-- **Auditor:** read-only evidence - history, approvals, corrections,
-  exceptions - and nothing sensitive beyond your authorization.
+- **HR Manager (privacy/audit duties, DEC-042):** privacy dashboard,
+  retention/holds, disclosures, survey-response restrictions, and the Audit
+  centre evidence trail (history, approvals, corrections, exceptions).
 - **System Administrator:** integration health, provider status, users/
   roles, backup, worker health, support - and confirm HR case content stays
   unavailable to you.

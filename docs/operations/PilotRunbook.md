@@ -24,7 +24,6 @@ BASELINE records never trigger automation in any state.
 
 - **HR Manager** - proposes/approves (business), owns pilot scope.
 - **System Administrator** - approves (technical), owns configuration.
-- **Privacy Officer** - approves when `pilot.privacyApprovalRequired` is set.
 
 ## Entering the pilot (PILOT_ACTIVE)
 
@@ -38,9 +37,9 @@ BASELINE records never trigger automation in any state.
    (`../delivery/SyntheticUATReport.md`) is supporting evidence.
 2. Propose the activation with the pilot scope and a rollback plan. The
    proposal core is frozen (database trigger) and checksummed.
-3. Record HR Manager approval and System Administrator approval (distinct
-   people; the UI enforces role separation). Record Privacy Officer approval
-   if configured as required.
+3. Record HR Manager approval and System Administrator approval. DEC-042:
+   the two approvals must come from two DIFFERENT people - the service
+   refuses to apply an activation self-approved on both tiers.
 4. Apply the activation. Gates are re-evaluated at apply time; a failed
    mandatory gate blocks the transition.
 5. Verify: `/admin/health` shows the expected provider modes; the outbox

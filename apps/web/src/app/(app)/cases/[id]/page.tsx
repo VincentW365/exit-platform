@@ -12,7 +12,7 @@ import {
 } from '@exit/domain';
 import {
   ServiceError,
-  caseProgress,
+  caseProgressSummary,
   getCase,
   listActiveUsers,
   listAttachments,
@@ -92,7 +92,8 @@ export default async function CaseDetailPage({
   const dt = (d: Date | null) => (d ? formatInstant(d) : '-');
   const nameOf = (userId: string | null | undefined) =>
     userId ? (users.find((u) => u.userId === userId)?.displayName ?? null) : null;
-  const progress = await caseProgress(actor, id).catch(() => []);
+  const progressSummary = await caseProgressSummary(actor, id).catch(() => null);
+  const progress = progressSummary?.stages ?? [];
 
   return (
     <>
@@ -114,9 +115,15 @@ export default async function CaseDetailPage({
           officerName: nameOf((c as { assignedOfficerId?: string | null }).assignedOfficerId),
           managerName: (c as { managerName?: string | null }).managerName ?? null,
           managerUserName: nameOf((c as { managerUserId?: string | null }).managerUserId),
+          nextAction: progressSummary?.nextAction ?? null,
         }}
       />
       <Feedback err={sp.err} ok={sp.ok} />
+      {c.recordPurpose !== 'OPERATIONAL' ? (
+        <p className="banner-uat" role="note">
+          UAT — SIMULATED OFFBOARDING — THIS IS NOT A REAL EMPLOYEE SEPARATION
+        </p>
+      ) : null}
       {c.classification === 'RESTRICTED' ? <RestrictedBanner /> : null}
       <CaseNav caseId={id} active="overview" />
       {progress.length > 0 ? <ProgressStrip stages={progress} /> : null}
@@ -128,16 +135,13 @@ export default async function CaseDetailPage({
           <PurposeBadge purpose={c.recordPurpose} cohort={c.measurementCohort} />
         </h2>
         <dl className="kv">
-          <dt>Employee</dt>
+          {/* Employee identity, department and departure type live in the
+              case header (AE) - the summary keeps only what the header
+              doesn't show. */}
+          <dt>Employee source</dt>
           <dd>
-            {c.employeeDisplayName} ({c.employeeSourceId}, source {c.employeeSourceSystem})
+            {c.employeeSourceId} (source {c.employeeSourceSystem})
           </dd>
-          <dt>Department / location</dt>
-          <dd>
-            {c.department} / {c.location}
-          </dd>
-          <dt>Departure type</dt>
-          <dd>{c.departureType.replaceAll('_', ' ').toLowerCase()}</dd>
           <dt>Received</dt>
           <dd>
             {dt(c.receivedAt)} - {c.receiptSource}
@@ -446,7 +450,6 @@ export default async function CaseDetailPage({
                 <label htmlFor="p-role">Participant role</label>
                 <select id="p-role" name="participantRole" defaultValue="HR_SUPPORT">
                   <option value="HR_SUPPORT">HR support (requires an HR role)</option>
-                  <option value="OVERSIGHT">Oversight (auditor / privacy officer)</option>
                   <option value="FINANCE">Finance - action-form checklist only</option>
                   <option value="MANAGER">Manager - action-form review/approval only</option>
                 </select>
@@ -636,8 +639,7 @@ export default async function CaseDetailPage({
               {notes.map((n) => (
                 <li key={n.id}>
                   <span className="meta">
-                    {formatInstant(n.createdAt)} -{' '}
-                    {n.visibility === 'HR_ONLY' ? 'HR only' : 'HR + oversight'}
+                    {formatInstant(n.createdAt)} - HR only
                     {n.supersedesId ? ' - revision' : ''}
                   </span>
                   <br />
@@ -657,13 +659,7 @@ export default async function CaseDetailPage({
                   <label htmlFor="n-body">Note (1-4000 characters)</label>
                   <textarea id="n-body" name="body" rows={3} required maxLength={4000} />
                 </div>
-                <div className="field">
-                  <label htmlFor="n-vis">Visibility</label>
-                  <select id="n-vis" name="visibility" defaultValue="HR_ONLY">
-                    <option value="HR_ONLY">HR only</option>
-                    <option value="HR_AND_OVERSIGHT">HR and oversight</option>
-                  </select>
-                </div>
+                <input type="hidden" name="visibility" value="HR_ONLY" />
                 <button type="submit">Add note</button>
               </form>
             </details>

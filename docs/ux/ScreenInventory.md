@@ -9,7 +9,7 @@
 | UX-005 | Create Case — Departure Details | HR | Enter type, receipt, dates, owner, classification, cohort | Exact time; validation; terminations restricted. |
 | UX-006 | Create Case — Review | HR | Review source, dates, scope and attachments before save/submit | Shows missing fields and no automatic effects. |
 | UX-007 | Case Overview | HR/authorized participant | Understand status, next action, deadlines and exceptions | Role-specific; restricted banner; effective time prominent. |
-| UX-008 | Case Workflow Timeline | HR/auditor | See tasks, dependencies, owners, states and history | Original/current due dates; waivers/blockers visible. |
+| UX-008 | Case Workflow Timeline | HR | See tasks, dependencies, owners, states and history | Original/current due dates; waivers/blockers visible. |
 | UX-009 | Task Detail | Assigned role | Complete/block/reassign task with evidence | Minimum case data; typed evidence; audit. |
 | UX-010 | Department Queue | IT/Finance/Managers | Work assigned tasks efficiently | No unrelated HR data; urgency and due sorting. |
 | UX-011 | Case Approval | HR Manager | Approve/return case and instantiate workflow | Source/date/classification review; attestation. |
@@ -25,8 +25,8 @@
 | UX-021 | Reports Home | HR/authorized leaders | Select operational/control reports | Cohort/date/filter context; privacy safeguards. |
 | UX-022 | KPI Detail | HR/Process Analyst | Inspect numerator, denominator, cases and trends | Permission-aware drilldown; exclusions visible. |
 | UX-023 | Aggregate Exit Report | HR/approved managers | View protected trends/themes | Small-cohort suppression; no identifiable drillthrough. |
-| UX-024 | Audit History | Auditor/HR/privacy | Search case/object/access/change events | Read-only; safe metadata. |
-| UX-025 | Sensitive Access Review | Privacy/Auditor | Review restricted views/downloads/exports/break glass | No unnecessary content in listing. |
+| UX-024 | Audit History | HR Manager | Search case/object/access/change events | Read-only; safe metadata. |
+| UX-025 | Sensitive Access Review | HR Manager | Review restricted views/downloads/exports/break glass | No unnecessary content in listing. |
 | UX-026 | User/Role Administration | Authorized admin | Grant/revoke scoped roles | Maker-checker; no self-escalation. |
 | UX-027 | Workflow Administration | HR/Product governance | Draft, validate, diff and activate workflow versions | Impact/effective date; used versions immutable. |
 | UX-028 | Template Administration | HR governance | Manage document/notification/survey versions | Placeholder validation; preview; approval. |

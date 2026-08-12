@@ -1,10 +1,17 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ServiceError, getOrgOverview, keyOfficeholders } from '@exit/db';
-import { can, formatInstant } from '@exit/domain';
+import {
+  ServiceError,
+  getOrgOverview,
+  keyOfficeholders,
+  listDirectoryAccounts,
+  listDirectoryPeopleForMapping,
+} from '@exit/db';
+import { ROLES, can, formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
+import { enableDirectoryAccountAction, mapDirectoryPersonAction } from './actions';
 
 export const metadata: Metadata = { title: 'Organization and assignment mapping' };
 export const dynamic = 'force-dynamic';
@@ -30,11 +37,16 @@ export default async function OrganizationAdminPage({
   if (!can(actor, 'admin.organization') && !can(actor, 'org.view')) redirect('/unauthorized');
   const sp = await searchParams;
 
+  const canMap = can(actor, 'admin.roles');
   let data: Awaited<ReturnType<typeof getOrgOverview>>;
   let officeholders: Awaited<ReturnType<typeof keyOfficeholders>>;
+  let mappedAccounts: Awaited<ReturnType<typeof listDirectoryAccounts>> = [];
+  let mappablePeople: Awaited<ReturnType<typeof listDirectoryPeopleForMapping>> = [];
   try {
     data = await getOrgOverview(actor);
     officeholders = await keyOfficeholders(actor);
+    mappedAccounts = await listDirectoryAccounts(actor);
+    if (canMap) mappablePeople = await listDirectoryPeopleForMapping(actor);
   } catch (e) {
     if (e instanceof ServiceError)
       return (
@@ -162,6 +174,111 @@ export default async function OrganizationAdminPage({
               </tbody>
             </table>
           </div>
+        )}
+      </section>
+
+      <section className="panel" aria-labelledby="map-h">
+        <h2 id="map-h">Directory role mapping (live UAT)</h2>
+        <p className="hint">
+          Map real colleagues from the synchronized directory to their application responsibilities
+          (DEC-043). Accounts exist only in this local environment; sign-in lists them under
+          &quot;Directory-mapped staff&quot;. Every creation, grant and enable/disable is audited.
+        </p>
+        {mappedAccounts.length === 0 ? (
+          <p className="hint">No directory-mapped accounts yet.</p>
+        ) : (
+          <div className="table-wrap" tabIndex={0}>
+            <table className="data">
+              <caption className="visually-hidden">Directory-mapped accounts</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Person</th>
+                  <th scope="col">Department</th>
+                  <th scope="col">Application roles</th>
+                  <th scope="col">Status</th>
+                  {canMap ? <th scope="col">Actions</th> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {mappedAccounts.map((u) => (
+                  <tr key={u.userId}>
+                    <td>{u.displayName}</td>
+                    <td>{u.department ?? '-'}</td>
+                    <td>{u.roles.join(', ') || 'none'}</td>
+                    <td>{u.isActive ? 'Active' : 'Disabled'}</td>
+                    {canMap ? (
+                      <td>
+                        {u.isActive ? (
+                          <span className="hint">
+                            Disable / roles: <Link href="/admin/system">System</Link> /{' '}
+                            <Link href="/admin">Users</Link>
+                          </span>
+                        ) : (
+                          <details className="action">
+                            <summary>Re-enable</summary>
+                            <form action={enableDirectoryAccountAction} className="stack">
+                              <input type="hidden" name="userId" value={u.userId} />
+                              <div className="field">
+                                <label htmlFor={`en-reason-${u.userId}`}>Reason (audited)</label>
+                                <input id={`en-reason-${u.userId}`} name="reason" required />
+                              </div>
+                              <button type="submit">Re-enable account (audited)</button>
+                            </form>
+                          </details>
+                        )}
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {canMap ? (
+          <details className="action">
+            <summary>Map a directory person to an application account</summary>
+            <form action={mapDirectoryPersonAction} className="stack">
+              <div className="field">
+                <label htmlFor="map-person">Directory person</label>
+                <select id="map-person" name="person" required defaultValue="">
+                  <option value="" disabled>
+                    Choose from the synchronized directory...
+                  </option>
+                  {mappablePeople.map((p) => (
+                    <option
+                      key={`${p.sourceSystem}|${p.sourceId}`}
+                      value={`${p.sourceSystem}|${p.sourceId}`}
+                    >
+                      {p.displayName}
+                      {p.jobTitle ? ` - ${p.jobTitle}` : ''}
+                      {p.department ? ` (${p.department})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="hint">
+                  Only active people with a work email appear; run a synchronization first if the
+                  list looks stale.
+                </p>
+              </div>
+              <fieldset>
+                <legend>Application roles</legend>
+                {ROLES.map((r) => (
+                  <label key={r} style={{ display: 'block', fontWeight: 400 }}>
+                    <input type="checkbox" name="roles" value={r} /> {r.replaceAll('_', ' ')}
+                  </label>
+                ))}
+              </fieldset>
+              <div className="field">
+                <label htmlFor="map-reason">Reason (audited)</label>
+                <input id="map-reason" name="reason" required maxLength={300} />
+              </div>
+              <button type="submit">Create account and grant roles (audited)</button>
+            </form>
+          </details>
+        ) : (
+          <p className="hint">
+            Account creation and role grants require the System Administrator (role separation).
+          </p>
         )}
       </section>
 

@@ -178,8 +178,8 @@ test('Scenario I - audit investigation in the Audit Centre', async ({ page }) =>
   await expect(page.getByRole('link', { name: 'Export CSV (audited)' })).toBeVisible();
   await signOut(page);
 
-  // The auditor investigates a specific case end to end.
-  await signInAs(page, 'Auditor');
+  // The HR Manager filters by outcome (DEC-042: HR is the audit audience).
+  await signInAs(page, 'HR Manager');
   await page.goto('/audit');
   await expect(page.getByRole('heading', { name: 'Audit centre' })).toBeVisible();
   await page.locator('#af-result').selectOption('DENIED');
