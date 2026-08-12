@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
-import { BRAND, can } from '@exit/domain';
+import { can } from '@exit/domain';
 import { liveDirectoryPresence } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { logoutAction } from '@/app/signin/actions';
 import { ActiveLink, BackButton, Breadcrumbs, MobileMenu } from '@/components/chrome';
+import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -69,14 +70,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="app-shell">
       <aside className="sidebar">
         <Link className="sidebar__brand" href="/">
-          {/* eslint-disable-next-line @next/next/no-img-element -- small static brand asset */}
-          <img
-            src={BRAND.logoWebPath}
-            alt={BRAND.logoAlt}
-            className="sidebar__logo"
-            width={BRAND.logoWidth}
-            height={BRAND.logoHeight}
-          />
+          <BrandMark />
           <span>Offboarding</span>
         </Link>
         {nav('Primary')}
@@ -95,14 +89,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <header className="topbar">
           <MobileMenu>
             <Link className="sidebar__brand" href="/">
-              {/* eslint-disable-next-line @next/next/no-img-element -- small static brand asset */}
-              <img
-                src={BRAND.logoWebPath}
-                alt={BRAND.logoAlt}
-                className="sidebar__logo"
-                width={BRAND.logoWidth}
-                height={BRAND.logoHeight}
-              />
+              <BrandMark />
               <span>Offboarding</span>
             </Link>
             {nav('Mobile')}

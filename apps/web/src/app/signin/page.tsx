@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getConfig } from '@exit/config';
-import { BRAND } from '@exit/domain';
 import { listActiveUsers } from '@exit/db';
 import { currentUser } from '@/lib/session';
+import { BrandMark } from '@/components/BrandMark';
 import { Feedback } from '@/components/ui';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { devLoginAction } from './actions';
@@ -27,16 +27,7 @@ export default async function SignInPage({
     <main id="main" className="signin">
       <section className="signin__brand" aria-label="About this system">
         <div>
-          <span className="signin__logo-box">
-            {/* eslint-disable-next-line @next/next/no-img-element -- static brand asset */}
-            <img
-              src={BRAND.logoWebPath}
-              alt={BRAND.logoAlt}
-              className="signin-logo"
-              width={BRAND.logoWidth}
-              height={BRAND.logoHeight}
-            />
-          </span>
+          <BrandMark size="lg" />
           <p className="signin__product">Offboarding Platform</p>
           <p className="signin__tagline">
             Structured, auditable employee offboarding for Bert&apos;s Auto Parts Ltd.
