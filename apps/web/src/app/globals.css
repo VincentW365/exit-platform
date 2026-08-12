@@ -177,43 +177,18 @@ h3 {
   text-decoration: none;
   padding: 0.25rem 0.35rem;
 }
-/* Brand mark: the approved v1 logo (pinned in @exit/domain BRAND) is a PNG
-   with a white canvas baked around the artwork (artwork box x 92-1084,
-   y 170-714 within the 1184x880 canvas). The window crops to the artwork and
-   the plate frames it deliberately, so the mark reads as designed branding
-   rather than a pasted image. Re-measure these ratios if the asset version
-   in BRAND ever changes. */
+/* Brand mark: transparent web variant of the approved logo (BRAND.logoMark*,
+   white canvas removed and trimmed), so the mark sits directly on the navy
+   chrome instead of inside a white plate. The subtle drop shadow lifts it
+   off the gradient; the artwork's own outlines carry the contrast. */
 .brand-mark {
-  display: inline-flex;
-  flex: none;
-  background: #fff;
-  border-radius: 8px;
-  padding: 0.32rem 0.5rem;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.14),
-    0 2px 6px rgba(6, 12, 24, 0.35);
-}
-.brand-mark__window {
-  position: relative;
-  overflow: hidden;
-  height: var(--brand-mark-h, 30px);
-  aspect-ratio: 992 / 544;
-}
-.brand-mark__window img {
-  position: absolute;
-  max-width: none;
-  width: calc(100% * 1184 / 992);
-  height: auto;
-  left: calc(-100% * 92 / 992);
-  top: calc(-100% * 170 / 544);
+  display: block;
+  height: var(--brand-mark-h, 44px);
+  width: auto;
+  filter: drop-shadow(0 2px 5px rgba(3, 9, 20, 0.45));
 }
 .brand-mark--lg {
-  --brand-mark-h: 74px;
-  border-radius: var(--radius-lg);
-  padding: 0.75rem 1rem;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.16),
-    var(--shadow-md);
+  --brand-mark-h: 118px;
 }
 
 .side-nav {
