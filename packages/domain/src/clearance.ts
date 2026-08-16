@@ -1,13 +1,23 @@
 /**
- * Final clearance gate (Directive 3 section O).
+ * Final clearance gate (Directive 3 section O, redesigned by Directive 6.3 AA:
+ * clearance from EVIDENCE, not logins).
  *
  * The evaluation is pure: the service gathers the facts, this module decides.
+ * Dual-mode by construction: a workflow instance that carries IT/FINANCE
+ * department tasks (every pre-redesign v1 instance) is judged by its task
+ * completions - historical cases clear under the rules they ran under. A v2
+ * instance has no department-login tasks; IT and Finance are judged by
+ * email-action evidence (sent / acknowledged / confirmed / approved
+ * exception).
+ *
  * Exit-survey completion is deliberately NOT an input - it never blocks
- * clearance (fixed default 20 / O).
+ * clearance (fixed default 20 / O). Manager approval of the Action Form is
+ * not an input anywhere (Directive 6.3 D).
  */
 import { createHash } from 'node:crypto';
 import { assetsSatisfyClearance, type AssetItemLike } from './assets.ts';
 import { HANDOVER_SATISFIED_STATUSES, type HandoverStatus } from './handover.ts';
+import { FORM_DONE_STATUSES } from './actionForm.ts';
 import type { TaskKind, TaskStatus } from './workflow.ts';
 
 export interface ClearanceTaskFact {
@@ -20,6 +30,17 @@ export interface ClearanceTaskFact {
   department?: string;
 }
 
+/** Email-action evidence for the v2 gate (Directive 6.3 AA/U). */
+export interface ClearanceEmailActionFact {
+  notificationType: string;
+  applicable: boolean;
+  sentAt: Date | null;
+  acknowledgedAt: Date | null;
+  completionConfirmedAt: Date | null;
+  /** RECIPIENT_MISSING / ACKNOWLEDGEMENT_OVERDUE / AUTO_SEND_BLOCKED approved. */
+  exceptionApproved: boolean;
+}
+
 export interface ClearanceFacts {
   departureType: string;
   tasks: readonly ClearanceTaskFact[];
@@ -28,16 +49,30 @@ export interface ClearanceFacts {
   letterRequired: boolean;
   actionFormStatus: string | null;
   assets: readonly AssetItemLike[];
-  assetUnresolvedExceptionApproved: boolean;
+  /** Item ids covered by a resolved ASSET_UNRESOLVED exception (per item). */
+  approvedUnresolvedAssetIds: readonly string[];
   handoverRequired: boolean;
   handoverStatus: HandoverStatus | null;
   openCriticalExceptionCount: number;
   accessSecurityExceptionApproved: boolean;
+  /** Directive 6.3: email-action evidence per applicable action. */
+  emailActions: readonly ClearanceEmailActionFact[];
+  /** Any benefits applicability still UNKNOWN? (blocks: uncertainty is work.) */
+  benefitsUnresolvedCount: number;
 }
 
 /** Directive 6.2 (Z): the decision-screen grouping for readiness items. */
 export type ClearanceGroup =
-  'HR' | 'Manager' | 'IT' | 'Finance' | 'Assets' | 'Documents' | 'Handover' | 'Security';
+  | 'HR'
+  | 'Manager'
+  | 'IT'
+  | 'Finance'
+  | 'Providers'
+  | 'Benefits'
+  | 'Assets'
+  | 'Documents'
+  | 'Handover'
+  | 'Security';
 
 export interface ClearanceItem {
   key: string;
@@ -61,8 +96,12 @@ const DEPT_GROUP: Record<string, { group: ClearanceGroup; label: string }> = {
   LINE_MANAGER: { group: 'Manager', label: 'Manager tasks' },
 };
 
+const INTERNAL_EMAIL_TYPES = ['IT_ACCESS_REMOVAL', 'FINANCE_OFFBOARDING'];
+
 export function evaluateClearance(f: ClearanceFacts): ClearanceReadiness {
   const items: ClearanceItem[] = [];
+  const hasItTasks = f.tasks.some((t) => (t.department ?? 'HR') === 'IT');
+  const hasFinanceTasks = f.tasks.some((t) => (t.department ?? 'HR') === 'FINANCE');
 
   // O.1: every required workflow task completed or validly waived. The
   // aggregate item keeps its historical key; per-department items carry the
@@ -100,23 +139,101 @@ export function evaluateClearance(f: ClearanceFacts): ClearanceReadiness {
     });
   }
 
-  // O.2 / I.10: access revocation completed, or an HR_MANAGER-approved
-  // security exception recorded.
+  // O.2 / I.10 (legacy mode): access revocation completed, or an
+  // HR_MANAGER-approved security exception recorded. Only meaningful when the
+  // pinned instance actually carries access tasks (v1).
   const accessTasks = f.tasks.filter((t) => t.taskKind === 'ACCESS_REVOCATION');
-  const accessDone = accessTasks.length > 0 && accessTasks.every((t) => t.status === 'COMPLETED');
-  items.push({
-    key: 'accessRevocation',
-    label: 'IT access revocation',
-    group: 'Security',
-    ok: accessDone || (accessTasks.length > 0 && f.accessSecurityExceptionApproved),
-    detail: accessDone
-      ? 'Access revocation is completed.'
-      : accessTasks.length === 0
-        ? 'No access-revocation task exists in this workflow.'
+  if (accessTasks.length > 0) {
+    const accessDone = accessTasks.every((t) => t.status === 'COMPLETED');
+    items.push({
+      key: 'accessRevocation',
+      label: 'IT access revocation',
+      group: 'Security',
+      ok: accessDone || f.accessSecurityExceptionApproved,
+      detail: accessDone
+        ? 'Access revocation is completed.'
         : f.accessSecurityExceptionApproved
           ? 'Incomplete, covered by an HR-Manager-approved security exception (I.10).'
           : 'Access revocation is not completed and no approved security exception exists.',
-  });
+    });
+  }
+
+  // Directive 6.3 AA (v2 mode): department + provider evidence from email
+  // actions. IT requires confirmation-grade evidence; Finance requires the
+  // notification to have gone out; providers require sent-where-applicable.
+  if (!hasItTasks) {
+    const it = f.emailActions.find((a) => a.notificationType === 'IT_ACCESS_REMOVAL');
+    const itOk = !!it && (it.completionConfirmedAt !== null || it.exceptionApproved);
+    items.push({
+      key: 'itEvidence',
+      label: 'IT access removal',
+      group: 'IT',
+      ok: it ? itOk : false,
+      detail: !it
+        ? 'No IT access-removal action exists for this case.'
+        : it.completionConfirmedAt
+          ? 'Confirmed complete.'
+          : it.exceptionApproved
+            ? 'Covered by an approved exception.'
+            : it.acknowledgedAt
+              ? 'Acknowledged - completion evidence still required (delivery is not completion).'
+              : it.sentAt
+                ? 'Notification sent - completion evidence still required.'
+                : 'Notification not sent yet.',
+    });
+  }
+  if (!hasFinanceTasks) {
+    const fin = f.emailActions.find((a) => a.notificationType === 'FINANCE_OFFBOARDING');
+    const finOk = !!fin && (fin.sentAt !== null || fin.exceptionApproved);
+    items.push({
+      key: 'financeEvidence',
+      label: 'Finance notification',
+      group: 'Finance',
+      ok: fin ? finOk : false,
+      detail: !fin
+        ? 'No Finance notification exists for this case.'
+        : fin.sentAt
+          ? fin.acknowledgedAt
+            ? 'Sent and acknowledged.'
+            : 'Sent.'
+          : fin.exceptionApproved
+            ? 'Covered by an approved exception.'
+            : 'Notification not sent yet.',
+    });
+  }
+  const providerActions = f.emailActions.filter(
+    (a) => !INTERNAL_EMAIL_TYPES.includes(a.notificationType) && a.applicable,
+  );
+  if (providerActions.length > 0) {
+    const unsent = providerActions.filter((a) => a.sentAt === null && !a.exceptionApproved);
+    items.push({
+      key: 'providers',
+      label: 'External provider notifications',
+      group: 'Providers',
+      ok: unsent.length === 0,
+      detail:
+        unsent.length === 0
+          ? `All ${providerActions.length} applicable provider notification(s) sent or covered by an approved exception.`
+          : `${unsent.length} applicable provider notification(s) not sent.`,
+    });
+  }
+
+  // Directive 6.3 V: unresolved benefits applicability blocks - uncertainty
+  // is open work, not something to clear past. Applies to the HR-validated
+  // (v2) model only; legacy instances ran benefits as workflow tasks (AD: no
+  // retroactive reinterpretation).
+  if (!hasItTasks && !hasFinanceTasks) {
+    items.push({
+      key: 'benefits',
+      label: 'Benefits applicability',
+      group: 'Benefits',
+      ok: f.benefitsUnresolvedCount === 0,
+      detail:
+        f.benefitsUnresolvedCount === 0
+          ? 'All benefits applicability determinations are resolved.'
+          : `${f.benefitsUnresolvedCount} benefits determination(s) still UNKNOWN.`,
+    });
+  }
 
   // O.3: required documents approved and rendered where applicable.
   items.push({
@@ -129,17 +246,20 @@ export function evaluateClearance(f: ClearanceFacts): ClearanceReadiness {
       : `Letter status: ${f.letterStatus ?? 'none'} (RENDERED or MANUALLY_ISSUED required).`,
   });
 
-  // O.4: action form at its required final state.
+  // O.4: action form complete (new model) or approved (legacy rows).
   items.push({
     key: 'actionForm',
-    label: 'Employee action form',
+    label: 'Offboarding action form',
     group: 'Documents',
-    ok: f.actionFormStatus === 'APPROVED',
-    detail: `Action form status: ${f.actionFormStatus ?? 'none'} (APPROVED required).`,
+    ok:
+      f.actionFormStatus !== null &&
+      (FORM_DONE_STATUSES as readonly string[]).includes(f.actionFormStatus),
+    detail: `Action form status: ${f.actionFormStatus ?? 'none'} (COMPLETE required).`,
   });
 
-  // O.5: every required asset has a documented disposition.
-  const assets = assetsSatisfyClearance(f.assets, f.assetUnresolvedExceptionApproved);
+  // O.5: every required asset has a documented disposition (per-item
+  // exception coverage - Directive 6.3 logic-audit fix).
+  const assets = assetsSatisfyClearance(f.assets, f.approvedUnresolvedAssetIds);
   items.push({
     key: 'assets',
     label: 'Asset dispositions',

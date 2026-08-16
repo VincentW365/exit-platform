@@ -31,6 +31,7 @@ import {
   resetDb,
   seedStage3Fixtures,
   VALID_DRAFT,
+  FIXTURE_CONFIRMED_LAST_DAY,
 } from './helpers.ts';
 
 const prisma = getPrisma();
@@ -45,7 +46,7 @@ const TEST_DRAFT = {
   ...VALID_DRAFT,
   recordPurpose: 'TEST',
   measurementCohort: null,
-  confirmedLastDay: '2026-08-14T00:00:00.000Z',
+  confirmedLastDay: FIXTURE_CONFIRMED_LAST_DAY,
 } as const;
 
 async function makeActiveCase(overrides: Record<string, unknown> = {}): Promise<string> {
@@ -54,10 +55,29 @@ async function makeActiveCase(overrides: Record<string, unknown> = {}): Promise<
   await transitionCase(manager.actor, created.caseId, 'approve');
   await readyAssignment(created.caseId, manager.actor, officer.userId, lineMgr.userId);
   await activateCase(manager.actor, created.caseId);
+  // This suite tests the MANUAL dispatch mechanics in isolation: cancel the
+  // Directive 6.3 derived records (and their pending outbox rows) so the
+  // provider-call counting below stays deterministic. The derived pipeline
+  // has its own dedicated suite (directive63EmailActions).
+  const derived = await prisma.notificationRecord.findMany({
+    where: {
+      caseId: created.caseId,
+      origin: 'DERIVED',
+      status: { in: ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'] },
+    },
+    select: { id: true },
+  });
+  for (const r of derived) {
+    await transitionNotification(manager.actor, r.id, 'cancel', {
+      reason: 'Outbox suite isolates the manual dispatch path.',
+    });
+  }
   return created.caseId;
 }
 
 async function approvedNotification(caseId: string) {
+  // The cancelled derived IT record frees the idempotency key for a manual
+  // re-preparation (the service issues a retry-suffixed key).
   const record = await prepareNotification(officer.actor, caseId, {
     notificationType: 'IT_ACCESS_REMOVAL',
   });
@@ -270,10 +290,11 @@ describe('transactional outbox (X.1-X.6)', () => {
 
 describe('identity lifecycle (X.8, X.9)', () => {
   it('disabling a user revokes sessions immediately and flags orphaned work (X.8)', async () => {
-    // Give the victim an assigned open task first.
+    // Give the victim an assigned open task first (v2 workflows carry no IT
+    // tasks; orphan detection is department-agnostic).
     const caseId = await makeActiveCase({ employeeSourceId: 'EMP-TEST-002' });
     const task = await prisma.workflowTask.findFirstOrThrow({
-      where: { caseId, department: 'IT', status: { not: 'NOT_READY' } },
+      where: { caseId, status: { not: 'NOT_READY' } },
     });
     await prisma.workflowTask.update({
       where: { id: task.id },

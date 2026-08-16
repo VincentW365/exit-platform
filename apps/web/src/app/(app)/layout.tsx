@@ -8,6 +8,24 @@ import { ActiveLink, BackButton, Breadcrumbs, MobileMenu } from '@/components/ch
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
+/** Human role names for the topbar (correction 7); retired roles kept for safety. */
+const ROLE_LABELS: Record<string, string> = {
+  HR_MANAGER: 'HR Manager',
+  HR_OFFICER: 'HR Officer',
+  LINE_MANAGER: 'Line Manager',
+  SYSTEM_ADMIN: 'System Administrator',
+  IT_RESPONDER: 'IT Responder',
+  FINANCE_RESPONDER: 'Finance Responder',
+  AUDITOR: 'Auditor',
+  PRIVACY_OFFICER: 'Privacy Officer',
+};
+const roleLabel = (r: string): string =>
+  ROLE_LABELS[r] ??
+  r
+    .replaceAll('_', ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, actor } = await requireAuth();
   const themeCookie = (await cookies()).get('exit_theme')?.value;
@@ -22,7 +40,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const work: Item[] = [{ href: '/', label: 'Dashboard' }];
   if (can(actor, 'case.list')) work.push({ href: '/cases', label: 'Cases' });
   if (can(actor, 'case.create')) work.push({ href: '/cases/new', label: 'New case' });
-  if (can(actor, 'queue.view')) work.push({ href: '/queue', label: 'My queue' });
+  if (can(actor, 'queue.view')) work.push({ href: '/queue', label: 'My work' });
   if (can(actor, 'exceptions.viewFeed')) work.push({ href: '/exceptions', label: 'Exceptions' });
 
   const insight: Item[] = [];
@@ -113,7 +131,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div className="topbar__user">
             <span className="topbar__identity">
               <strong>{user.displayName}</strong>
-              <span className="topbar__roles">{user.roles.join(', ') || 'no role'}</span>
+              <span className="topbar__roles">
+                {user.roles.map(roleLabel).join(', ') || 'no role'}
+              </span>
             </span>
             <ThemeToggle initial={theme} />
             <form action={logoutAction}>

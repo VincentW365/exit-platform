@@ -54,11 +54,12 @@ function assertView(actor: Actor, ctx: CaseAccessContext): void {
   throw ServiceError.notFound();
 }
 
+/** AC invariants 9-10: only ACTIVE accounts holding an unrevoked role. */
 async function activeUsersWithRole(role: string) {
   const prisma = getPrisma();
   return prisma.user.findMany({
     where: { isActive: true, roleAssignments: { some: { role: role as never, revokedAt: null } } },
-    select: { id: true, displayName: true, department: true },
+    select: { id: true, displayName: true, department: true, workEmail: true },
     orderBy: { displayName: 'asc' },
   });
 }
@@ -97,7 +98,8 @@ export interface AssignmentPlan {
     it: Array<{ id: string; displayName: string; openTasks: number }>;
     finance: Array<{ id: string; displayName: string; openTasks: number }>;
     managers: Array<{ id: string; displayName: string }>;
-    officers: Array<{ id: string; displayName: string }>;
+    /** label = human choice text: name plus directory job title (or role). */
+    officers: Array<{ id: string; displayName: string; label: string }>;
   };
   workflow: {
     departureType: string;
@@ -169,6 +171,27 @@ export async function getAssignmentPlan(actor: Actor, caseId: string): Promise<A
     ...officerOnly,
     ...hrManagers.filter((m) => !officerOnly.some((o) => o.id === m.id)),
   ].sort((a, b) => a.displayName.localeCompare(b.displayName));
+  // Human choice labels (Directive 6.3 correction 7): the directory job title
+  // when the account maps to a directory person (6.1: workEmail match),
+  // otherwise the plain role name.
+  const officerRoleLabel = new Map<string, string>();
+  for (const u of officerOnly) officerRoleLabel.set(u.id, 'HR Officer');
+  for (const m of hrManagers)
+    if (!officerRoleLabel.has(m.id)) officerRoleLabel.set(m.id, 'HR Manager');
+  const officerEmails = officerUsers.map((u) => u.workEmail).filter((e) => e.length > 0);
+  const officerDirectoryRows =
+    officerEmails.length > 0
+      ? await prisma.employeeSourceRecord.findMany({
+          where: { workEmail: { in: officerEmails, mode: 'insensitive' }, jobTitle: { not: null } },
+          select: { workEmail: true, jobTitle: true },
+        })
+      : [];
+  const officerLabel = (u: { id: string; displayName: string; workEmail: string }): string => {
+    const jobTitle = officerDirectoryRows.find(
+      (r) => r.workEmail?.toLowerCase() === u.workEmail.toLowerCase(),
+    )?.jobTitle;
+    return `${u.displayName} - ${jobTitle ?? officerRoleLabel.get(u.id) ?? 'HR Officer'}`;
+  };
   // Workload indicator (J): open assigned tasks per responder.
   const openCounts = await prisma.workflowTask.groupBy({
     by: ['assigneeId'],
@@ -256,7 +279,11 @@ export async function getAssignmentPlan(actor: Actor, caseId: string): Promise<A
         openTasks: countFor(u.id),
       })),
       managers: managerUsers.map((u) => ({ id: u.id, displayName: u.displayName })),
-      officers: officerUsers.map((u) => ({ id: u.id, displayName: u.displayName })),
+      officers: officerUsers.map((u) => ({
+        id: u.id,
+        displayName: u.displayName,
+        label: officerLabel(u),
+      })),
     },
     workflow: {
       departureType: c.departureType,

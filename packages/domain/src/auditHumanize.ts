@@ -102,6 +102,43 @@ function sentence(e: HumanizableEvent): string {
       return `A material case change invalidated the document approval`;
     case 'NOTIFICATION_APPROVED':
       return `${who} approved the notification and bound it to its content checksum`;
+    // Directive 6.3 AB/correction 11: automated actions read as sentences.
+    case 'DERIVED_ACTIONS_COMPUTED':
+      return `The system determined the required actions for this case — rule set ${str(m, 'rulesVersion') ?? '-'} (${str(m, 'derivedCount') ?? '?'} action(s), ${str(m, 'notApplicableCount') ?? '0'} not applicable)`;
+    case 'DERIVED_ACTION_OVERRIDDEN':
+      return `${who} overrode the automatic determination for "${str(m, 'title') ?? str(m, 'actionKey') ?? 'an action'}"${withReason}`;
+    case 'BENEFITS_APPLICABILITY_SET':
+      return `${who} confirmed benefits applicability (group health: ${str(m, 'groupHealth') ?? '-'}, group life: ${str(m, 'groupLife') ?? '-'}, other provider: ${str(m, 'otherProvider') ?? '-'})`;
+    case 'NOTIFICATION_AUTO_PREPARED':
+      return `The system prepared the ${str(m, 'notificationType')?.replaceAll('_', ' ').toLowerCase() ?? ''} notification — rule: ${str(m, 'ruleKey') ?? 'derived requirement'}`;
+    case 'NOTIFICATION_AUTO_APPROVED':
+      return `The system released the notification for automatic sending (control level ${str(m, 'controlLevel') ?? 'AUTO_SEND'})${str(m, 'scheduledSendAt') ? ` — scheduled for ${str(m, 'scheduledSendAt')}` : ''}`;
+    case 'NOTIFICATION_SENT':
+      return `The notification was submitted through the configured provider`;
+    case 'NOTIFICATION_ACKNOWLEDGED':
+      return str(m, 'via') === 'HR_RECORDED'
+        ? `${who} recorded receipt confirmation (${str(m, 'channel') ?? 'evidence'})`
+        : `Receipt was acknowledged through the secure confirmation link`;
+    case 'NOTIFICATION_COMPLETION_CONFIRMED':
+      return str(m, 'via') === 'HR_RECORDED'
+        ? `${who} recorded completion evidence (${str(m, 'channel') ?? 'evidence'})${withReason}`
+        : `Completion was confirmed through the secure confirmation link`;
+    case 'NOTIFICATION_RECIPIENT_SET':
+      return `${who} entered the notification recipient (${str(m, 'scope') === 'CASE_ONLY' ? 'this case only' : 'saved for future cases'})`;
+    case 'ACK_TOKEN_ISSUED':
+      return `A secure confirmation link was issued (expires ${str(m, 'expiresAt') ?? '-'})`;
+    case 'ACK_TOKEN_USED':
+      return `The secure confirmation link was used (${str(m, 'purpose')?.replaceAll('_', ' ').toLowerCase() ?? 'acknowledgement'})`;
+    case 'ACK_TOKEN_EXPIRED':
+      return `The secure confirmation link expired without being used`;
+    case 'ACK_TOKEN_REVOKED':
+      return `${who} revoked the secure confirmation link${withReason}`;
+    case 'FORM_SENT_FOR_HR_REVIEW':
+      return `${who} finished preparing the action form (ready for review)`;
+    case 'FORM_HR_REVIEWED':
+      return `${who} reviewed the action form (management oversight)`;
+    case 'FORM_COMPLETED':
+      return `${who} completed the action form (attested)`;
     case 'CLEARANCE_APPROVED':
       return `${who} approved final clearance`;
     case 'ACCESS_REVOCATION_COMPLETED':

@@ -72,8 +72,10 @@ test('directive 6.1 surfaces: responsive + axe sweep', async ({ page }) => {
   await sweep(page, '05-audit-centre');
   await signOut(page);
 
-  await signInAs(page, 'IT Responder');
+  // Directive 6.3: no IT login exists - the claimable-queue surface is
+  // captured for the HR Officer (same claim/return controls).
+  await signInAs(page, 'HR Officer');
   await page.goto('/queue?view=unassigned');
-  await sweep(page, '06-it-queue-claim');
+  await sweep(page, '06-queue-claim');
   await signOut(page);
 });

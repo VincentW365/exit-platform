@@ -59,7 +59,7 @@ export function MobileMenu({ children }: { children: ReactNode }) {
 const CRUMB_LABELS: Record<string, string> = {
   cases: 'Cases',
   new: 'New case',
-  queue: 'My queue',
+  queue: 'My work',
   exceptions: 'Exceptions',
   baseline: 'Baseline',
   reports: 'Reports',
@@ -69,7 +69,7 @@ const CRUMB_LABELS: Record<string, string> = {
   workflows: 'Workflows',
   system: 'System',
   health: 'Health',
-  outbox: 'Outbox',
+  outbox: 'Email delivery',
   recipients: 'Recipients',
   reasons: 'Reasons',
   pilot: 'Pilot',

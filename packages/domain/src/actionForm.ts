@@ -1,12 +1,61 @@
 /**
- * Digital offboarding Action Form rules (Directive 2 section F).
- * Checklist completion and approval are separate concepts; no checklist event
- * may calculate or alter pay - there are no financial amount fields at all.
+ * Digital offboarding Action Form rules.
+ *
+ * Directive 6.3 (D/E/F, corrections 1-2): the Action Form is an HR-controlled
+ * operational record. The assigned HR Officer prepares, reviews and COMPLETES
+ * ordinary forms; there is NO line-manager approval and no mandatory
+ * HR-Manager sign-off for routine completion. HR-Manager review (HR_REVIEWED)
+ * is an optional, configuration-gated oversight step. Checklist completion and
+ * approval remain separate concepts; no checklist event may calculate or alter
+ * pay - there are no financial amount fields at all.
+ *
+ * Legacy statuses (PENDING_MANAGER, PENDING_HR, APPROVED, RETURNED) remain
+ * representable forever: historical rows keep them and read paths must render
+ * them. New rows never enter the manager states.
  */
 export type ActionFormStatus =
-  'DRAFT' | 'RETURNED' | 'PENDING_MANAGER' | 'PENDING_HR' | 'APPROVED' | 'SUPERSEDED' | 'VOIDED';
+  // Live statuses under the HR-validated workflow (Directive 6.3 F).
+  | 'DRAFT'
+  | 'READY_FOR_HR_REVIEW'
+  | 'HR_REVIEWED'
+  | 'COMPLETE'
+  | 'RETURNED_FOR_CORRECTION'
+  // Terminal bookkeeping.
+  | 'SUPERSEDED'
+  | 'VOIDED'
+  // Legacy statuses - historical rows only; kept live-editable so no case is
+  // trapped in a dead-end state (Directive 6.3 A / AD).
+  | 'RETURNED'
+  | 'PENDING_MANAGER'
+  | 'PENDING_HR'
+  | 'APPROVED';
 
-export const FORM_EDITABLE_STATUSES: readonly ActionFormStatus[] = ['DRAFT', 'RETURNED'];
+/** Statuses whose HR sections may still be edited. */
+export const FORM_EDITABLE_STATUSES: readonly ActionFormStatus[] = [
+  'DRAFT',
+  'RETURNED_FOR_CORRECTION',
+  // Legacy live rows must not dead-end.
+  'RETURNED',
+];
+
+/**
+ * Statuses that count as the one live form per case. Includes the legacy live
+ * statuses so pre-redesign rows keep blocking duplicate creation.
+ */
+export const FORM_LIVE_STATUSES: readonly ActionFormStatus[] = [
+  'DRAFT',
+  'READY_FOR_HR_REVIEW',
+  'HR_REVIEWED',
+  'COMPLETE',
+  'RETURNED_FOR_CORRECTION',
+  'RETURNED',
+  'PENDING_MANAGER',
+  'PENDING_HR',
+  'APPROVED',
+];
+
+/** Statuses that satisfy the clearance gate (new COMPLETE or legacy APPROVED). */
+export const FORM_DONE_STATUSES: readonly ActionFormStatus[] = ['COMPLETE', 'APPROVED'];
 
 /** HR checklist items (F.4) - completion evidence, never approval authority. */
 export const HR_CHECKLIST_ITEMS = [
@@ -20,9 +69,16 @@ export const HR_CHECKLIST_ITEMS = [
   { key: 'hrisUpdate', label: 'HRIS update pending, complete or not applicable' },
 ] as const;
 
-/** Finance checklist items (F.5) - all work happens OUTSIDE the application. */
+/**
+ * Finance checklist items (F.5) - all work happens OUTSIDE the application.
+ * Directive 6.3 I/J: Finance no longer edits these in-app; HR records what the
+ * automated Finance notification and any returned evidence establish.
+ */
 export const FINANCE_CHECKLIST_ITEMS = [
-  { key: 'financeNotified', label: 'Finance manually notified' },
+  {
+    key: 'financeNotified',
+    label: 'Finance notified (automated notification or recorded evidence)',
+  },
   {
     key: 'workpaperInitiated',
     label: 'External final-pay workpaper initiated (outside the application)',
@@ -79,7 +135,29 @@ export function acknowledgementErrors(args: {
   return errors;
 }
 
-/** Submission readiness for manager review. */
+/**
+ * Directive 6.3 B: for immediate resignations the employee is usually gone
+ * before an acknowledgement can be obtained - suggest NOT_OBTAINED with the
+ * correct treatment instead of making HR discover the combination manually.
+ */
+export function suggestedAcknowledgement(departureType: string): {
+  status: AcknowledgementStatus;
+  reasonSuggestion: string | null;
+} {
+  if (departureType === 'IMMEDIATE_RESIGNATION') {
+    return {
+      status: 'NOT_OBTAINED',
+      reasonSuggestion:
+        'Immediate resignation - the employee departed before an acknowledgement could be obtained.',
+    };
+  }
+  if (departureType === 'TERMINATION') {
+    return { status: 'NOT_APPLICABLE', reasonSuggestion: null };
+  }
+  return { status: 'PENDING', reasonSuggestion: null };
+}
+
+/** Readiness gate for finishing preparation (submit for completion/review). */
 export function formSubmitErrors(args: {
   departureType: string;
   ackStatus: AcknowledgementStatus;
@@ -89,7 +167,7 @@ export function formSubmitErrors(args: {
   const errors: string[] = [];
   if (args.ackStatus === 'PENDING')
     errors.push(
-      'Employee acknowledgement must be recorded (or NOT_OBTAINED / NOT_APPLICABLE) before submission.',
+      'Employee acknowledgement must be recorded (or NOT_OBTAINED / NOT_APPLICABLE) before the form is finished.',
     );
   const pending = Object.entries(args.hrChecklist).filter(([, v]) => v === 'PENDING');
   if (pending.length > 0)
@@ -105,14 +183,40 @@ interface FormTransition {
   reasonRequired: boolean;
 }
 
+/**
+ * Directive 6.3 F + correction 1: DRAFT -> READY_FOR_HR_REVIEW -> COMPLETE,
+ * with the optional configuration-gated HR_REVIEWED step. Legacy live states
+ * (RETURNED, PENDING_MANAGER, PENDING_HR) may flow forward into the new model
+ * so no historical case is stranded; the manager-approval actions no longer
+ * exist.
+ */
 export const FORM_TRANSITIONS = {
-  submitToManager: { from: ['DRAFT', 'RETURNED'], to: 'PENDING_MANAGER', reasonRequired: false },
-  managerApprove: { from: ['PENDING_MANAGER'], to: 'PENDING_HR', reasonRequired: false },
-  managerReturn: { from: ['PENDING_MANAGER'], to: 'RETURNED', reasonRequired: true },
-  hrApprove: { from: ['PENDING_HR'], to: 'APPROVED', reasonRequired: false },
-  hrReturn: { from: ['PENDING_HR'], to: 'RETURNED', reasonRequired: true },
+  submitToHrReview: {
+    from: ['DRAFT', 'RETURNED_FOR_CORRECTION', 'RETURNED'],
+    to: 'READY_FOR_HR_REVIEW',
+    reasonRequired: false,
+  },
+  hrReview: { from: ['READY_FOR_HR_REVIEW'], to: 'HR_REVIEWED', reasonRequired: false },
+  complete: {
+    from: ['READY_FOR_HR_REVIEW', 'HR_REVIEWED', 'PENDING_MANAGER', 'PENDING_HR'],
+    to: 'COMPLETE',
+    reasonRequired: false,
+  },
+  return: {
+    from: ['READY_FOR_HR_REVIEW', 'HR_REVIEWED', 'PENDING_MANAGER', 'PENDING_HR'],
+    to: 'RETURNED_FOR_CORRECTION',
+    reasonRequired: true,
+  },
   void: {
-    from: ['DRAFT', 'RETURNED', 'PENDING_MANAGER', 'PENDING_HR'],
+    from: [
+      'DRAFT',
+      'READY_FOR_HR_REVIEW',
+      'HR_REVIEWED',
+      'RETURNED_FOR_CORRECTION',
+      'RETURNED',
+      'PENDING_MANAGER',
+      'PENDING_HR',
+    ],
     to: 'VOIDED',
     reasonRequired: true,
   },
@@ -130,3 +234,21 @@ export function formTransitionError(
   if (t.reasonRequired && !reason?.trim()) return `Action "${action}" requires a reason.`;
   return null;
 }
+
+/**
+ * Business-language status labels (Directive 6.3 correction 7): the UI speaks
+ * to HR users, technical state names stay internal.
+ */
+export const FORM_STATUS_LABELS: Readonly<Record<ActionFormStatus, string>> = {
+  DRAFT: 'Draft',
+  READY_FOR_HR_REVIEW: 'Ready for review',
+  HR_REVIEWED: 'Reviewed',
+  COMPLETE: 'Complete',
+  RETURNED_FOR_CORRECTION: 'Returned for correction',
+  SUPERSEDED: 'Superseded',
+  VOIDED: 'Voided',
+  RETURNED: 'Returned for correction (legacy)',
+  PENDING_MANAGER: 'Awaiting manager approval (legacy)',
+  PENDING_HR: 'Awaiting HR approval (legacy)',
+  APPROVED: 'Approved (legacy)',
+};

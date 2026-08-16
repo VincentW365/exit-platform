@@ -6,6 +6,7 @@ import {
   formSubmitErrors,
   formTransitionError,
   FINANCE_CHECKLIST_ITEMS,
+  FORM_TRANSITIONS,
   HR_CHECKLIST_ITEMS,
 } from '../src/actionForm.ts';
 import {
@@ -92,15 +93,21 @@ describe('action form rules (section F)', () => {
     expect(errors.some((e) => e.includes('unresolved'))).toBe(true);
   });
 
-  it('transitions: approvals in order, reasons on return/void', () => {
-    expect(formTransitionError('submitToManager', 'DRAFT')).toBeNull();
-    expect(formTransitionError('managerApprove', 'PENDING_MANAGER')).toBeNull();
-    expect(formTransitionError('hrApprove', 'PENDING_MANAGER')).toContain('not allowed');
-    expect(formTransitionError('hrApprove', 'PENDING_HR')).toBeNull();
-    expect(formTransitionError('managerReturn', 'PENDING_MANAGER', '')).toContain(
-      'requires a reason',
-    );
-    expect(formTransitionError('void', 'APPROVED', 'x')).toContain('not allowed'); // approved forms supersede
+  it('transitions: HR-validated flow, reasons on return/void, no manager approval (Directive 6.3 F)', () => {
+    expect(formTransitionError('submitToHrReview', 'DRAFT')).toBeNull();
+    expect(formTransitionError('complete', 'READY_FOR_HR_REVIEW')).toBeNull();
+    expect(formTransitionError('hrReview', 'READY_FOR_HR_REVIEW')).toBeNull();
+    expect(formTransitionError('complete', 'HR_REVIEWED')).toBeNull();
+    expect(formTransitionError('complete', 'DRAFT')).toContain('not allowed');
+    expect(formTransitionError('return', 'READY_FOR_HR_REVIEW', '')).toContain('requires a reason');
+    expect(formTransitionError('void', 'COMPLETE', 'x')).toContain('not allowed'); // completed forms supersede
+    // AC invariant 1: no manager-approval action exists in the machine.
+    expect(Object.keys(FORM_TRANSITIONS)).not.toContain('managerApprove');
+    expect(Object.keys(FORM_TRANSITIONS)).not.toContain('submitToManager');
+    // Legacy live rows are not dead-ends: they flow into the new model.
+    expect(formTransitionError('complete', 'PENDING_MANAGER')).toBeNull();
+    expect(formTransitionError('complete', 'PENDING_HR')).toBeNull();
+    expect(formTransitionError('submitToHrReview', 'RETURNED')).toBeNull();
   });
 });
 

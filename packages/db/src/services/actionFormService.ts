@@ -1,7 +1,11 @@
 /**
- * Digital offboarding Action Form (Directive 2 section F).
- * Checklists are completion evidence; approvals are attestations; no field
- * touches pay. Finance and manager participants get scoped surfaces only.
+ * Digital offboarding Action Form (Directive 2 section F, redesigned by
+ * Directive 6.3 D/E/F): an HR-controlled operational record. The assigned HR
+ * Officer prepares, reviews and COMPLETES ordinary forms; there is no manager
+ * approval and no mandatory HR-Manager sign-off (HR_REVIEWED is an optional
+ * configuration-gated oversight step). Checklists are completion evidence;
+ * completion is attested; no field touches pay. Historical manager-approval
+ * attestations and legacy statuses render forever.
  */
 import {
   acknowledgementErrors,
@@ -10,7 +14,9 @@ import {
   emptyChecklist,
   formSubmitErrors,
   formTransitionError,
+  suggestedAcknowledgement,
   FINANCE_CHECKLIST_ITEMS,
+  FORM_LIVE_STATUSES,
   HR_CHECKLIST_ITEMS,
   type Actor,
   type ChecklistState,
@@ -20,14 +26,9 @@ import { ServiceError } from '../errors.ts';
 import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
 import { renderActionFormPdf } from './renderService.ts';
 import { assertFeatureAllowed, loadCaseAccess } from './shared.ts';
+import { getSystemConfigValue } from './systemConfigService.ts';
 
-const LIVE_FORM_STATUSES = [
-  'DRAFT',
-  'RETURNED',
-  'PENDING_MANAGER',
-  'PENDING_HR',
-  'APPROVED',
-] as const;
+const LIVE_FORM_STATUSES = FORM_LIVE_STATUSES;
 
 function formFieldSnapshot(c: {
   caseNumber: string;
@@ -78,6 +79,10 @@ export async function createActionForm(actor: Actor, caseId: string) {
     orderBy: { version: 'desc' },
   });
 
+  // Directive 6.3 B/E: pre-populate what the platform already knows,
+  // including the acknowledgement treatment for departure types where the
+  // employee cannot realistically acknowledge (immediate resignation).
+  const suggestion = suggestedAcknowledgement(c.departureType);
   const correlationId = newCorrelationId();
   return prisma.$transaction(async (tx) => {
     const f = await tx.actionFormVersion.create({
@@ -88,6 +93,9 @@ export async function createActionForm(actor: Actor, caseId: string) {
         fieldSnapshot: formFieldSnapshot(c) as object,
         hrChecklist: emptyChecklist(HR_CHECKLIST_ITEMS) as object,
         financeChecklist: emptyChecklist(FINANCE_CHECKLIST_ITEMS) as object,
+        ...(suggestion.status !== 'PENDING'
+          ? { ackStatus: suggestion.status, ackReason: suggestion.reasonSuggestion }
+          : {}),
         createdById: actor.userId,
       },
     });
@@ -131,56 +139,48 @@ export async function getActionForm(actor: Actor, caseId: string) {
       })
     : [];
 
+  // Directive 6.3 corrections 1-2: the optional HR-Manager review step is
+  // configuration-gated and OFF by default.
+  const requireHrReview = (await getSystemConfigValue('actionForm.requireHrReview')) === true;
+
   const capabilities = {
     canEdit: canActOnCase(actor, 'form.edit', ctx),
     canSubmit: canActOnCase(actor, 'form.submit', ctx),
-    canFinanceEdit: canActOnCase(actor, 'form.financeEdit', ctx),
-    canManagerApprove: canActOnCase(actor, 'form.managerApprove', ctx),
-    canHrApprove: canActOnCase(actor, 'form.hrApprove', ctx),
+    canComplete: canActOnCase(actor, 'form.complete', ctx),
+    canHrReview: canActOnCase(actor, 'form.hrReview', ctx),
     canReturn: canActOnCase(actor, 'form.return', ctx),
     canVoid: canActOnCase(actor, 'form.void', ctx),
+    requireHrReview,
   };
 
-  const mask = (form: (typeof forms)[number]) => {
-    const base = {
-      id: form.id,
-      version: form.version,
-      status: form.status,
-      fieldSnapshot: form.fieldSnapshot,
-      priorStatus: form.priorStatus,
-      newStatus: form.newStatus,
-      ackStatus: form.ackStatus,
-      ackDate: form.ackDate,
-      ackMethod: form.ackMethod,
-      returnReason: form.returnReason,
-      pdfChecksum: form.pdfChecksum,
-      hasPdf: Boolean(form.pdfObjectKey),
-      createdAt: form.createdAt,
-      updatedAt: form.updatedAt,
-    };
-    if (level === 'FINANCE_FORM') {
-      // Finance: identification + its own checklist only (F.4 restrictions).
-      return { ...base, financeChecklist: form.financeChecklist, financeNotes: form.financeNotes };
-    }
-    if (level === 'MANAGER_FORM') {
-      // Manager minimum view: no restricted notes, no rehire, no HR remarks,
-      // no finance content.
-      return { ...base, hrChecklist: form.hrChecklist };
-    }
-    // FULL HR view; restricted reason notes / rehire stay on the
-    // case endpoints with their own masking - the form stores none of them.
-    return {
-      ...base,
-      hrChecklist: form.hrChecklist,
-      financeChecklist: form.financeChecklist,
-      financeNotes: form.financeNotes,
-      ackReason: form.ackReason,
-      ackEvidenceAttachmentId: form.ackEvidenceAttachmentId,
-      hrRemarks: form.hrRemarks,
-      voidReason: form.voidReason,
-      outdatedReason: form.outdatedReason,
-    };
-  };
+  // Directive 6.3 D/I/J: the Action Form is HR-only; the old limited
+  // Finance/Manager surfaces are never granted for new requests.
+  const mask = (form: (typeof forms)[number]) => ({
+    id: form.id,
+    version: form.version,
+    status: form.status,
+    fieldSnapshot: form.fieldSnapshot,
+    priorStatus: form.priorStatus,
+    newStatus: form.newStatus,
+    ackStatus: form.ackStatus,
+    ackDate: form.ackDate,
+    ackMethod: form.ackMethod,
+    returnReason: form.returnReason,
+    pdfChecksum: form.pdfChecksum,
+    hasPdf: Boolean(form.pdfObjectKey),
+    createdAt: form.createdAt,
+    updatedAt: form.updatedAt,
+    hrChecklist: form.hrChecklist,
+    financeChecklist: form.financeChecklist,
+    financeNotes: form.financeNotes,
+    ackReason: form.ackReason,
+    ackEvidenceAttachmentId: form.ackEvidenceAttachmentId,
+    hrRemarks: form.hrRemarks,
+    voidReason: form.voidReason,
+    outdatedReason: form.outdatedReason,
+    completedAt: form.completedAt,
+    hrReviewedAt: form.hrReviewedAt,
+  });
 
   return {
     caseNumber: c.caseNumber,
@@ -214,8 +214,8 @@ export async function updateActionFormHr(
 ) {
   const { f, c, ctx } = await loadForm(actor, formId);
   if (!canActOnCase(actor, 'form.edit', ctx)) throw ServiceError.forbidden();
-  if (!['DRAFT', 'RETURNED'].includes(f.status))
-    throw ServiceError.conflict('Only draft/returned forms can be edited.');
+  if (!['DRAFT', 'RETURNED', 'RETURNED_FOR_CORRECTION'].includes(f.status))
+    throw ServiceError.conflict('Only draft or returned forms can be edited.');
 
   const errors: string[] = [];
   if (input.hrChecklist) errors.push(...checklistErrors(input.hrChecklist, HR_CHECKLIST_ITEMS));
@@ -273,18 +273,32 @@ export async function updateActionFormHr(
   });
 }
 
-/** Finance responders update ONLY the finance checklist (F role rule 2). */
+/**
+ * The Finance section records evidence of Finance activity performed outside
+ * the application (Directive 6.3 J: Finance never logs in - the automated
+ * notification and any returned evidence are what HR records here).
+ */
 export async function updateActionFormFinance(
   actor: Actor,
   formId: string,
   input: { financeChecklist?: ChecklistState; financeNotes?: string | null },
 ) {
   const { f, ctx } = await loadForm(actor, formId);
-  if (!canActOnCase(actor, 'form.financeEdit', ctx) && !canActOnCase(actor, 'form.edit', ctx)) {
+  if (!canActOnCase(actor, 'form.edit', ctx)) {
     await auditDenied(actor, 'ACCESS_DENIED', 'ActionFormVersion', formId, f.caseId);
     throw ServiceError.forbidden();
   }
-  if (!['DRAFT', 'RETURNED', 'PENDING_MANAGER', 'PENDING_HR'].includes(f.status))
+  if (
+    ![
+      'DRAFT',
+      'RETURNED',
+      'RETURNED_FOR_CORRECTION',
+      'READY_FOR_HR_REVIEW',
+      'HR_REVIEWED',
+      'PENDING_MANAGER',
+      'PENDING_HR',
+    ].includes(f.status)
+  )
     throw ServiceError.conflict('The form is finalized; finance updates are closed.');
 
   const errors: string[] = [];
@@ -325,14 +339,12 @@ export async function updateActionFormFinance(
 async function transitionForm(
   actor: Actor,
   formId: string,
-  action:
-    'submitToManager' | 'managerApprove' | 'managerReturn' | 'hrApprove' | 'hrReturn' | 'void',
-  permission:
-    'form.submit' | 'form.managerApprove' | 'form.hrApprove' | 'form.return' | 'form.void',
+  action: 'submitToHrReview' | 'hrReview' | 'complete' | 'return' | 'void',
+  permission: 'form.submit' | 'form.hrReview' | 'form.complete' | 'form.return' | 'form.void',
   eventType:
-    | 'FORM_SUBMITTED'
-    | 'FORM_MANAGER_APPROVED'
-    | 'FORM_HR_APPROVED'
+    | 'FORM_SENT_FOR_HR_REVIEW'
+    | 'FORM_HR_REVIEWED'
+    | 'FORM_COMPLETED'
     | 'FORM_RETURNED'
     | 'FORM_VOIDED',
   reason?: string,
@@ -345,7 +357,9 @@ async function transitionForm(
   const guard = formTransitionError(action, f.status, reason);
   if (guard) throw ServiceError.validation([guard]);
 
-  if (action === 'submitToManager') {
+  // Readiness gate: finishing preparation AND completing both require the
+  // acknowledgement recorded and every HR checklist item resolved.
+  if (action === 'submitToHrReview' || action === 'complete') {
     const errors = formSubmitErrors({
       departureType: c.departureType,
       ackStatus: f.ackStatus,
@@ -355,19 +369,32 @@ async function transitionForm(
     if (errors.length) throw ServiceError.validation(errors);
   }
 
+  // Directive 6.3 correction 1: where configured policy requires HR-Manager
+  // review, completion must pass through HR_REVIEWED first. Legacy live rows
+  // (PENDING_MANAGER/PENDING_HR) predate the policy and may complete directly.
+  if (action === 'complete' && f.status === 'READY_FOR_HR_REVIEW') {
+    const requireHrReview = (await getSystemConfigValue('actionForm.requireHrReview')) === true;
+    if (requireHrReview && !canActOnCase(actor, 'form.hrReview', ctx))
+      throw ServiceError.validation([
+        'Policy requires HR-Manager review before completion (record the review first).',
+      ]);
+  }
+
   const to =
-    action === 'submitToManager'
-      ? 'PENDING_MANAGER'
-      : action === 'managerApprove'
-        ? 'PENDING_HR'
-        : action === 'hrApprove'
-          ? 'APPROVED'
+    action === 'submitToHrReview'
+      ? 'READY_FOR_HR_REVIEW'
+      : action === 'hrReview'
+        ? 'HR_REVIEWED'
+        : action === 'complete'
+          ? 'COMPLETE'
           : action === 'void'
             ? 'VOIDED'
-            : 'RETURNED';
+            : 'RETURNED_FOR_CORRECTION';
 
   const prisma = getPrisma();
-  const approverUser = await prisma.user.findUniqueOrThrow({ where: { id: actor.userId } });
+  const actingUser = await prisma.user.findUniqueOrThrow({ where: { id: actor.userId } });
+  const actorRole = actor.roles.includes('HR_MANAGER') ? 'HR Manager' : 'HR Officer';
+  const now = new Date();
   const correlationId = newCorrelationId();
 
   await prisma.$transaction(async (tx) => {
@@ -375,7 +402,10 @@ async function transitionForm(
       where: { id: formId, rowVersion: f.rowVersion, status: f.status },
       data: {
         status: to,
-        ...(to === 'RETURNED' ? { returnReason: reason?.trim() } : {}),
+        ...(action === 'submitToHrReview' ? { submittedById: actor.userId, submittedAt: now } : {}),
+        ...(action === 'hrReview' ? { hrReviewedById: actor.userId, hrReviewedAt: now } : {}),
+        ...(action === 'complete' ? { completedById: actor.userId, completedAt: now } : {}),
+        ...(to === 'RETURNED_FOR_CORRECTION' ? { returnReason: reason?.trim() } : {}),
         ...(to === 'VOIDED' ? { voidReason: reason?.trim() } : {}),
         rowVersion: { increment: 1 },
       },
@@ -383,7 +413,7 @@ async function transitionForm(
     if (u.count === 0)
       throw ServiceError.conflict('The form was changed or already decided; reload and retry.');
 
-    if (action === 'managerApprove' || action === 'hrApprove') {
+    if (action === 'complete') {
       const checksum = JSON.stringify({
         v: f.version,
         snapshot: f.fieldSnapshot,
@@ -397,15 +427,13 @@ async function transitionForm(
           subjectType: 'ACTION_FORM',
           subjectId: formId,
           subjectVersion: f.version,
-          kind: action === 'managerApprove' ? 'MANAGER_FORM_APPROVAL' : 'HR_FORM_FINAL_APPROVAL',
+          kind: 'HR_FORM_COMPLETION',
           caseId: f.caseId,
           actorId: actor.userId,
-          actorDisplayName: approverUser.displayName,
-          actorRole: action === 'managerApprove' ? 'Line Manager' : 'HR Manager',
+          actorDisplayName: actingUser.displayName,
+          actorRole,
           meaning:
-            action === 'managerApprove'
-              ? 'I approve this offboarding action form as the responsible manager.'
-              : 'I give final HR approval to this exact action form version.',
+            'I confirm this offboarding action form is complete: the recorded information is accurate and every required HR action is done or covered by an approved exception.',
           contentChecksum: createHash('sha256').update(checksum, 'utf8').digest('hex'),
           correlationId,
         },
@@ -426,28 +454,26 @@ async function transitionForm(
     });
   });
 
-  // Final approval renders the immutable form PDF (F.10).
-  if (action === 'hrApprove') await renderApprovedForm(formId, correlationId);
+  // Completion renders the immutable form PDF (F.10).
+  if (action === 'complete') await renderApprovedForm(formId, correlationId);
 }
 
 export const submitActionForm = (a: Actor, id: string) =>
-  transitionForm(a, id, 'submitToManager', 'form.submit', 'FORM_SUBMITTED');
-export const managerApproveForm = (a: Actor, id: string) =>
-  transitionForm(a, id, 'managerApprove', 'form.managerApprove', 'FORM_MANAGER_APPROVED');
-export const managerReturnForm = (a: Actor, id: string, reason: string) =>
-  transitionForm(a, id, 'managerReturn', 'form.managerApprove', 'FORM_RETURNED', reason);
-export const hrApproveForm = (a: Actor, id: string) =>
-  transitionForm(a, id, 'hrApprove', 'form.hrApprove', 'FORM_HR_APPROVED');
-export const hrReturnForm = (a: Actor, id: string, reason: string) =>
-  transitionForm(a, id, 'hrReturn', 'form.return', 'FORM_RETURNED', reason);
+  transitionForm(a, id, 'submitToHrReview', 'form.submit', 'FORM_SENT_FOR_HR_REVIEW');
+export const hrReviewForm = (a: Actor, id: string) =>
+  transitionForm(a, id, 'hrReview', 'form.hrReview', 'FORM_HR_REVIEWED');
+export const completeActionForm = (a: Actor, id: string) =>
+  transitionForm(a, id, 'complete', 'form.complete', 'FORM_COMPLETED');
+export const returnActionForm = (a: Actor, id: string, reason: string) =>
+  transitionForm(a, id, 'return', 'form.return', 'FORM_RETURNED', reason);
 export const voidActionForm = (a: Actor, id: string, reason: string) =>
   transitionForm(a, id, 'void', 'form.void', 'FORM_VOIDED', reason);
 
-/** Render the final approved form PDF (idempotent). */
+/** Render the final form PDF (idempotent; COMPLETE new / APPROVED legacy). */
 export async function renderApprovedForm(formId: string, correlationId: string): Promise<void> {
   const prisma = getPrisma();
   const f = await prisma.actionFormVersion.findUnique({ where: { id: formId } });
-  if (!f || f.status !== 'APPROVED' || f.pdfObjectKey) return;
+  if (!f || !['COMPLETE', 'APPROVED'].includes(f.status) || f.pdfObjectKey) return;
 
   const snap = f.fieldSnapshot as Record<string, string | null>;
   const attestations = await prisma.attestation.findMany({
@@ -512,7 +538,12 @@ export async function renderApprovedForm(formId: string, correlationId: string):
         },
       ],
       approvals: attestations.map((a) => ({
-        label: a.kind === 'MANAGER_FORM_APPROVAL' ? 'Manager approval' : 'HR final approval',
+        label:
+          a.kind === 'MANAGER_FORM_APPROVAL'
+            ? 'Manager approval'
+            : a.kind === 'HR_FORM_COMPLETION'
+              ? 'HR completion'
+              : 'HR final approval',
         name: a.actorDisplayName,
         role: a.actorRole,
         at: a.createdAt,
@@ -520,7 +551,7 @@ export async function renderApprovedForm(formId: string, correlationId: string):
     });
     await prisma.$transaction(async (tx) => {
       await tx.actionFormVersion.updateMany({
-        where: { id: formId, status: 'APPROVED', pdfObjectKey: null },
+        where: { id: formId, status: { in: ['COMPLETE', 'APPROVED'] }, pdfObjectKey: null },
         data: { pdfObjectKey: pdf.objectKey, pdfChecksum: pdf.checksum, renderError: null },
       });
       await appendAudit(tx, {
@@ -546,19 +577,16 @@ export async function renderApprovedForm(formId: string, correlationId: string):
   }
 }
 
-/** Material case correction: supersede approved forms / flag live drafts. */
+/** Material case correction: supersede finalized forms / flag live drafts. */
 export async function outdateFormsForCaseChange(caseId: string, reason: string): Promise<void> {
   const prisma = getPrisma();
   const correlationId = newCorrelationId();
   const live = await prisma.actionFormVersion.findMany({
-    where: {
-      caseId,
-      status: { in: ['DRAFT', 'RETURNED', 'PENDING_MANAGER', 'PENDING_HR', 'APPROVED'] },
-    },
+    where: { caseId, status: { in: [...LIVE_FORM_STATUSES] } },
   });
   for (const f of live) {
     await prisma.$transaction(async (tx) => {
-      if (f.status === 'APPROVED') {
+      if (['APPROVED', 'COMPLETE'].includes(f.status)) {
         await tx.actionFormVersion.update({
           where: { id: f.id },
           data: { status: 'SUPERSEDED', outdatedReason: reason, rowVersion: { increment: 1 } },
@@ -572,6 +600,18 @@ export async function outdateFormsForCaseChange(caseId: string, reason: string):
         });
         await appendAudit(tx, {
           eventType: 'FORM_APPROVAL_INVALIDATED',
+          actorType: 'SYSTEM',
+          objectType: 'ActionFormVersion',
+          objectId: f.id,
+          caseId,
+          result: 'SUCCESS',
+          correlationId,
+          metadata: { formVersion: f.version, reason },
+        });
+        // Directive 6.3 logic-audit fix: the supersede itself is now audited
+        // (FORM_SUPERSEDED was declared but never emitted).
+        await appendAudit(tx, {
+          eventType: 'FORM_SUPERSEDED',
           actorType: 'SYSTEM',
           objectType: 'ActionFormVersion',
           objectId: f.id,

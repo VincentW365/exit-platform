@@ -57,15 +57,18 @@ export function canDiscoverCase(actor: Actor, c: CaseAccessContext): boolean {
 }
 
 /**
- * Stage 2 limited access levels: FINANCE_RESPONDER and LINE_MANAGER gain
- * access ONLY to their action-form surfaces when explicitly assigned as
- * participants - never to the full case (Directive 2 section F role rules).
+ * Access levels. Directive 6.3 D/I/J retired the Stage-2 limited form
+ * surfaces: the Action Form is HR-controlled and Finance/IT act by email.
+ * The line manager keeps a genuine responsibility - the handover - so an
+ * explicitly assigned MANAGER participant retains the scoped MANAGER_FORM
+ * level (it no longer unlocks any Action Form action; form.* permissions key
+ * on full case view). FINANCE_FORM survives in the type for historical read
+ * paths only and is never granted.
  */
 export type CaseAccessLevel = 'FULL' | 'FINANCE_FORM' | 'MANAGER_FORM' | 'DISCOVER' | 'NONE';
 
 export function caseAccessLevel(actor: Actor, c: CaseAccessContext): CaseAccessLevel {
   if (canViewCase(actor, c)) return 'FULL';
-  if (isParticipant(actor, c) && hasRole(actor, 'FINANCE_RESPONDER')) return 'FINANCE_FORM';
   if (isParticipant(actor, c) && hasRole(actor, 'LINE_MANAGER')) return 'MANAGER_FORM';
   if (canDiscoverCase(actor, c)) return 'DISCOVER';
   return 'NONE';
@@ -101,12 +104,16 @@ export type CaseAction =
   | 'doc.download'
   | 'form.edit'
   | 'form.submit'
-  | 'form.financeEdit'
-  | 'form.managerApprove'
-  | 'form.hrApprove'
+  | 'form.complete'
+  | 'form.hrReview'
   | 'form.return'
   | 'form.void'
   | 'form.view'
+  // Directive 6.3: derived actions, benefits and email-action evidence.
+  | 'benefits.confirm'
+  | 'derivedAction.override'
+  | 'notification.recordEvidence'
+  | 'notification.enterRecipient'
   | 'survey.manage'
   | 'survey.viewResponses'
   | 'survey.recordVerbal'
@@ -141,12 +148,9 @@ export type CaseAction =
   | 'case.confirmAssignment';
 
 export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessContext): boolean {
-  // Limited participant surfaces (no full case view required).
-  const level = caseAccessLevel(actor, c);
-  if (action === 'form.financeEdit') return level === 'FINANCE_FORM' || false;
-  if (action === 'form.managerApprove') return level === 'MANAGER_FORM' || false;
-  if (action === 'form.view')
-    return level === 'FULL' || level === 'FINANCE_FORM' || level === 'MANAGER_FORM';
+  // Directive 6.3 D: the Action Form is HR-controlled; no limited
+  // Finance/Manager surfaces exist for new work.
+  if (action === 'form.view') return canViewCase(actor, c);
 
   const view = canViewCase(actor, c);
   if (!view) return false;
@@ -158,8 +162,17 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
     case 'doc.create':
     case 'doc.edit':
     case 'doc.submit':
+    // Directive 6.3 corrections 1-2: the assigned HR Officer prepares,
+    // reviews, RETURNS-for-correction and COMPLETES ordinary action forms -
+    // completion is operational HR work, not a management approval.
     case 'form.edit':
     case 'form.submit':
+    case 'form.complete':
+    case 'form.return':
+    case 'benefits.confirm':
+    case 'derivedAction.override':
+    case 'notification.recordEvidence':
+    case 'notification.enterRecipient':
     case 'survey.manage':
     case 'survey.recordVerbal':
       return hrOnCase;
@@ -168,8 +181,9 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
     case 'doc.void':
     case 'doc.markIssued':
     case 'doc.supersede':
-    case 'form.hrApprove':
-    case 'form.return':
+    // Optional configuration-gated oversight review + voiding stay
+    // management-grade (Directive 6.3 correction 1).
+    case 'form.hrReview':
     case 'form.void':
       return hrManager && (c.classification !== 'RESTRICTED' || isHrParticipant(actor, c));
     case 'doc.download':
@@ -265,6 +279,10 @@ export type GlobalAction =
   | 'workflowDef.view'
   | 'workflowDef.draft'
   | 'workflowDef.activate'
+  // Directive 6.3 Q: notification template management.
+  | 'notifTemplate.view'
+  | 'notifTemplate.draft'
+  | 'notifTemplate.activate'
   | 'queue.view'
   | 'exceptions.viewFeed'
   // Stage 4 (Directive 4): administration, integrations, pilot, reporting,
@@ -325,9 +343,15 @@ const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   'workflowDef.view': ['HR_MANAGER', 'HR_OFFICER'],
   'workflowDef.draft': ['HR_MANAGER', 'HR_OFFICER'],
   'workflowDef.activate': ['HR_MANAGER'],
-  // Directive 3 J: department queues (record-level filtering happens in the
-  // queue service; SYSTEM_ADMIN has no queue - R.8).
-  'queue.view': ['HR_MANAGER', 'HR_OFFICER', 'IT_RESPONDER', 'FINANCE_RESPONDER', 'LINE_MANAGER'],
+  // Directive 6.3 Q: officers draft notification templates; activation of
+  // outgoing-communication content stays management-grade (correction 2).
+  'notifTemplate.view': ['HR_MANAGER', 'HR_OFFICER'],
+  'notifTemplate.draft': ['HR_MANAGER', 'HR_OFFICER'],
+  'notifTemplate.activate': ['HR_MANAGER'],
+  // Directive 3 J / Directive 6.3 I-J: department queues serve HR and line
+  // managers (handover). IT/Finance participate by controlled email, not
+  // logins - their roles keep only historical read support.
+  'queue.view': ['HR_MANAGER', 'HR_OFFICER', 'LINE_MANAGER'],
   'exceptions.viewFeed': ['HR_MANAGER', 'HR_OFFICER'],
   // Directive 4: business administration is HR; technical administration is
   // SYSTEM_ADMIN (never HR case content - I.1-I.3).

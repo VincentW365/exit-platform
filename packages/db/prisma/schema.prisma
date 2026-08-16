@@ -306,6 +306,17 @@ model OffboardingCase {
   /// {key: {at, byId}} captured before activation.
   activationConfirmations Json?
 
+  /// Directive 6.3 (V): benefits/provider applicability - YES/NO/UNKNOWN.
+  /// UNKNOWN opens an HR exception; YES derives the provider notification;
+  /// NO creates nothing. otherProvider is YES/NO only (app-enforced).
+  groupHealthApplicability   BenefitsApplicability @default(UNKNOWN)
+  groupLifeApplicability     BenefitsApplicability @default(UNKNOWN)
+  otherProviderApplicability BenefitsApplicability @default(NO)
+  benefitsConfirmedById      String?               @db.Uuid
+  benefitsConfirmedAt        DateTime?
+  /// 'DERIVED' when a future source system supplies it; 'HR_CONFIRMED' today.
+  benefitsSource             String?
+
   /// Stage 4 (P): identity fields anonymized through the approved privacy
   /// workflow; audit and structural evidence are preserved.
   anonymizedAt   DateTime?
@@ -335,6 +346,7 @@ model OffboardingCase {
   exceptions         CaseException[]
   clearanceRecords   ClearanceRecord[]
   retentionHolds     RetentionHold[]
+  requiredActions    CaseRequiredAction[]
 
   @@index([status])
   @@index([ownerId])
@@ -637,6 +649,8 @@ enum AttestationKind {
   MANAGER_FORM_APPROVAL
   HR_FORM_FINAL_APPROVAL
   MANAGER_HANDOVER_ATTESTATION
+  /// Directive 6.3 F: the assigned HR Officer completes the form (attested).
+  HR_FORM_COMPLETION
 }
 
 enum ActionFormStatus {
@@ -647,6 +661,12 @@ enum ActionFormStatus {
   APPROVED
   SUPERSEDED
   VOIDED
+  /// Directive 6.3 F: HR-validated lifecycle (no manager approval). The four
+  /// legacy states above stay for historical rows only.
+  READY_FOR_HR_REVIEW
+  HR_REVIEWED
+  COMPLETE
+  RETURNED_FOR_CORRECTION
 }
 
 enum AcknowledgementStatus {
@@ -809,6 +829,13 @@ model ActionFormVersion {
   pdfChecksum           String?
   renderError           String?
   createdById           String                @db.Uuid
+  /// Directive 6.3 F: HR-validated lifecycle actor evidence (house pattern).
+  submittedById         String?               @db.Uuid
+  submittedAt           DateTime?
+  hrReviewedById        String?               @db.Uuid
+  hrReviewedAt          DateTime?
+  completedById         String?               @db.Uuid
+  completedAt           DateTime?
   rowVersion            Int                   @default(0)
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
@@ -1043,6 +1070,9 @@ enum NotificationType {
   NCB_GROUP_LIFE_REMOVAL
   SURVEY_INVITATION_REFERENCE
   MANUAL_EXCEPTION_NOTIFICATION
+  /// Directive 6.3 K/N: configurable external purposes beyond Sagicor/NCB.
+  PAYROLL_OR_BANK_NOTIFICATION
+  OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION
 }
 
 enum NotificationStatus {
@@ -1054,6 +1084,10 @@ enum NotificationStatus {
   CANCELLED
   FAILED
   SUPERSEDED
+  /// Directive 6.3 K/T/U: automated delivery + no-login evidence chain.
+  SENT
+  ACKNOWLEDGED
+  CONFIRMED_COMPLETE
 }
 
 enum NotificationRecipient {
@@ -1115,6 +1149,11 @@ enum ExceptionType {
   WORKFLOW_ACTIVATION_FAILURE
   DUE_DATE_RETROSPECTIVE_CHANGE
   CLEARANCE_BLOCKED
+  /// Directive 6.3: exception-first automation (O/R/T/U/V).
+  RECIPIENT_MISSING
+  BENEFITS_APPLICABILITY_UNKNOWN
+  ACKNOWLEDGEMENT_OVERDUE
+  AUTO_SEND_BLOCKED
 }
 
 enum ExceptionSeverity {
@@ -1414,6 +1453,33 @@ model NotificationRecord {
   failReason     String?
   supersededReason String?
 
+  /// Directive 6.3 K/R: email-action fields. origin distinguishes
+  /// rules-engine-created records; controlLevel snapshots the applied send
+  /// control so later configuration changes never rewrite history.
+  origin           NotificationOrigin @default(MANUAL)
+  derivedActionId  String?            @db.Uuid
+  derivedAction    CaseRequiredAction? @relation(fields: [derivedActionId], references: [id])
+  controlLevel     String?
+  scheduledSendAt  DateTime?
+  sentAt           DateTime?
+
+  /// Directive 6.3 K/O/P: recipient display + per-case HR-entered recipient
+  /// (encrypted + masked exactly like the directory; never logged raw).
+  recipientName           String?
+  recipientOrg            String?
+  recipientKind           String?
+  recipientConfigId       String?  @db.Uuid
+  caseRecipientCiphertext String?
+  caseRecipientMask       String?
+
+  /// Directive 6.3 T/U: acknowledgement / completion evidence (token or
+  /// HR-recorded). Delivery alone is never completion.
+  acknowledgedAt          DateTime?
+  acknowledgedVia         String?
+  completionConfirmedAt   DateTime?
+  completionEvidenceNote  String?
+  completionRecordedById  String?  @db.Uuid
+
   createdById String   @db.Uuid
   rowVersion  Int      @default(0)
   createdAt   DateTime @default(now())
@@ -1421,10 +1487,123 @@ model NotificationRecord {
 
   captures NotificationCapture[]
   outbox   NotificationOutbox[]
+  tokens   ActionToken[]
 
   @@index([caseId])
   @@index([status])
+  @@index([origin, scheduledSendAt])
   @@map("notification_record")
+}
+
+/// Directive 6.3 B/C: the per-case ledger of derived required actions with
+/// full rule provenance. Live status is computed at read time from the linked
+/// record - never stored (OVERDUE-is-never-stored principle).
+model CaseRequiredAction {
+  id            String              @id @default(uuid()) @db.Uuid
+  caseId        String              @db.Uuid
+  case          OffboardingCase     @relation(fields: [caseId], references: [id])
+  workflowInstanceId String?        @db.Uuid
+  /// Stable idempotency key within the case, e.g. 'EMAIL:IT_ACCESS_REMOVAL'.
+  actionKey     String
+  actionGroup   RequiredActionGroup
+  kind          RequiredActionKind
+  title         String
+  applicable    Boolean
+  determination DerivationResult
+  ruleKey       String
+  rulesVersion  String
+  /// The exact inputs the rule consumed (audit provenance - Directive C).
+  sourceFields  Json
+  /// The rule output snapshot.
+  result        Json
+  derivedAt     DateTime
+  overridden    Boolean             @default(false)
+  overrideReason String?
+  overriddenById String?            @db.Uuid
+  overriddenAt  DateTime?
+  /// Link to what the action produced (NotificationRecord / AssetRecoveryItem
+  /// / SurveyInvitation id) - evidence, not duplication.
+  refType       String?
+  refId         String?             @db.Uuid
+  supersededAt  DateTime?
+  supersededReason String?
+  rowVersion    Int                 @default(0)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  notifications NotificationRecord[]
+
+  @@unique([caseId, actionKey])
+  @@index([caseId, actionGroup])
+  @@map("case_required_action")
+}
+
+/// Directive 6.3 T: single-purpose no-login acknowledgement tokens. Hash-only
+/// storage (survey-token discipline); the raw value exists only inside the
+/// captured email body. Never exposes the case.
+model ActionToken {
+  id                   String             @id @default(uuid()) @db.Uuid
+  notificationRecordId String             @db.Uuid
+  notificationRecord   NotificationRecord @relation(fields: [notificationRecordId], references: [id])
+  purpose              TokenPurpose
+  /// sha256 hex; nulled on use/expiry/revocation so links die immediately.
+  tokenHash            String?            @unique
+  issuedAt             DateTime           @default(now())
+  expiresAt            DateTime
+  usedAt               DateTime?
+  /// Optional short note from the confirmer (validated, length-capped).
+  usedNote             String?
+  revokedAt            DateTime?
+  revokedReason        String?
+  rowVersion           Int                @default(0)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([notificationRecordId])
+  @@map("action_token")
+}
+
+enum NotificationOrigin {
+  MANUAL
+  DERIVED
+}
+
+enum BenefitsApplicability {
+  YES
+  NO
+  UNKNOWN
+}
+
+enum RequiredActionGroup {
+  HR
+  DOCUMENTS
+  MANAGER_HANDOVER
+  IT
+  FINANCE
+  BENEFITS
+  ASSETS
+  SURVEY
+  CLEARANCE
+}
+
+enum RequiredActionKind {
+  EMAIL_ACTION
+  ASSET_RECOVERY
+  SURVEY_INVITATION
+  BENEFITS_CONFIRMATION
+}
+
+enum DerivationResult {
+  DERIVED
+  DEFAULTED
+  REQUIRES_REVIEW
+  EXCEPTION
+  NOT_APPLICABLE
+}
+
+enum TokenPurpose {
+  ACKNOWLEDGE_RECEIPT
+  CONFIRM_COMPLETION
 }
 
 /// Development capture adapter output (K.12-K.14): records what WOULD be
@@ -1611,6 +1790,9 @@ enum RecipientClassDir {
   NCB_GROUP_LIFE
   EMPLOYEE_PERSONAL
   OTHER_APPROVED_EXTERNAL
+  /// Directive 6.3 N: independently configurable provider purposes.
+  PAYROLL_BANK
+  PENSION_PROVIDER
 }
 
 enum RecipientApprovalStatus {
@@ -1724,6 +1906,12 @@ model RecipientConfig {
   environment           String                  @default("development")
   allowedTypes          NotificationType[]
   isExternal            Boolean                 @default(false)
+  /// Directive 6.3 N/P: purpose + human identity for the provider directory.
+  /// Purposes: GROUP_HEALTH_REMOVAL, GROUP_LIFE_REMOVAL,
+  /// PAYROLL_OR_BANK_NOTIFICATION, PENSION_NOTIFICATION, OTHER_APPROVED_PROVIDER.
+  purpose               String?
+  organizationName      String?
+  contactName           String?
   ownerId               String?                 @db.Uuid
   approvalStatus        RecipientApprovalStatus @default(DRAFT)
   approvedById          String?                 @db.Uuid

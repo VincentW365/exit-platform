@@ -991,6 +991,10 @@ export async function changeEffectiveTime(
   // provenance and invalidate affected notification approvals.
   await recalcTasksForEffectiveChange(caseId, actor, `${rippleReason}: ${reason}`);
   await supersedeNotificationsForCaseChange(caseId, rippleReason);
+  // Directive 6.3 B: the derived-action set depends on the effective instant
+  // (schedules, idempotency event keys) - recompute deterministically.
+  const { deriveActionsForCase } = await import('./derivedActionService.ts');
+  await deriveActionsForCase(caseId, new Date());
 }
 
 export async function correctRecordPurpose(

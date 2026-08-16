@@ -1,7 +1,11 @@
 /**
- * Stage 3 acceptance scenarios (Directive 3 section T: Scenarios 1-5).
- * All cases use TEST record purpose: workflow automation stays disabled for
- * operational records. Synthetic identities only.
+ * Stage 3 acceptance scenarios (Directive 3 section T), rewritten for the
+ * Directive 6.3 HR-validated workflow (v2): IT and Finance participate through
+ * automated controlled email notifications (visible on the case "Email
+ * actions" tab and in the development mailbox) instead of application logins,
+ * and the Action Form is completed by the assigned HR Officer - no manager
+ * approval step exists. All cases use TEST record purpose. Synthetic
+ * identities only.
  */
 import { expect, test, type Page } from '@playwright/test';
 
@@ -26,7 +30,7 @@ async function createTestCase(
     receivedAt?: string;
     effectiveAt?: string;
   },
-): Promise<string> {
+): Promise<{ url: string; number: string }> {
   await page.goto('/cases/new');
   await page.getByLabel(/Search the employee source/).fill(opts.employeeQuery);
   await page.getByRole('button', { name: 'Search' }).click();
@@ -71,7 +75,13 @@ async function completeAssignmentPlan(
 ): Promise<void> {
   await page.goto(`${caseUrl}/assignment`);
   await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
-  await page.locator('#of-user').selectOption({ label: officerLabel });
+  // Directive 6.3 correction 7: options read "<name> - <job title>", so pick
+  // the option by its name fragment rather than an exact label.
+  const officerValue = await page
+    .locator('#of-user option', { hasText: officerLabel })
+    .first()
+    .getAttribute('value');
+  await page.locator('#of-user').selectOption(officerValue!);
   await page.locator('#of-reason').fill('E2E assignment.');
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
@@ -85,22 +95,6 @@ async function completeAssignmentPlan(
   }
   await page.getByRole('button', { name: 'Confirm assignment plan' }).click();
   await expect(page.getByText('Assignment plan confirmed').first()).toBeVisible();
-}
-
-async function addParticipantOnCase(
-  page: Page,
-  caseUrl: string,
-  userLabel: string,
-  role: string,
-): Promise<void> {
-  await page.goto(caseUrl);
-  await page.locator('details.action > summary', { hasText: 'Add participant' }).click();
-  const value = await page.locator('#p-user option', { hasText: userLabel }).getAttribute('value');
-  await page.getByLabel('User').selectOption(value!);
-  await page.locator('#p-role').selectOption(role);
-  await page.locator('#p-reason').fill('Stage 3 synthetic assignment.');
-  await page.getByRole('button', { name: 'Add participant' }).click();
-  await expect(page.getByText('Participant added.')).toBeVisible();
 }
 
 /** Open a task from the case workflow tab (HR users) and complete it. */
@@ -119,8 +113,8 @@ async function completeTaskFromWorkflow(
 }
 
 /**
- * Department users (IT / Finance / line manager) have no case access by
- * design - they reach their released tasks through the work queue (J).
+ * Line managers have no case-register access by design - they reach their
+ * released tasks through the work queue ("My work").
  */
 async function completeTaskViaQueue(
   page: Page,
@@ -174,23 +168,28 @@ async function recordFirstAssetDisposition(
   }
 }
 
-/** HR Manager reassigns a task to a named user from the task page. */
-async function reassignTaskFromWorkflow(
-  page: Page,
-  caseUrl: string,
-  title: string,
-  assigneeLabel: string,
-): Promise<void> {
-  await page.goto(`${caseUrl}/workflow`);
-  await page.getByRole('link', { name: title, exact: true }).click();
-  await page.locator('details.action > summary', { hasText: 'Reassign task (HR Manager)' }).click();
-  await page.locator('#r-user').selectOption({ label: assigneeLabel });
-  await page.locator('#r-reason').fill('Assigning to the direct manager.');
-  await page.getByRole('button', { name: 'Reassign' }).click();
-  await expect(page.getByText('Task reassigned.')).toBeVisible();
+/**
+ * Directive 6.3 S: release every email action waiting on HR review from the
+ * case "Email actions" tab. Records that were auto-released have no button
+ * and are left alone.
+ */
+async function releaseWaitingEmailActions(page: Page, caseUrl: string): Promise<void> {
+  await page.goto(`${caseUrl}/notifications`);
+  for (let i = 0; i < 6; i++) {
+    const release = page.getByRole('button', { name: /Review and release/ }).first();
+    if ((await release.count()) === 0) break;
+    await release.click();
+    await expect(
+      page.getByText(/Released\. Sending and confirmation are tracked automatically\./),
+    ).toBeVisible();
+  }
 }
 
-test('Scenario 1 - resignation with notice: activate, work every department, clear, complete', async ({
+/** Business-language email-action statuses (Directive 6.3 correction 7). */
+const BUSINESS_STATUS =
+  /Scheduled|Sent|Needs your review|Recipient required|Being prepared|Acknowledged|Completed|Sent manually/;
+
+test('Scenario 1 - resignation with notice: activate, HR journey, email evidence, clear, complete', async ({
   page,
 }) => {
   test.setTimeout(600_000);
@@ -203,7 +202,8 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
     confirmedLastDay: true,
   });
   await submitAndApprove(page, caseUrl);
-  await addParticipantOnCase(page, caseUrl, 'Line Manager', 'MANAGER');
+  // The assignment plan routes manager work: activation auto-adds the
+  // recorded manager as a participant (no manual participant step exists).
   await completeAssignmentPlan(page, caseUrl);
   await signOut(page);
 
@@ -211,9 +211,20 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
   await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/workflow`);
   await expect(page.getByText('Workflow preview (read-only, before activation)')).toBeVisible();
-  await expect(page.getByText('EXACT TIME').first()).toBeVisible();
   await page.getByRole('button', { name: 'Activate case and create these tasks' }).click();
   await expect(page.getByText(/Case activated/)).toBeVisible();
+
+  // Directive 6.3: activation derives the IT and Finance email actions - no
+  // department logins exist. The rows carry business-language statuses.
+  await page.goto(`${caseUrl}/notifications`);
+  await expect(page.getByRole('heading', { name: /Email actions/ })).toBeVisible();
+  const itAction = page.locator('section[aria-label="IT access removal email action"]');
+  await expect(itAction.first()).toBeVisible();
+  await expect(itAction.first().locator('.badge').first()).toHaveText(BUSINESS_STATUS);
+  await expect(
+    page.locator('section[aria-label="Finance offboarding email action"]').first(),
+  ).toBeVisible();
+  await releaseWaitingEmailActions(page, caseUrl);
 
   // HR verification chain.
   await completeTaskFromWorkflow(page, caseUrl, 'Verify resignation and case information');
@@ -226,7 +237,20 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
   await page.getByRole('button', { name: 'Validate and submit for approval' }).click();
   await expect(page.getByText('Document submitted for HR Manager approval.')).toBeVisible();
 
-  // Action form: HR section with the acknowledgement outcome.
+  // Directive 6.3 V: one benefits confirmation feeds the provider rules.
+  await page.goto(caseUrl);
+  await page
+    .locator('details.action > summary', { hasText: 'Confirm benefits applicability' })
+    .click();
+  await page.locator('#ben-health').selectOption('NO');
+  await page.locator('#ben-life').selectOption('NO');
+  await page.locator('#ben-other').selectOption('NO');
+  await page.getByRole('button', { name: 'Confirm applicability' }).click();
+  await expect(page.getByText(/Benefits applicability confirmed/)).toBeVisible();
+  await completeTaskFromWorkflow(page, caseUrl, 'Confirm benefits and provider applicability');
+
+  // Action form: the officer prepares, finishes and completes it (attested) -
+  // no manager approval step exists (Directive 6.3 D).
   await page.goto(`${caseUrl}/action-form`);
   await page.getByRole('button', { name: 'Create action form' }).click();
   await expect(page.getByText('Action form draft created.')).toBeVisible();
@@ -246,25 +270,49 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
   await page.locator('#ackReason').fill('Employee unavailable for signature; recorded per policy.');
   await page.getByRole('button', { name: 'Save HR section' }).click();
   await expect(page.getByText('HR section saved.')).toBeVisible();
-  await page.getByRole('button', { name: 'Submit for manager approval' }).click();
-  await expect(page.getByText('Form submitted for manager approval.')).toBeVisible();
+  await page.getByRole('button', { name: 'Finish preparation (ready for review)' }).click();
+  await expect(page.getByText('Form finished and ready for review.')).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Complete action form (attested, renders final PDF)' })
+    .click();
+  await expect(page.getByText(/Action form completed/)).toBeVisible();
   await completeTaskFromWorkflow(page, caseUrl, 'Complete employee action form HR section');
   await signOut(page);
 
-  // HR Manager approves the letter (renders the controlled PDF).
+  // HR Manager approves the letter (renders the controlled PDF), then runs
+  // the outbox pass: the internal emails are CAPTURED locally, never
+  // represented as delivered.
   await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/documents`);
   await page.getByRole('button', { name: 'Approve exact version (attested)' }).click();
   await expect(page.getByText('Document approved; the final PDF has been rendered.')).toBeVisible();
-  await reassignTaskFromWorkflow(
-    page,
-    caseUrl,
-    'Approve the action form (manager)',
-    'Line Manager (LINE_MANAGER)',
-  );
+  // The background worker may legitimately drain the queue first, so the
+  // manual pass can submit 0; the capture evidence for THIS case is the
+  // invariant (CAPTURED locally, never DELIVERED).
+  await page.goto('/admin/outbox');
+  await page.getByRole('button', { name: 'Run outbox pass now' }).click();
+  await expect(page.getByText(/Outbox pass: \d+ submitted/)).toBeVisible();
+  await expect(
+    page.locator('tbody tr', { hasText: caseNo }).filter({ hasText: 'CAPTURED' }).first(),
+  ).toBeVisible();
+  await expect(page.locator('tbody .badge', { hasText: 'DELIVERED' })).toHaveCount(0);
+
+  // IT evidence (Directive 6.3 T/AA): delivery is not completion - HR records
+  // the completion evidence the department returned outside the application.
+  await page.goto(`${caseUrl}/notifications`);
+  const itSent = page.locator('section[aria-label="IT access removal email action"]').first();
+  await expect(itSent.locator('.badge').first()).toHaveText(/Sent/);
+  await itSent.locator('details.action > summary', { hasText: 'Record evidence' }).click();
+  await itSent.locator('select[name="kind"]').selectOption('COMPLETED');
+  await itSent
+    .locator('textarea[name="note"]')
+    .fill('IT confirmed by email: all listed access removed; ticket IT-TEST-77.');
+  await itSent.getByRole('button', { name: 'Record evidence' }).click();
+  await expect(page.getByText('Completion evidence recorded.')).toBeVisible();
   await signOut(page);
 
-  // The line manager: handover record, form approval, duty reassignment.
+  // The line manager: handover record and the manager workflow tasks
+  // (auto-assigned through the assignment plan - no HR reassignment needed).
   await signInAs(page, 'Line Manager');
   await page.goto(`${caseUrl}/handover`);
   await expect(
@@ -280,77 +328,23 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
     .click();
   await page.getByRole('button', { name: 'Complete with attestation' }).click();
   await expect(page.getByText('Handover completed with manager attestation.')).toBeVisible();
-
-  await page.goto(`${caseUrl}/action-form`);
-  await page.getByRole('button', { name: 'Approve as responsible manager (attested)' }).click();
-  await expect(page.getByText('Manager approval recorded (attested).')).toBeVisible();
-  await completeTaskViaQueue(page, caseNo, 'Approve the action form (manager)');
-  await signOut(page);
-
-  // Manager duties task released by the handover plan; assign then complete.
-  await signInAs(page, 'HR Manager');
-  await page.goto(`${caseUrl}/action-form`);
-  await page.getByRole('button', { name: /Give HR final approval/ }).click();
-  await expect(page.getByText(/HR final approval recorded/)).toBeVisible();
-  await reassignTaskFromWorkflow(
-    page,
-    caseUrl,
-    'Reassign open duties and deadlines',
-    'Line Manager (LINE_MANAGER)',
-  );
-  await completeTaskFromWorkflow(page, caseUrl, 'Approve the final action form');
-  await signOut(page);
-
-  await signInAs(page, 'Line Manager');
+  // The attestation auto-completes the manager handover tasks (plan +
+  // knowledge-transfer); only the released duty-reassignment task remains.
+  await page.goto(`/queue?view=completed&q=${caseNo}`);
+  await expect(
+    page.getByRole('link', { name: 'Prepare handover plan', exact: true }).first(),
+  ).toBeVisible();
   await completeTaskViaQueue(page, caseNo, 'Reassign open duties and deadlines');
   await signOut(page);
 
-  // IT: review, then the exact-time revocation with recorded early authority.
-  await signInAs(page, 'IT Responder');
-  await completeTaskViaQueue(page, caseNo, 'Review systems and access requiring removal');
-  await page.goto(`/queue?view=all&q=${caseNo}`);
-  await page
-    .getByRole('link', { name: 'Revoke system access at the effective separation time' })
-    .first()
-    .click();
-  await expect(page.getByText('Exact-time access revocation')).toBeVisible();
-  await page.locator('#acc-note').fill('All listed access removed; evidence ticket IT-TEST-77.');
-  await page
-    .locator('#acc-early')
-    .fill('HR Manager approved early removal for the acceptance run.');
-  await page.getByRole('button', { name: 'Record completion' }).click();
-  await expect(page.getByText(/Access revocation recorded: COMPLETED_EARLY/)).toBeVisible();
-  await signOut(page);
-
-  // Finance: acknowledgement and the external workpaper records.
-  await signInAs(page, 'Finance Responder');
-  await completeTaskViaQueue(page, caseNo, 'Acknowledge offboarding case');
-  await completeTaskViaQueue(page, caseNo, 'Initiate external final-pay workpaper');
-  await completeTaskViaQueue(
-    page,
-    caseNo,
-    'Record external final-pay workpaper completion',
-    'Workpaper completed OUTSIDE the application; reference FIN-TEST-9.',
-  );
-  await signOut(page);
-
-  // HR: benefits applicability, notifications, assets, HRIS and survey tasks.
+  // HR: document task, assets, acknowledgement and HRIS tasks.
   await signInAs(page, 'HR Officer');
-  await completeTaskFromWorkflow(page, caseUrl, 'Determine Sagicor group-health applicability');
-  await completeTaskFromWorkflow(page, caseUrl, 'Determine NCB group-life applicability');
-  await completeTaskFromWorkflow(
-    page,
-    caseUrl,
-    'Prepare applicable external-provider notifications',
-    'Neither provider applicable for this synthetic employee.',
-  );
   await completeTaskFromWorkflow(
     page,
     caseUrl,
     'Prepare and approve resignation acceptance document',
     'Letter approved and rendered on the Documents tab.',
   );
-  await completeTaskFromWorkflow(page, caseUrl, 'Confirm employee-issued asset list');
 
   // Assets: every required item receives a final documented disposition.
   await page.goto(`${caseUrl}/assets`);
@@ -362,7 +356,6 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
   await completeTaskFromWorkflow(page, caseUrl, 'Complete asset recovery or final disposition');
   await completeTaskFromWorkflow(page, caseUrl, 'Complete employee acknowledgement handling');
   await completeTaskFromWorkflow(page, caseUrl, 'Record HRIS/BambooHR update status');
-  await completeTaskFromWorkflow(page, caseUrl, 'Assess survey eligibility');
 
   // Clearance: every gate condition met; HR requests, HR Manager approves.
   await page.goto(`${caseUrl}/clearance`);
@@ -382,7 +375,7 @@ test('Scenario 1 - resignation with notice: activate, work every department, cle
   await signOut(page);
 });
 
-test('Scenario 2 - immediate resignation: urgent tasks, overdue access, blocked clearance', async ({
+test('Scenario 2 - immediate resignation: urgent tasks, automated IT email, blocked clearance', async ({
   page,
 }) => {
   test.setTimeout(240_000);
@@ -391,7 +384,7 @@ test('Scenario 2 - immediate resignation: urgent tasks, overdue access, blocked 
     employeeQuery: 'casey',
     type: 'IMMEDIATE_RESIGNATION',
     receivedAt: '2026-07-28T09:30',
-    effectiveAt: '2026-07-28T14:00', // already past: revocation immediately overdue (G.2)
+    effectiveAt: '2026-07-28T14:00', // already past: the IT email is urgent (G.2)
   });
   await submitAndApprove(page, caseUrl);
   await completeAssignmentPlan(page, caseUrl);
@@ -401,9 +394,17 @@ test('Scenario 2 - immediate resignation: urgent tasks, overdue access, blocked 
   await page.goto(`${caseUrl}/workflow`);
   await page.getByRole('button', { name: 'Activate case and create these tasks' }).click();
   await expect(page.getByText(/Case activated/)).toBeVisible();
-  // Security-critical tasks are released immediately and already overdue.
+  // The urgent HR review task is released immediately.
   await expect(page.getByText('Urgent HR case review')).toBeVisible();
-  await expect(page.getByText('OVERDUE').first()).toBeVisible();
+
+  // Directive 6.3: no IT login works this case - the derived IT access-removal
+  // email action carries the obligation, in business language.
+  await page.goto(`${caseUrl}/notifications`);
+  const itAction = page.locator('section[aria-label="IT access removal email action"]').first();
+  await expect(itAction).toBeVisible();
+  await expect(itAction.locator('.badge').first()).toHaveText(
+    /Scheduled|Sent|Needs your review|Recipient required/,
+  );
 
   // The acknowledgement outcome uses NOT_OBTAINED with a reason.
   await page.goto(`${caseUrl}/action-form`);
@@ -414,14 +415,6 @@ test('Scenario 2 - immediate resignation: urgent tasks, overdue access, blocked 
     .fill('Employee left immediately; acknowledgement not obtainable.');
   await page.getByRole('button', { name: 'Save HR section' }).click();
   await expect(page.getByText('HR section saved.')).toBeVisible();
-  await signOut(page);
-
-  // IT sees the critical overdue task in its queue.
-  await signInAs(page, 'IT Responder');
-  await page.goto('/queue?view=criticalOverdue');
-  await expect(
-    page.getByRole('link', { name: 'Immediate or exact-time access revocation' }).first(),
-  ).toBeVisible();
   await signOut(page);
 
   // Handover is manager-recorded or HR-Manager waived (G.11).
@@ -436,7 +429,8 @@ test('Scenario 2 - immediate resignation: urgent tasks, overdue access, blocked 
   await page.getByRole('button', { name: 'Waive handover' }).click();
   await expect(page.getByText(/Handover waived by HR Manager/)).toBeVisible();
 
-  // Clearance stays blocked while mandatory tasks are unresolved.
+  // Clearance stays blocked while mandatory work is unresolved (including the
+  // unconfirmed IT email evidence - delivery is not completion).
   await page.goto(`${caseUrl}/clearance`);
   await expect(page.getByText('NOT READY')).toBeVisible();
   await expect(page.getByText('BLOCKED').first()).toBeVisible();
@@ -445,7 +439,7 @@ test('Scenario 2 - immediate resignation: urgent tasks, overdue access, blocked 
   await signOut(page);
 });
 
-test('Scenario 3 - restricted termination: undiscoverable, minimum-data IT task, no letter, no survey', async ({
+test('Scenario 3 - restricted termination: undiscoverable, minimum-data IT email, no letter, no survey', async ({
   page,
 }) => {
   test.setTimeout(240_000);
@@ -454,7 +448,7 @@ test('Scenario 3 - restricted termination: undiscoverable, minimum-data IT task,
   const soon = new Date(Date.now() + 30 * 60_000);
   const pad = (n: number) => String(n).padStart(2, '0');
   const effectiveLocal = `${soon.getFullYear()}-${pad(soon.getMonth() + 1)}-${pad(soon.getDate())}T${pad(soon.getHours())}:${pad(soon.getMinutes())}`;
-  const { url: caseUrl, number: caseNo } = await createTestCase(page, {
+  const { url: caseUrl } = await createTestCase(page, {
     employeeQuery: 'morgan',
     type: 'TERMINATION',
     receivedAt: '2026-07-28T09:30',
@@ -480,10 +474,22 @@ test('Scenario 3 - restricted termination: undiscoverable, minimum-data IT task,
     0,
   );
 
-  // Complete the restricted HR chain so the access task releases (-1h rule).
+  // Complete the restricted HR chain (all tasks are confidential HR work).
   await completeTaskFromWorkflow(page, caseUrl, 'Restricted HR preparation');
   await completeTaskFromWorkflow(page, caseUrl, 'Authorized HR Manager approval');
   await completeTaskFromWorkflow(page, caseUrl, 'Confirm exact effective separation date and time');
+
+  // Directive 6.3 H.4/U: IT is reached ONLY by the derived minimum-data email
+  // (exact effective time, no departure type, no reason) - never a login. The
+  // restricted control level holds the email for an HR Manager release.
+  await page.goto(`${caseUrl}/notifications`);
+  const itAction = page.locator('section[aria-label="IT access removal email action"]').first();
+  await expect(itAction).toBeVisible();
+  await expect(itAction.locator('.badge').first()).toHaveText(
+    /Needs your review|Scheduled|Sent|Recipient required/,
+  );
+  await expect(page.getByText('TERMINATION')).toHaveCount(0);
+  await expect(page.getByText('Departure type')).toHaveCount(0);
   await signOut(page);
 
   // A non-participant HR officer cannot discover the case anywhere (H.3).
@@ -495,30 +501,15 @@ test('Scenario 3 - restricted termination: undiscoverable, minimum-data IT task,
   await page.goto('/exceptions');
   await expect(page.getByText('Morgan Reed')).toHaveCount(0);
   await signOut(page);
-
-  // IT receives ONLY the minimum-data access task (H.4): no departure type,
-  // no case link, but the identity needed to act.
-  await signInAs(page, 'IT Responder');
-  await page.goto(`/queue?view=all&q=${caseNo}`);
-  await expect(page.getByText('TERMINATION')).toHaveCount(0);
-  await page
-    .getByRole('link', { name: 'Revoke system access at the effective time' })
-    .first()
-    .click();
-  await expect(page.getByText('Morgan Reed')).toBeVisible();
-  await expect(page.getByText('Restricted').first()).toBeVisible();
-  await expect(page.getByText('TERMINATION')).toHaveCount(0);
-  await expect(page.getByText('Departure type')).toHaveCount(0);
-  await signOut(page);
 });
 
-test('Scenario 4 - exception handling: blocker raised, escalated, HR resolves with audit history', async ({
+test('Scenario 4 - exception handling: lost asset raised, visible to HR, resolved with audit history', async ({
   page,
 }) => {
   test.setTimeout(240_000);
   await signInAs(page, 'HR Officer');
   const { url: caseUrl, number: caseNo } = await createTestCase(page, {
-    employeeQuery: 'taylor',
+    employeeQuery: 'jordan',
     type: 'IMMEDIATE_RESIGNATION',
     receivedAt: '2026-07-28T09:30',
     effectiveAt: '2026-07-28T14:00',
@@ -530,42 +521,42 @@ test('Scenario 4 - exception handling: blocker raised, escalated, HR resolves wi
   await page.goto(`${caseUrl}/workflow`);
   await page.getByRole('button', { name: 'Activate case and create these tasks' }).click();
   await expect(page.getByText(/Case activated/)).toBeVisible();
+
+  // A lost asset opens a review exception (L.7) - with no payroll effect.
+  await page.goto(`${caseUrl}/assets`);
+  await recordFirstAssetDisposition(
+    page,
+    'LOST',
+    'Employee reports the item was lost; incident raised.',
+  );
   await signOut(page);
 
-  // IT records partial completion: one system cannot be removed (I.10).
-  await signInAs(page, 'IT Responder');
-  await page.goto(`/queue?view=all&q=${caseNo}`);
-  await page
-    .getByRole('link', { name: 'Immediate or exact-time access revocation' })
-    .first()
-    .click();
-  await page.locator('#acc-unres').fill('Building access');
-  await page.locator('#acc-note').fill('Door controller offline; incident raised.');
-  await page.locator('#acc-incident').fill('INC-TEST-42');
-  await page.getByRole('button', { name: 'Record completion' }).click();
-  await expect(page.getByText(/Partial completion recorded/)).toBeVisible();
-  await signOut(page);
-
-  // The CRITICAL exception appears in the HR exception feed.
+  // The exception appears in the HR exception feed for THIS case.
   await signInAs(page, 'HR Manager');
-  await page.goto('/exceptions?status=OPEN&severity=CRITICAL');
-  await expect(page.getByText(/Access revocation incomplete/).first()).toBeVisible();
+  await page.goto('/exceptions?status=OPEN');
+  const openRow = page
+    .locator('tr', { hasText: caseNo })
+    .filter({ hasText: /Asset lost/ })
+    .first();
+  await expect(openRow).toBeVisible();
+  await expect(openRow.getByText(/no payroll instruction/)).toBeVisible();
 
-  // HR Manager resolves it as an approved security exception (audited).
-  await page.goto(`${caseUrl}/clearance`);
-  await page.locator('details.action > summary', { hasText: 'Resolve' }).first().click();
-  await page
+  // HR Manager resolves it directly from the feed (audited).
+  await openRow.locator('details.action > summary', { hasText: 'Resolve' }).click();
+  await openRow
     .locator('textarea[name="resolution"]')
-    .first()
-    .fill('Door controller isolated from the network; residual risk accepted.');
-  await page.locator('input[name="securityException"]').first().check();
-  await page.getByRole('button', { name: 'Resolve exception' }).click();
-  await expect(page.getByText('Exception resolved.')).toBeVisible();
+    .fill('Replacement issued from stock; loss recorded with no payroll effect.');
+  await openRow.getByRole('button', { name: 'Resolve exception' }).click();
+  await expect(page.getByText('Exception resolved (audited).')).toBeVisible();
 
   // Creation and resolution both remain visible in the history.
   await page.goto('/exceptions?status=RESOLVED');
-  await expect(page.getByText(/Access revocation incomplete/).first()).toBeVisible();
-  await expect(page.getByText(/security exception/).first()).toBeVisible();
+  const resolvedRow = page
+    .locator('tr', { hasText: caseNo })
+    .filter({ hasText: /Asset lost/ })
+    .first();
+  await expect(resolvedRow).toBeVisible();
+  await expect(resolvedRow.getByText(/Resolved:/)).toBeVisible();
   await signOut(page);
 });
 

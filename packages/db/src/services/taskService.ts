@@ -83,8 +83,8 @@ function taskAccessFor(
   if (canViewCase(actor, ctx) && hasRole(actor, 'HR_MANAGER', 'HR_OFFICER')) return 'HR_FULL';
   const released = t.status !== 'NOT_READY';
   if (!released) return 'NONE';
-  if (t.department === 'IT' && hasRole(actor, 'IT_RESPONDER')) return 'DEPARTMENT';
-  if (t.department === 'FINANCE' && hasRole(actor, 'FINANCE_RESPONDER')) return 'DEPARTMENT';
+  // Directive 6.3 I/J: IT/Finance logins are retired. Residual department
+  // tasks on legacy (v1) instances are worked by HR with recorded evidence.
   if (
     t.department === 'LINE_MANAGER' &&
     hasRole(actor, 'LINE_MANAGER') &&
@@ -110,9 +110,14 @@ function canWorkOnTask(
         canActOnCase(actor, 'workflow.view', ctx)
       );
     case 'IT':
-      return hasRole(actor, 'IT_RESPONDER');
     case 'FINANCE':
-      return hasRole(actor, 'FINANCE_RESPONDER');
+      // Directive 6.3 I/J: legacy department tasks are HR-recorded evidence
+      // (the department itself acts by email, outside the application).
+      return (
+        hasRole(actor, 'HR_MANAGER', 'HR_OFFICER') &&
+        canViewCase(actor, ctx) &&
+        canActOnCase(actor, 'workflow.view', ctx)
+      );
     case 'LINE_MANAGER':
       return hasRole(actor, 'LINE_MANAGER') && t.assigneeId === actor.userId;
   }
@@ -439,11 +444,16 @@ export const reassignTask = (actor: Actor, taskId: string, assigneeId: string, r
 
 // --- Directive 6.1 (G/H/I): department-queue claim / assign / return ---------
 
-/** Roles allowed to hold work in each department (generic routing model). */
+/**
+ * Roles allowed to hold work in each department. Directive 6.3 I/J: the
+ * department-login roles are retired; residual IT/FINANCE tasks on legacy
+ * instances are held by HR (the retired roles stay accepted so historical
+ * assignments keep rendering).
+ */
 const DEPARTMENT_ASSIGNEE_ROLES: Record<TaskDepartment, readonly string[]> = {
   HR: ['HR_OFFICER', 'HR_MANAGER'],
-  IT: ['IT_RESPONDER'],
-  FINANCE: ['FINANCE_RESPONDER'],
+  IT: ['HR_OFFICER', 'HR_MANAGER', 'IT_RESPONDER'],
+  FINANCE: ['HR_OFFICER', 'HR_MANAGER', 'FINANCE_RESPONDER'],
   LINE_MANAGER: ['LINE_MANAGER'],
 };
 

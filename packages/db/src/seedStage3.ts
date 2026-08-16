@@ -1,10 +1,12 @@
 /**
- * Stage 3 synthetic seeds (Directive 3 sections F, G, H, K, L).
+ * Stage 3 synthetic seeds (Directive 3 sections F, G, H, K, L; extended by
+ * Directive 6.3).
  *
  * Everything here is clearly-labelled synthetic development configuration:
- * three development workflow definitions (one per departure type), seven
- * deterministic notification templates, the asset catalogue and synthetic
- * employee-issued assets. Nothing is production-approved.
+ * the development workflow definitions (one per departure type - version 1
+ * preserved as frozen history, version 2 is the HR-validated Directive 6.3
+ * simplification), deterministic notification templates, the asset catalogue
+ * and synthetic employee-issued assets. Nothing is production-approved.
  */
 import { createHash } from 'node:crypto';
 import { workflowConfigChecksum, NOTIFICATION_PLACEHOLDERS } from '@exit/domain';
@@ -646,6 +648,401 @@ const WORKFLOWS = [
   },
 ];
 
+// --- Directive 6.3: HR-validated workflow version 2 --------------------------
+// IT and Finance obligations moved to the deterministic derived email engine
+// (controlled notifications with no-login confirmation links), the manager
+// approval of the Action Form is removed, external-provider and survey work
+// is derived from the single benefits confirmation. The exact-time access-
+// revocation guarantee lives in the derived IT email (stating the exact
+// effective time), so v2 deliberately carries no ACCESS_REVOCATION task.
+
+/**
+ * Directive 6.3 V: the single HR benefits confirmation that feeds the derived
+ * provider notifications - shared shape across the three v2 workflows.
+ */
+const BENEFITS_CONFIRM_BASE = {
+  taskCode: 'HR_BENEFITS_CONFIRM',
+  title: 'Confirm benefits and provider applicability',
+  description:
+    'Confirm group health, group life and other-provider applicability under Benefits & providers.',
+  department: 'HR' as const,
+  requiredRole: 'HR_OFFICER' as const,
+  evidenceKind: 'LINKED_RECORD' as const,
+  evidenceNote: 'Benefits applicability confirmation recorded on the case.',
+};
+
+/** Directive 6.3: resignation with notice v2 (12 HR-validated obligations). */
+const RESIGNATION_TASKS_V2: SeedTask[] = [
+  {
+    taskCode: 'HR_VERIFY_CASE',
+    title: 'Verify resignation and case information',
+    description: 'Confirm the resignation evidence, employee identity and case data are correct.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    dueBasis: 'CASE_RECEIVED',
+    dueOffsetDays: 1,
+    slaNote: 'Within one business day of receipt.',
+  },
+  {
+    taskCode: 'HR_CONFIRM_DATES',
+    title: 'Confirm proposed and final working dates',
+    description: 'Confirm the proposed last day and record the confirmed final working date.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    dueBasis: 'CASE_RECEIVED',
+    dueOffsetDays: 1,
+    dependsOnCodes: ['HR_VERIFY_CASE'],
+  },
+  {
+    taskCode: 'HR_RESIGNATION_DOC',
+    title: 'Prepare and approve resignation acceptance document',
+    description:
+      'Draft, validate and route the resignation acceptance letter for HR Manager approval.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    dueBasis: 'CASE_RECEIVED',
+    dueOffsetDays: 2,
+    dependsOnCodes: ['HR_VERIFY_CASE'],
+    evidenceKind: 'LINKED_RECORD',
+    evidenceNote: 'Approved and rendered document on the Documents tab.',
+    slaNote: 'Within two business days of receipt.',
+  },
+  {
+    taskCode: 'HR_ACTION_FORM_HR',
+    title: 'Complete employee action form HR section',
+    description:
+      'Complete the HR checklist and acknowledgement sections of the digital action form.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    dueBasis: 'WORKFLOW_ACTIVATION',
+    dueOffsetDays: 3,
+    dependsOnCodes: ['HR_VERIFY_CASE'],
+    evidenceKind: 'LINKED_RECORD',
+  },
+  {
+    ...BENEFITS_CONFIRM_BASE,
+    dueBasis: 'WORKFLOW_ACTIVATION',
+    dueOffsetDays: 3,
+  },
+  {
+    taskCode: 'MGR_HANDOVER_PLAN',
+    title: 'Prepare handover plan',
+    description:
+      'Record duties requiring reassignment, open work and key locations in the handover record.',
+    department: 'LINE_MANAGER',
+    requiredRole: 'LINE_MANAGER',
+    dueBasis: 'FINAL_WORKING_DAY',
+    dueOffsetDays: -2,
+    waiverAllowed: true,
+    slaNote: 'No later than two business days before the final working day where notice permits.',
+  },
+  {
+    taskCode: 'MGR_REASSIGN_DUTIES',
+    title: 'Reassign open duties and deadlines',
+    description: 'Reassign open work to the replacement or temporary owner.',
+    department: 'LINE_MANAGER',
+    requiredRole: 'LINE_MANAGER',
+    dueBasis: 'FINAL_WORKING_DAY',
+    dueOffsetDays: -1,
+    waiverAllowed: true,
+    dependsOnCodes: ['MGR_HANDOVER_PLAN'],
+  },
+  {
+    taskCode: 'MGR_HANDOVER_COMPLETE',
+    title: 'Confirm knowledge-transfer completion',
+    description: 'Attest that the handover record is complete and accurate.',
+    department: 'LINE_MANAGER',
+    requiredRole: 'LINE_MANAGER',
+    dueBasis: 'FINAL_WORKING_DAY',
+    dueOffsetDays: 0,
+    waiverAllowed: true,
+    dependsOnCodes: ['MGR_HANDOVER_PLAN'],
+    evidenceKind: 'LINKED_RECORD',
+    evidenceNote: 'Completed handover record with manager attestation.',
+  },
+  {
+    taskCode: 'HR_ASSET_RECOVERY',
+    title: 'Complete asset recovery or final disposition',
+    description:
+      'Every required asset needs a documented final disposition. Asset status never affects pay.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    dueBasis: 'FINAL_WORKING_DAY',
+    dueOffsetDays: 0,
+    slaNote: 'Asset return target: by the final working day.',
+  },
+  {
+    taskCode: 'HR_EMPLOYEE_ACK',
+    title: 'Complete employee acknowledgement handling',
+    description: 'Record the employee acknowledgement outcome on the action form.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    dueBasis: 'FINAL_WORKING_DAY',
+    dueOffsetDays: 0,
+    dependsOnCodes: ['HR_RESIGNATION_DOC'],
+  },
+  {
+    taskCode: 'HR_HRIS_UPDATE',
+    title: 'Record HRIS/BambooHR update status',
+    description:
+      'Record the manual HRIS/BambooHR update as completed, pending or not applicable. No live system is called.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    dueBasis: 'EFFECTIVE_SEPARATION',
+    dueOffsetDays: 2,
+  },
+  {
+    taskCode: 'HRM_FINAL_CLEARANCE',
+    title: 'Perform final clearance review',
+    description:
+      'HR Manager reviews the clearance summary and approves final clearance (completed by the clearance approval itself).',
+    department: 'HR',
+    requiredRole: 'HR_MANAGER',
+    dueBasis: 'EFFECTIVE_SEPARATION',
+    dueOffsetDays: 5,
+    required: false,
+  },
+];
+
+/** Directive 6.3: immediate resignation v2 (11 HR-validated obligations). */
+const IMMEDIATE_TASKS_V2: SeedTask[] = [
+  {
+    taskCode: 'HR_URGENT_REVIEW',
+    title: 'Urgent HR case review',
+    description: 'Immediate review of the resignation-without-notice case.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    priority: 'HIGH',
+    dueBasis: 'WORKFLOW_ACTIVATION',
+    dueOffsetDays: 0,
+    slaNote: 'Same business day.',
+  },
+  {
+    taskCode: 'HR_CONFIRM_EFFECTIVE_TIME',
+    title: 'Confirm exact effective separation time',
+    description: 'Confirm the exact effective separation date and time.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    priority: 'HIGH',
+    dueBasis: 'WORKFLOW_ACTIVATION',
+    dueOffsetDays: 0,
+  },
+  {
+    taskCode: 'HR_ASSET_URGENT_REVIEW',
+    title: 'Immediate asset-location and recovery review',
+    description: 'Immediately establish where issued assets are and how they will be recovered.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    priority: 'HIGH',
+    dueBasis: 'WORKFLOW_ACTIVATION',
+    dueOffsetDays: 1,
+  },
+  {
+    taskCode: 'HR_IMMEDIATE_ACK_DOC',
+    title: 'Immediate-resignation acknowledgement document',
+    description: 'Prepare and approve the immediate-resignation acknowledgement letter.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    dueBasis: 'CASE_RECEIVED',
+    dueOffsetDays: 2,
+    evidenceKind: 'LINKED_RECORD',
+  },
+  {
+    taskCode: 'HR_ACTION_FORM_HR',
+    title: 'Complete HR action-form sections',
+    description: 'Complete the HR checklist and acknowledgement handling on the action form.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    dueBasis: 'WORKFLOW_ACTIVATION',
+    dueOffsetDays: 2,
+    evidenceKind: 'LINKED_RECORD',
+  },
+  {
+    ...BENEFITS_CONFIRM_BASE,
+    dueBasis: 'WORKFLOW_ACTIVATION',
+    dueOffsetDays: 3,
+  },
+  {
+    taskCode: 'MGR_HANDOVER_RECORDS',
+    title: 'Manager-recorded handover from available records',
+    description: 'The manager reconstructs the handover from available organizational records.',
+    department: 'LINE_MANAGER',
+    requiredRole: 'LINE_MANAGER',
+    dueBasis: 'WORKFLOW_ACTIVATION',
+    dueOffsetDays: 3,
+    waiverAllowed: true,
+  },
+  {
+    taskCode: 'MGR_HANDOVER_COMPLETE',
+    title: 'Handover completion, not applicable or waiver',
+    description:
+      'Complete the handover, mark it not applicable, or obtain an HR Manager waiver with a reason.',
+    department: 'LINE_MANAGER',
+    requiredRole: 'LINE_MANAGER',
+    dueBasis: 'WORKFLOW_ACTIVATION',
+    dueOffsetDays: 5,
+    dependsOnCodes: ['MGR_HANDOVER_RECORDS'],
+    waiverAllowed: true,
+    evidenceKind: 'LINKED_RECORD',
+  },
+  {
+    taskCode: 'HR_EMPLOYEE_ACK',
+    title: 'Employee acknowledgement handling',
+    description:
+      'Record ACKNOWLEDGED, NOT_OBTAINED with reason, or NOT_APPLICABLE where authorized. Lack of employee participation never skips required work.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    dueBasis: 'WORKFLOW_ACTIVATION',
+    dueOffsetDays: 3,
+  },
+  {
+    taskCode: 'HR_HRIS_UPDATE',
+    title: 'Record HRIS/BambooHR manual update',
+    description: 'Record the manual HRIS update status. No live system is called.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    dueBasis: 'WORKFLOW_ACTIVATION',
+    dueOffsetDays: 2,
+  },
+  {
+    taskCode: 'HRM_FINAL_CLEARANCE',
+    title: 'Final clearance review',
+    description: 'HR Manager clearance review (completed by the clearance approval itself).',
+    department: 'HR',
+    requiredRole: 'HR_MANAGER',
+    dueBasis: 'EFFECTIVE_SEPARATION',
+    dueOffsetDays: 5,
+    required: false,
+  },
+];
+
+/** Directive 6.3: restricted termination v2 (9 obligations, all confidential). */
+const TERMINATION_TASKS_V2: SeedTask[] = [
+  {
+    taskCode: 'HR_RESTRICTED_PREP',
+    title: 'Restricted HR preparation',
+    description: 'Restricted preparation by explicitly assigned HR participants only.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    priority: 'HIGH',
+    confidential: true,
+    dueBasis: 'WORKFLOW_ACTIVATION',
+    dueOffsetDays: 0,
+  },
+  {
+    taskCode: 'HRM_AUTHORIZATION',
+    title: 'Authorized HR Manager approval',
+    description: 'HR Manager confirms authorization for the restricted process.',
+    department: 'HR',
+    requiredRole: 'HR_MANAGER',
+    priority: 'HIGH',
+    confidential: true,
+    dueBasis: 'WORKFLOW_ACTIVATION',
+    dueOffsetDays: 0,
+    dependsOnCodes: ['HR_RESTRICTED_PREP'],
+  },
+  {
+    taskCode: 'HR_CONFIRM_EFFECTIVE_TIME',
+    title: 'Confirm exact effective separation date and time',
+    description: 'Confirm the exact effective separation instant for the security notifications.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    priority: 'HIGH',
+    confidential: true,
+    dueBasis: 'WORKFLOW_ACTIVATION',
+    dueOffsetDays: 0,
+    dependsOnCodes: ['HRM_AUTHORIZATION'],
+  },
+  {
+    taskCode: 'HR_RESTRICTED_ACTION_FORM',
+    title: 'Restricted action-form processing',
+    description: 'Process the action form under restricted-case rules.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    confidential: true,
+    dueBasis: 'EFFECTIVE_SEPARATION',
+    dueOffsetDays: 2,
+    evidenceKind: 'LINKED_RECORD',
+  },
+  {
+    ...BENEFITS_CONFIRM_BASE,
+    confidential: true,
+    dueBasis: 'EFFECTIVE_SEPARATION',
+    dueOffsetDays: 3,
+  },
+  {
+    taskCode: 'HR_ASSET_RECOVERY',
+    title: 'Asset recovery or disposition',
+    description: 'Recover issued assets or record final dispositions. No payroll effect.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    confidential: true,
+    dueBasis: 'EFFECTIVE_SEPARATION',
+    dueOffsetDays: 2,
+  },
+  {
+    taskCode: 'MGR_HANDOVER_AUTHORIZED',
+    title: 'Manager handover (only where authorized)',
+    description:
+      'Handover only where expressly authorized and applicable; released at the effective time.',
+    department: 'LINE_MANAGER',
+    requiredRole: 'LINE_MANAGER',
+    confidential: true,
+    required: false,
+    waiverAllowed: true,
+    dueBasis: 'EFFECTIVE_SEPARATION',
+    dueOffsetDays: 3,
+    releaseBasis: 'EFFECTIVE_SEPARATION',
+    releaseOffsetHours: 0,
+  },
+  {
+    taskCode: 'HR_HRIS_UPDATE',
+    title: 'Record HRIS/BambooHR manual update',
+    description: 'Record the manual HRIS update status. No live system is called.',
+    department: 'HR',
+    requiredRole: 'HR_OFFICER',
+    confidential: true,
+    dueBasis: 'EFFECTIVE_SEPARATION',
+    dueOffsetDays: 2,
+  },
+  {
+    taskCode: 'HRM_RESTRICTED_CLEARANCE',
+    title: 'Restricted final-clearance review',
+    description:
+      'Restricted clearance review by an authorized HR Manager participant (completed by the clearance approval itself).',
+    department: 'HR',
+    requiredRole: 'HR_MANAGER',
+    confidential: true,
+    dueBasis: 'EFFECTIVE_SEPARATION',
+    dueOffsetDays: 5,
+    required: false,
+  },
+];
+
+/** Directive 6.3: the v2 redesign, stated on every v2 definition. */
+const V2_REDESIGN_NOTE =
+  'HR-validated workflow v2 (Directive 6.3): IT and Finance participate through automated ' +
+  'controlled email notifications with no-login confirmation links; no manager approval of ' +
+  'the Action Form.';
+
+const WORKFLOWS_V2 = [
+  {
+    workflowType: 'RESIGNATION_WITH_NOTICE' as const,
+    name: 'DEV Resignation with notice workflow',
+    tasks: RESIGNATION_TASKS_V2,
+  },
+  {
+    workflowType: 'IMMEDIATE_RESIGNATION' as const,
+    name: 'DEV Immediate resignation workflow',
+    tasks: IMMEDIATE_TASKS_V2,
+  },
+  {
+    workflowType: 'TERMINATION' as const,
+    name: 'DEV Restricted termination workflow',
+    tasks: TERMINATION_TASKS_V2,
+  },
+];
+
 /** Section K: deterministic development notification templates. */
 const NOTIFICATION_TEMPLATES = [
   {
@@ -709,6 +1106,55 @@ const NOTIFICATION_TEMPLATES = [
     bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nDear [[EMPLOYEE_LEGAL_NAME]],\n\n[[MANUAL_NOTE]]\n\nCase reference: [[CASE_REFERENCE]].`,
     minimumDataNote:
       'Name, case reference and an HR-approved note only. HR Manager approval is required before ready-to-send.',
+  },
+  // Directive 6.3 K/N: configurable external purposes beyond Sagicor/NCB.
+  // Neutral wording by rule - external providers never receive departure
+  // details, and the validator rejects departure vocabulary outright.
+  {
+    notificationType: 'PAYROLL_OR_BANK_NOTIFICATION' as const,
+    recipientClass: 'EXTERNAL_PROVIDER' as const,
+    name: 'DEV Payroll/bank offboarding notice',
+    subjectTemplate: 'Employee offboarding notification - [[EMPLOYEE_REFERENCE]]',
+    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nTo: Payroll/bank contact on file\n\nPlease update your records for [[EMPLOYEE_LEGAL_NAME]] (employee reference [[EMPLOYEE_REFERENCE]]), whose employment with Bert's Auto Parts Ltd. ends effective [[EFFECTIVE_SEPARATION_DATE]].\n\nThis notice is prepared for controlled sending by authorized HR staff only.`,
+    minimumDataNote:
+      'Name, employee reference and effective date ONLY. External providers never receive departure details (K.16).',
+  },
+  {
+    notificationType: 'OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION' as const,
+    recipientClass: 'EXTERNAL_PROVIDER' as const,
+    name: 'DEV Other approved provider notice',
+    subjectTemplate: 'Employee offboarding notification - [[EMPLOYEE_REFERENCE]]',
+    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nTo: Approved external provider on file\n\nPlease update your records for [[EMPLOYEE_LEGAL_NAME]] (employee reference [[EMPLOYEE_REFERENCE]]), whose employment with Bert's Auto Parts Ltd. ends effective [[EFFECTIVE_SEPARATION_DATE]].\n\nThis notice is prepared for controlled sending by authorized HR staff only.`,
+    minimumDataNote:
+      'Name, employee reference and effective date ONLY. External providers never receive departure details (K.16).',
+  },
+];
+
+/**
+ * Directive 6.3 (K/Q): version-2 department templates - DMAIC-structured
+ * minimum data carried by the automated controlled email, confirmed through
+ * the secure no-login acknowledgement link. Version 1 stays as frozen history.
+ */
+const NOTIFICATION_TEMPLATES_V2 = [
+  {
+    notificationType: 'IT_ACCESS_REMOVAL' as const,
+    recipientClass: 'INTERNAL_DEPARTMENT' as const,
+    name: 'DEV IT access removal notice',
+    subjectTemplate:
+      'Offboarding - Access Removal Required - [[EMPLOYEE_LEGAL_NAME]] - [[EFFECTIVE_SEPARATION_TIME]]',
+    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nTo: IT Department\n\nEmployee: [[EMPLOYEE_LEGAL_NAME]]\nEmployee reference: [[EMPLOYEE_REFERENCE]]\nCase reference: [[CASE_REFERENCE]]\nEffective separation date: [[EFFECTIVE_SEPARATION_DATE]]\nEffective separation time: [[EFFECTIVE_SEPARATION_TIME]]\n\nSystems and access on record: [[ACCESS_SYSTEMS_SUMMARY]]\n\nRemove all listed access at exactly the stated effective separation time. Completion is confirmed through the secure link below; no application sign-in is required.\n\n[[ACKNOWLEDGEMENT_LINK]]\n\nHuman Resources, Bert's Auto Parts Ltd. (synthetic development template)`,
+    minimumDataNote:
+      'Name, employee reference, case reference, exact effective date and time, access categories and the secure confirmation link only. No departure reason, no survey or rehire information, no personal contact data.',
+  },
+  {
+    notificationType: 'FINANCE_OFFBOARDING' as const,
+    recipientClass: 'INTERNAL_DEPARTMENT' as const,
+    name: 'DEV Finance offboarding notice',
+    subjectTemplate:
+      'Employee Offboarding Notification - Finance Action Required - [[EMPLOYEE_LEGAL_NAME]]',
+    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nTo: Finance Department\n\nEmployee: [[EMPLOYEE_LEGAL_NAME]]\nEmployee reference: [[EMPLOYEE_REFERENCE]]\nCase reference: [[CASE_REFERENCE]]\nDepartment: [[DEPARTMENT]]\nConfirmed last working date: [[CONFIRMED_LAST_WORKING_DATE]]\nEffective separation date: [[EFFECTIVE_SEPARATION_DATE]]\n\nPlease complete the applicable offboarding and final-pay process under Finance procedures. This notice carries no amounts; the offboarding system performs no pay calculation.\n\nConfirm completion through the secure link below; no application sign-in is required.\n\n[[ACKNOWLEDGEMENT_LINK]]\n\nHuman Resources, Bert's Auto Parts Ltd. (synthetic development template)`,
+    minimumDataNote:
+      'Name, employee reference, case reference, department, dates and the secure confirmation link only. No departure reason, no pay figures, no personal contact data.',
   },
 ];
 
@@ -887,6 +1333,37 @@ const ISSUED_ASSETS: ReadonlyArray<{
   },
 ];
 
+/** Map seed tasks to task-definition create inputs (shared by v1 and v2). */
+function taskDefCreateInputs(tasks: SeedTask[]) {
+  return tasks.map((t, i) => ({
+    taskCode: t.taskCode,
+    sortOrder: (i + 1) * 10,
+    enabled: true,
+    title: t.title,
+    description: t.description,
+    department: t.department,
+    requiredRole: t.requiredRole,
+    taskKind: t.taskKind ?? ('STANDARD' as const),
+    priority: t.priority ?? ('NORMAL' as const),
+    confidential: t.confidential ?? false,
+    required: t.required ?? true,
+    waiverAllowed: t.waiverAllowed ?? false,
+    waiverAuthority: 'HR_MANAGER' as const,
+    dueBasis: t.dueBasis,
+    dueOffsetDays: t.dueOffsetDays ?? 0,
+    dueOffsetKind: t.dueOffsetKind ?? ('BUSINESS_DAYS' as const),
+    releaseBasis: t.releaseBasis ?? ('IMMEDIATE' as const),
+    releaseOffsetHours: t.releaseOffsetHours ?? 0,
+    pausesOnHold: t.pausesOnHold ?? true,
+    blockPausesSla: t.blockPausesSla ?? false,
+    dependsOnCodes: t.dependsOnCodes ?? [],
+    evidenceKind: t.evidenceKind ?? ('NOTE' as const),
+    evidenceNote: t.evidenceNote ?? null,
+    slaNote: t.slaNote ?? null,
+    escalationNote: t.escalationNote ?? null,
+  }));
+}
+
 export async function seedStage3(db: Db): Promise<void> {
   const hrManager = await db.user.findUniqueOrThrow({
     where: { identitySubject: 'dev|hr-manager' },
@@ -911,33 +1388,7 @@ export async function seedStage3(db: Db): Promise<void> {
       where: { workflowType: wf.workflowType, version: 1 },
     });
     if (existing) continue;
-    const tasks = wf.tasks.map((t, i) => ({
-      taskCode: t.taskCode,
-      sortOrder: (i + 1) * 10,
-      enabled: true,
-      title: t.title,
-      description: t.description,
-      department: t.department,
-      requiredRole: t.requiredRole,
-      taskKind: t.taskKind ?? ('STANDARD' as const),
-      priority: t.priority ?? ('NORMAL' as const),
-      confidential: t.confidential ?? false,
-      required: t.required ?? true,
-      waiverAllowed: t.waiverAllowed ?? false,
-      waiverAuthority: 'HR_MANAGER' as const,
-      dueBasis: t.dueBasis,
-      dueOffsetDays: t.dueOffsetDays ?? 0,
-      dueOffsetKind: t.dueOffsetKind ?? ('BUSINESS_DAYS' as const),
-      releaseBasis: t.releaseBasis ?? ('IMMEDIATE' as const),
-      releaseOffsetHours: t.releaseOffsetHours ?? 0,
-      pausesOnHold: t.pausesOnHold ?? true,
-      blockPausesSla: t.blockPausesSla ?? false,
-      dependsOnCodes: t.dependsOnCodes ?? [],
-      evidenceKind: t.evidenceKind ?? ('NOTE' as const),
-      evidenceNote: t.evidenceNote ?? null,
-      slaNote: t.slaNote ?? null,
-      escalationNote: t.escalationNote ?? null,
-    }));
+    const tasks = taskDefCreateInputs(wf.tasks);
     const checksum = workflowConfigChecksum({
       workflowType: wf.workflowType,
       name: wf.name,
@@ -967,6 +1418,50 @@ export async function seedStage3(db: Db): Promise<void> {
     });
   }
 
+  // Directive 6.3: HR-validated v2 definitions. Create v2 as DRAFT with its
+  // tasks, mark the ACTIVE v1 SUPERSEDED (a lifecycle-only update - the
+  // freeze trigger keeps the content immutable), then activate v2 so at most
+  // one version per type is ACTIVE (B.5). Skipped once version 2 exists.
+  for (const wf of WORKFLOWS_V2) {
+    const existing = await db.workflowDefinition.findFirst({
+      where: { workflowType: wf.workflowType, version: 2 },
+    });
+    if (existing) continue;
+    const tasks = taskDefCreateInputs(wf.tasks);
+    const checksum = workflowConfigChecksum({
+      workflowType: wf.workflowType,
+      name: wf.name,
+      version: 2,
+      description: '',
+      activationConditions: '',
+      tasks: tasks.map((t) => ({ ...t })),
+    });
+    const def = await db.workflowDefinition.create({
+      data: {
+        workflowType: wf.workflowType,
+        name: wf.name,
+        version: 2,
+        status: 'DRAFT',
+        description: `${DEV_WORKFLOW_MARK}. ${V2_REDESIGN_NOTE}`,
+        activationConditions:
+          'Case APPROVED with an exact effective separation time; TRAINING/TEST records always; ' +
+          `OPERATIONAL records only with the automation.workflowEngine flag. ${V2_REDESIGN_NOTE}`,
+        changeReason: 'Directive 6.3: HR-validated workflow simplification.',
+        configChecksum: checksum,
+        createdById: hrManager.id,
+        taskDefs: { create: tasks },
+      },
+    });
+    await db.workflowDefinition.updateMany({
+      where: { workflowType: wf.workflowType, version: 1, status: 'ACTIVE' },
+      data: { status: 'SUPERSEDED', supersededAt: new Date() },
+    });
+    await db.workflowDefinition.update({
+      where: { id: def.id },
+      data: { status: 'ACTIVE', activatedById: hrManager.id, activatedAt: new Date() },
+    });
+  }
+
   // Notification templates (K): v1 ACTIVE, deterministic, minimum-data.
   for (const t of NOTIFICATION_TEMPLATES) {
     const existing = await db.notificationTemplate.findFirst({
@@ -989,6 +1484,42 @@ export async function seedStage3(db: Db): Promise<void> {
           .update(`${t.subjectTemplate}\n${t.bodyTemplate}`, 'utf8')
           .digest('hex'),
         changeReason: 'Synthetic development seed (Stage 3).',
+        createdById: hrManager.id,
+        activatedById: hrManager.id,
+        activatedAt: new Date(),
+      },
+    });
+  }
+
+  // Directive 6.3 (K/Q): v2 department templates activate atomically - the
+  // prior ACTIVE version is marked SUPERSEDED first (frozen history, never
+  // edited or deleted). Skipped once version 2 exists.
+  for (const t of NOTIFICATION_TEMPLATES_V2) {
+    const existing = await db.notificationTemplate.findFirst({
+      where: { notificationType: t.notificationType, version: 2 },
+    });
+    if (existing) continue;
+    await db.notificationTemplate.updateMany({
+      where: { notificationType: t.notificationType, status: 'ACTIVE' },
+      data: { status: 'SUPERSEDED', supersededAt: new Date() },
+    });
+    const allowed = NOTIFICATION_PLACEHOLDERS[t.notificationType];
+    await db.notificationTemplate.create({
+      data: {
+        notificationType: t.notificationType,
+        version: 2,
+        status: 'ACTIVE',
+        recipientClass: t.recipientClass,
+        name: t.name,
+        subjectTemplate: t.subjectTemplate,
+        bodyTemplate: t.bodyTemplate,
+        allowedPlaceholders: [...allowed],
+        minimumDataNote: t.minimumDataNote,
+        contentChecksum: createHash('sha256')
+          .update(`${t.subjectTemplate}\n${t.bodyTemplate}`, 'utf8')
+          .digest('hex'),
+        changeReason:
+          'Directive 6.3: DMAIC-structured controlled email with no-login acknowledgement link.',
         createdById: hrManager.id,
         activatedById: hrManager.id,
         activatedAt: new Date(),

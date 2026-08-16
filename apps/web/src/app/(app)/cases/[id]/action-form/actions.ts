@@ -4,11 +4,10 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import {
   ServiceError,
+  completeActionForm,
   createActionForm,
-  hrApproveForm,
-  hrReturnForm,
-  managerApproveForm,
-  managerReturnForm,
+  hrReviewForm,
+  returnActionForm,
   submitActionForm,
   updateActionFormFinance,
   updateActionFormHr,
@@ -90,41 +89,34 @@ export async function saveFinanceSectionAction(formData: FormData): Promise<void
       financeChecklist: checklistFromForm(fd, 'fin', FINANCE_CHECKLIST_ITEMS),
       financeNotes: str(fd, 'financeNotes') || null,
     });
-    return 'Finance checklist saved.';
+    return 'Finance evidence saved.';
   });
 }
 
 export async function submitFormAction(formData: FormData): Promise<void> {
   await run(formData, async (actor, fd) => {
     await submitActionForm(actor, str(fd, 'formId'));
-    return 'Form submitted for manager approval.';
+    return 'Form finished and ready for review.';
   });
 }
 
-export async function managerApproveAction(formData: FormData): Promise<void> {
+export async function hrReviewAction(formData: FormData): Promise<void> {
   await run(formData, async (actor, fd) => {
-    await managerApproveForm(actor, str(fd, 'formId'));
-    return 'Manager approval recorded (attested).';
+    await hrReviewForm(actor, str(fd, 'formId'));
+    return 'Management review recorded.';
   });
 }
 
-export async function managerReturnAction(formData: FormData): Promise<void> {
+export async function completeFormAction(formData: FormData): Promise<void> {
   await run(formData, async (actor, fd) => {
-    await managerReturnForm(actor, str(fd, 'formId'), str(fd, 'reason'));
-    return 'Form returned to HR with your reason.';
+    await completeActionForm(actor, str(fd, 'formId'));
+    return 'Action form completed; the final form PDF has been generated.';
   });
 }
 
-export async function hrApproveAction(formData: FormData): Promise<void> {
+export async function returnFormAction(formData: FormData): Promise<void> {
   await run(formData, async (actor, fd) => {
-    await hrApproveForm(actor, str(fd, 'formId'));
-    return 'HR final approval recorded; the immutable form PDF has been generated.';
-  });
-}
-
-export async function hrReturnAction(formData: FormData): Promise<void> {
-  await run(formData, async (actor, fd) => {
-    await hrReturnForm(actor, str(fd, 'formId'), str(fd, 'reason'));
+    await returnActionForm(actor, str(fd, 'formId'), str(fd, 'reason'));
     return 'Form returned for correction.';
   });
 }

@@ -290,6 +290,90 @@ UAT accounts are function-named (DEC-040): specs sign in as "HR Manager",
 "Second IT Responder", etc. The environment is rebuilt with
 `scripts/reset-environment.ts` (status | purge-live | uat | fresh, DEC-041).
 
+### Directive 6.3 additions (2026-08-16)
+
+**New unit suites:** `packages/domain/test/derivedActions.test.ts` (the
+deterministic rules engine: same facts → same actions, benefits YES/NO/
+UNKNOWN behaviour, issued-asset derivation, survey eligibility, termination
+timing) and `packages/domain/test/emailActions.test.ts` (send control
+resolution incl. restricted stricter-of, auto-send blockers, token
+purposes/expiry, display-state projection, recipient validation). The
+existing form/notification/clearance unit suites extend to the redesigned
+state machines.
+
+**New integration suites:** `directive63*` in `packages/db/test-int`,
+covering derivation idempotency and overrides, derived notification
+preparation and AUTO_SEND release with the AG gates, RECIPIENT_MISSING /
+AUTO_SEND_BLOCKED / BENEFITS_APPLICABILITY_UNKNOWN / ACKNOWLEDGEMENT_OVERDUE
+exception lifecycles, acknowledgement-token issue/redeem/replay/expiry/
+revoke, HR-recorded evidence, officer form completion with the
+configuration-gated review, dual-mode clearance and per-item asset
+exception coverage, and notification template lifecycle.
+
+**Invariants (the 20 Directive 6.3 acceptance-criteria invariants).** Every
+one is enforced by at least one automated test:
+
+1. No new case requires an IT or Finance application login for any step.
+2. Manager approval of the Action Form does not exist for new forms; legacy
+   statuses render forever and legacy live rows are never stranded.
+3. The assigned HR Officer can complete an ordinary Action Form; HR-Manager
+   review intervenes only when `actionForm.requireHrReview` is enabled.
+4. Derivation is deterministic and fully provenanced (rule key, rules
+   version, source fields, result) with an injectable clock.
+5. Re-derivation is idempotent per (case, actionKey) and never duplicates a
+   notification (idempotency key: case + type + recipient class + workflow
+   version + effective event).
+6. A derived notification with no recipient is never silently skipped: it
+   raises RECIPIENT_MISSING (HIGH) and waits.
+7. AUTO_SEND releases only when every condition holds (level, approved and
+   verified recipient, ACTIVE template, complete body, confirmed
+   applicability) AND the purpose/cohort/flag gates pass; otherwise
+   AUTO_SEND_BLOCKED.
+8. Restricted cases never send below the configured restricted override;
+   the stricter level always wins.
+9. Termination timing is confidential: IT releases no earlier than one hour
+   before the effective instant; Finance at the effective instant.
+10. Benefits applicability is YES/NO/UNKNOWN; UNKNOWN blocks v2 clearance
+    and raises an exception; YES prepares; NO creates nothing.
+11. Derived-action overrides require authority and a reason, are audited,
+    and win over re-derivation until removed.
+12. Acknowledgement tokens are CSPRNG, hash-only, single-use (atomic
+    claim), purpose-limited, expiring, and fail neutrally.
+13. Token redemption discloses only the action label and the case reference
+    the email already carried - never case content or a session.
+14. Email delivery is never completion evidence for IT access removal:
+    clearance needs confirmed completion or an approved exception, and an
+    unconfirmed IT action at the effective instant escalates CRITICAL.
+15. Unresolved-asset exception coverage is per item, never case-wide.
+16. Clearance is dual-mode: v1 instances clear task-based, v2 clears from
+    email-action evidence; running cases are never reinterpreted.
+17. The exit survey schedules automatically for eligible cases and never
+    blocks clearance.
+18. Every automated decision is a SYSTEM-actor audit event
+    (DERIVED_ACTIONS_COMPUTED, NOTIFICATION_AUTO_PREPARED/AUTO_APPROVED,
+    ACK_TOKEN_*, NOTIFICATION_SENT/ACKNOWLEDGED/COMPLETION_CONFIRMED).
+19. No pay calculation, withholding or entitlement logic exists anywhere;
+    asset outcomes carry no payroll effect.
+20. HR-facing surfaces use business-language labels; raw enum values and
+    governance identifiers appear only on administration/audit surfaces.
+
+**Dynamic-fixture-date rule (permanent):** fixtures must not contain fixed
+calendar dates. Date-anchored fixtures went stale and silently flipped test
+semantics (logic review LR-009); all fixture instants are now derived from
+the test run's clock (`test-int/helpers.ts`: FIXTURE_RECEIVED_AT ~25 days
+back, FIXTURE_EFFECTIVE_AT 5 days ahead). A fixture with a literal calendar
+date fails review.
+
+**E2E journey changes:** new-case journeys no longer sign in as IT or
+Finance responders anywhere - department confirmation happens through the
+public acknowledgement route (`/ack/<token>`, exercised from the captured
+email in `/dev/mailbox`), and the route sweep covers the public ack page
+(valid, used, expired and implausible tokens all render neutrally).
+IT/Finance sign-ins remain only in legacy-instance regression specs.
+Journeys add: benefits confirmation, recipient-required resolution
+(case-only entry and save-for-future), the exception-first required-actions
+panel, and officer form completion without any manager approval step.
+
 ## 9. Defect severity
 
 | Severity | Definition | Release treatment |

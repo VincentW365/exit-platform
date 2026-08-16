@@ -295,3 +295,78 @@ AI may later propose:
 - de-identified aggregate themes.
 
 The system must visually distinguish suggestions from approved data/content. Human confirmation writes the final value; the AI output itself is not authoritative.
+
+## 15. Directive 6.3 delta (2026-08-16): email-first department actions
+
+Product direction: HR operational feedback (DEC-045..DEC-049). The
+controlled-template discipline above is unchanged; this section records how
+notifications become the department action channel.
+
+### 15.1 Derived preparation and send control levels
+
+- The rules engine derives which notifications a case needs (IT access
+  removal, Finance offboarding, provider removals per confirmed benefits
+  applicability) and prepares each from the ACTIVE template version with a
+  full field snapshot, checksum and idempotency key (case + type +
+  recipient class + workflow version + effective event) - re-derivation
+  reuses a live record and never duplicates.
+- Release is governed by configurable send control levels per type
+  (`notifications.sendControl`): AUTO_SEND (seeded for internal
+  departments; zero HR clicks when every condition holds),
+  HR_REVIEW_THEN_SEND (seeded for external providers), and
+  HR_MANAGER_APPROVAL_REQUIRED. RESTRICTED cases resolve to the stricter
+  of the configured level and the restricted override (default
+  HR-Manager approval).
+- AUTO_SEND requires ALL of: an approved and verified recipient, an ACTIVE
+  template, rendered content with no missing fields, confirmed
+  applicability - plus the retained safety gates (record purpose, cohort,
+  `automation.notifications` flag). Any blocker opens an AUTO_SEND_BLOCKED
+  exception; a missing recipient opens RECIPIENT_MISSING (HIGH) - never a
+  silent skip. The DRAFT -> PENDING_APPROVAL -> APPROVED order never
+  relaxes; the automatic path is a SYSTEM actor with full audit.
+- Confidential timing: termination IT emails carry scheduledSendAt no
+  earlier than one hour before the effective instant; termination Finance
+  emails the effective instant; the outbox honours the schedule.
+
+### 15.2 Recipients
+
+- The recipient directory gains provider purposes (incl. reserved
+  payroll/bank and pension classes), organization and contact names - a
+  provider directory, not bare addresses. Directory entries keep the
+  approval + verification lifecycle and encrypted, masked destinations.
+- A missing recipient is resolved on the case: the assigned HR Officer may
+  enter a CASE-ONLY recipient (validated, encrypted, masked, audited)
+  without HR-Manager approval; saving for FUTURE cases requires
+  recipient-directory authority and the controlled lifecycle (DEC-047).
+
+### 15.3 Evidence chain and acknowledgement tokens
+
+- New statuses SENT -> ACKNOWLEDGED -> CONFIRMED_COMPLETE record the
+  evidence chain. Dispatch embeds single-purpose secure links
+  (`/ack/<token>`): acknowledge receipt (all email actions) and confirm
+  completion (internal departments only). Token discipline mirrors the
+  exit-survey tokens: 256-bit CSPRNG, hash-only storage, single-use atomic
+  claim, bounded lifetime (72h IT / 14 days otherwise), worker expiry
+  nulling the hash, neutral failures, minimum disclosure (action label +
+  the case reference the email already carried).
+- An HR-recorded evidence path (confirmed by email/phone/other, mandatory
+  note, audited with the actor) always exists, so a recipient who never
+  clicks cannot stall a case.
+- Delivery is never completion: an IT access-removal email that is sent but
+  unconfirmed at the effective instant raises a CRITICAL exception, and the
+  v2 clearance gate demands confirmation-grade evidence or an approved
+  exception. Provider acceptance remains SUBMITTED, never DELIVERED
+  (DEC-034); SENT records capture-provider dispatch only outside
+  production.
+
+### 15.4 Notification template management
+
+Versioned plain-text templates per notification type (now nine types,
+adding payroll/bank and other-external): officers draft against the
+allow-listed placeholder set (no markup, no executable content), preview
+and test-send use clearly synthetic sample values and the development
+capture only (refused in production), the HR Manager activates with atomic
+supersession of the prior ACTIVE version, and every lifecycle step is
+audited (TEMPLATE_NOTIFICATION_*). The ACKNOWLEDGEMENT_LINK placeholder is
+resolved only at dispatch time; stored snapshots keep a marker, never a
+live link.

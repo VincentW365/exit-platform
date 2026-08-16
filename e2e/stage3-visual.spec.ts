@@ -63,7 +63,12 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
   await page.goto('/admin/workflows');
   await snap(page, '02-workflow-definitions');
   await axeCheck(page, 'workflow-definitions');
-  await page.getByRole('link', { name: /DEV Resignation with notice workflow/ }).click();
+  // Directive 6.3 seeds a v2 of each workflow definition; open the first
+  // matching register entry (both versions share the display name).
+  await page
+    .getByRole('link', { name: /DEV Resignation with notice workflow/ })
+    .first()
+    .click();
   await snap(page, '03-workflow-definition-matrix', true);
   await axeCheck(page, 'workflow-definition-matrix');
 
@@ -95,7 +100,12 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
   await snap(page, '14-assignment-plan', true);
   await axeCheck(page, 'assignment-plan');
   await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
-  await page.locator('#of-user').selectOption({ label: 'HR Officer' });
+  // Directive 6.3 correction 7: options read "<name> - <job title>".
+  const officerValue = await page
+    .locator('#of-user option', { hasText: 'HR Officer' })
+    .first()
+    .getAttribute('value');
+  await page.locator('#of-user').selectOption(officerValue!);
   await page.locator('#of-reason').fill('Visual QA assignment.');
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
@@ -121,36 +131,22 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
   await snap(page, '05-workflow-instance', true);
   await axeCheck(page, 'workflow-instance');
 
-  // Exact-time access task detail (IT view via the department queue).
-  await signOut(page);
-  await signInAs(page, 'IT Responder');
+  // Work queue + task detail (Directive 6.3: IT/Finance have no logins - the
+  // "My work" queue serves HR and line managers; the HR view is captured).
   await page.goto(`/queue?view=all&q=${caseNo}`);
   await snap(page, '06-department-queue', true);
   await axeCheck(page, 'department-queue');
-  await page
-    .getByRole('link', { name: 'Review systems and access requiring removal' })
-    .first()
-    .click();
+  await page.getByRole('link', { name: 'Verify resignation and case information' }).first().click();
   await snap(page, '07-task-detail');
   await axeCheck(page, 'task-detail');
-  // Complete the review so THIS case's exact-time task releases.
-  await page.locator('details.action > summary', { hasText: 'Complete with evidence' }).click();
-  await page.locator('#c-note').fill('Access list reviewed for the visual QA case.');
-  await page.getByRole('button', { name: 'Complete task' }).click();
-  await expect(page.getByText('Task completed with evidence.')).toBeVisible();
-  await page.goto(`/queue?view=all&q=${caseNo}`);
-  await page
-    .getByRole('link', { name: 'Revoke system access at the effective separation time' })
-    .first()
-    .click();
-  await snap(page, '08-access-revocation-task', true);
-  await axeCheck(page, 'access-revocation-task');
-  await signOut(page);
 
-  // Notifications, assets, handover, clearance and the exception feed.
-  await signInAs(page, 'HR Manager');
+  // Email actions (Directive 6.3), assets, handover, clearance, exceptions.
   await page.goto(`${caseUrl}/notifications`);
-  await page.locator('details.action > summary', { hasText: 'Prepare a notification' }).click();
+  await snap(page, '08-email-actions', true);
+  await axeCheck(page, 'email-actions');
+  await page
+    .locator('details.action > summary', { hasText: 'Prepare a manual notification (exceptional)' })
+    .click();
   await snap(page, '09-notifications', true);
   await axeCheck(page, 'notifications');
 

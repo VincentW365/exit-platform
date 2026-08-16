@@ -8,6 +8,7 @@ import {
   formatDateOnly,
   formatInstant,
   humanizeAuditEvent,
+  type RequiredActionRow,
   type TimelineChip,
 } from '@exit/domain';
 import {
@@ -19,6 +20,7 @@ import {
   listBaselineEvents,
   listCaseAudit,
   listNotes,
+  listRequiredActions,
 } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { CaseNav } from './CaseNav';
@@ -35,6 +37,7 @@ import {
   addNoteAction,
   addParticipantAction,
   changeEffectiveTimeAction,
+  confirmBenefitsAction,
   correctPurposeAction,
   recordBaselineAction,
   setRehireAction,
@@ -94,6 +97,15 @@ export default async function CaseDetailPage({
     userId ? (users.find((u) => u.userId === userId)?.displayName ?? null) : null;
   const progressSummary = await caseProgressSummary(actor, id).catch(() => null);
   const progress = progressSummary?.stages ?? [];
+  // Directive 6.3 X/Y: exception-first required-actions summary.
+  const required = await listRequiredActions(actor, id).catch(() => null);
+  const requiredTotal = required
+    ? required.summary.counts.attention +
+      required.summary.counts.automatic +
+      required.summary.counts.done
+    : 0;
+  const benefitsText = (v: string) =>
+    v === 'YES' ? 'Yes' : v === 'NO' ? 'No' : 'Not yet confirmed';
 
   return (
     <>
@@ -127,6 +139,66 @@ export default async function CaseDetailPage({
       {c.classification === 'RESTRICTED' ? <RestrictedBanner /> : null}
       <CaseNav caseId={id} active="overview" />
       {progress.length > 0 ? <ProgressStrip stages={progress} /> : null}
+
+      {required && requiredTotal > 0 ? (
+        <section className="panel" aria-labelledby="required-h">
+          <h2 id="required-h" style={{ marginTop: 0 }}>
+            Required actions
+          </h2>
+          {required.summary.attention.length > 0 ? (
+            <>
+              <h3 style={{ marginBottom: '0.35rem' }}>Requires your attention</h3>
+              <ul className="stack" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {required.summary.attention.map((r: RequiredActionRow) => (
+                  <li key={r.key}>
+                    <span
+                      className={`badge ${
+                        r.status === 'ACTION_REQUIRED' ? 'badge--warning' : 'badge--danger'
+                      }`}
+                    >
+                      {r.status === 'FAILED'
+                        ? 'Failed'
+                        : r.status === 'OVERDUE'
+                          ? 'Overdue'
+                          : 'Needs a decision'}
+                    </span>{' '}
+                    <strong>{r.label}</strong> - {r.detail} <Link href={r.href}>Resolve</Link>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="ok-summary" role="status">
+              Nothing needs your attention on this case.
+            </p>
+          )}
+          {required.summary.automatic.length > 0 ? (
+            <>
+              <h3 style={{ marginBottom: '0.35rem' }}>In progress automatically</h3>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {required.summary.automatic.map((r: RequiredActionRow) => (
+                  <li key={r.key} className="hint">
+                    {r.label} - {r.detail}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+          {required.summary.done.length > 0 ? (
+            <details className="action" style={{ marginTop: '0.5rem' }}>
+              <summary>Completed / not applicable ({required.summary.counts.done})</summary>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {required.summary.done.map((r: RequiredActionRow) => (
+                  <li key={r.key} className="hint">
+                    {r.label} - {r.status === 'NOT_APPLICABLE' ? 'not applicable' : 'completed'} (
+                    {r.detail})
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="panel" aria-labelledby="summary-h">
         <h2 id="summary-h" style={{ marginTop: 0 }}>
@@ -164,7 +236,7 @@ export default async function CaseDetailPage({
           <dd>
             {c.reasonCategory
               ? `${c.reasonCategory.label}${c.reasonCategory.isTestOnly ? ' (TEST ONLY)' : ''}`
-              : `none - status ${c.reasonCaptureStatus} (taxonomy pending DEC-031)`}
+              : `none recorded (${c.reasonCaptureStatus.replaceAll('_', ' ').toLowerCase()})`}
           </dd>
           <dt>Reason notes</dt>
           <dd>
@@ -371,7 +443,7 @@ export default async function CaseDetailPage({
                       <option value="CONDITIONAL">Conditional</option>
                     </select>
                     <p className="hint">
-                      Visible to HR Managers only; access is audited (DEC-032).
+                      Visible to HR Managers only; every view and change is audited.
                     </p>
                   </div>
                   <button type="submit">Save</button>
@@ -408,8 +480,73 @@ export default async function CaseDetailPage({
           </details>
           <p className="hint">
             Allowed only while the record is a draft; operational records are never silently
-            reclassified (BR-CASE-014).
+            reclassified.
           </p>
+        </section>
+      ) : null}
+
+      {required?.canConfirmBenefits ? (
+        <section className="panel" aria-labelledby="benefits-h">
+          <h2 id="benefits-h" style={{ marginTop: 0 }}>
+            Benefits &amp; providers
+          </h2>
+          <dl className="kv">
+            <dt>Group health</dt>
+            <dd>{benefitsText(required.benefits.groupHealth)}</dd>
+            <dt>Group life</dt>
+            <dd>{benefitsText(required.benefits.groupLife)}</dd>
+            <dt>Other provider</dt>
+            <dd>{benefitsText(required.benefits.otherProvider)}</dd>
+            <dt>Confirmed</dt>
+            <dd>
+              {required.benefits.confirmedAt
+                ? formatInstant(required.benefits.confirmedAt)
+                : 'not yet confirmed'}
+            </dd>
+          </dl>
+          <details className="action" style={{ marginTop: '0.5rem' }}>
+            <summary>Confirm benefits applicability</summary>
+            <form action={confirmBenefitsAction} className="stack">
+              <input type="hidden" name="caseId" value={c.id} />
+              <div className="field">
+                <label htmlFor="ben-health">Group health applies to this employee?</label>
+                <select
+                  id="ben-health"
+                  name="groupHealth"
+                  defaultValue={required.benefits.groupHealth}
+                >
+                  <option value="YES">Yes</option>
+                  <option value="NO">No</option>
+                  <option value="UNKNOWN">Unknown</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="ben-life">Group life applies to this employee?</label>
+                <select id="ben-life" name="groupLife" defaultValue={required.benefits.groupLife}>
+                  <option value="YES">Yes</option>
+                  <option value="NO">No</option>
+                  <option value="UNKNOWN">Unknown</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="ben-other">Another provider must be notified?</label>
+                <select
+                  id="ben-other"
+                  name="otherProvider"
+                  defaultValue={required.benefits.otherProvider === 'YES' ? 'YES' : 'NO'}
+                >
+                  <option value="YES">Yes</option>
+                  <option value="NO">No</option>
+                </select>
+              </div>
+              <p className="hint">
+                Confirming &quot;Yes&quot; prepares the matching provider notification;
+                &quot;No&quot; removes it. Anything left unknown stays on the attention list until
+                confirmed.
+              </p>
+              <button type="submit">Confirm applicability</button>
+            </form>
+          </details>
         </section>
       ) : null}
 
@@ -450,9 +587,11 @@ export default async function CaseDetailPage({
                 <label htmlFor="p-role">Participant role</label>
                 <select id="p-role" name="participantRole" defaultValue="HR_SUPPORT">
                   <option value="HR_SUPPORT">HR support (requires an HR role)</option>
-                  <option value="FINANCE">Finance - action-form checklist only</option>
-                  <option value="MANAGER">Manager - action-form review/approval only</option>
                 </select>
+                <p className="hint">
+                  IT and Finance are reached by controlled email, and the manager participant is
+                  added automatically at activation for the handover.
+                </p>
               </div>
               <div className="field">
                 <label htmlFor="p-reason">Reason (required, audited)</label>

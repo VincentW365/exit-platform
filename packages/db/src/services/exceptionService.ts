@@ -26,7 +26,12 @@ export type ExceptionTypeName =
   | 'INVALID_CASE_DATE'
   | 'WORKFLOW_ACTIVATION_FAILURE'
   | 'DUE_DATE_RETROSPECTIVE_CHANGE'
-  | 'CLEARANCE_BLOCKED';
+  | 'CLEARANCE_BLOCKED'
+  // Directive 6.3: exception-first automation.
+  | 'RECIPIENT_MISSING'
+  | 'BENEFITS_APPLICABILITY_UNKNOWN'
+  | 'ACKNOWLEDGEMENT_OVERDUE'
+  | 'AUTO_SEND_BLOCKED';
 
 export interface OpenExceptionInput {
   exceptionType: ExceptionTypeName;

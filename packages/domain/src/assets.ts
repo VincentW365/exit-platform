@@ -91,6 +91,8 @@ export function assetDispositionError(
 }
 
 export interface AssetItemLike {
+  /** Row id - used to match approved exceptions to the specific item. */
+  id?: string;
   status: AssetRecoveryStatus;
   requiredForClearance: boolean;
 }
@@ -133,21 +135,24 @@ export function assetMetrics(items: readonly AssetItemLike[]): {
 
 /**
  * L.2/L.3: clearance-side check. Every required item needs a final documented
- * disposition; UNRESOLVED only passes with an approved exception.
+ * disposition; UNRESOLVED only passes with an approved exception FOR THAT
+ * ITEM (Directive 6.3 logic-audit fix: a case-wide approval no longer covers
+ * unrelated unresolved assets).
  */
 export function assetsSatisfyClearance(
   items: readonly AssetItemLike[],
-  unresolvedExceptionApproved: boolean,
+  approvedUnresolvedItemIds: readonly string[],
 ): { ok: boolean; detail: string } {
   const required = items.filter((i) => i.requiredForClearance);
   const open = required.filter((i) => OPEN_ASSET_STATUSES.includes(i.status));
   const unresolved = required.filter((i) => i.status === 'UNRESOLVED');
   if (open.length > 0)
     return { ok: false, detail: `${open.length} asset(s) without a documented disposition.` };
-  if (unresolved.length > 0 && !unresolvedExceptionApproved)
+  const uncovered = unresolved.filter((i) => !i.id || !approvedUnresolvedItemIds.includes(i.id));
+  if (uncovered.length > 0)
     return {
       ok: false,
-      detail: `${unresolved.length} UNRESOLVED asset(s) without an approved exception (L.3).`,
+      detail: `${uncovered.length} UNRESOLVED asset(s) without an approved exception for that item (L.3).`,
     };
   return { ok: true, detail: 'All required assets have documented dispositions.' };
 }

@@ -41,21 +41,20 @@ let running = true;
 
 async function heartbeat(): Promise<void> {
   try {
-    // Connectivity probe plus a safety assertion: in Stage 1 every automation
-    // flag must remain disabled; a flipped flag is loudly reported.
-    const enabledFlags = await prisma.featureFlag.count({ where: { enabled: true } });
+    // Connectivity probe. Directive 6.3: enabled automation flags are the
+    // intended operating state, reported as information - never a false
+    // alarm. Production live-send safety stays with the fail-closed config
+    // guards and the pilot activation gates, not this log line.
+    const enabled = await prisma.featureFlag.findMany({
+      where: { enabled: true },
+      select: { key: true },
+    });
     log('heartbeat', {
       env: config.NODE_ENV,
       emailMode: config.EMAIL_MODE,
-      enabledAutomationFlags: enabledFlags,
-      stage1AutomationExpected: 0,
+      enabledAutomationFlags: enabled.length,
+      enabledFlagKeys: enabled.map((f) => f.key).join(','),
     });
-    if (enabledFlags > 0) {
-      log('warning', {
-        message: 'automation flags enabled while Stage 1 baseline capture is active',
-        enabledAutomationFlags: enabledFlags,
-      });
-    }
   } catch (e) {
     log('heartbeat_error', { message: e instanceof Error ? e.message : 'unknown' });
   }

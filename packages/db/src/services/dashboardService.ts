@@ -15,6 +15,7 @@ import { can } from '@exit/domain';
 import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 import { getActiveCalendar } from './adminService.ts';
+import { listExceptionFeed } from './exceptionService.ts';
 
 function hrVisibilityWhere(actor: Actor) {
   return {
@@ -233,8 +234,7 @@ export async function stage2Dashboard(actor: Actor) {
     docsPendingApproval,
     renderFailures,
     formsIncomplete,
-    formsManagerPending,
-    formsHrPending,
+    formsReadyForReview,
     invitationsDue,
     remindersDue,
     completedSurveys,
@@ -263,17 +263,19 @@ export async function stage2Dashboard(actor: Actor) {
       take: 25,
     }),
     prisma.actionFormVersion.count({
-      where: { ...caseVis, status: { in: ['DRAFT', 'RETURNED'] } },
+      where: { ...caseVis, status: { in: ['DRAFT', 'RETURNED', 'RETURNED_FOR_CORRECTION'] } },
     }),
+    // Directive 6.3 (Z): one HR review queue. Legacy PENDING_MANAGER /
+    // PENDING_HR rows remain visible (marked "(legacy)" in the UI) so no
+    // in-flight form is ever hidden by the lifecycle change.
     prisma.actionFormVersion.findMany({
-      where: { ...caseVis, status: 'PENDING_MANAGER' },
+      where: {
+        ...caseVis,
+        status: { in: ['READY_FOR_HR_REVIEW', 'HR_REVIEWED', 'PENDING_MANAGER', 'PENDING_HR'] },
+      },
       include: { case: { select: { caseNumber: true, id: true } } },
       take: 25,
-    }),
-    prisma.actionFormVersion.findMany({
-      where: { ...caseVis, status: 'PENDING_HR' },
-      include: { case: { select: { caseNumber: true, id: true } } },
-      take: 25,
+      orderBy: { updatedAt: 'asc' },
     }),
     prisma.surveyInvitation.findMany({
       where: { ...caseVis, status: 'PENDING', invitationDueAt: { lte: now } },
@@ -352,8 +354,7 @@ export async function stage2Dashboard(actor: Actor) {
       docsPendingApproval,
       renderFailures,
       formsIncomplete,
-      formsManagerPending,
-      formsHrPending,
+      formsReadyForReview,
       invitationsDue,
       remindersDue,
       completedSurveys,
@@ -675,12 +676,13 @@ export async function stage3Dashboard(actor: Actor) {
   };
 }
 
-/** Assigned action-form queue for FINANCE_RESPONDER / LINE_MANAGER dashboards. */
 /**
- * The Finance/Manager dashboard work list is assignment-driven, NOT form-
- * driven: an assigned manager owes handover work even before HR drafts the
- * action form (and after it is approved), and their only navigation to those
- * surfaces is this list - limited-access roles never see the case tabs.
+ * Directive 6.3 (Z): the FINANCE_RESPONDER / LINE_MANAGER form surfaces are
+ * retired - departments are reached by controlled email actions, not logins,
+ * so Finance responders receive no assigned-work list and the manager list
+ * carries ONLY handover pointers. The list stays assignment-driven because a
+ * manager owes handover work regardless of any form's lifecycle, and this
+ * list is their sole navigation - limited-access roles never see case tabs.
  */
 export async function assignedFormQueue(actor: Actor) {
   const prisma = getPrisma();
@@ -688,37 +690,225 @@ export async function assignedFormQueue(actor: Actor) {
     where: {
       userId: actor.userId,
       removedAt: null,
-      participantRole: { in: ['FINANCE', 'MANAGER'] },
+      participantRole: 'MANAGER',
       case: { status: { in: ['ACTIVE', 'ON_HOLD', 'CLEARANCE_REVIEW'] } },
     },
     select: {
       caseId: true,
-      participantRole: true,
       case: { select: { caseNumber: true } },
     },
     orderBy: { case: { caseNumber: 'asc' } },
   });
   if (parts.length === 0) return [];
-  const caseIds = parts.map((p) => p.caseId);
-  const forms = await prisma.actionFormVersion.findMany({
-    where: {
-      caseId: { in: caseIds },
-      status: { in: ['DRAFT', 'RETURNED', 'PENDING_MANAGER', 'PENDING_HR'] },
-    },
-    select: { caseId: true, status: true },
-  });
   const handovers = await prisma.handoverRecord.findMany({
-    where: { caseId: { in: caseIds } },
+    where: { caseId: { in: parts.map((p) => p.caseId) } },
     select: { caseId: true, status: true },
   });
   return parts.map((p) => ({
     caseId: p.caseId,
     caseNumber: p.case.caseNumber,
-    formStatus: forms.find((f) => f.caseId === p.caseId)?.status ?? null,
-    handoverStatus:
-      p.participantRole === 'MANAGER'
-        ? (handovers.find((h) => h.caseId === p.caseId)?.status ?? 'NOT_STARTED')
-        : null,
-    yourRole: p.participantRole,
+    handoverStatus: handovers.find((h) => h.caseId === p.caseId)?.status ?? 'NOT_STARTED',
   }));
+}
+
+/**
+ * Map an exception type to the case surface that fixes it. Mirrors the
+ * exceptions page targetTab map, extended with the Directive 6.3 email-action
+ * exception types. BENEFITS_APPLICABILITY_UNKNOWN maps to the case overview.
+ */
+function exceptionFixSurface(exceptionType: string): string {
+  if (exceptionType.startsWith('ASSET_')) return '/assets';
+  if (exceptionType === 'HANDOVER_OVERDUE') return '/handover';
+  if (
+    exceptionType.startsWith('NOTIFICATION_') ||
+    exceptionType === 'RECIPIENT_MISSING' ||
+    exceptionType === 'ACKNOWLEDGEMENT_OVERDUE' ||
+    exceptionType === 'AUTO_SEND_BLOCKED'
+  )
+    return '/notifications';
+  if (exceptionType === 'RENDER_FAILED' || exceptionType === 'DOCUMENT_UNAPPROVED')
+    return '/documents';
+  if (exceptionType === 'BENEFITS_APPLICABILITY_UNKNOWN') return '';
+  if (exceptionType === 'CLEARANCE_BLOCKED' || exceptionType === 'INVALID_CASE_DATE')
+    return '/clearance';
+  return '/workflow';
+}
+
+/** "RECIPIENT_MISSING" -> "Recipient missing" (presentation only). */
+function sentenceCase(value: string): string {
+  const words = value.replaceAll('_', ' ').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * Directive 6.3 (Z, correction 8): the HR dashboard leads with "Requires your
+ * attention". Wraps the exception feed (which already embeds record-level
+ * visibility and restricted-case minimization) into the top OPEN items,
+ * strongest severity first, each linking to the surface that fixes it.
+ */
+export async function attentionFeed(actor: Actor) {
+  if (!can(actor, 'baseline.viewDashboard')) throw ServiceError.forbidden();
+  const rows = await listExceptionFeed(actor, { status: 'OPEN' });
+  const rank: Record<string, number> = { CRITICAL: 3, HIGH: 2, WARNING: 1, INFO: 0 };
+  return [...rows]
+    .sort((a, b) => (rank[b.severity] ?? 0) - (rank[a.severity] ?? 0))
+    .slice(0, 12)
+    .map((r) => ({
+      id: r.id,
+      severity: r.severity,
+      title: r.minimized ? `${sentenceCase(r.exceptionType)} on a restricted case` : r.title,
+      caseNumber: r.caseNumber,
+      href: r.caseId ? `/cases/${r.caseId}${exceptionFixSurface(r.exceptionType)}` : '/exceptions',
+    }));
+}
+
+/** Business-language labels for derived email actions - never enum values. */
+const NOTIFICATION_ACTION_LABELS: Record<string, string> = {
+  IT_ACCESS_REMOVAL: 'IT access-removal email',
+  FINANCE_OFFBOARDING: 'Finance notification',
+  LINE_MANAGER_HANDOVER: 'Manager handover email',
+  SAGICOR_GROUP_HEALTH_REMOVAL: 'Group health removal notice (Sagicor)',
+  NCB_GROUP_LIFE_REMOVAL: 'Group life removal notice (NCB)',
+  SURVEY_INVITATION_REFERENCE: 'Exit survey reference email',
+  MANUAL_EXCEPTION_NOTIFICATION: 'Manual exception notification',
+  PAYROLL_OR_BANK_NOTIFICATION: 'Payroll or bank notification',
+  OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION: 'External provider notification',
+};
+
+function notificationActionLabel(notificationType: string): string {
+  return NOTIFICATION_ACTION_LABELS[notificationType] ?? sentenceCase(notificationType);
+}
+
+export interface UpcomingAutomationItem {
+  key: string;
+  caseId: string;
+  caseNumber: string;
+  /** Business-language label, e.g. "IT access-removal email". */
+  label: string;
+  /** When the platform will act; null when the item is queued without one. */
+  scheduledAt: Date | null;
+  state: 'Scheduled' | 'Awaiting review';
+  href: string;
+}
+
+/**
+ * Directive 6.3 (Z): "Upcoming automations" - what the platform will do in
+ * the next 7 days without HR input, plus prepared email actions awaiting a
+ * human review. Ordered by time, capped at 15. Visibility-filtered like every
+ * other dashboard query.
+ */
+export async function upcomingAutomations(actor: Actor): Promise<UpcomingAutomationItem[]> {
+  if (!can(actor, 'baseline.viewDashboard')) throw ServiceError.forbidden();
+  const prisma = getPrisma();
+  const caseVis = { case: { is: hrVisibilityWhere(actor) } };
+  const now = new Date();
+  const in7d = new Date(now.getTime() + 7 * 86_400_000);
+
+  const [scheduled, awaitingReview, outboxPending, surveysDue] = await Promise.all([
+    prisma.notificationRecord.findMany({
+      where: { ...caseVis, status: 'APPROVED', scheduledSendAt: { gte: now, lte: in7d } },
+      select: {
+        id: true,
+        notificationType: true,
+        scheduledSendAt: true,
+        case: { select: { id: true, caseNumber: true } },
+      },
+      orderBy: { scheduledSendAt: 'asc' },
+      take: 15,
+    }),
+    // Prepared email actions held for HR review (control level below
+    // AUTO_SEND; manual records with no snapshot level also await review).
+    prisma.notificationRecord.findMany({
+      where: {
+        ...caseVis,
+        status: 'PENDING_APPROVAL',
+        OR: [{ controlLevel: null }, { controlLevel: { not: 'AUTO_SEND' } }],
+      },
+      select: {
+        id: true,
+        notificationType: true,
+        scheduledSendAt: true,
+        case: { select: { id: true, caseNumber: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 15,
+    }),
+    prisma.notificationOutbox.findMany({
+      where: {
+        status: 'PENDING',
+        nextAttemptAt: { gt: now },
+        notificationRecord: { is: caseVis },
+      },
+      select: {
+        id: true,
+        notificationRecordId: true,
+        nextAttemptAt: true,
+        notificationRecord: {
+          select: { notificationType: true, case: { select: { id: true, caseNumber: true } } },
+        },
+      },
+      orderBy: { nextAttemptAt: 'asc' },
+      take: 15,
+    }),
+    prisma.surveyInvitation.findMany({
+      where: { ...caseVis, status: 'PENDING', invitationDueAt: { gte: now, lte: in7d } },
+      select: {
+        id: true,
+        invitationDueAt: true,
+        case: { select: { id: true, caseNumber: true } },
+      },
+      orderBy: { invitationDueAt: 'asc' },
+      take: 15,
+    }),
+  ]);
+
+  // An APPROVED record and its own outbox row are one automation, not two.
+  const seenRecordIds = new Set([...scheduled, ...awaitingReview].map((r) => r.id));
+  const items: UpcomingAutomationItem[] = [
+    ...scheduled.map((r) => ({
+      key: `notification-${r.id}`,
+      caseId: r.case.id,
+      caseNumber: r.case.caseNumber,
+      label: notificationActionLabel(r.notificationType),
+      scheduledAt: r.scheduledSendAt,
+      state: 'Scheduled' as const,
+      href: `/cases/${r.case.id}/notifications`,
+    })),
+    ...awaitingReview.map((r) => ({
+      key: `notification-${r.id}`,
+      caseId: r.case.id,
+      caseNumber: r.case.caseNumber,
+      label: notificationActionLabel(r.notificationType),
+      scheduledAt: r.scheduledSendAt,
+      state: 'Awaiting review' as const,
+      href: `/cases/${r.case.id}/notifications`,
+    })),
+    ...outboxPending
+      .filter((o) => !seenRecordIds.has(o.notificationRecordId))
+      .map((o) => ({
+        key: `outbox-${o.id}`,
+        caseId: o.notificationRecord.case.id,
+        caseNumber: o.notificationRecord.case.caseNumber,
+        label: notificationActionLabel(o.notificationRecord.notificationType),
+        scheduledAt: o.nextAttemptAt,
+        state: 'Scheduled' as const,
+        href: `/cases/${o.notificationRecord.case.id}/notifications`,
+      })),
+    ...surveysDue.map((s) => ({
+      key: `survey-${s.id}`,
+      caseId: s.case.id,
+      caseNumber: s.case.caseNumber,
+      label: 'Exit survey invitation',
+      scheduledAt: s.invitationDueAt,
+      state: 'Scheduled' as const,
+      href: `/cases/${s.case.id}/survey`,
+    })),
+  ];
+  return items
+    .sort(
+      (a, b) =>
+        (a.scheduledAt?.getTime() ?? Number.MAX_SAFE_INTEGER) -
+        (b.scheduledAt?.getTime() ?? Number.MAX_SAFE_INTEGER),
+    )
+    .slice(0, 15);
 }

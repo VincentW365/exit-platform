@@ -1,13 +1,15 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { can, formatInstant, hasRole } from '@exit/domain';
+import { can, formatInstant, formatScheduledFor, hasRole } from '@exit/domain';
 import {
   assignedFormQueue,
+  attentionFeed,
   attentionSummary,
   hrDashboard,
   stage2Dashboard,
   stage3Dashboard,
   timed,
+  upcomingAutomations,
 } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { BaselineBanner, ClassificationBadge, StatusBadge } from '@/components/ui';
@@ -15,13 +17,21 @@ import { BaselineBanner, ClassificationBadge, StatusBadge } from '@/components/u
 export const metadata: Metadata = { title: 'Dashboard' };
 export const dynamic = 'force-dynamic';
 
+const SEV_BADGE: Record<string, string> = {
+  INFO: 'badge--neutral',
+  WARNING: 'badge--warning',
+  HIGH: 'badge--warning',
+  CRITICAL: 'badge--danger',
+};
+
 export default async function DashboardPage() {
   const { user, actor } = await requireAuth();
 
   if (!can(actor, 'baseline.viewDashboard')) {
-    const assigned = hasRole(actor, 'FINANCE_RESPONDER', 'LINE_MANAGER')
-      ? await assignedFormQueue(actor)
-      : [];
+    // Directive 6.3 (Z): Finance form logins are retired - Finance is reached
+    // by controlled email actions, so only assigned managers keep a work list
+    // (handover pointers only; the action-form approval link is gone).
+    const assigned = hasRole(actor, 'LINE_MANAGER') ? await assignedFormQueue(actor) : [];
     return (
       <>
         <h1>Welcome, {user.displayName}</h1>
@@ -44,12 +54,10 @@ export default async function DashboardPage() {
             </h2>
             <div className="table-wrap" tabIndex={0}>
               <table className="data">
-                <caption>Cases where you are the assigned Finance or Manager participant</caption>
+                <caption>Cases where you are the assigned manager</caption>
                 <thead>
                   <tr>
                     <th scope="col">Case</th>
-                    <th scope="col">Your role</th>
-                    <th scope="col">Action form</th>
                     <th scope="col">Handover</th>
                   </tr>
                 </thead>
@@ -57,30 +65,9 @@ export default async function DashboardPage() {
                   {assigned.map((a) => (
                     <tr key={a.caseId}>
                       <td>{a.caseNumber}</td>
-                      <td>{a.yourRole === 'FINANCE' ? 'Finance' : 'Manager'}</td>
                       <td>
-                        {a.formStatus ? (
-                          <>
-                            <Link href={`/cases/${a.caseId}/action-form`}>
-                              {a.yourRole === 'FINANCE'
-                                ? 'Update Finance checklist'
-                                : 'Review and approve'}
-                            </Link>{' '}
-                            ({a.formStatus.replaceAll('_', ' ')})
-                          </>
-                        ) : (
-                          'none in progress'
-                        )}
-                      </td>
-                      <td>
-                        {a.yourRole === 'MANAGER' && a.handoverStatus ? (
-                          <>
-                            <Link href={`/cases/${a.caseId}/handover`}>Open handover</Link> (
-                            {a.handoverStatus.replaceAll('_', ' ')})
-                          </>
-                        ) : (
-                          '-'
-                        )}
+                        <Link href={`/cases/${a.caseId}/handover`}>Open handover</Link> (
+                        {a.handoverStatus.replaceAll('_', ' ')})
                       </td>
                     </tr>
                   ))}
@@ -107,13 +94,15 @@ export default async function DashboardPage() {
     );
   }
 
-  // Directive 6.2 (AB): one parallel round trip instead of four serial ones;
+  // Directive 6.2 (AB): one parallel round trip instead of serial ones;
   // EXIT_TIMING=1 logs each service's duration in development.
-  const [dash, s2, s3, attention] = await Promise.all([
+  const [dash, s2, s3, attention, feed, automations] = await Promise.all([
     timed('dashboard.hr', () => hrDashboard(actor)),
     timed('dashboard.stage2', () => stage2Dashboard(actor)),
     timed('dashboard.stage3', () => stage3Dashboard(actor)),
     timed('dashboard.attention', () => attentionSummary(actor)),
+    timed('dashboard.attentionFeed', () => attentionFeed(actor)),
+    timed('dashboard.automations', () => upcomingAutomations(actor)),
   ]);
   const statusOrder = [
     'DRAFT',
@@ -158,48 +147,26 @@ export default async function DashboardPage() {
       <h1>HR dashboard</h1>
       <BaselineBanner />
 
+      {/* Directive 6.3 (Z, correction 8): exception-first - the dashboard
+          leads with what needs a human decision, not with metrics. */}
       <section className="panel attention-row" aria-labelledby="attn-h">
         <h2 id="attn-h" style={{ marginTop: 0 }}>
-          Needs attention now
+          Requires your attention
         </h2>
-        <div className="stat-grid">
-          {(
-            [
-              [
-                'Critical / escalated',
-                attention.criticalTasks,
-                '/queue?view=critical',
-                'badge--danger',
-              ],
-              ['Overdue tasks', attention.overdueTasks, '/queue?view=overdue', 'badge--danger'],
-              [
-                'Pending approval',
-                attention.pendingApproval,
-                '/cases?status=PENDING_HR_REVIEW',
-                'badge--warning',
-              ],
-              ['Due today', attention.dueToday, '/queue?view=dueToday', 'badge--warning'],
-              ['Missing manager', attention.missingManager, '/admin/organization', 'badge--danger'],
-              [
-                'Hierarchy changes',
-                attention.hierarchyFlags,
-                '/admin/organization',
-                'badge--warning',
-              ],
-              [
-                'Unassigned IT/Finance',
-                attention.unassignedDept,
-                '/queue?view=unassigned',
-                'badge--info',
-              ],
-            ] as const
-          ).map(([label, count, href, cls]) => (
-            <Link key={label} href={href} className="stat stat--link">
-              <span className="stat__value tabular-nums">{count}</span>
-              <span className={`badge ${count > 0 ? cls : 'badge--success'}`}>{label}</span>
-            </Link>
-          ))}
-        </div>
+        {feed.length === 0 ? (
+          <p className="hint">Nothing needs your attention right now.</p>
+        ) : (
+          <ul>
+            {feed.map((f) => (
+              <li key={f.id}>
+                <span className={`badge ${SEV_BADGE[f.severity] ?? 'badge--neutral'}`}>
+                  {f.severity}
+                </span>{' '}
+                {f.title} - <Link href={f.href}>{f.caseNumber}</Link>
+              </li>
+            ))}
+          </ul>
+        )}
         {s3.queues.criticalAccessTasks.length > 0 ? (
           <>
             <h3>Critical access-revocation tasks</h3>
@@ -233,7 +200,70 @@ export default async function DashboardPage() {
             </ul>
           </>
         ) : null}
-        <p className="hint">Operational records only; each tile opens the filtered work surface.</p>
+        <h3>Open work queues</h3>
+        <div className="stat-grid">
+          {(
+            [
+              [
+                'Critical / escalated',
+                attention.criticalTasks,
+                '/queue?view=critical',
+                'badge--danger',
+              ],
+              ['Overdue tasks', attention.overdueTasks, '/queue?view=overdue', 'badge--danger'],
+              [
+                'Pending approval',
+                attention.pendingApproval,
+                '/cases?status=PENDING_HR_REVIEW',
+                'badge--warning',
+              ],
+              ['Due today', attention.dueToday, '/queue?view=dueToday', 'badge--warning'],
+              ['Missing manager', attention.missingManager, '/admin/organization', 'badge--danger'],
+              [
+                'Hierarchy changes',
+                attention.hierarchyFlags,
+                '/admin/organization',
+                'badge--warning',
+              ],
+            ] as const
+          ).map(([label, count, href, cls]) => (
+            <Link key={label} href={href} className="stat stat--link">
+              <span className="stat__value tabular-nums">{count}</span>
+              <span className={`badge ${count > 0 ? cls : 'badge--success'}`}>{label}</span>
+            </Link>
+          ))}
+        </div>
+        <p className="hint">Operational records only; each item opens the surface that fixes it.</p>
+      </section>
+
+      {/* Directive 6.3 (Z): what the platform will do without HR input. */}
+      <section className="panel" aria-labelledby="auto-h">
+        <h2 id="auto-h" style={{ marginTop: 0 }}>
+          In progress automatically
+        </h2>
+        {automations.length === 0 ? (
+          <p className="hint">
+            No email actions or survey invitations are scheduled for the next 7 days.
+          </p>
+        ) : (
+          <ul>
+            {automations.map((a) => (
+              <li key={a.key}>
+                {a.label} -{' '}
+                {a.state === 'Awaiting review'
+                  ? 'awaiting your review'
+                  : a.scheduledAt
+                    ? `scheduled for ${formatScheduledFor(a.scheduledAt)}`
+                    : 'scheduled'}{' '}
+                - <Link href={a.href}>{a.caseNumber}</Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="hint">
+          The platform progresses these without HR input; anything needing a decision moves to
+          Requires your attention above.
+        </p>
       </section>
 
       <section className="panel" aria-labelledby="today-h">
@@ -244,11 +274,7 @@ export default async function DashboardPage() {
           {(
             [
               ['Tasks due today', s3.queues.tasksDueToday, '/queue?view=dueToday'],
-              [
-                'Notifications ready for manual send',
-                s3.queues.notificationsReadyForManualSend,
-                '/admin/outbox',
-              ],
+              ['Email delivery status', s3.queues.notificationsReadyForManualSend, '/admin/outbox'],
               [
                 'Cases ready for clearance',
                 s3.queues.casesReadyForClearance,
@@ -268,7 +294,7 @@ export default async function DashboardPage() {
 
       <section className="panel" aria-labelledby="counts-h">
         <h2 id="counts-h" style={{ marginTop: 0 }}>
-          Operational cases you can see
+          Active cases
         </h2>
         <div className="stat-grid">
           {statusOrder.map((s) => (
@@ -496,28 +522,26 @@ export default async function DashboardPage() {
                 <td>-</td>
               </tr>
               <tr>
-                <td>Action forms awaiting manager approval</td>
-                <td>{q.formsManagerPending.length}</td>
+                <td>Action forms ready for review</td>
+                <td>{q.formsReadyForReview.length}</td>
                 <td>
-                  {q.formsManagerPending[0] ? (
-                    <Link href={`/cases/${q.formsManagerPending[0].case.id}/action-form`}>
-                      {q.formsManagerPending[0].case.caseNumber}
-                    </Link>
-                  ) : (
+                  {q.formsReadyForReview.length === 0 ? (
                     '-'
-                  )}
-                </td>
-              </tr>
-              <tr>
-                <td>Action forms awaiting HR final approval</td>
-                <td>{q.formsHrPending.length}</td>
-                <td>
-                  {q.formsHrPending[0] ? (
-                    <Link href={`/cases/${q.formsHrPending[0].case.id}/action-form`}>
-                      {q.formsHrPending[0].case.caseNumber}
-                    </Link>
                   ) : (
-                    '-'
+                    <>
+                      {q.formsReadyForReview.slice(0, 6).map((f, i) => (
+                        <span key={f.id}>
+                          {i > 0 ? ', ' : ''}
+                          <Link href={`/cases/${f.case.id}/action-form`}>{f.case.caseNumber}</Link>
+                          {f.status === 'PENDING_MANAGER' || f.status === 'PENDING_HR'
+                            ? ' (legacy)'
+                            : ''}
+                        </span>
+                      ))}
+                      {q.formsReadyForReview.length > 6
+                        ? ` +${q.formsReadyForReview.length - 6} more`
+                        : ''}
+                    </>
                   )}
                 </td>
               </tr>

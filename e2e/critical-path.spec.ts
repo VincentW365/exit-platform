@@ -1,8 +1,9 @@
 /**
  * Critical HR path (TestStrategy E2E #1) plus a least-privilege negative:
  * officer creates and submits a case, manager approves it and the immutable
- * snapshot appears, and a departmental role sees no case register at all.
- * Synthetic identities only.
+ * snapshot appears, and a non-HR role sees no case register at all.
+ * Directive 6.3: the IT/Finance responder logins are retired, so the
+ * least-privilege negative runs as the Line Manager. Synthetic identities only.
  */
 import { expect, test, type Page } from '@playwright/test';
 
@@ -17,7 +18,7 @@ async function signOut(page: Page): Promise<void> {
   await page.waitForURL('**/signin');
 }
 
-test('HR officer creates and submits; HR manager approves with snapshot; IT sees nothing', async ({
+test('HR officer creates and submits; HR manager approves with snapshot; line manager sees nothing', async ({
   page,
 }) => {
   // --- HR officer: create the draft -------------------------------------
@@ -66,17 +67,15 @@ test('HR officer creates and submits; HR manager approves with snapshot; IT sees
   await expect(page.getByText('approved the case', { exact: false }).first()).toBeVisible();
   await signOut(page);
 
-  // --- IT responder: least privilege --------------------------------------
-  await signInAs(page, 'IT Responder');
-  await expect(
-    page.getByText(/Departmental work queues arrive with the Stage 3 workflow engine/),
-  ).toBeVisible();
+  // --- line manager: least privilege (IT/Finance have no logins at all) ---
+  await signInAs(page, 'Line Manager');
+  await expect(page.getByText('Your department work queue')).toBeVisible();
   // No Cases navigation is offered...
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByText('Cases')).toHaveCount(0);
   // ...and going there directly is refused server-side.
   await page.goto('/cases');
   await expect(page).toHaveURL(/unauthorized/);
-  // A direct case URL leaks nothing.
+  // A direct case URL leaks nothing (the manager is not on this case).
   await page.goto(caseUrl);
   await expect(page.getByText('Page or record not found')).toBeVisible();
 });

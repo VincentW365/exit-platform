@@ -12,6 +12,24 @@ import { devLoginAction } from './actions';
 export const metadata: Metadata = { title: 'Sign in' };
 export const dynamic = 'force-dynamic';
 
+/** Human role names (correction 7); retired roles kept for safety. */
+const ROLE_LABELS: Record<string, string> = {
+  HR_MANAGER: 'HR Manager',
+  HR_OFFICER: 'HR Officer',
+  LINE_MANAGER: 'Line Manager',
+  SYSTEM_ADMIN: 'System Administrator',
+  IT_RESPONDER: 'IT Responder',
+  FINANCE_RESPONDER: 'Finance Responder',
+  AUDITOR: 'Auditor',
+  PRIVACY_OFFICER: 'Privacy Officer',
+};
+const roleLabel = (r: string): string =>
+  ROLE_LABELS[r] ??
+  r
+    .replaceAll('_', ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+
 export default async function SignInPage({
   searchParams,
 }: {
@@ -125,7 +143,7 @@ function UserButtons({
             </span>
             <span className="signin__user-meta">
               <strong>{u.displayName}</strong>
-              <span className="hint">{u.roles.join(', ') || 'no roles'}</span>
+              <span className="hint">{u.roles.map(roleLabel).join(', ') || 'no roles'}</span>
             </span>
             <button type="submit" className="compact">
               Sign in as {u.displayName}

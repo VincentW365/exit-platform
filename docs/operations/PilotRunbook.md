@@ -27,7 +27,7 @@ BASELINE records never trigger automation in any state.
 
 ## Entering the pilot (PILOT_ACTIVE)
 
-1. Open `/admin/pilot` and review the 24 readiness gates. Every MANDATORY
+1. Open `/admin/pilot` and review the readiness gates. Every MANDATORY
    gate must show PASS; advisory gates need a recorded rationale if failing.
    Gates are computed from live facts (approved calendar/reasons/policies,
    verified backup + restore, published SOPs, recorded training, UAT result,
@@ -35,6 +35,25 @@ BASELINE records never trigger automation in any state.
    The UAT gate is set only after stakeholder sign-off of the plan in
    `UATPlan.md`; the automated synthetic execution
    (`../delivery/SyntheticUATReport.md`) is supporting evidence.
+
+   **Directive 6.3 prerequisites (email-first workflow):**
+
+   - **Notification templates gate**: at least 9 ACTIVE notification
+     templates - one per notification type, including the two Directive 6.3
+     additions (payroll/bank and other external). A derived action with no
+     ACTIVE template cannot prepare its email and raises an
+     "Automatic sending blocked" exception on every affected case; do not
+     enter the pilot in that state.
+   - **Send-control configuration**: review and record the send control
+     levels (`notifications.sendControl`) and the restricted-case override
+     (`notifications.sendControl.restrictedOverride`) before activation.
+     The seeded defaults (internal departments automatic; external
+     providers reviewed; restricted cases HR-Manager approval) apply until
+     configured, but the pilot decision must state which levels are in
+     force - changing a level is an audited configuration change.
+   - Verify the approved provider recipients exist (approved AND verified)
+     for every applicable external notification type, or accept that those
+     sends will wait on recipient-required exceptions.
 2. Propose the activation with the pilot scope and a rollback plan. The
    proposal core is frozen (database trigger) and checksummed.
 3. Record HR Manager approval and System Administrator approval. DEC-042:

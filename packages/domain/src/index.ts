@@ -26,3 +26,7 @@ export * from './auditHumanize.ts';
 export * from './orgGraph.ts';
 export * from './assignment.ts';
 export * from './nextAction.ts';
+// Directive 6.3: email-first department actions + deterministic derivation.
+export * from './emailActions.ts';
+export * from './derivedActions.ts';
+export * from './requiredActions.ts';

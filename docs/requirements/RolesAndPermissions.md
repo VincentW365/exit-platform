@@ -16,8 +16,8 @@
 | --- | --- | --- | --- | --- |
 | HR_MANAGER | Accountable process owner and approval authority. | All non-restricted HR cases; restricted cases only when explicitly assigned or within approved leadership scope. | Create, view, edit, approve, place on hold, reopen, waive, close, manage sensitive documents, view identifiable survey responses, run HR reports, operate privacy/retention workflows and the Audit Centre (DEC-042). | Cannot alter immutable audit events; cannot bypass mandatory controls without recorded override authority and reason. |
 | HR_OFFICER | Executes day-to-day offboarding work. | Cases assigned to the officer or within permitted HR operational scope. | Create and update draft/active cases, prepare documents, initiate tasks, record assets, manage survey invitations, resolve routine exceptions. | Cannot approve own restricted communications, close cases requiring manager sign-off, change retention policy, or grant roles. |
-| IT_RESPONDER | Performs access and technology-asset tasks. | Only assigned IT tasks and the minimum employee fields needed for execution. | View assigned task, system identifiers, effective revocation time, technology assets; complete/block/reassign within IT rules; upload evidence. | No access to resignation letters, reasons, pay details, identifiable survey responses, or unrelated cases. |
-| FINANCE_RESPONDER | Performs final-pay and finance clearance tasks. | Only assigned Finance tasks and approved separation data. | View approved dates, pay-cycle references, authorized deduction/exception decisions, and task evidence; complete or block finance tasks. | No access to exit feedback, unrestricted HR notes, or technology/access details. |
+| IT_RESPONDER | RETIRED as an operational login (Directive 6.3 / DEC-045). Historically: performed access and technology-asset tasks. | Historical read support only - assignments and attributions on pre-redesign (v1) cases remain readable. | None for new cases. IT is reached by controlled email with secure acknowledgement links. | No new operational surface is granted; role enum value retained deprecated-in-place for history. |
+| FINANCE_RESPONDER | RETIRED as an operational login (Directive 6.3 / DEC-045). Historically: performed final-pay and finance clearance tasks. | Historical read support only - assignments and attributions on pre-redesign (v1) cases remain readable. | None for new cases. Finance is reached by controlled email with secure acknowledgement links. | No new operational surface is granted; role enum value retained deprecated-in-place for history. |
 | LINE_MANAGER | Completes handover, duty reassignment, and manager confirmations. | Direct reports or cases explicitly assigned to the manager. | View manager-facing case summary, handover plan, assigned assets where relevant, and assigned tasks; record handover evidence and blockers. | No access to confidential exit responses, HR-only reasons, rehire eligibility, pay details, or termination preparation unless explicitly authorized. |
 | SYSTEM_ADMIN | Maintains technical configuration and platform availability. | Technical administration; business-record access is denied by default. | Manage deployments, integrations, health settings, feature flags, technical users, and configuration where assigned. | No default access to HR case content. Break-glass access requires explicit approval, time limitation, reason, and enhanced audit. |
 
@@ -54,6 +54,43 @@ and System Administrator approval by two DIFFERENT people (code-enforced).
 Database enum values remain deprecated-in-place so historical records are
 untouched. Real staff are mapped to these six roles for live-data UAT via
 the Organization screen (Directive 6.2 E).
+
+### Directive 6.3 implementation note (2026-08-16, HR-validated workflow)
+
+Product direction from HR operational feedback (DEC-044..DEC-050); not
+formal policy/legal approval.
+
+- **IT_RESPONDER / FINANCE_RESPONDER retired as login roles.** New cases
+  create no IT/Finance queue tasks; the departments receive controlled,
+  versioned emails and confirm through secure no-login links (or HR records
+  the evidence). The role enum values stay deprecated-in-place: historical
+  assignments, task attributions and audit rows on v1 cases remain readable
+  forever. Residual IT/FINANCE tasks on legacy (v1) instances are worked by
+  HR (`queueDepartmentsForActor` grants HR the IT/FINANCE queues).
+- **Officer completion authority.** The assigned HR Officer prepares,
+  reviews, returns-for-correction and COMPLETES ordinary Action Forms
+  (`form.complete` is HR-on-case work). The optional HR-Manager review step
+  (`form.hrReview`) and form voiding stay management-grade and are gated by
+  configuration `actionForm.requireHrReview` (off by default). Manager
+  approval of the form no longer exists (DEC-044).
+- **New case-scoped permissions** (enforced server-side like all others):
+  `form.complete`, `form.hrReview`, `benefits.confirm`,
+  `derivedAction.override`, `notification.recordEvidence`,
+  `notification.enterRecipient` - all HR-on-case except `form.hrReview`
+  (HR Manager). Overrides of derived actions require a recorded reason and
+  are audited.
+- **New global permissions**: `notifTemplate.view` / `notifTemplate.draft`
+  (HR Manager + HR Officer) and `notifTemplate.activate` (HR Manager only -
+  activation of outgoing-communication content stays management-grade).
+- **Queue membership change**: `queue.view` now serves HR_MANAGER,
+  HR_OFFICER and LINE_MANAGER (handover). IT/Finance no longer hold queue
+  access; their remaining permissions are the shared support/SOP surfaces
+  for historical participants.
+- **Recipient entry split**: entering a recipient for one case is
+  officer-grade (`notification.enterRecipient`); saving a recipient for
+  future cases requires `recipients.editBusiness` plus the external-approval
+  lifecycle (`recipients.approveExternal`, HR Manager) - unchanged from
+  Stage 4.
 
 ## Capability matrix
 

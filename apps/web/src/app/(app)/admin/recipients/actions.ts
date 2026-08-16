@@ -38,6 +38,9 @@ export async function upsertRecipientAction(formData: FormData): Promise<void> {
         destination: str(formData, 'destination'),
         allowedTypes: formData.getAll('allowedTypes').map(String),
         changeReason: str(formData, 'changeReason'),
+        purpose: str(formData, 'purpose') || null,
+        organizationName: str(formData, 'organizationName') || null,
+        contactName: str(formData, 'contactName') || null,
       },
       str(formData, 'existingId') || undefined,
     );

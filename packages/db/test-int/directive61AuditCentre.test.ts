@@ -12,7 +12,13 @@ import {
   listGlobalAudit,
 } from '../src/services/auditService.ts';
 import { TECHNICAL_CATEGORIES, eventCategory } from '@exit/domain';
-import { createUser, resetDb, seedStage3Fixtures, VALID_DRAFT } from './helpers.ts';
+import {
+  createUser,
+  resetDb,
+  seedStage3Fixtures,
+  VALID_DRAFT,
+  FIXTURE_CONFIRMED_LAST_DAY,
+} from './helpers.ts';
 
 const prisma = getPrisma();
 
@@ -25,7 +31,7 @@ const TEST_DRAFT = {
   ...VALID_DRAFT,
   recordPurpose: 'TEST',
   measurementCohort: null,
-  confirmedLastDay: '2026-08-14T00:00:00.000Z',
+  confirmedLastDay: FIXTURE_CONFIRMED_LAST_DAY,
 } as const;
 
 let normalCaseId: string;

@@ -45,7 +45,11 @@
 | Delivery | `docs/delivery/RealisticUATDesignBuildRecord.md` | Directive 6.1 build record: organization routing, Audit Centre, realistic UAT design, UI refinement. |
 | Delivery | `docs/delivery/LiveDataOperationalUATBuildRecord.md` | Directive 6.2 build record: live-data UAT, six-role model, role mapping, workflow effectiveness. |
 | Delivery | `docs/delivery/OperationalEffectivenessReview.md` | Directive 6.2: prioritized operational-inefficiency findings (P0-P4) with implementation status. |
-| Operations | `docs/operations/LiveDataStakeholderUATWalkthrough.md` | Directive 6.2 / DEC-043: 19-part live-data stakeholder UAT walkthrough (real directory, simulated events). |
+| Delivery | `docs/delivery/EndToEndLogicReview.md` | Directive 6.3 section-A logic audit: 22 classified findings with impact and disposition. |
+| Delivery | `docs/delivery/HRValidatedWorkflowRedesign.md` | Directive 6.3 design record: operating model, data model, state machines, send controls, tokens, deferrals. |
+| Delivery | `docs/delivery/Directive63BuildRecord.md` | Directive 6.3 build record: scope, changes by layer, migrations, security/privacy, deferrals. |
+| Operations | `docs/operations/LiveDataStakeholderUATWalkthrough.md` | Directive 6.3 / DEC-043: 20-part live-data stakeholder UAT walkthrough (email-first model, no IT/Finance logins). |
+| Operations | `docs/operations/HRDailyOffboardingWalkthrough.md` | Directive 6.3: step-by-step HR daily-use flow (review, exceptions, control - the platform does the routine work). |
 | Operations | `docs/operations/RealisticStakeholderUATWalkthrough.md` | RETIRED (DEC-043) - pointer to the live-data walkthrough. |
 | Operations | `docs/operations/RealisticUATAssignmentMatrix.md` | Directive 6.1 (superseded by the live-data walkthrough): alias/scenario/routing matrix. |
 | Architecture | `docs/architecture/Architecture.md` | System context and modular-monolith design. |

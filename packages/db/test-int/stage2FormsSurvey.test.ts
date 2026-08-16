@@ -9,11 +9,10 @@ import { getPrisma } from '../src/client.ts';
 import { LocalStorageAdapter, setStorageForTests } from '../src/storage.ts';
 import { addParticipant, createDraft } from '../src/services/caseService.ts';
 import {
+  completeActionForm,
   createActionForm,
   downloadActionFormPdf,
   getActionForm,
-  hrApproveForm,
-  managerApproveForm,
   submitActionForm,
   updateActionFormFinance,
   updateActionFormHr,
@@ -113,30 +112,38 @@ beforeAll(async () => {
   await addParticipant(manager.actor, caseId, lineManager.userId, 'MANAGER', 'Assigned manager.');
 });
 
-describe('action form (section F)', () => {
-  it('HR officer creates the form; finance can edit ONLY finance fields (N.8/N.9)', async () => {
+describe('action form (section F, HR-validated per Directive 6.3)', () => {
+  it('HR officer creates the form; departments have NO form surface (I/J)', async () => {
     const f = await createActionForm(officer.actor, caseId);
     formId = f.id;
 
-    await updateActionFormFinance(finance.actor, formId, {
+    // Directive 6.3 B: immediate resignation pre-populates the correct
+    // acknowledgement treatment instead of making HR discover it.
+    expect(f.ackStatus).toBe('NOT_OBTAINED');
+
+    // Finance participants no longer have any form access (AC invariant 4);
+    // HR records the Finance evidence gathered outside the application.
+    await expect(
+      updateActionFormFinance(finance.actor, formId, {
+        financeChecklist: doneChecklist(FINANCE_CHECKLIST_ITEMS),
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await updateActionFormFinance(officer.actor, formId, {
       financeChecklist: doneChecklist(FINANCE_CHECKLIST_ITEMS),
-      financeNotes: 'Workpaper handled outside the application.',
+      financeNotes: 'Workpaper handled outside the application (evidence recorded by HR).',
     });
     await expect(
       updateActionFormHr(finance.actor, formId, { hrRemarks: 'finance trying HR edit' }),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
-  it('line manager sees only the minimum view - no restricted HR content (N.10/N.11)', async () => {
-    const view = await getActionForm(lineManager.actor, caseId);
-    expect(view.level).toBe('MANAGER_FORM');
-    const serialized = JSON.stringify(view.current);
-    expect(serialized).not.toContain('financeNotes');
-    expect(serialized).not.toContain('hrRemarks');
-    expect(serialized).not.toContain('ackReason');
-    // and the finance participant never sees HR checklist or remarks
-    const finView = await getActionForm(finance.actor, caseId);
-    expect(JSON.stringify(finView.current)).not.toContain('hrChecklist');
+  it('the retired limited surfaces are gone: manager/finance get no form view (I/J)', async () => {
+    await expect(getActionForm(lineManager.actor, caseId)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    await expect(getActionForm(finance.actor, caseId)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
   });
 
   it('immediate resignation supports NOT_OBTAINED with a reason (N.13)', async () => {
@@ -150,31 +157,32 @@ describe('action form (section F)', () => {
     expect(f.ackStatus).toBe('NOT_OBTAINED');
   });
 
-  it('manager approves the assigned form; sysadmin/unassigned cannot', async () => {
+  it('the assigned HR Officer completes the form - no manager approval exists (AC invariants 1, 13)', async () => {
     await submitActionForm(officer.actor, formId);
-    await expect(managerApproveForm(sysadmin.actor, formId)).rejects.toMatchObject({
+    let f = await prisma.actionFormVersion.findUniqueOrThrow({ where: { id: formId } });
+    expect(f.status).toBe('READY_FOR_HR_REVIEW');
+    // Outsiders cannot complete it; the manager participant has no form
+    // authority at all (their scoped access covers only the handover).
+    await expect(completeActionForm(sysadmin.actor, formId)).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
-    await expect(managerApproveForm(officer.actor, formId)).rejects.toMatchObject({
+    await expect(completeActionForm(lineManager.actor, formId)).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
-    await managerApproveForm(lineManager.actor, formId);
-    const f = await prisma.actionFormVersion.findUniqueOrThrow({ where: { id: formId } });
-    expect(f.status).toBe('PENDING_HR');
+    // The preparing officer completes their own ordinary form (correction 1).
+    await completeActionForm(officer.actor, formId);
+    f = await prisma.actionFormVersion.findUniqueOrThrow({ where: { id: formId } });
+    expect(f.status).toBe('COMPLETE');
+    expect(f.completedById).toBe(officer.userId);
   });
 
-  it('HR final approval creates the immutable version with attested PDF (N.12)', async () => {
-    await hrApproveForm(manager.actor, formId);
+  it('completion creates the immutable version with attested PDF (N.12)', async () => {
     const f = await prisma.actionFormVersion.findUniqueOrThrow({ where: { id: formId } });
-    expect(f.status).toBe('APPROVED');
     expect(f.pdfObjectKey).toBeTruthy();
     const attestations = await prisma.attestation.findMany({
       where: { subjectType: 'ACTION_FORM', subjectId: formId },
     });
-    expect(attestations.map((a) => a.kind).sort()).toEqual([
-      'HR_FORM_FINAL_APPROVAL',
-      'MANAGER_FORM_APPROVAL',
-    ]);
+    expect(attestations.map((a) => a.kind)).toEqual(['HR_FORM_COMPLETION']);
     const dl = await downloadActionFormPdf(manager.actor, formId);
     expect(dl.bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });

@@ -9,16 +9,14 @@ import { createDraft, transitionCase } from '../src/services/caseService.ts';
 import { activateCase } from '../src/services/workflowService.ts';
 import { refreshManagerFromDirectory } from '../src/services/caseAssignmentService.ts';
 import { orgValidation, managerChainOf, directReportsOf } from '../src/services/orgService.ts';
-import {
-  prepareNotification,
-  transitionNotification,
-} from '../src/services/notificationService.ts';
+import { prepareNotification } from '../src/services/notificationService.ts';
 import {
   createUser,
   readyAssignment,
   resetDb,
   seedStage3Fixtures,
   VALID_DRAFT,
+  FIXTURE_CONFIRMED_LAST_DAY,
 } from './helpers.ts';
 
 const prisma = getPrisma();
@@ -31,7 +29,7 @@ const TEST_DRAFT = {
   ...VALID_DRAFT,
   recordPurpose: 'TEST',
   measurementCohort: null,
-  confirmedLastDay: '2026-08-14T00:00:00.000Z',
+  confirmedLastDay: FIXTURE_CONFIRMED_LAST_DAY,
 } as const;
 
 beforeAll(async () => {
@@ -260,21 +258,27 @@ describe('record-purpose safety on the new paths (AM 36 / AL)', () => {
     await transitionCase(manager.actor, testCase.caseId, 'approve');
     await readyAssignment(testCase.caseId, manager.actor, officer.userId, lineMgr.userId);
     await activateCase(manager.actor, testCase.caseId);
-    const n1 = await prepareNotification(officer.actor, testCase.caseId, {
-      notificationType: 'IT_ACCESS_REMOVAL',
+    // Directive 6.3: activation itself derives and auto-releases the IT
+    // notification for TEST records - straight into the capture outbox.
+    const n1 = await prisma.notificationRecord.findFirstOrThrow({
+      where: { caseId: testCase.caseId, notificationType: 'IT_ACCESS_REMOVAL', origin: 'DERIVED' },
     });
-    await transitionNotification(officer.actor, n1.id, 'submit');
-    await transitionNotification(officer.actor, n1.id, 'approve');
     expect(await prisma.notificationOutbox.count({ where: { notificationRecordId: n1.id } })).toBe(
       1,
     );
+    // Manual re-preparation can never double it (AC 15).
+    await expect(
+      prepareNotification(officer.actor, testCase.caseId, {
+        notificationType: 'IT_ACCESS_REMOVAL',
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
 
     // OPERATIONAL + BASELINE: automation may not fire (activation refused
     // while the engine flag is off - the notification path never opens).
     const baseline = await createDraft(officer.actor, {
       ...VALID_DRAFT,
       employeeSourceId: 'EMP-TEST-005',
-      confirmedLastDay: '2026-08-14T00:00:00.000Z',
+      confirmedLastDay: FIXTURE_CONFIRMED_LAST_DAY,
     });
     await transitionCase(officer.actor, baseline.caseId, 'submit');
     await transitionCase(manager.actor, baseline.caseId, 'approve');

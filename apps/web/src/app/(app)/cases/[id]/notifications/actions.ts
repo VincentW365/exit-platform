@@ -6,8 +6,11 @@ import {
   ServiceError,
   captureNotificationForDev,
   prepareNotification,
+  recordManualEvidence,
+  setCaseRecipient,
   transitionNotification,
 } from '@exit/db';
+import { EVIDENCE_CHANNELS, type EvidenceChannel } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { touchSession } from '@/lib/session';
 
@@ -57,6 +60,50 @@ export async function prepareNotificationAction(formData: FormData): Promise<voi
   });
 }
 
+/** Directive 6.3 S: release a waiting email action (transition "approve"). */
+export async function approveEmailAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    await transitionNotification(actor, str(fd, 'recordId'), 'approve');
+    return 'Released. Sending and confirmation are tracked automatically.';
+  });
+}
+
+/** Directive 6.3 O: enter a missing recipient for this case (optionally saved). */
+export async function setCaseRecipientAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    const saveForFuture = fd.get('saveForFuture') === 'on';
+    await setCaseRecipient(actor, str(fd, 'recordId'), {
+      recipientName: str(fd, 'recipientName'),
+      organization: str(fd, 'organization'),
+      email: str(fd, 'email'),
+      saveForFuture,
+    });
+    return saveForFuture
+      ? 'Recipient recorded for this case and submitted to the approved recipient directory (approval and verification still apply).'
+      : 'Recipient recorded for this case.';
+  });
+}
+
+/** Directive 6.3 T: HR-recorded acknowledgement / completion evidence. */
+export async function recordEvidenceAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    const kind =
+      str(fd, 'kind') === 'COMPLETED' ? ('COMPLETED' as const) : ('ACKNOWLEDGED' as const);
+    const channelRaw = str(fd, 'channel');
+    const channel: EvidenceChannel = (EVIDENCE_CHANNELS as readonly string[]).includes(channelRaw)
+      ? (channelRaw as EvidenceChannel)
+      : 'OTHER';
+    await recordManualEvidence(actor, str(fd, 'recordId'), {
+      kind,
+      channel,
+      note: str(fd, 'note'),
+    });
+    return kind === 'COMPLETED'
+      ? 'Completion evidence recorded.'
+      : 'Acknowledgement evidence recorded.';
+  });
+}
+
 export async function notificationTransitionAction(formData: FormData): Promise<void> {
   await run(formData, async (actor, fd) => {
     const action = str(fd, 'action') as
@@ -68,9 +115,9 @@ export async function notificationTransitionAction(formData: FormData): Promise<
       sentNote: str(fd, 'sentNote') || undefined,
     });
     const messages: Record<string, string> = {
-      submit: 'Submitted for approval.',
-      approve: 'Notification approved and bound to its exact content checksum.',
-      return: 'Returned to draft.',
+      submit: 'Submitted for review.',
+      approve: 'Released. Sending and confirmation are tracked automatically.',
+      return: 'Returned for correction.',
       markReady: 'Marked ready for MANUAL sending. The system sends nothing.',
       recordManualSend: 'Manual send recorded (method + destination reference only).',
       cancel: 'Notification cancelled.',

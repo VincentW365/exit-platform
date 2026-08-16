@@ -65,7 +65,9 @@ GRANT SELECT, INSERT, UPDATE ON
   outage,
   fallback_entry,
   support_ticket,
-  backup_record
+  backup_record,
+  case_required_action,
+  action_token
 TO exit_app;
 
 -- Attestations: insert + read + update (update restricted by trigger to the

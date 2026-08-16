@@ -30,30 +30,9 @@ async function main(): Promise<void> {
   const officer = await actorFor('hr-officer', 'HR_OFFICER');
   const manager = await actorFor('hr-manager', 'HR_MANAGER');
 
-  // Disposable IT responder for the Scenario 11 deactivation drill. Created
-  // here (not in the base seed) because only the UAT dataset needs him; the
-  // upsert makes rebuilds idempotent and re-enables him after a drill.
-  const devon = await prisma.user.upsert({
-    where: { identitySubject: 'dev|it-responder-b' },
-    create: {
-      identitySubject: 'dev|it-responder-b',
-      displayName: 'Second IT Responder',
-      workEmail: 'devon.temple@example.test',
-    },
-    update: { displayName: 'Second IT Responder', isActive: true },
-  });
-  const devonRole = await prisma.roleAssignment.findFirst({
-    where: { userId: devon.id, role: 'IT_RESPONDER' as never, revokedAt: null },
-  });
-  if (!devonRole) {
-    await prisma.roleAssignment.create({
-      data: {
-        userId: devon.id,
-        role: 'IT_RESPONDER' as never,
-        reason: `${LABEL} - Scenario 11 disposable IT responder.`,
-      },
-    });
-  }
+  // Directive 6.3: the Scenario 11 disposable IT responder is gone - IT and
+  // Finance have no application logins any more; they act on the automated
+  // controlled emails and confirm through the secure no-login links.
 
   const note = async (actor: never, caseId: string, text: string) =>
     db.addNote(actor, caseId, `${LABEL} - ${text}`, 'HR_AND_OVERSIGHT');
@@ -110,28 +89,44 @@ async function main(): Promise<void> {
 
   const summary: string[] = [];
 
-  // 1. Resignation with notice - ACTIVE, mid-journey.
+  // 1. Resignation with notice - ACTIVE, mid-journey. Benefits confirmed
+  //    YES/YES so the derived provider notifications (Sagicor/NCB) exist for
+  //    review (Directive 6.3 V: HR confirms once, the rules engine derives).
   const s1 = await draft('EMP-TEST-001', 'RESIGNATION_WITH_NOTICE');
   await approveAndActivate(s1.caseId);
+  await db.confirmBenefits(officer as never, s1.caseId, {
+    groupHealth: 'YES',
+    groupLife: 'YES',
+    otherProvider: 'NO',
+  });
   await note(
     officer as never,
     s1.caseId,
-    'Scenario 1: resignation with notice, active workflow ready for HR/IT/Finance/Manager journey.',
+    'Scenario 1: resignation with notice, active workflow ready for the HR/Manager journey; ' +
+      'IT, Finance and the confirmed benefit providers are notified by controlled email.',
   );
-  summary.push(`S1 ${s1.caseNumber} resignation-with-notice ACTIVE`);
+  summary.push(`S1 ${s1.caseNumber} resignation-with-notice ACTIVE benefits YES/YES`);
 
-  // 2. Immediate resignation - urgent, access removal already overdue.
+  // 2. Immediate resignation - urgent, the effective time already passed.
+  //    Benefits confirmed NO/NO: the rules engine records NOT_APPLICABLE and
+  //    creates no provider notifications.
   const s2 = await draft('EMP-TEST-002', 'IMMEDIATE_RESIGNATION', {
     receivedDaysAgo: 1,
     effectiveInDays: -1,
   });
   await approveAndActivate(s2.caseId);
+  await db.confirmBenefits(officer as never, s2.caseId, {
+    groupHealth: 'NO',
+    groupLife: 'NO',
+    otherProvider: 'NO',
+  });
   await note(
     officer as never,
     s2.caseId,
-    'Scenario 2: immediate resignation; the exact-time access task is overdue and escalates.',
+    'Scenario 2: immediate resignation past its effective time; the derived IT access-removal ' +
+      'email states the exact effective time and awaits the no-login confirmation.',
   );
-  summary.push(`S2 ${s2.caseNumber} immediate-resignation ACTIVE overdue-access`);
+  summary.push(`S2 ${s2.caseNumber} immediate-resignation ACTIVE benefits NO/NO`);
 
   // 3. Restricted termination - discoverable only by authorized HR.
   const s3 = await db.createDraft(manager as never, {
@@ -226,13 +221,17 @@ async function main(): Promise<void> {
   summary.push(`S8 ${s8.caseNumber} blocked-clearance ACTIVE`);
 
   // 10. Failed notification in the development outbox (demonstration state).
+  //     Directive 6.3: activation already derives the IT access-removal email
+  //     (idempotent per case+type+event) - approving the derived record from
+  //     the review queue enqueues the outbox row this scenario fails.
   const s10 = await draft('EMP-TEST-001', 'IMMEDIATE_RESIGNATION', { receivedDaysAgo: 1 });
   await approveAndActivate(s10.caseId);
-  const s10n = await db.prepareNotification(officer as never, s10.caseId, {
-    notificationType: 'IT_ACCESS_REMOVAL',
+  const s10n = await prisma.notificationRecord.findFirstOrThrow({
+    where: { caseId: s10.caseId, notificationType: 'IT_ACCESS_REMOVAL' },
   });
-  await db.transitionNotification(officer as never, s10n.id, 'submit');
-  await db.transitionNotification(manager as never, s10n.id, 'approve');
+  if (s10n.status === 'PENDING_APPROVAL') {
+    await db.transitionNotification(manager as never, s10n.id, 'approve');
+  }
   // Demonstration state for the outbox monitor: mark the enqueued row as a
   // retryable provider failure (synthetic; retry stays a week away so the
   // stakeholder sees the FAILED_RETRYABLE surface and the Retry control).

@@ -95,6 +95,76 @@ export async function createInvitation(actor: Actor, caseId: string, overrideRea
   });
 }
 
+/**
+ * Directive 6.3 (AF.14): the system schedules the exit survey according to
+ * the configured rule - HR no longer creates routine invitations by hand.
+ * Deterministic and idempotent: eligible ACTIVE cases with the automation
+ * flag satisfied get exactly one invitation. Termination stays manual (it
+ * requires an HR-Manager override by rule).
+ */
+export async function scheduleDueSurveyInvitations(_now: Date = new Date()): Promise<number> {
+  const prisma = getPrisma();
+  const template = await prisma.surveyTemplate.findFirst({ where: { status: 'ACTIVE' } });
+  if (!template) return 0;
+  const flag = await prisma.featureFlag.findUnique({
+    where: { key: 'automation.surveyInvitations' },
+  });
+  const { getConfig } = await import('@exit/config');
+
+  const candidates = await prisma.offboardingCase.findMany({
+    where: {
+      status: 'ACTIVE',
+      effectiveSeparationAt: { not: null },
+      departureType: { in: ['RESIGNATION_WITH_NOTICE', 'IMMEDIATE_RESIGNATION'] },
+      surveyInvitations: { none: {} },
+    },
+    select: {
+      id: true,
+      ownerId: true,
+      effectiveSeparationAt: true,
+      recordPurpose: true,
+      measurementCohort: true,
+      departureType: true,
+    },
+    take: 50,
+  });
+  let created = 0;
+  for (const c of candidates) {
+    // Same automation gate as every side effect (AG): TEST/TRAINING outside
+    // production; OPERATIONAL needs the flag and never BASELINE.
+    const permitted =
+      c.recordPurpose !== 'OPERATIONAL'
+        ? !getConfig().isProduction
+        : c.measurementCohort !== 'BASELINE' && flag?.enabled === true;
+    if (!permitted) continue;
+    const inv = await prisma.surveyInvitation.create({
+      data: {
+        caseId: c.id,
+        templateId: template.id,
+        status: 'PENDING',
+        invitationDueAt: invitationDueAt(c.effectiveSeparationAt!),
+        createdById: c.ownerId,
+      },
+    });
+    await appendAudit(prisma, {
+      eventType: 'SURVEY_INVITATION_CREATED',
+      actorType: 'SYSTEM',
+      objectType: 'SurveyInvitation',
+      objectId: inv.id,
+      caseId: c.id,
+      result: 'SUCCESS',
+      correlationId: newCorrelationId(),
+      metadata: {
+        templateVersion: template.version,
+        departureType: c.departureType,
+        scheduledBy: 'automation (Directive 6.3 rule RULE_SURVEY_ELIGIBILITY_V1)',
+      },
+    });
+    created += 1;
+  }
+  return created;
+}
+
 async function loadInvitation(actor: Actor, invitationId: string) {
   const inv = await getPrisma().surveyInvitation.findUnique({
     where: { id: invitationId },

@@ -93,8 +93,10 @@ export async function evaluateReadinessGates(): Promise<GateResult[]> {
     },
     documentTemplates: { ok: docActive >= 3, detail: `${docActive} ACTIVE document template(s).` },
     notificationTemplates: {
-      ok: notifActive >= 7,
-      detail: `${notifActive} ACTIVE notification template(s); 7 required.`,
+      // Directive 6.3 K/N: one ACTIVE template per notification type
+      // (9 with the configurable provider purposes).
+      ok: notifActive >= 9,
+      detail: `${notifActive} ACTIVE notification template(s); 9 required (one per notification type).`,
     },
     recipients: {
       ok: recipientsVerified > 0,

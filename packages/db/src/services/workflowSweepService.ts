@@ -29,6 +29,11 @@ export interface SweepResult {
   assetOverdue: number;
   handoverOverdue: number;
   instancesRecalculated: number;
+  // Directive 6.3: automated email-action supervision.
+  tokensExpired: number;
+  ackOverdue: number;
+  autoReleased: number;
+  surveysScheduled: number;
 }
 
 /** One full Stage 3 sweep pass. Safe to run repeatedly and concurrently. */
@@ -42,6 +47,10 @@ export async function runStage3Sweep(now: Date = new Date()): Promise<SweepResul
     assetOverdue: 0,
     handoverOverdue: 0,
     instancesRecalculated: 0,
+    tokensExpired: 0,
+    ackOverdue: 0,
+    autoReleased: 0,
+    surveysScheduled: 0,
   };
   const { calendar } = await getActiveCalendarInfo();
   // Directive 6.2 (K): configurable escalation thresholds with safe defaults.
@@ -226,7 +235,82 @@ export async function runStage3Sweep(now: Date = new Date()): Promise<SweepResul
     result.handoverOverdue += 1;
   }
 
-  // 6. Counter + clearance-readiness recalculation (Q).
+  // 6. Directive 6.3 T: expire stale confirmation links (hash nulled).
+  const { expireActionTokens } = await import('./ackTokenService.ts');
+  result.tokensExpired = await expireActionTokens(now);
+
+  // 7. Directive 6.3 U.6: sent-but-unconfirmed IT actions escalate to HR at
+  // the deadline (the exact effective separation time); other email actions
+  // escalate after a configurable window. Delivery is never completion.
+  const ackWindowHours = await numCfg('escalation.ackHours', 48);
+  const sentUnconfirmed = await prisma.notificationRecord.findMany({
+    where: {
+      origin: 'DERIVED',
+      status: { in: ['SENT', 'ACKNOWLEDGED'] },
+      completionConfirmedAt: null,
+      case: { is: { status: { in: ['ACTIVE', 'ON_HOLD', 'CLEARANCE_REVIEW'] } } },
+    },
+    select: {
+      id: true,
+      caseId: true,
+      notificationType: true,
+      status: true,
+      sentAt: true,
+      case: { select: { effectiveSeparationAt: true } },
+    },
+    take: 200,
+  });
+  for (const n of sentUnconfirmed) {
+    const isIt = n.notificationType === 'IT_ACCESS_REMOVAL';
+    const deadline = isIt
+      ? n.case.effectiveSeparationAt
+      : n.sentAt
+        ? new Date(n.sentAt.getTime() + ackWindowHours * 3_600_000)
+        : null;
+    // Only IT demands completion evidence; others escalate only while
+    // un-acknowledged (receipt is their evidence bar).
+    if (!isIt && n.status === 'ACKNOWLEDGED') continue;
+    if (!deadline || deadline.getTime() > now.getTime()) continue;
+    await openException(n.caseId, {
+      exceptionType: 'ACKNOWLEDGEMENT_OVERDUE',
+      severity: isIt ? 'CRITICAL' : 'WARNING',
+      title: isIt
+        ? 'CRITICAL: IT access removal unconfirmed at the effective time'
+        : `Confirmation overdue: ${n.notificationType.replaceAll('_', ' ').toLowerCase()}`,
+      detail: isIt
+        ? 'The access-removal email was sent but completion is unconfirmed at the deadline. Verify with IT and record evidence, or approve a security exception. Email delivery alone is never proof access was removed (U.8).'
+        : 'The notification was sent but no acknowledgement has been received. Follow up and record evidence (confirmed by email/phone), or resolve with a note.',
+      refType: 'NotificationRecord',
+      refId: n.id,
+      ownerDepartment: 'HR',
+      dueAt: deadline,
+    });
+    result.ackOverdue += 1;
+  }
+
+  // 8. Directive 6.3 R: retry auto-release for derived records still waiting
+  // (e.g. a recipient was configured after derivation).
+  const { attemptAutoRelease } = await import('./notificationService.ts');
+  const pendingAuto = await prisma.notificationRecord.findMany({
+    where: {
+      origin: 'DERIVED',
+      status: 'PENDING_APPROVAL',
+      controlLevel: 'AUTO_SEND',
+      case: { is: { status: { in: ['ACTIVE', 'ON_HOLD', 'CLEARANCE_REVIEW'] } } },
+    },
+    select: { id: true },
+    take: 100,
+  });
+  for (const p of pendingAuto) {
+    if (await attemptAutoRelease(p.id, now)) result.autoReleased += 1;
+  }
+
+  // 9. Directive 6.3 (AF.14): schedule the exit survey automatically when the
+  // configured rule fires (eligible + flag enabled + due date reached).
+  const { scheduleDueSurveyInvitations } = await import('./surveyService.ts');
+  result.surveysScheduled = await scheduleDueSurveyInvitations(now);
+
+  // 10. Counter + clearance-readiness recalculation (Q).
   for (const inst of liveInstances) {
     await recalcInstanceCounts(inst.id, now);
     await refreshClearanceReadiness(inst.caseId);

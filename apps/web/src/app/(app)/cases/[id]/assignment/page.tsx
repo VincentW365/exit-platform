@@ -203,7 +203,7 @@ export default async function AssignmentPage({
                   </option>
                   {plan.responders.officers.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.displayName}
+                      {u.label}
                     </option>
                   ))}
                 </select>
@@ -223,51 +223,11 @@ export default async function AssignmentPage({
       </section>
 
       <section className="panel" aria-labelledby="dept-h">
-        <h2 id="dept-h">Department routing</h2>
-        <p className="hint">
-          IT and Finance tasks start in their department queues; responders claim or are assigned
-          work there. Current responders and open workload:
+        <h2 id="dept-h">Notification routing</h2>
+        <p>
+          IT and Finance are notified by controlled email automatically. Recipients are maintained
+          under Administration &rarr; Recipient directory.
         </p>
-        <div className="table-wrap" tabIndex={0}>
-          <table className="data">
-            <caption className="visually-hidden">Department responders</caption>
-            <thead>
-              <tr>
-                <th scope="col">Queue</th>
-                <th scope="col">Responder</th>
-                <th scope="col">Open tasks</th>
-              </tr>
-            </thead>
-            <tbody>
-              {plan.responders.it.map((u) => (
-                <tr key={u.id}>
-                  <td>IT queue</td>
-                  <td>{u.displayName}</td>
-                  <td className="tabular-nums">{u.openTasks}</td>
-                </tr>
-              ))}
-              {plan.responders.finance.map((u) => (
-                <tr key={u.id}>
-                  <td>Finance queue</td>
-                  <td>{u.displayName}</td>
-                  <td className="tabular-nums">{u.openTasks}</td>
-                </tr>
-              ))}
-              {plan.responders.it.length === 0 ? (
-                <tr>
-                  <td>IT queue</td>
-                  <td colSpan={2}>No active IT responders configured</td>
-                </tr>
-              ) : null}
-              {plan.responders.finance.length === 0 ? (
-                <tr>
-                  <td>Finance queue</td>
-                  <td colSpan={2}>No active Finance responders configured</td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
       </section>
 
       <section className="panel" aria-labelledby="wf-h">

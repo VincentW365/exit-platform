@@ -1,6 +1,12 @@
 import type { Metadata } from 'next';
 import { ServiceError, listRecipients } from '@exit/db';
-import { can, formatInstant, NOTIFICATION_TYPES, RECIPIENT_CLASSES } from '@exit/domain';
+import {
+  can,
+  formatInstant,
+  NOTIFICATION_TYPES,
+  PROVIDER_PURPOSES,
+  RECIPIENT_CLASSES,
+} from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import {
@@ -40,6 +46,7 @@ export default async function RecipientsPage({
       <h1>Notification recipient directory</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
+        Recipients are maintained by HR; external providers are configuration, never hard-coded.
         Destinations are encrypted at rest and shown MASKED. Development uses capture:// or
         @example.invalid destinations only; production rejects them. External recipient changes need
         HR Manager approval; no real address is ever seeded.
@@ -61,7 +68,11 @@ export default async function RecipientsPage({
             >
               {r.approvalStatus}
             </span>{' '}
-            {r.isExternal ? <span className="badge badge--warning">External</span> : null}
+            {r.isExternal ? (
+              <span className="badge badge--warning">External</span>
+            ) : (
+              <span className="badge badge--neutral">Internal</span>
+            )}
             {r.verifiedAt ? (
               <span className="badge badge--success"> Verified</span>
             ) : (
@@ -71,6 +82,9 @@ export default async function RecipientsPage({
           <p className="hint">
             Destination (masked): <code>{r.destinationMask}</code> - environment {r.environment} -
             allowed types: {r.allowedTypes.join(', ')}
+            {r.purpose ? ` - purpose: ${r.purpose}` : ''}
+            {r.organizationName ? ` - organization: ${r.organizationName}` : ''}
+            {r.contactName ? ` - contact: ${r.contactName}` : ''}
             {r.verifiedAt ? ` - verified ${formatInstant(r.verifiedAt)}` : ''}
             {r.changeReason ? ` - last change: ${r.changeReason}` : ''}
           </p>
@@ -114,6 +128,19 @@ export default async function RecipientsPage({
             </select>
             <label htmlFor="r-name">Display name</label>
             <input id="r-name" name="displayName" required maxLength={200} />
+            <label htmlFor="r-purpose">Provider purpose (external providers)</label>
+            <select id="r-purpose" name="purpose" defaultValue="">
+              <option value="">(none)</option>
+              {PROVIDER_PURPOSES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+            <label htmlFor="r-org">Organization name</label>
+            <input id="r-org" name="organizationName" maxLength={200} />
+            <label htmlFor="r-contact">Contact name</label>
+            <input id="r-contact" name="contactName" maxLength={200} />
             <label htmlFor="r-dest">
               Destination (development: capture://name or name@example.invalid ONLY)
             </label>

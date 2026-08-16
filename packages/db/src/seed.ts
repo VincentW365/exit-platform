@@ -7,6 +7,7 @@
  * categories are TEST-ONLY because DEC-031 is OPEN (IC-S1-008).
  */
 import { loadRootEnvFile } from '@exit/config';
+import { DEFAULT_SEND_CONTROL } from '@exit/domain';
 loadRootEnvFile(import.meta.dirname);
 
 const { getPrisma } = await import('./client.ts');
@@ -30,18 +31,10 @@ const DEV_USERS: ReadonlyArray<{ slug: string; name: string; email: string; role
     email: 'riley.okafor@example.test',
     roles: ['HR_OFFICER'],
   },
-  {
-    slug: 'it-responder',
-    name: 'IT Responder',
-    email: 'sam.chen@example.test',
-    roles: ['IT_RESPONDER'],
-  },
-  {
-    slug: 'finance-responder',
-    name: 'Finance Responder',
-    email: 'alex.romero@example.test',
-    roles: ['FINANCE_RESPONDER'],
-  },
+  // Directive 6.3: the IT and Finance responder logins are RETIRED - those
+  // departments participate through automated controlled email notifications
+  // with no-login confirmation links. Accounts from earlier seeds are
+  // deactivated below with the DEC-042 pattern; none are seeded here.
   {
     slug: 'line-manager',
     name: 'Line Manager',
@@ -68,14 +61,6 @@ const DEV_USERS: ReadonlyArray<{ slug: string; name: string; email: string; role
     name: 'Warehouse Manager',
     email: 'rowan.achebe@example.test',
     roles: ['LINE_MANAGER'],
-  },
-  // Disposable second IT responder: the user-deactivation drill (UAT
-  // Scenario 11) disables and re-enables this account.
-  {
-    slug: 'it-responder-b',
-    name: 'Second IT Responder',
-    email: 'devon.temple@example.test',
-    roles: ['IT_RESPONDER'],
   },
 ];
 
@@ -138,20 +123,38 @@ const TEST_REASONS: ReadonlyArray<{ code: string; label: string }> = [
   { code: 'TEST-REASON-B', label: 'TEST ONLY - Category B (placeholder until DEC-031)' },
 ];
 
+// Retired sign-ins are never deleted: assignments are revoked with a reason
+// (history preserved) and the account is deactivated. DEC-042 removed the
+// oversight roles; Directive 6.3 retires the IT/Finance responder logins
+// because those departments now act on controlled emails, not sign-ins.
+const RETIRED_LOGINS: ReadonlyArray<{ slug: string; reason: string }> = [
+  { slug: 'auditor', reason: 'Role retired by DEC-042.' },
+  { slug: 'privacy-officer', reason: 'Role retired by DEC-042.' },
+  {
+    slug: 'it-responder',
+    reason: 'Directive 6.3: IT/Finance participate by controlled email, not application logins.',
+  },
+  {
+    slug: 'finance-responder',
+    reason: 'Directive 6.3: IT/Finance participate by controlled email, not application logins.',
+  },
+  {
+    slug: 'it-responder-b',
+    reason: 'Directive 6.3: IT/Finance participate by controlled email, not application logins.',
+  },
+];
+
 async function main(): Promise<void> {
-  // DEC-042: the oversight roles were removed. Retire any accounts from
-  // earlier seeds by revoking their assignments (with reason - history is
-  // preserved, nothing is deleted) and deactivating the sign-in.
-  for (const slug of ['auditor', 'privacy-officer']) {
+  for (const retired of RETIRED_LOGINS) {
     const stale = await prisma.user.findUnique({
-      where: { identitySubject: `dev|${slug}` },
+      where: { identitySubject: `dev|${retired.slug}` },
       include: { roleAssignments: { where: { revokedAt: null } } },
     });
     if (stale) {
       for (const ra of stale.roleAssignments) {
         await prisma.roleAssignment.update({
           where: { id: ra.id },
-          data: { revokedAt: new Date(), revokeReason: 'Role retired by DEC-042.' },
+          data: { revokedAt: new Date(), revokeReason: retired.reason },
         });
       }
       if (stale.isActive) {
@@ -196,6 +199,28 @@ async function main(): Promise<void> {
       update: { description: f.description }, // never silently enable
     });
   }
+
+  // Directive 6.3 S: audited send-control defaults for the controlled email
+  // engine. Create-only upsert - a later audited operational change is never
+  // silently overwritten by a seed re-run (same principle as the flags).
+  await prisma.systemConfig.upsert({
+    where: { key: 'notifications.sendControl' },
+    create: {
+      key: 'notifications.sendControl',
+      value: { ...DEFAULT_SEND_CONTROL },
+      reason: 'Directive 6.3 S defaults',
+    },
+    update: {},
+  });
+  await prisma.systemConfig.upsert({
+    where: { key: 'notifications.sendControl.restrictedOverride' },
+    create: {
+      key: 'notifications.sendControl.restrictedOverride',
+      value: 'HR_MANAGER_APPROVAL_REQUIRED',
+      reason: 'Directive 6.3 S defaults',
+    },
+    update: {},
+  });
 
   for (const i of INTEGRATIONS) {
     await prisma.integrationPlaceholder.upsert({
@@ -269,8 +294,9 @@ async function main(): Promise<void> {
   await seedStage4(prisma);
 
   console.log(
-    'Seed complete: synthetic users, flags (all disabled), calendar, reasons, org lists, ' +
-      'DEV templates, DEV exit survey, DEV workflows, DEV notification templates, synthetic assets.',
+    'Seed complete: synthetic users, flags (all disabled), send-control defaults, calendar, ' +
+      'reasons, org lists, DEV templates, DEV exit survey, DEV workflows (v2 active), ' +
+      'DEV notification templates, synthetic assets and recipients.',
   );
 }
 

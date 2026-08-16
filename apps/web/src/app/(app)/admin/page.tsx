@@ -50,13 +50,15 @@ export default async function AdminPage({
     { href: '/baseline', label: 'Baseline dashboard', kind: 'business' },
     { href: '/admin/reasons', label: 'Reason taxonomy', kind: 'business' },
     { href: '/admin/recipients', label: 'Recipient directory', kind: 'business' },
+    { href: '/admin/notification-templates', label: 'Notification templates', kind: 'business' },
     { href: '/reports', label: 'Reporting centre', kind: 'business' },
     { href: '/admin/pilot', label: 'Pilot readiness and activation', kind: 'business' },
     { href: '/admin/privacy', label: 'Privacy and retention', kind: 'business' },
     { href: '/continuity', label: 'Business continuity', kind: 'business' },
     { href: '/admin/system', label: 'System configuration and identity', kind: 'technical' },
     { href: '/admin/health', label: 'Integration health', kind: 'technical' },
-    { href: '/admin/outbox', label: 'Email/outbox status', kind: 'technical' },
+    // Rendered with the '(technical)' suffix below: "Email delivery status (technical)".
+    { href: '/admin/outbox', label: 'Email delivery status', kind: 'technical' },
     { href: '/dev/mailbox', label: 'Development mailbox', kind: 'technical' },
     { href: '/support', label: 'Support and incidents', kind: 'technical' },
   ];

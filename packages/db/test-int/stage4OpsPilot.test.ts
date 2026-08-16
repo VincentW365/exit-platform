@@ -54,6 +54,7 @@ import {
   resetDb,
   seedStage3Fixtures,
   VALID_DRAFT,
+  FIXTURE_CONFIRMED_LAST_DAY,
 } from './helpers.ts';
 
 const prisma = getPrisma();
@@ -68,7 +69,7 @@ const TEST_DRAFT = {
   ...VALID_DRAFT,
   recordPurpose: 'TEST',
   measurementCohort: null,
-  confirmedLastDay: '2026-08-14T00:00:00.000Z',
+  confirmedLastDay: FIXTURE_CONFIRMED_LAST_DAY,
 } as const;
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
@@ -314,7 +315,7 @@ describe('pilot activation gates (X.17-X.19)', () => {
     await setFlag(sysAdmin.actor, 'automation.workflowEngine', true, 'Stage 4 test');
     const created = await createDraft(officer.actor, {
       ...VALID_DRAFT, // OPERATIONAL + BASELINE
-      confirmedLastDay: '2026-08-14T00:00:00.000Z',
+      confirmedLastDay: FIXTURE_CONFIRMED_LAST_DAY,
       employeeSourceId: 'EMP-TEST-003',
     });
     await transitionCase(officer.actor, created.caseId, 'submit');

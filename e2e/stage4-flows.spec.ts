@@ -24,7 +24,13 @@ async function completeAssignmentPlan(
 ): Promise<void> {
   await page.goto(`${caseUrl}/assignment`);
   await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
-  await page.locator('#of-user').selectOption({ label: officerLabel });
+  // Directive 6.3 correction 7: options read "<name> - <job title>", so pick
+  // the option by its name fragment rather than an exact label.
+  const officerValue = await page
+    .locator('#of-user option', { hasText: officerLabel })
+    .first()
+    .getAttribute('value');
+  await page.locator('#of-user').selectOption(officerValue!);
   await page.locator('#of-reason').fill('E2E assignment.');
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
@@ -65,9 +71,9 @@ async function createTestCase(
 
 test('Scenario 1 - notification delivery through development capture', async ({ page }) => {
   test.setTimeout(300_000);
-  // HR builds an ACTIVE TEST case and approves an IT notification.
+  // HR builds an ACTIVE TEST case; activation derives the IT notification.
   await signInAs(page, 'HR Officer');
-  const { url: caseUrl } = await createTestCase(page, {
+  const { url: caseUrl, number: caseNo } = await createTestCase(page, {
     employeeQuery: 'avery',
     type: 'RESIGNATION_WITH_NOTICE',
   });
@@ -84,31 +90,49 @@ test('Scenario 1 - notification delivery through development capture', async ({ 
   await page.getByRole('button', { name: 'Activate case and create these tasks' }).click();
   await expect(page.getByText(/Case activated/)).toBeVisible();
 
+  // Directive 6.3: the IT access-removal email is DERIVED automatically at
+  // activation (no manual preparation). Release any action still waiting on
+  // review so the outbox has work to capture.
   await page.goto(`${caseUrl}/notifications`);
-  await page.locator('details.action > summary', { hasText: 'Prepare a notification' }).click();
-  await page.locator('#n-type').selectOption('IT_ACCESS_REMOVAL');
-  await page.getByRole('button', { name: 'Prepare draft' }).click();
-  await expect(page.getByText('Notification draft prepared')).toBeVisible();
-  await page.getByRole('button', { name: 'Submit for approval' }).click();
-  await expect(page.getByText('Submitted for approval.')).toBeVisible();
-  await page.getByRole('button', { name: /^Approve$/ }).click();
-  await expect(page.getByText(/approved and bound/)).toBeVisible();
+  await expect(
+    page.locator('section[aria-label="IT access removal email action"]').first(),
+  ).toBeVisible();
+  for (let i = 0; i < 6; i++) {
+    const release = page.getByRole('button', { name: /Review and release/ }).first();
+    if ((await release.count()) === 0) break;
+    await release.click();
+    await expect(
+      page.getByText(/Released\. Sending and confirmation are tracked automatically\./),
+    ).toBeVisible();
+  }
 
-  // The outbox worker processes it into the capture mailbox.
+  // An outbox pass processes it into the capture mailbox. The background
+  // worker may legitimately drain the queue first (the manual pass then
+  // submits 0); the capture evidence for THIS case is the invariant.
   await page.goto('/admin/outbox');
   await page.getByRole('button', { name: 'Run outbox pass now' }).click();
-  await expect(page.getByText(/Outbox pass: [1-9]\d* submitted/)).toBeVisible();
-  await expect(page.locator('tbody').getByText('CAPTURED').first()).toBeVisible();
+  await expect(page.getByText(/Outbox pass: \d+ submitted/)).toBeVisible();
+  await expect(
+    page.locator('tbody tr', { hasText: caseNo }).filter({ hasText: 'CAPTURED' }).first(),
+  ).toBeVisible();
   // Never represented as externally delivered (no DELIVERED status badge).
   await expect(page.locator('tbody .badge', { hasText: 'DELIVERED' })).toHaveCount(0);
 
-  // Duplicate worker run does not duplicate the message.
+  // A repeat pass does not duplicate the already-captured message.
   await page.getByRole('button', { name: 'Run outbox pass now' }).click();
   await expect(page.getByText(/Outbox pass: 0 submitted/)).toBeVisible();
+  await expect(
+    page.locator('tbody tr', { hasText: caseNo }).filter({ hasText: 'CAPTURED' }),
+  ).toHaveCount(2); // IT + Finance, exactly once each
 
   await page.goto('/dev/mailbox');
   await expect(page.getByText('DEVELOPMENT CAPTURE ONLY')).toBeVisible();
-  await expect(page.getByText(/Access removal required/).first()).toBeVisible();
+  await expect(
+    page
+      .locator('section[aria-label="Captured message"]', { hasText: caseNo })
+      .filter({ hasText: /Access removal required/i })
+      .first(),
+  ).toBeVisible();
   await signOut(page);
 });
 

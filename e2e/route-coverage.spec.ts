@@ -30,19 +30,19 @@ const STATIC_ROUTES = [
   '/admin/outbox',
   '/admin/reasons',
   '/admin/templates',
+  // Directive 6.3 Q: versioned notification templates. HR roles see the
+  // register; everyone else is politely redirected to /admin by the guard.
+  '/admin/notification-templates',
   '/admin/workflows',
   '/admin/organization',
   '/unauthorized',
 ];
 
-const ROLES = [
-  'HR Manager',
-  'HR Officer',
-  'IT Responder',
-  'Finance Responder',
-  'Line Manager',
-  'System Administrator',
-];
+// Directive 6.3: the IT and Finance responder sign-ins are retired - those
+// departments act on controlled emails, never application logins. The
+// remaining representative roles cover every reachable surface. (Note: the
+// /queue page heading is now "My work".)
+const ROLES = ['HR Manager', 'HR Officer', 'Line Manager', 'System Administrator'];
 
 async function assertHealthy(page: Page, label: string): Promise<void> {
   // The global error boundary and Next's static error page must never show.
@@ -92,7 +92,7 @@ test('every case tab renders for the HR Manager on a real case', async ({ page }
     '/assets',
     '/handover',
     '/clearance',
-    '/notifications',
+    '/notifications', // titled "Email actions" since Directive 6.3
     '/survey',
   ];
   for (const tab of tabs) {

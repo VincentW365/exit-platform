@@ -14,7 +14,7 @@ import {
   updateDraft,
 } from '../src/services/caseService.ts';
 import type { ServiceError } from '../src/errors.ts';
-import { createUser, resetDb, VALID_DRAFT } from './helpers.ts';
+import { createUser, resetDb, VALID_DRAFT, FIXTURE_EFFECTIVE_AT } from './helpers.ts';
 
 const prisma = getPrisma();
 
@@ -88,7 +88,7 @@ describe('happy path: create -> submit -> approve', () => {
     });
     expect(audit).not.toBeNull();
     const meta = audit!.metadata as Record<string, unknown>;
-    expect(meta['oldValue']).toBe('2026-08-14T22:00:00.000Z');
+    expect(meta['oldValue']).toBe(FIXTURE_EFFECTIVE_AT);
     expect(meta['newValue']).toBe(newTime.toISOString());
   });
 });

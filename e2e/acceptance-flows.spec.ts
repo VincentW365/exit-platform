@@ -115,8 +115,9 @@ test('J.5 restricted termination: assignment-gated access; no discovery for othe
   await expect(page.getByText('Page or record not found')).toBeVisible();
   await signOut(page);
 
-  // Departmental + admin roles: nothing anywhere.
-  for (const who of ['IT Responder', 'System Administrator']) {
+  // Non-HR + admin roles: nothing anywhere (Directive 6.3: IT/Finance have
+  // no logins at all; the line manager and admin cover the negative).
+  for (const who of ['Line Manager', 'System Administrator']) {
     await signInAs(page, who);
     await page.goto(caseUrl);
     await expect(page.getByText('Page or record not found')).toBeVisible();
@@ -167,7 +168,7 @@ test('J.6+J.8 cohort/purpose exclusion and audited export without restricted row
   await signOut(page);
 
   // Unauthorized roles cannot export.
-  await signInAs(page, 'IT Responder');
+  await signInAs(page, 'Line Manager');
   const denied = await page.request.get('/api/baseline-export');
   expect(denied.status()).toBe(403);
   await signOut(page);
@@ -200,7 +201,7 @@ test('J.7 attachment upload with clearly-labelled development scan transition', 
   await signOut(page);
 
   // Unauthorized role: download denied without disclosure.
-  await signInAs(page, 'Finance Responder');
+  await signInAs(page, 'Line Manager');
   const denied = await page.request.get(href!);
   expect([403, 404]).toContain(denied.status());
   await signOut(page);

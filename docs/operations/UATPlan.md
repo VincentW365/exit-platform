@@ -21,14 +21,21 @@ the System Administrator only after the HR Manager signs the results).
 > UAT sign-off is still required before `readiness.uatPassed` may be set;
 > the automated run does not substitute for it.
 
+> **Directive 6.3 (2026-08-16, HR-validated workflow):** IT and Finance no
+> longer sign in for NEW-case scenarios (DEC-045). They act on the captured
+> automated emails (Development mailbox) and confirm through the secure
+> acknowledgement links. The IT/Finance responder accounts remain only for
+> historical/legacy-instance checks. Scenario adjustments below are marked
+> "(6.3)".
+
 ## Participants and prerequisites
 
 | Role | Participant (synthetic account) | Modules |
 | --- | --- | --- |
-| HR Manager | HR Manager | Approvals, clearance, pilot admin, reports |
-| HR Officer | HR Officer | Case intake, documents, notifications, reports |
-| IT | IT Responder | Queue, access revocation, assets |
-| Finance | Finance Responder | Queue, clearance inputs |
+| HR Manager | HR Manager | Approvals, letters, provider-notification review, clearance, pilot admin, reports |
+| HR Officer | HR Officer | Case intake, benefits confirmation, exceptions, action-form completion, recipient entry, reports |
+| IT (no login, 6.3) | Acts via captured email + secure link | Reads the access-removal email in `/dev/mailbox`; confirms receipt/completion through the acknowledgement link |
+| Finance (no login, 6.3) | Acts via captured email + secure link | Reads the Finance notification in `/dev/mailbox`; acknowledges through the link |
 | Line Manager | Line Manager | Handover, queue |
 | HR Manager (DEC-042) | HR Manager | Privacy/retention operations |
 | System Administrator | System Administrator | System admin, health, backup |
@@ -64,27 +71,52 @@ sign-off.
 3. Issue an exit survey token; complete the survey; confirm responses appear
    only in aggregate reporting.
 
-### UAT-3 Department execution (IT/Finance/Manager)
+### UAT-3 Department actions by email (6.3 - no IT/Finance logins)
 
-1. **IT: complete the access review from the queue; observe the exact-time
-   revocation task release at the effective instant; complete it and check
-   lateness handling.**
-2. Finance/Manager: complete department tasks and the handover module,
-   including credential rejection in text fields.
-3. Verify no department participant can open HR case content.
+1. **Activate a TEST case and verify the IT access-removal and Finance
+   notifications are derived and dispatched automatically (zero HR clicks
+   for the internal emails); open both in the Development mailbox
+   (`/dev/mailbox`) and confirm the exact effective time is stated.**
+2. **Open the acknowledgement link from the captured IT email; confirm
+   receipt, then confirm completion; verify the case's IT evidence updates
+   and a second use of the link fails neutrally.**
+3. Record HR evidence ("confirmed by phone") on the Finance notification
+   instead of the link; verify the audit trail names the actor and channel.
+4. Manager: complete the handover module, including credential rejection in
+   text fields. Verify the manager cannot see HR case content beyond their
+   scope and that no IT/Finance sign-in occurs anywhere in this scenario.
 
-### UAT-4 Notifications and outbox (HR Manager + System Administrator)
+### UAT-3b Benefits confirmation and recipient handling (6.3)
 
-1. **Prepare, submit and approve an IT notification on a TEST case; run the
-   outbox; confirm CAPTURED in the development mailbox; confirm a repeat run
-   sends nothing twice.**
+1. **Confirm benefits (group health YES, group life NO, other NO); verify
+   the Sagicor notification is prepared for review, no NCB record exists,
+   and the UNKNOWN attention item clears.**
+2. **Remove/omit a provider recipient first: verify the "Recipient
+   required" exception appears (never a silent skip), enter a case-only
+   recipient as the HR Officer, and watch the notification proceed.**
+3. Save a recipient "for future cases" and verify it requires directory
+   authority plus approval/verification before automatic use.
+4. Leave one benefit UNKNOWN and verify clearance is blocked with a plain
+   explanation until it is resolved.
+
+### UAT-4 Notification review, outbox and templates (HR + System Administrator)
+
+1. **Approve a provider notification from "Needs your review"; run the
+   outbox; confirm CAPTURED in the development mailbox; confirm a repeat
+   run sends nothing twice.**
 2. Record a manual send and confirm pending dispatch is cancelled.
 3. Cancel/retry/resolve paths on the outbox monitor (audited).
+4. (6.3) Draft, preview and test-send a notification template revision
+   (synthetic sample values only); activate it as the HR Manager and verify
+   the prior version is superseded.
 
 ### UAT-5 Clearance and completion (HR Manager)
 
 1. **Complete all clearance conditions; approve clearance; complete the
-   case; verify the immutable clearance record.**
+   case; verify the immutable clearance record.** (6.3) On a new-model
+   case, verify IT shows ready only with confirmed completion (or an
+   approved exception) - a sent-but-unconfirmed email must block - and
+   that each unresolved asset needs its own decision or exception.
 2. Reopen with a reactivation plan; verify audit and workflow behaviour.
 
 ### UAT-6 Administration (per role)

@@ -31,27 +31,75 @@ recorded completions feed the pilot readiness gate.
   (`/directory`) for case preparation.
 - Controlled documents: generation, approval binding, attestation; why a
   termination letter is impossible.
-- Notifications: preparing drafts, placeholders as minimum-data, submitting
-  for approval; what the outbox does after approval.
+- Action form completion (Directive 6.3): the officer prepares, reviews and
+  COMPLETES ordinary forms; the suggested acknowledgement treatment per
+  departure type; when the optional HR-Manager review step applies.
+
+### HR Benefits & providers (SOP-03a, Directive 6.3 - HR Officer and HR Manager)
+
+- Confirming benefits applicability once (group health / group life / other
+  provider, YES/NO/UNKNOWN); why UNKNOWN blocks clearance; what YES and NO
+  each cause downstream.
+- The provider directory: purposes, organizations, contacts; entering a
+  recipient for one case vs saving an approved recipient for future cases
+  (who may do which, and why).
+
+### HR Email actions (SOP-04a, Directive 6.3 - HR Officer and HR Manager)
+
+- How the platform derives the required actions from the case facts, and
+  how to read the provenance ("derived from ...").
+- Send control levels in business terms: sent automatically / needs your
+  review / needs HR-Manager approval; restricted-case behaviour;
+  confidential termination timing.
+- The evidence chain: sent → acknowledged → completed; recording evidence
+  received by email or phone; why a delivered email is never proof that IT
+  access was removed.
+- Overriding a derived action with a reason; what happens on re-derivation.
+- Notification templates: drafting, previewing and test-sending with
+  synthetic sample values (HR Manager activates).
+
+### HR exception-first dashboard (SOP-04b, Directive 6.3)
+
+- Working from "Requires your attention": recipient required, benefits
+  unresolved, automatic sending blocked, confirmation overdue - what each
+  means and the one action that resolves it.
+- What "In progress automatically" is telling you, and why completed items
+  are collapsed.
 
 ### HR Manager (SOP-05 plus all HR Officer modules)
 
-- Approvals: case approval, external notification authority, clearance
-  review and completion, reopening discipline.
+- Approvals: case approval, letter approval, provider-notification review
+  and HR-Manager-approval-level sends, clearance review and completion,
+  reopening discipline. The optional Action-Form review configuration
+  (`actionForm.requireHrReview`) and when to enable it.
 - Pilot administration: readiness gates, proposing/approving activation,
-  suspension; the reason taxonomy and calendar approval.
+  suspension; the reason taxonomy and calendar approval; send-control
+  configuration and notification-template activation.
 - Reports: catalogue, suppression behaviour, audited exports.
 
-### IT (SOP-06)
+### IT and Finance recipients (SOP-06, Directive 6.3 - guidance, not app training)
 
-- The work queue; the access review task; the exact-time revocation task,
-  early-completion reasons, lateness escalation, partial completion.
-- Asset dispositions and documentation vs physical recovery.
+IT and Finance no longer sign in for routine offboarding. This module is
+recipient-side guidance distributed to the departments:
 
-### Finance / Line Manager (SOP-07)
+- What the email contains: employee reference, case reference, the exact
+  effective separation time (IT), the minimum data the work needs - never
+  reasons, survey content or pay information.
+- How the secure link works: one click to confirm receipt, one to confirm
+  completion (IT/Finance); links are single-use, expire (72 hours for IT
+  access removal, 14 days otherwise), and open a neutral page if reused or
+  expired - ask HR to re-send if a link has died.
+- No account, no password, no case access: the link confirms the one action
+  only. If clicking is impossible, reply by email or phone and HR records
+  the evidence.
+- Timing expectations: IT access removal is confirmed BY the effective
+  time; an unconfirmed removal escalates to HR as critical.
 
-- Queue basics, department tasks, the handover module and attestation,
-  clearance inputs. No payroll decisions exist in the platform.
+### Line Manager (SOP-07)
+
+- Queue basics, the handover module and attestation, credential rejection
+  in text fields. Managers no longer approve the Action Form (Directive
+  6.3). No payroll decisions exist in the platform.
 
 ### HR Manager privacy duties (SOP-08, DEC-042)
 

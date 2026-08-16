@@ -1,9 +1,12 @@
 /**
- * Controlled notification rules (Directive 3 section K).
+ * Controlled notification rules (Directive 3 section K, redesigned by
+ * Directive 6.3 K-N: email-first department actions).
  *
  * Deterministic templates only - no generative wording (fixed default 2).
- * No live email is ever sent in this increment (fixed default 12); records
- * document preparation, approval and MANUAL sending only.
+ * Directive 6.3 adds automated preparation and controlled automatic sending
+ * through the transactional outbox; the development capture provider remains
+ * the only delivery path outside production, and the manual-send states stay
+ * fully supported for historical records.
  */
 export const NOTIFICATION_TYPES = [
   'IT_ACCESS_REMOVAL',
@@ -13,6 +16,9 @@ export const NOTIFICATION_TYPES = [
   'NCB_GROUP_LIFE_REMOVAL',
   'SURVEY_INVITATION_REFERENCE',
   'MANUAL_EXCEPTION_NOTIFICATION',
+  // Directive 6.3 K/N: configurable external purposes beyond Sagicor/NCB.
+  'PAYROLL_OR_BANK_NOTIFICATION',
+  'OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -27,6 +33,10 @@ export const NOTIFICATION_STATUSES = [
   'CANCELLED',
   'FAILED',
   'SUPERSEDED',
+  // Directive 6.3 K/T/U: automated delivery + no-login evidence states.
+  'SENT',
+  'ACKNOWLEDGED',
+  'CONFIRMED_COMPLETE',
 ] as const;
 export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
 
@@ -41,6 +51,8 @@ export const NOTIFICATION_RECIPIENT_CLASS: Readonly<
   NCB_GROUP_LIFE_REMOVAL: 'EXTERNAL_PROVIDER',
   SURVEY_INVITATION_REFERENCE: 'EMPLOYEE',
   MANUAL_EXCEPTION_NOTIFICATION: 'EMPLOYEE',
+  PAYROLL_OR_BANK_NOTIFICATION: 'EXTERNAL_PROVIDER',
+  OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION: 'EXTERNAL_PROVIDER',
 };
 
 /**
@@ -51,17 +63,21 @@ export const NOTIFICATION_RECIPIENT_CLASS: Readonly<
 export const NOTIFICATION_PLACEHOLDERS: Readonly<Record<NotificationType, readonly string[]>> = {
   IT_ACCESS_REMOVAL: [
     'EMPLOYEE_LEGAL_NAME',
+    'EMPLOYEE_REFERENCE',
     'CASE_REFERENCE',
     'EFFECTIVE_SEPARATION_DATE',
     'EFFECTIVE_SEPARATION_TIME',
     'ACCESS_SYSTEMS_SUMMARY',
+    'ACKNOWLEDGEMENT_LINK',
   ],
   FINANCE_OFFBOARDING: [
     'EMPLOYEE_LEGAL_NAME',
+    'EMPLOYEE_REFERENCE',
     'CASE_REFERENCE',
     'DEPARTMENT',
     'CONFIRMED_LAST_WORKING_DATE',
     'EFFECTIVE_SEPARATION_DATE',
+    'ACKNOWLEDGEMENT_LINK',
   ],
   LINE_MANAGER_HANDOVER: [
     'EMPLOYEE_LEGAL_NAME',
@@ -81,15 +97,27 @@ export const NOTIFICATION_PLACEHOLDERS: Readonly<Record<NotificationType, readon
   ],
   SURVEY_INVITATION_REFERENCE: ['EMPLOYEE_LEGAL_NAME', 'CASE_REFERENCE', 'SURVEY_EXPIRY_NOTE'],
   MANUAL_EXCEPTION_NOTIFICATION: ['EMPLOYEE_LEGAL_NAME', 'CASE_REFERENCE', 'MANUAL_NOTE'],
+  PAYROLL_OR_BANK_NOTIFICATION: [
+    'EMPLOYEE_LEGAL_NAME',
+    'EMPLOYEE_REFERENCE',
+    'EFFECTIVE_SEPARATION_DATE',
+  ],
+  OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION: [
+    'EMPLOYEE_LEGAL_NAME',
+    'EMPLOYEE_REFERENCE',
+    'EFFECTIVE_SEPARATION_DATE',
+  ],
 };
 
 /** Types that require confirmed applicability before a record exists (K.9/K.10). */
 export const APPLICABILITY_GATED_TYPES: readonly NotificationType[] = [
   'SAGICOR_GROUP_HEALTH_REMOVAL',
   'NCB_GROUP_LIFE_REMOVAL',
+  'PAYROLL_OR_BANK_NOTIFICATION',
+  'OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION',
 ];
 
-/** K.2 vs K.3: which recipient classes need HR_MANAGER approval. */
+/** K.2 vs K.3: which recipient classes need HR_MANAGER approval (manual path). */
 export function requiresManagerApproval(recipientClass: NotificationRecipient): boolean {
   return recipientClass === 'EXTERNAL_PROVIDER' || recipientClass === 'EMPLOYEE';
 }
@@ -102,16 +130,26 @@ interface NotifTransition {
 
 export const NOTIFICATION_TRANSITIONS = {
   submit: { from: ['DRAFT'], to: 'PENDING_APPROVAL', reasonRequired: false },
+  // The automated AUTO_SEND path performs submit -> approve as two explicit
+  // steps (SYSTEM actor); the state order itself never relaxes.
   approve: { from: ['PENDING_APPROVAL'], to: 'APPROVED', reasonRequired: false },
   return: { from: ['PENDING_APPROVAL'], to: 'DRAFT', reasonRequired: true },
   markReady: { from: ['APPROVED'], to: 'READY_FOR_MANUAL_SEND', reasonRequired: false },
   recordManualSend: { from: ['READY_FOR_MANUAL_SEND'], to: 'MANUALLY_SENT', reasonRequired: false },
+  // Directive 6.3: automated delivery evidence chain (SYSTEM actor).
+  markSent: { from: ['APPROVED'], to: 'SENT', reasonRequired: false },
+  acknowledge: { from: ['SENT'], to: 'ACKNOWLEDGED', reasonRequired: false },
+  confirmComplete: {
+    from: ['SENT', 'ACKNOWLEDGED'],
+    to: 'CONFIRMED_COMPLETE',
+    reasonRequired: false,
+  },
   cancel: {
     from: ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'READY_FOR_MANUAL_SEND'],
     to: 'CANCELLED',
     reasonRequired: true,
   },
-  fail: { from: ['READY_FOR_MANUAL_SEND'], to: 'FAILED', reasonRequired: true },
+  fail: { from: ['READY_FOR_MANUAL_SEND', 'APPROVED'], to: 'FAILED', reasonRequired: true },
   supersede: {
     from: ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'READY_FOR_MANUAL_SEND'],
     to: 'SUPERSEDED',
@@ -161,3 +199,21 @@ export const MANUAL_SEND_METHODS = [
   'OTHER_APPROVED',
 ] as const;
 export type ManualSendMethod = (typeof MANUAL_SEND_METHODS)[number];
+
+/**
+ * Business-language status labels (Directive 6.3 correction 7). The HR UI
+ * never shows raw state names outside admin/audit surfaces.
+ */
+export const NOTIFICATION_STATUS_LABELS: Readonly<Record<NotificationStatus, string>> = {
+  DRAFT: 'Being prepared',
+  PENDING_APPROVAL: 'Needs your review',
+  APPROVED: 'Scheduled',
+  READY_FOR_MANUAL_SEND: 'Ready to send manually',
+  MANUALLY_SENT: 'Sent manually',
+  CANCELLED: 'Cancelled',
+  FAILED: 'Could not send',
+  SUPERSEDED: 'Superseded',
+  SENT: 'Sent',
+  ACKNOWLEDGED: 'Acknowledged',
+  CONFIRMED_COMPLETE: 'Completed',
+};

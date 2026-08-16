@@ -10,7 +10,7 @@ import { getPrisma } from '../src/client.ts';
 import { LocalStorageAdapter, setStorageForTests } from '../src/storage.ts';
 import { createDraft, transitionCase } from '../src/services/caseService.ts';
 import { activateCase } from '../src/services/workflowService.ts';
-import { completeAccessTask, completeTask, reassignTask } from '../src/services/taskService.ts';
+import { completeTask, reassignTask } from '../src/services/taskService.ts';
 import {
   addAssetRecoveryItem,
   listCaseAssets,
@@ -27,6 +27,9 @@ import {
   requestClearance,
 } from '../src/services/clearanceService.ts';
 import { resolveException } from '../src/services/exceptionService.ts';
+import { confirmBenefits } from '../src/services/derivedActionService.ts';
+import { processOutbox } from '../src/services/outboxService.ts';
+import { recordManualEvidence } from '../src/services/ackTokenService.ts';
 import { activateTemplate, createDraftTemplate } from '../src/services/templateService.ts';
 import {
   approveDocument,
@@ -34,9 +37,8 @@ import {
   submitDocument,
 } from '../src/services/documentService.ts';
 import {
+  completeActionForm,
   createActionForm,
-  hrApproveForm,
-  managerApproveForm,
   submitActionForm,
   updateActionFormHr,
 } from '../src/services/actionFormService.ts';
@@ -47,21 +49,20 @@ import {
   resetDb,
   seedStage3Fixtures,
   VALID_DRAFT,
+  FIXTURE_CONFIRMED_LAST_DAY,
 } from './helpers.ts';
 
 const prisma = getPrisma();
 
 let officer: Awaited<ReturnType<typeof createUser>>;
 let manager: Awaited<ReturnType<typeof createUser>>;
-let itUser: Awaited<ReturnType<typeof createUser>>;
-let finUser: Awaited<ReturnType<typeof createUser>>;
 let lineMgr: Awaited<ReturnType<typeof createUser>>;
 
 const TEST_DRAFT = {
   ...VALID_DRAFT,
   recordPurpose: 'TEST',
   measurementCohort: null,
-  confirmedLastDay: '2026-08-14T00:00:00.000Z',
+  confirmedLastDay: FIXTURE_CONFIRMED_LAST_DAY,
 } as const;
 
 const NOTICE_BODY = `DEVELOPMENT TEMPLATE - REQUIRES HR APPROVAL BEFORE OPERATIONAL USE
@@ -93,8 +94,6 @@ beforeAll(async () => {
   setStorageForTests(new LocalStorageAdapter(mkdtempSync(path.join(tmpdir(), 'exit-s3-'))));
   officer = await createUser('S3B Officer', 'HR_OFFICER');
   manager = await createUser('S3B Manager', 'HR_MANAGER');
-  itUser = await createUser('S3B IT', 'IT_RESPONDER');
-  finUser = await createUser('S3B Finance', 'FINANCE_RESPONDER');
   lineMgr = await createUser('S3B Line Manager', 'LINE_MANAGER');
 
   const draft = await createDraftTemplate(officer.actor, {
@@ -238,12 +237,13 @@ describe('clearance gate and completion (T.18-T.22, T.24, O)', () => {
     // MANAGER participant is auto-added at activation (Directive 6.1 F).
   });
 
-  it('clearance is blocked while required work is open (T.18-T.20)', async () => {
+  it('clearance is blocked while required work is open (T.18-T.20, Directive 6.3 AA)', async () => {
     const view = await getClearanceView(manager.actor, caseId);
     expect(view.readiness?.ok).toBe(false);
     const failing = Object.fromEntries(view.readiness!.items.map((i) => [i.key, i.ok]));
     expect(failing.requiredTasks).toBe(false); // T.18
-    expect(failing.accessRevocation).toBe(false); // T.19
+    // v2 evidence gate: IT completion evidence outstanding (T.19 analogue).
+    expect(failing.itEvidence).toBe(false);
     expect(failing.assets).toBe(false); // T.20 (issued assets still EXPECTED)
     await expect(requestClearance(officer.actor, caseId)).rejects.toMatchObject({
       code: 'VALIDATION',
@@ -277,11 +277,10 @@ describe('clearance gate and completion (T.18-T.22, T.24, O)', () => {
       },
       ackStatus: 'ACKNOWLEDGED',
       ackMethod: 'Signed acknowledgement in HR office',
-      ackDate: new Date('2026-07-29T14:00:00.000Z'),
+      ackDate: new Date(Date.now() - 3 * 86_400_000),
     });
     await submitActionForm(officer.actor, form.id);
-    await managerApproveForm(lineMgr.actor, form.id);
-    await hrApproveForm(manager.actor, form.id);
+    await completeActionForm(officer.actor, form.id);
 
     // Assets: document every disposition (EMP-TEST-005 has 4 issued assets).
     for (const item of (await listCaseAssets(officer.actor, caseId)).items) {
@@ -295,15 +294,24 @@ describe('clearance gate and completion (T.18-T.22, T.24, O)', () => {
     });
     await transitionHandover(lineMgr.actor, caseId, 'complete');
 
-    // IT: review then exact-time revocation (early, with recorded authority).
-    const review = (await tasksOf(caseId)).find((t) => t.taskCode === 'IT_ACCESS_REVIEW')!;
-    await completeTask(itUser.actor, review.id, 'Access list confirmed.');
-    const access = (await tasksOf(caseId)).find((t) => t.taskCode === 'IT_ACCESS_REVOCATION')!;
-    await completeAccessTask(itUser.actor, access.id, {
-      systemsCompleted: ['Network account', 'Email', 'Business applications', 'Building access'],
-      systemsUnresolved: [],
-      note: 'All access removed. Ticket TEST-9.',
-      earlyCompletionReason: 'HR Manager approved early removal (employee escorted out).',
+    // Benefits: HR confirms applicability once; the rules engine handles the
+    // rest (Directive 6.3 V).
+    await confirmBenefits(officer.actor, caseId, {
+      groupHealth: 'NO',
+      groupLife: 'NO',
+      otherProvider: 'NO',
+    });
+
+    // IT + Finance: automated controlled emails with recorded evidence -
+    // no logins, no department tasks (Directive 6.3 I/J/U).
+    await processOutbox(new Date());
+    const itRecord = await prisma.notificationRecord.findFirstOrThrow({
+      where: { caseId, notificationType: 'IT_ACCESS_REMOVAL', origin: 'DERIVED' },
+    });
+    await recordManualEvidence(officer.actor, itRecord.id, {
+      kind: 'COMPLETED',
+      channel: 'EMAIL',
+      note: 'IT confirmed all access removed. Ticket TEST-9.',
     });
 
     // Complete every remaining open required task by department authority,
@@ -327,14 +335,8 @@ describe('clearance gate and completion (T.18-T.22, T.24, O)', () => {
           await completeTask(lineMgr.actor, t.id, `${t.taskCode} completed by the manager.`);
           continue;
         }
-        const actor =
-          t.department === 'FINANCE'
-            ? finUser.actor
-            : t.department === 'IT'
-              ? itUser.actor
-              : t.requiredRole === 'HR_MANAGER'
-                ? manager.actor
-                : officer.actor;
+        // Directive 6.3 I/J: HR records residual legacy department work.
+        const actor = t.requiredRole === 'HR_MANAGER' ? manager.actor : officer.actor;
         await completeTask(actor, t.id, `${t.taskCode} completed for clearance test.`);
       }
     }

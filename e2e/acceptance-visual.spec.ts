@@ -138,8 +138,9 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
   await axeCheck(page, 'audit-feed');
   await signOut(page);
 
-  // Unauthorized page as departmental role.
-  await signInAs(page, 'IT Responder');
+  // Unauthorized page as a non-HR role (Directive 6.3: the IT/Finance
+  // responder logins are retired; the line manager covers this negative).
+  await signInAs(page, 'Line Manager');
   await page.goto('/cases');
   await page.waitForURL('**/unauthorized');
   await snap(page, '12-unauthorized');

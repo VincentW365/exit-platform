@@ -8,19 +8,25 @@
  * production configuration (fail closed).
  */
 import {
+  autoSendBlockers,
   can,
   canActOnCase,
   contentChecksum,
   extractPlaceholders,
   formatDateOnly,
   formatInstant,
+  isSendControlLevel,
+  maskDestination,
   notificationIdempotencyKey,
   notificationTransitionError,
+  recipientEmailErrors,
   requiresManagerApproval,
+  resolveSendControl,
   substitute,
   templateContentErrors,
   hasMissingMarkers,
   APPLICABILITY_GATED_TYPES,
+  DEFAULT_SEND_CONTROL,
   MANUAL_SEND_METHODS,
   NOTIFICATION_PLACEHOLDERS,
   NOTIFICATION_RECIPIENT_CLASS,
@@ -29,15 +35,19 @@ import {
   type AuditEventType,
   type NotificationAction,
   type NotificationType,
+  type SendControlLevel,
 } from '@exit/domain';
 import { z } from 'zod';
 import { getConfig } from '@exit/config';
 import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
+import { encryptValue } from '../secretBox.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
 import { loadCaseAccess } from './shared.ts';
+import { autoResolveException, openException } from './exceptionService.ts';
 import { cancelPendingOutboxTx, enqueueOutboxTx, recipientClassForType } from './outboxService.ts';
-import { resolveUsableRecipient } from './recipientService.ts';
+import { resolveUsableRecipient, upsertRecipient } from './recipientService.ts';
+import { getSystemConfigValue } from './systemConfigService.ts';
 
 // --- provider-neutral delivery boundary (K.12-K.15) --------------------------
 
@@ -115,11 +125,38 @@ function buildFieldValues(
       : c.effectiveSeparationAt
         ? formatDateOnly(c.effectiveSeparationAt)
         : '',
-    ACCESS_SYSTEMS_SUMMARY: extras.accessSystemsSummary ?? '',
+    // Directive 6.3: v2 workflows carry no ACCESS_REVOCATION task, so the
+    // standard access-scope summary applies unless a legacy task narrows it.
+    ACCESS_SYSTEMS_SUMMARY:
+      extras.accessSystemsSummary ||
+      'Network account; Email; Business applications; Building access',
     SURVEY_EXPIRY_NOTE:
       'The survey link is provided separately and expires 14 days after it is sent.',
     MANUAL_NOTE: extras.manualNote ?? '',
+    // Directive 6.3 T: the secure confirmation link exists only at dispatch
+    // time; the stored snapshot keeps this marker.
+    ACKNOWLEDGEMENT_LINK: '[link inserted at send time]',
   };
+}
+
+/** Directive 6.3 R/S: resolve the effective control level for one record. */
+export async function effectiveSendControl(
+  notificationType: NotificationType,
+  caseClassification: 'CONFIDENTIAL' | 'RESTRICTED',
+): Promise<SendControlLevel> {
+  const configured = (await getSystemConfigValue('notifications.sendControl')) as Record<
+    string,
+    string
+  > | null;
+  const restrictedOverride = (await getSystemConfigValue(
+    'notifications.sendControl.restrictedOverride',
+  )) as string | null;
+  return resolveSendControl({
+    notificationType,
+    configured,
+    caseClassification,
+    restrictedOverride,
+  });
 }
 
 export const prepareNotificationSchema = z.object({
@@ -246,6 +283,407 @@ export async function prepareNotification(actor: Actor, caseId: string, rawInput
   });
 }
 
+// --- Directive 6.3: derived email actions (K/R) ------------------------------
+
+/** AG safety gates: purpose/cohort/feature-flag - retained above control levels. */
+async function dispatchEligibility(caseId: string): Promise<boolean> {
+  const prisma = getPrisma();
+  const c = await prisma.offboardingCase.findUniqueOrThrow({
+    where: { id: caseId },
+    select: { recordPurpose: true, measurementCohort: true },
+  });
+  if (c.recordPurpose !== 'OPERATIONAL') return !getConfig().isProduction;
+  if (c.measurementCohort === 'BASELINE') return false;
+  const flag = await prisma.featureFlag.findUnique({ where: { key: 'automation.notifications' } });
+  return flag?.enabled === true;
+}
+
+/**
+ * Rules-engine entry point (Directive 6.3 K/R, correction 4): create the
+ * notification for a derived email action and release it according to its
+ * control level. Routine internal emails require ZERO HR clicks; HR
+ * intervenes only through exceptions. Idempotent per case+type+event.
+ */
+export async function prepareDerivedNotification(args: {
+  caseId: string;
+  notificationType: NotificationType;
+  derivedActionId: string;
+  scheduledSendAt: Date | null;
+  now: Date;
+}): Promise<{ recordId: string | null; state: string }> {
+  const prisma = getPrisma();
+  const c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: args.caseId } });
+
+  const template = await prisma.notificationTemplate.findFirst({
+    where: { notificationType: args.notificationType, status: 'ACTIVE' },
+  });
+  const instance = await prisma.workflowInstance.findFirst({
+    where: { caseId: args.caseId, status: { in: ['ACTIVE', 'ON_HOLD', 'CLEARANCE_PENDING'] } },
+    include: {
+      tasks: { where: { taskKind: 'ACCESS_REVOCATION' }, select: { accessSystems: true } },
+    },
+  });
+  const handoverTask = await prisma.workflowTask.findFirst({
+    where: { caseId: args.caseId, department: 'LINE_MANAGER', taskCode: { contains: 'HANDOVER' } },
+    select: { dueAt: true },
+    orderBy: { sortOrder: 'asc' },
+  });
+
+  const values = buildFieldValues(c, {
+    accessSystemsSummary: instance?.tasks[0]?.accessSystems.join('; '),
+    handoverDueDate: handoverTask?.dueAt ?? null,
+  });
+  const recipientClass =
+    template?.recipientClass ?? NOTIFICATION_RECIPIENT_CLASS[args.notificationType];
+  const idempotencyKey = notificationIdempotencyKey({
+    caseId: args.caseId,
+    notificationType: args.notificationType,
+    recipientClass,
+    workflowVersion: instance?.definitionVersion ?? 0,
+    effectiveEventAt: c.effectiveSeparationAt,
+  });
+
+  // Idempotent re-derivation: a live record for the same event is reused.
+  const existing = await prisma.notificationRecord.findUnique({ where: { idempotencyKey } });
+  if (existing && existing.status !== 'CANCELLED' && existing.status !== 'SUPERSEDED') {
+    return { recordId: existing.id, state: 'EXISTING' };
+  }
+
+  const controlLevel = await effectiveSendControl(
+    args.notificationType,
+    c.classification as 'CONFIDENTIAL' | 'RESTRICTED',
+  );
+
+  if (!template) {
+    await openException(args.caseId, {
+      exceptionType: 'AUTO_SEND_BLOCKED',
+      severity: 'HIGH',
+      title: `No active template for ${args.notificationType.replaceAll('_', ' ').toLowerCase()}`,
+      detail:
+        'The derived notification cannot be prepared until an ACTIVE template exists. Activate a template under Administration → Notification templates.',
+      refType: 'CaseRequiredAction',
+      refId: args.derivedActionId,
+      ownerDepartment: 'HR',
+    });
+    return { recordId: null, state: 'BLOCKED_NO_TEMPLATE' };
+  }
+
+  const subject = substitute(template.subjectTemplate, values);
+  const body = substitute(template.bodyTemplate, values);
+
+  // Recipient resolution for display + enqueue eligibility.
+  const resolved = await resolveUsableRecipient(
+    recipientClassForType(args.notificationType),
+    args.notificationType,
+  );
+  const recipientRow =
+    'destination' in resolved
+      ? await prisma.recipientConfig.findUnique({ where: { id: resolved.id } })
+      : null;
+
+  const correlationId = newCorrelationId();
+  const record = await prisma.$transaction(async (tx) => {
+    const row = await tx.notificationRecord.create({
+      data: {
+        caseId: args.caseId,
+        notificationType: args.notificationType,
+        templateId: template.id,
+        templateVersion: template.version,
+        recipientClass,
+        status: 'DRAFT',
+        idempotencyKey:
+          existing && (existing.status === 'CANCELLED' || existing.status === 'SUPERSEDED')
+            ? `${idempotencyKey}:r${args.now.getTime()}`
+            : idempotencyKey,
+        subjectSnapshot: subject,
+        bodySnapshot: body,
+        contentChecksum: contentChecksum(`${subject}\n${body}`),
+        fieldSnapshot: values,
+        origin: 'DERIVED',
+        derivedActionId: args.derivedActionId,
+        controlLevel,
+        scheduledSendAt: args.scheduledSendAt,
+        recipientConfigId: recipientRow?.id ?? null,
+        recipientName: recipientRow?.contactName ?? recipientRow?.displayName ?? null,
+        recipientOrg: recipientRow?.organizationName ?? null,
+        recipientKind: recipientRow ? (recipientRow.isExternal ? 'EXTERNAL' : 'INTERNAL') : null,
+        applicabilityNote: APPLICABILITY_GATED_TYPES.includes(args.notificationType)
+          ? 'Derived from the confirmed benefits applicability on the case (Directive 6.3 V).'
+          : null,
+        ...(APPLICABILITY_GATED_TYPES.includes(args.notificationType) && c.benefitsConfirmedById
+          ? {
+              applicabilityConfirmedById: c.benefitsConfirmedById,
+              applicabilityConfirmedAt: c.benefitsConfirmedAt,
+            }
+          : {}),
+        createdById: c.ownerId,
+      },
+    });
+    await appendAudit(tx, {
+      eventType: 'NOTIFICATION_AUTO_PREPARED',
+      actorType: 'SYSTEM',
+      objectType: 'NotificationRecord',
+      objectId: row.id,
+      caseId: args.caseId,
+      result: 'SUCCESS',
+      correlationId,
+      metadata: {
+        notificationType: args.notificationType,
+        templateVersion: template.version,
+        controlLevel,
+        ruleKey: 'derived-action',
+        scheduledSendAt: args.scheduledSendAt?.toISOString() ?? null,
+      },
+    });
+    // Move to the review queue; the state order itself never relaxes.
+    await tx.notificationRecord.update({
+      where: { id: row.id },
+      data: { status: 'PENDING_APPROVAL', rowVersion: { increment: 1 } },
+    });
+    return row;
+  });
+
+  // Missing recipient is an actionable HR exception - never a silent skip
+  // and never a meaningless dropdown (correction 5).
+  if (!recipientRow) {
+    await openException(args.caseId, {
+      exceptionType: 'RECIPIENT_MISSING',
+      severity: 'HIGH',
+      title: `Recipient required: ${subject.slice(0, 80)}`,
+      detail:
+        'No approved recipient is configured for this notification. Enter one on the case (this case only) or save an approved recipient for future cases.',
+      refType: 'NotificationRecord',
+      refId: record.id,
+      ownerDepartment: 'HR',
+    });
+    return { recordId: record.id, state: 'RECIPIENT_REQUIRED' };
+  }
+
+  if (controlLevel !== 'AUTO_SEND') {
+    // HR_REVIEW_THEN_SEND / HR_MANAGER_APPROVAL_REQUIRED: waits in
+    // "Needs your review" - approval releases it to the outbox.
+    return { recordId: record.id, state: 'AWAITING_REVIEW' };
+  }
+
+  const released = await attemptAutoRelease(record.id, args.now);
+  return { recordId: record.id, state: released ? 'AUTO_RELEASED' : 'BLOCKED' };
+}
+
+/**
+ * AUTO_SEND release (Directive R): approve + enqueue with no human actor when
+ * every condition holds; otherwise an actionable exception. SYSTEM-actor
+ * audit events keep automation MORE auditable, not less (AB).
+ */
+export async function attemptAutoRelease(recordId: string, now: Date): Promise<boolean> {
+  const prisma = getPrisma();
+  const record = await prisma.notificationRecord.findUnique({
+    where: { id: recordId },
+    include: { case: { select: { classification: true, recordPurpose: true } } },
+  });
+  if (!record || record.status !== 'PENDING_APPROVAL') return false;
+
+  const controlLevel = isSendControlLevel(record.controlLevel)
+    ? record.controlLevel
+    : DEFAULT_SEND_CONTROL[record.notificationType];
+  const template = await prisma.notificationTemplate.findFirst({
+    where: { notificationType: record.notificationType, status: 'ACTIVE' },
+  });
+  const resolved = await resolveUsableRecipient(
+    recipientClassForType(record.notificationType),
+    record.notificationType,
+  );
+  const recipientResolved = 'destination' in resolved || !!record.caseRecipientCiphertext;
+
+  const blockers = autoSendBlockers({
+    controlLevel,
+    recipientResolved,
+    recipientApprovedAndVerified: 'destination' in resolved || !!record.caseRecipientCiphertext,
+    templateActive: !!template,
+    bodyComplete:
+      !hasMissingMarkers(record.subjectSnapshot ?? '') &&
+      !hasMissingMarkers(record.bodySnapshot ?? ''),
+    applicabilityConfirmed: APPLICABILITY_GATED_TYPES.includes(record.notificationType)
+      ? record.applicabilityConfirmedAt !== null
+      : true,
+  });
+  if (!(await dispatchEligibility(record.caseId))) {
+    blockers.push('Automation is not enabled for this record purpose/cohort.');
+  }
+  if (blockers.length > 0) {
+    await openException(record.caseId, {
+      exceptionType: 'AUTO_SEND_BLOCKED',
+      severity: 'WARNING',
+      title: `Automatic sending blocked: ${(record.subjectSnapshot ?? record.notificationType).slice(0, 80)}`,
+      detail: `The notification stays in review until resolved: ${blockers.join(' ')}`,
+      refType: 'NotificationRecord',
+      refId: record.id,
+      ownerDepartment: 'HR',
+    });
+    return false;
+  }
+
+  const enqueueRecipient =
+    'destination' in resolved
+      ? { id: resolved.id, destinationMask: resolved.destinationMask }
+      : { id: null, destinationMask: record.caseRecipientMask ?? '(case recipient)' };
+  const instance = await prisma.workflowInstance.findFirst({
+    where: { caseId: record.caseId },
+    orderBy: { activatedAt: 'desc' },
+    select: { definitionVersion: true },
+  });
+  const correlationId = newCorrelationId();
+  await prisma.$transaction(async (tx) => {
+    const u = await tx.notificationRecord.updateMany({
+      where: { id: record.id, status: 'PENDING_APPROVAL', rowVersion: record.rowVersion },
+      data: { status: 'APPROVED', approvedAt: now, rowVersion: { increment: 1 } },
+    });
+    if (u.count === 0) throw ServiceError.conflict('The record changed during auto-release.');
+    await enqueueOutboxTx(
+      tx,
+      record,
+      enqueueRecipient,
+      instance?.definitionVersion ?? 0,
+      null,
+      correlationId,
+      record.scheduledSendAt && record.scheduledSendAt.getTime() > now.getTime()
+        ? record.scheduledSendAt
+        : null,
+    );
+    await appendAudit(tx, {
+      eventType: 'NOTIFICATION_AUTO_APPROVED',
+      actorType: 'SYSTEM',
+      objectType: 'NotificationRecord',
+      objectId: record.id,
+      caseId: record.caseId,
+      result: 'SUCCESS',
+      correlationId,
+      metadata: {
+        notificationType: record.notificationType,
+        controlLevel,
+        scheduledSendAt: record.scheduledSendAt?.toISOString() ?? null,
+      },
+    });
+  });
+  await autoResolveException(
+    record.caseId,
+    'AUTO_SEND_BLOCKED',
+    record.id,
+    'Automatic sending conditions satisfied.',
+  );
+  return true;
+}
+
+export const caseRecipientSchema = z.object({
+  recipientName: z.string().trim().min(1).max(200),
+  organization: z.string().trim().min(1).max(200),
+  email: z.string().trim().min(3).max(320),
+  saveForFuture: z.boolean().default(false),
+});
+
+/**
+ * Directive 6.3 O (correction 6): HR enters a missing recipient for THIS
+ * case without HR-Manager approval; saving for future cases goes through the
+ * controlled directory lifecycle (approval + verification).
+ */
+export async function setCaseRecipient(actor: Actor, recordId: string, rawInput: unknown) {
+  const parsed = caseRecipientSchema.safeParse(rawInput);
+  if (!parsed.success)
+    throw ServiceError.validation(
+      parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
+    );
+  const input = parsed.data;
+  const prisma = getPrisma();
+  const record = await prisma.notificationRecord.findUnique({ where: { id: recordId } });
+  if (!record) throw ServiceError.notFound();
+  const { ctx } = await loadCaseAccess(actor, record.caseId);
+  if (!canActOnCase(actor, 'notification.enterRecipient', ctx)) throw ServiceError.forbidden();
+  if (
+    [
+      'MANUALLY_SENT',
+      'SENT',
+      'ACKNOWLEDGED',
+      'CONFIRMED_COMPLETE',
+      'CANCELLED',
+      'SUPERSEDED',
+    ].includes(record.status)
+  )
+    throw ServiceError.conflict('The notification is already sent or closed.');
+
+  const errors = recipientEmailErrors({
+    email: input.email,
+    name: input.recipientName,
+    organization: input.organization,
+  });
+  // Environment discipline: development recipients stay non-deliverable.
+  const { destinationErrors } = await import('@exit/domain');
+  errors.push(
+    ...destinationErrors(input.email, getConfig().isProduction ? 'production' : 'development'),
+  );
+  if (errors.length) throw ServiceError.validation(errors);
+
+  const recipientClass = NOTIFICATION_RECIPIENT_CLASS[record.notificationType];
+  const correlationId = newCorrelationId();
+  await prisma.$transaction(async (tx) => {
+    const u = await tx.notificationRecord.updateMany({
+      where: { id: recordId, rowVersion: record.rowVersion },
+      data: {
+        recipientName: input.recipientName,
+        recipientOrg: input.organization,
+        recipientKind: recipientClass === 'INTERNAL_DEPARTMENT' ? 'INTERNAL' : 'EXTERNAL',
+        caseRecipientCiphertext: encryptValue(input.email),
+        caseRecipientMask: maskDestination(input.email),
+        rowVersion: { increment: 1 },
+      },
+    });
+    if (u.count === 0) throw ServiceError.conflict('The record changed; reload and retry.');
+    await appendAudit(tx, {
+      eventType: 'NOTIFICATION_RECIPIENT_SET',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'NotificationRecord',
+      objectId: recordId,
+      caseId: record.caseId,
+      result: 'SUCCESS',
+      correlationId,
+      metadata: {
+        scope: 'CASE_ONLY',
+        destinationMask: maskDestination(input.email),
+        organization: input.organization,
+      },
+    });
+  });
+  await autoResolveException(
+    record.caseId,
+    'RECIPIENT_MISSING',
+    recordId,
+    'HR entered a recipient for this case.',
+  );
+
+  // SAVE FOR FUTURE USE: controlled directory entry (authority + audit).
+  if (input.saveForFuture) {
+    if (!can(actor, 'recipients.editBusiness')) {
+      throw ServiceError.forbidden(
+        'Saving a recipient for future cases requires recipient-directory authority.',
+      );
+    }
+    await upsertRecipient(actor, {
+      recipientClass: recipientClassForType(record.notificationType),
+      displayName: `${input.organization} — ${input.recipientName}`,
+      destination: input.email,
+      allowedTypes: [record.notificationType],
+      changeReason: `Entered from case notification ${recordId} (save for future cases).`,
+      organizationName: input.organization,
+      contactName: input.recipientName,
+    });
+  }
+
+  // A now-complete AUTO_SEND record may release immediately.
+  if (record.origin === 'DERIVED' && record.status === 'PENDING_APPROVAL') {
+    await attemptAutoRelease(recordId, new Date());
+  }
+}
+
 const NOTIF_EVENT: Record<NotificationAction, AuditEventType> = {
   submit: 'NOTIFICATION_SUBMITTED',
   approve: 'NOTIFICATION_APPROVED',
@@ -255,6 +693,9 @@ const NOTIF_EVENT: Record<NotificationAction, AuditEventType> = {
   cancel: 'NOTIFICATION_CANCELLED',
   fail: 'NOTIFICATION_FAILED',
   supersede: 'NOTIFICATION_SUPERSEDED',
+  markSent: 'NOTIFICATION_SENT',
+  acknowledge: 'NOTIFICATION_ACKNOWLEDGED',
+  confirmComplete: 'NOTIFICATION_COMPLETION_CONFIRMED',
 };
 
 export async function transitionNotification(
@@ -273,12 +714,27 @@ export async function transitionNotification(
   if (!record) throw ServiceError.notFound();
   const { ctx } = await loadCaseAccess(actor, record.caseId); // undiscoverable -> NOT_FOUND
 
-  // K.2/K.3: approval authority depends on the recipient class.
-  const permission =
-    action === 'approve' || action === 'return'
-      ? requiresManagerApproval(record.recipientClass)
+  // The automated evidence chain has dedicated writers (outbox dispatch,
+  // token redemption, HR-recorded evidence) - never this human path.
+  if (action === 'markSent' || action === 'acknowledge' || action === 'confirmComplete')
+    throw ServiceError.validation(['This transition is recorded by the system, not manually.']);
+
+  // K.2/K.3: approval authority depends on the recipient class. Directive
+  // 6.3 S (correction 2): DERIVED records follow their snapshotted control
+  // level instead - HR_REVIEW_THEN_SEND is ordinary HR case work, only
+  // HR_MANAGER_APPROVAL_REQUIRED demands management authority.
+  const derivedApprovalPermission =
+    record.origin === 'DERIVED' && isSendControlLevel(record.controlLevel)
+      ? record.controlLevel === 'HR_MANAGER_APPROVAL_REQUIRED'
         ? ('notification.approveExternal' as const)
         : ('notification.approveInternal' as const)
+      : null;
+  const permission =
+    action === 'approve' || action === 'return'
+      ? (derivedApprovalPermission ??
+        (requiresManagerApproval(record.recipientClass)
+          ? ('notification.approveExternal' as const)
+          : ('notification.approveInternal' as const)))
       : action === 'recordManualSend' || action === 'markReady'
         ? ('notification.recordSend' as const)
         : ('notification.prepare' as const);
@@ -334,32 +790,27 @@ export async function transitionNotification(
 
   // Stage 4 (Directive 4 B.1): automatic dispatch eligibility is resolved
   // BEFORE the transaction; the outbox row is created INSIDE it.
-  let enqueueRecipient: { id: string; destinationMask: string } | null = null;
+  let enqueueRecipient: { id: string | null; destinationMask: string } | null = null;
   let workflowVersion = 0;
   if (action === 'approve') {
-    const c = await prisma.offboardingCase.findUniqueOrThrow({
-      where: { id: record.caseId },
-      select: { recordPurpose: true, measurementCohort: true },
-    });
-    // Fixed defaults 4-6: TEST/TRAINING may use the capture provider;
+    // Fixed defaults 4-6 (AG): TEST/TRAINING may use the capture provider;
     // OPERATIONAL requires the notifications flag AND never BASELINE (live
     // activation is additionally pilot-gated at startup/provider level).
-    let dispatchEligible = false;
-    if (c.recordPurpose !== 'OPERATIONAL') {
-      dispatchEligible = !getConfig().isProduction;
-    } else if (c.measurementCohort !== 'BASELINE') {
-      const flag = await prisma.featureFlag.findUnique({
-        where: { key: 'automation.notifications' },
-      });
-      dispatchEligible = flag?.enabled === true;
-    }
-    if (dispatchEligible) {
+    if (await dispatchEligibility(record.caseId)) {
       const resolved = await resolveUsableRecipient(
         recipientClassForType(record.notificationType),
         record.notificationType,
       );
       if ('destination' in resolved) {
         enqueueRecipient = { id: resolved.id, destinationMask: resolved.destinationMask };
+      } else if (record.caseRecipientCiphertext) {
+        // Directive 6.3 O: the HR-entered case-only recipient dispatches too.
+        enqueueRecipient = {
+          id: null,
+          destinationMask: record.caseRecipientMask ?? '(case recipient)',
+        };
+      }
+      if (enqueueRecipient) {
         const instance = await prisma.workflowInstance.findFirst({
           where: { caseId: record.caseId },
           orderBy: { activatedAt: 'desc' },
@@ -380,7 +831,19 @@ export async function transitionNotification(
       throw ServiceError.conflict('The notification was changed; reload and retry.');
 
     if (action === 'approve' && enqueueRecipient) {
-      await enqueueOutboxTx(tx, record, enqueueRecipient, workflowVersion, actor, correlationId);
+      const scheduledAt =
+        record.scheduledSendAt && record.scheduledSendAt.getTime() > now.getTime()
+          ? record.scheduledSendAt
+          : null;
+      await enqueueOutboxTx(
+        tx,
+        record,
+        enqueueRecipient,
+        workflowVersion,
+        actor,
+        correlationId,
+        scheduledAt,
+      );
     }
     if (action === 'recordManualSend' || action === 'cancel') {
       // B.8/B.9: manual sending or cancellation stops automatic dispatch.

@@ -36,6 +36,9 @@ const TYPE_TO_RECIPIENT_CLASS: Record<string, RecipientClassName> = {
   NCB_GROUP_LIFE_REMOVAL: 'NCB_GROUP_LIFE',
   SURVEY_INVITATION_REFERENCE: 'EMPLOYEE_PERSONAL',
   MANUAL_EXCEPTION_NOTIFICATION: 'EMPLOYEE_PERSONAL',
+  // Directive 6.3 N: configurable provider purposes.
+  PAYROLL_OR_BANK_NOTIFICATION: 'PAYROLL_BANK',
+  OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION: 'OTHER_APPROVED_EXTERNAL',
 };
 
 export function recipientClassForType(notificationType: string): RecipientClassName {
@@ -58,10 +61,16 @@ export async function enqueueOutboxTx(
     contentChecksum: string | null;
     idempotencyKey: string;
   },
-  recipient: { id: string; destinationMask: string },
+  // Directory recipient OR a per-case HR-entered destination (Directive 6.3
+  // O: id null, mask from the record's encrypted case recipient).
+  recipient: { id: string | null; destinationMask: string },
   workflowVersion: number,
-  actor: Actor,
+  // Null actor = the deterministic rules engine enqueued it (AUTO_SEND).
+  actor: Actor | null,
   correlationId: string,
+  // Directive 6.3 R/U: deferred dispatch (e.g. termination IT email at
+  // effective time minus one hour). Defaults to immediate.
+  scheduledAt?: Date | null,
 ): Promise<string> {
   const provider = getConfig().EMAIL_MODE;
   const outbox = await tx.notificationOutbox.create({
@@ -77,13 +86,13 @@ export async function enqueueOutboxTx(
       workflowVersion,
       idempotencyKey: `outbox:${record.idempotencyKey}`,
       correlationId,
+      ...(scheduledAt ? { scheduledAt, nextAttemptAt: scheduledAt } : {}),
     },
   });
   await appendAudit(tx, {
     eventType: 'OUTBOX_ENQUEUED',
-    actorType: 'USER',
-    actorId: actor.userId,
-    effectiveRoles: actor.roles,
+    actorType: actor ? 'USER' : 'SYSTEM',
+    ...(actor ? { actorId: actor.userId, effectiveRoles: actor.roles } : {}),
     objectType: 'NotificationOutbox',
     objectId: outbox.id,
     caseId: record.caseId,
@@ -93,6 +102,7 @@ export async function enqueueOutboxTx(
       notificationType: record.notificationType,
       provider,
       destinationMask: recipient.destinationMask,
+      scheduledAt: scheduledAt?.toISOString() ?? null,
     },
   });
   return outbox.id;
@@ -155,7 +165,14 @@ export async function processOutbox(
     take: 20,
     include: {
       notificationRecord: {
-        select: { id: true, caseId: true, bodySnapshot: true, status: true },
+        select: {
+          id: true,
+          caseId: true,
+          bodySnapshot: true,
+          status: true,
+          notificationType: true,
+          caseRecipientCiphertext: true,
+        },
       },
     },
   });
@@ -201,14 +218,47 @@ export async function processOutbox(
           throw new ProviderError('RECIPIENT_INVALID', 'Recipient configuration is unusable.');
         }
         destination = decryptValue(rc.destinationCiphertext);
+      } else if (item.notificationRecord.caseRecipientCiphertext) {
+        // Directive 6.3 O: HR-entered case-only recipient, decrypted in
+        // memory only - same posture as the directory path.
+        destination = decryptValue(item.notificationRecord.caseRecipientCiphertext);
       } else {
         throw new ProviderError('RECIPIENT_INVALID', 'No recipient configuration recorded.');
+      }
+
+      // Directive 6.3 T: issue the secure confirmation link(s) and place them
+      // into the OUTGOING body only - the stored snapshot keeps the marker
+      // and the database keeps only hashes.
+      const { issueTokensForRecordTx } = await import('./ackTokenService.ts');
+      let outgoingBody = item.notificationRecord.bodySnapshot ?? '';
+      const links = await prisma.$transaction((tx) =>
+        issueTokensForRecordTx(
+          tx,
+          {
+            id: item.notificationRecord.id,
+            caseId: item.notificationRecord.caseId,
+            notificationType: item.notificationRecord.notificationType,
+          },
+          now,
+        ),
+      );
+      if (links.length > 0) {
+        const linkBlock = links
+          .map((l) =>
+            l.purpose === 'ACKNOWLEDGE_RECEIPT'
+              ? `Acknowledge receipt: ${l.url}`
+              : `Confirm the action is completed: ${l.url}`,
+          )
+          .join('\n');
+        outgoingBody = outgoingBody.includes('[link inserted at send time]')
+          ? outgoingBody.replace('[link inserted at send time]', linkBlock)
+          : `${outgoingBody}\n\n${linkBlock}`;
       }
 
       const sendResult = await provider.send({
         outboxId: item.id,
         subject: item.subjectSnapshot,
-        body: item.notificationRecord.bodySnapshot ?? '',
+        body: outgoingBody,
         destination,
         correlationId: item.correlationId,
       });
@@ -226,6 +276,25 @@ export async function processOutbox(
           rowVersion: { increment: 1 },
         },
       });
+      // Directive 6.3 U: the record's own evidence chain starts at SENT.
+      // Sending is never completion (AC invariant 17) - just delivery
+      // evidence. Legacy manual-send records are untouched.
+      const marked = await prisma.notificationRecord.updateMany({
+        where: { id: item.notificationRecord.id, status: 'APPROVED' },
+        data: { status: 'SENT', sentAt: now, rowVersion: { increment: 1 } },
+      });
+      if (marked.count > 0) {
+        await appendAudit(prisma, {
+          eventType: 'NOTIFICATION_SENT',
+          actorType: 'SYSTEM',
+          objectType: 'NotificationRecord',
+          objectId: item.notificationRecord.id,
+          caseId: item.notificationRecord.caseId,
+          result: 'SUCCESS',
+          correlationId: item.correlationId,
+          metadata: { deliveryStatus: sendResult.deliveryStatus },
+        });
+      }
       await appendAudit(prisma, {
         eventType: 'OUTBOX_SUBMITTED',
         actorType: 'SYSTEM',
@@ -291,6 +360,27 @@ export async function processOutbox(
           refId: item.id,
           ownerDepartment: 'HR',
         });
+        // Directive 6.3: the record itself reads "Could not send" for HR.
+        const failedMark = await prisma.notificationRecord.updateMany({
+          where: { id: item.notificationRecord.id, status: 'APPROVED' },
+          data: {
+            status: 'FAILED',
+            failReason: `automatic dispatch failed (${code})`,
+            rowVersion: { increment: 1 },
+          },
+        });
+        if (failedMark.count > 0) {
+          await appendAudit(prisma, {
+            eventType: 'NOTIFICATION_FAILED',
+            actorType: 'SYSTEM',
+            objectType: 'NotificationRecord',
+            objectId: item.notificationRecord.id,
+            caseId: item.notificationRecord.caseId,
+            result: 'FAILURE',
+            correlationId: item.correlationId,
+            metadata: { errorCode: code },
+          });
+        }
         result.deadLettered += 1;
       } else {
         result.failed += 1;

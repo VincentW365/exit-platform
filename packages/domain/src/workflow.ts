@@ -438,12 +438,14 @@ export function overdueSeverity(
 
 // --- queue access (sections J and R) -----------------------------------------
 
-/** Departments whose queue a role may read. SYSTEM_ADMIN: none (R.8). */
+/**
+ * Departments whose queue a role may read. SYSTEM_ADMIN: none (R.8).
+ * Directive 6.3 I/J: IT and Finance are reached by controlled email, never
+ * logins - HR works any residual IT/FINANCE tasks on legacy (v1) instances.
+ */
 export function queueDepartmentsForActor(actor: Actor): TaskDepartment[] {
   const out: TaskDepartment[] = [];
-  if (hasRole(actor, 'HR_MANAGER', 'HR_OFFICER')) out.push('HR');
-  if (hasRole(actor, 'IT_RESPONDER')) out.push('IT');
-  if (hasRole(actor, 'FINANCE_RESPONDER')) out.push('FINANCE');
+  if (hasRole(actor, 'HR_MANAGER', 'HR_OFFICER')) out.push('HR', 'IT', 'FINANCE');
   if (hasRole(actor, 'LINE_MANAGER')) out.push('LINE_MANAGER');
   return out;
 }

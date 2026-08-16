@@ -11,6 +11,7 @@ import {
   addNote,
   addParticipant,
   changeEffectiveTime,
+  confirmBenefits,
   correctRecordPurpose,
   createDraft,
   createManualEmployeeSource,
@@ -231,6 +232,30 @@ export async function setRehireAction(formData: FormData): Promise<void> {
     revalidatePath(`/cases/${caseId}`);
     feedbackRedirect(`/cases/${caseId}`, {
       ok: 'Rehire eligibility updated (restricted HR data).',
+    });
+  } catch (e) {
+    if (e instanceof ServiceError) feedbackRedirect(`/cases/${caseId}`, { err: errText(e) });
+    throw e;
+  }
+}
+
+/**
+ * Directive 6.3 V: HR confirms benefits applicability once; the rules engine
+ * derives the provider notifications (YES prepares, NO creates nothing).
+ */
+export async function confirmBenefitsAction(formData: FormData): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  const caseId = str(formData, 'caseId');
+  try {
+    await confirmBenefits(actor, caseId, {
+      groupHealth: str(formData, 'groupHealth'),
+      groupLife: str(formData, 'groupLife'),
+      otherProvider: str(formData, 'otherProvider'),
+    });
+    revalidatePath(`/cases/${caseId}`);
+    feedbackRedirect(`/cases/${caseId}`, {
+      ok: 'Benefits applicability confirmed. Provider notifications were updated to match.',
     });
   } catch (e) {
     if (e instanceof ServiceError) feedbackRedirect(`/cases/${caseId}`, { err: errText(e) });

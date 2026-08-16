@@ -244,3 +244,97 @@ DRAFT -> PENDING_APPROVAL -> APPROVED -> ACTIVE -> RETIRED
 - only one active version per type/scope/effective period unless an explicit routing rule permits more;
 - used versions are immutable;
 - retirement prevents new use but preserves existing cases.
+
+## 9. Directive 6.3 deltas (2026-08-16, HR-validated workflow)
+
+### 9.1 Action Form state machine (replaces the manager-approval flow for new forms)
+
+```mermaid
+stateDiagram-v2
+    [*] --> DRAFT
+    DRAFT --> READY_FOR_HR_REVIEW: officer finishes preparation
+    READY_FOR_HR_REVIEW --> HR_REVIEWED: optional configuration-gated HR-Manager review
+    READY_FOR_HR_REVIEW --> COMPLETE: officer completes (policy off)
+    HR_REVIEWED --> COMPLETE: officer completes
+    READY_FOR_HR_REVIEW --> RETURNED_FOR_CORRECTION: return with reason
+    HR_REVIEWED --> RETURNED_FOR_CORRECTION: return with reason
+    RETURNED_FOR_CORRECTION --> READY_FOR_HR_REVIEW: resubmit
+    DRAFT --> VOIDED: void with reason
+    READY_FOR_HR_REVIEW --> VOIDED: void with reason
+    HR_REVIEWED --> VOIDED: void with reason
+    RETURNED_FOR_CORRECTION --> VOIDED: void with reason
+    COMPLETE --> SUPERSEDED: material case correction
+    COMPLETE --> [*]
+    SUPERSEDED --> [*]
+    VOIDED --> [*]
+```
+
+Rules (enforced in `packages/domain/src/actionForm.ts`):
+
+- there is NO manager approval and no mandatory HR-Manager sign-off for
+  routine completion (DEC-044/DEC-050); `HR_REVIEWED` exists only when
+  `actionForm.requireHrReview` is enabled, and then completion from
+  `READY_FOR_HR_REVIEW` must pass through it;
+- completing requires the acknowledgement recorded (or NOT_OBTAINED /
+  NOT_APPLICABLE per departure-type rules) and every HR checklist item
+  resolved; completion writes an `HR_FORM_COMPLETION` attestation and
+  renders the immutable PDF;
+- legacy statuses (`RETURNED`, `PENDING_MANAGER`, `PENDING_HR`, `APPROVED`)
+  remain representable forever; legacy live rows may flow forward
+  (complete/return) so no historical case is stranded; new rows never enter
+  the manager states; legacy `APPROVED` still satisfies clearance;
+- superseding a finalized form audits `FORM_SUPERSEDED` (previously
+  declared but never emitted - logic review LR-008).
+
+### 9.2 Notification state machine additions (automated evidence chain)
+
+The manual path of section 4 is unchanged and fully supported for
+historical records. Directive 6.3 adds the automated chain:
+
+```text
+APPROVED --> SENT: outbox dispatch through the capture provider (SYSTEM)
+SENT --> ACKNOWLEDGED: secure link redeemed or HR-recorded evidence
+SENT --> CONFIRMED_COMPLETE: completion confirmed (internal departments)
+ACKNOWLEDGED --> CONFIRMED_COMPLETE: completion confirmed
+```
+
+Rules (`packages/domain/src/notifications.ts`):
+
+- `markSent` / `acknowledge` / `confirmComplete` are written only by the
+  system (outbox dispatch, token redemption, HR-recorded evidence service);
+  the human transition surface refuses them;
+- the AUTO_SEND path performs submit → approve as two explicit SYSTEM-actor
+  steps - the state order never relaxes;
+- derived records snapshot their send control level; a record without a
+  recipient shows RECIPIENT REQUIRED and raises the RECIPIENT_MISSING
+  exception rather than skipping dispatch (LR-006);
+- `SENT` records capture-provider dispatch; provider acceptance is still
+  never presented as DELIVERED (DEC-034).
+
+### 9.3 Acknowledgement token lifecycle
+
+```text
+ISSUED (hash stored, raw value only in the email)
+  --> USED (single-use atomic claim; hash nulled)
+  --> REVOKED (re-dispatch supersedes, cancel/supersede/closure; hash nulled)
+  --> EXPIRED (worker sweep at expiry; hash nulled)
+```
+
+Invalid, used, revoked and expired tokens are indistinguishable to the
+public route (neutral failure). Purposes: ACKNOWLEDGE_RECEIPT (all email
+actions), CONFIRM_COMPLETION (internal departments only). Lifetimes: 72
+hours for IT access removal, 14 days otherwise.
+
+### 9.4 Case-level additions
+
+- **Derived required actions** (`CaseRequiredAction`) carry a
+  determination, not a workflow state: DERIVED / DEFAULTED /
+  REQUIRES_REVIEW / EXCEPTION / NOT_APPLICABLE, with supersession on
+  material fact changes. Display status is projected, never stored.
+- **Benefits applicability** on the case: YES / NO / UNKNOWN per benefit;
+  UNKNOWN blocks v2 clearance and holds an open exception.
+- **Clearance is dual-mode**: instances carrying IT/FINANCE department
+  tasks (v1) clear task-based; v2 instances clear from email-action
+  evidence (IT: completion confirmed or approved exception; Finance: sent;
+  providers: sent where applicable). Unresolved-asset exception coverage is
+  per item (LR-007).

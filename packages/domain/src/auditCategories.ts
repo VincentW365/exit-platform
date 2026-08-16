@@ -42,6 +42,10 @@ const OVERRIDES: Partial<Record<AuditEventType, AuditCategory>> = {
   FORM_MANAGER_APPROVED: 'APPROVAL',
   FORM_HR_APPROVED: 'APPROVAL',
   FORM_APPROVAL_INVALIDATED: 'APPROVAL',
+  // Directive 6.3: completion carries the attestation; auto-approval is a
+  // system control decision - both belong in the approvals lens.
+  FORM_COMPLETED: 'APPROVAL',
+  NOTIFICATION_AUTO_APPROVED: 'APPROVAL',
   NOTIFICATION_APPROVED: 'APPROVAL',
   CLEARANCE_APPROVED: 'APPROVAL',
   SECURITY_EXCEPTION_APPROVED: 'APPROVAL',
@@ -108,6 +112,10 @@ const OVERRIDES: Partial<Record<AuditEventType, AuditCategory>> = {
 const PREFIX_RULES: ReadonlyArray<readonly [RegExp, AuditCategory]> = [
   [/^AUTH_/, 'IDENTITY'],
   [/^IDENTITY_/, 'IDENTITY'],
+  // Directive 6.3: acknowledgement tokens and derived-action provenance.
+  [/^ACK_/, 'COMMUNICATION'],
+  [/^DERIVED_/, 'WORKFLOW'],
+  [/^BENEFITS_/, 'CASE'],
   [/^CASE_/, 'CASE'],
   [/^TASK_/, 'TASK'],
   [/^WORKFLOW_DEF_/, 'CONFIG'],

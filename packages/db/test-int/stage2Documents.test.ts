@@ -17,7 +17,7 @@ import {
   submitDocument,
 } from '../src/services/documentService.ts';
 import { changeEffectiveTime, createDraft } from '../src/services/caseService.ts';
-import { createUser, resetDb, VALID_DRAFT } from './helpers.ts';
+import { createUser, resetDb, VALID_DRAFT, FIXTURE_CONFIRMED_LAST_DAY } from './helpers.ts';
 
 const prisma = getPrisma();
 
@@ -57,7 +57,7 @@ beforeAll(async () => {
     ...VALID_DRAFT,
     recordPurpose: 'TEST',
     measurementCohort: null,
-    confirmedLastDay: '2026-08-14T00:00:00.000Z',
+    confirmedLastDay: FIXTURE_CONFIRMED_LAST_DAY,
   });
   testCaseId = created.caseId;
 });
@@ -95,7 +95,7 @@ describe('feature gating (defaults 25/26, N.22)', () => {
     const op = await createDraft(officer.actor, {
       ...VALID_DRAFT,
       employeeSourceId: 'EMP-TEST-002',
-      confirmedLastDay: '2026-08-14T00:00:00.000Z',
+      confirmedLastDay: FIXTURE_CONFIRMED_LAST_DAY,
     });
     await expect(createLetterDraft(officer.actor, op.caseId)).rejects.toMatchObject({
       code: 'VALIDATION',

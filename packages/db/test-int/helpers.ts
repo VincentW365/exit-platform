@@ -9,6 +9,8 @@ export async function resetDb(): Promise<void> {
   // integration cleanup uses TRUNCATE ... CASCADE as the database owner.
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      action_token,
+      case_required_action,
       notification_outbox,
       recipient_config,
       system_config,
@@ -92,12 +94,21 @@ export async function createUser(
   return { userId: user.id, actor: { userId: user.id, roles } };
 }
 
+// Directive 6.3 logic-audit fix: the fixture dates were fixed calendar
+// instants that real time eventually overtook, silently flipping "early"
+// completions into "late" ones. Anchor them to the test run's clock instead:
+// receipt ~25 days ago, effective separation 5 days ahead (always future).
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const FIXTURE_RECEIVED_AT = new Date(Date.now() - 25 * DAY_MS).toISOString();
+export const FIXTURE_EFFECTIVE_AT = new Date(Date.now() + 5 * DAY_MS).toISOString();
+export const FIXTURE_CONFIRMED_LAST_DAY = new Date(Date.now() + 4 * DAY_MS).toISOString();
+
 export const VALID_DRAFT = {
   employeeSourceId: 'EMP-TEST-001',
   departureType: 'RESIGNATION_WITH_NOTICE',
-  receivedAt: '2026-07-20T14:00:00.000Z',
+  receivedAt: FIXTURE_RECEIVED_AT,
   receiptSource: 'Signed resignation letter received by HR front desk',
-  effectiveSeparationAt: '2026-08-14T22:00:00.000Z',
+  effectiveSeparationAt: FIXTURE_EFFECTIVE_AT,
   measurementCohort: 'BASELINE',
   recordPurpose: 'OPERATIONAL',
 } as const;
@@ -119,6 +130,38 @@ export async function readyAssignment(
   await assignOfficer(hrManagerActor, caseId, officerUserId, 'Integration test assignment.');
   await overrideManager(hrManagerActor, caseId, lineManagerUserId, 'Integration test routing.');
   await confirmAssignmentPlan(hrManagerActor, caseId, [...CONFIRMATION_KEYS]);
+}
+
+/**
+ * Directive 6.3 AD: legacy-coverage helper. Temporarily restores the v1
+ * workflow definitions as ACTIVE (lifecycle-only status flips, permitted by
+ * the freeze trigger) so a test can activate a case pinned to the OLD
+ * login-based workflow, then restores v2. Historical instances stay pinned
+ * regardless - this only affects which definition NEW activations pick.
+ */
+export async function withLegacyV1Definitions<T>(fn: () => Promise<T>): Promise<T> {
+  const prisma = getPrisma();
+  const now = new Date();
+  await prisma.workflowDefinition.updateMany({
+    where: { version: 2, status: 'ACTIVE' },
+    data: { status: 'SUPERSEDED', supersededAt: now },
+  });
+  await prisma.workflowDefinition.updateMany({
+    where: { version: 1, status: 'SUPERSEDED' },
+    data: { status: 'ACTIVE', supersededAt: null },
+  });
+  try {
+    return await fn();
+  } finally {
+    await prisma.workflowDefinition.updateMany({
+      where: { version: 1, status: 'ACTIVE' },
+      data: { status: 'SUPERSEDED', supersededAt: new Date() },
+    });
+    await prisma.workflowDefinition.updateMany({
+      where: { version: 2, status: 'SUPERSEDED' },
+      data: { status: 'ACTIVE', supersededAt: null },
+    });
+  }
 }
 
 /**

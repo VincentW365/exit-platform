@@ -350,6 +350,13 @@ export async function activateCase(actor: Actor, caseId: string) {
   // security tasks at once - G.1).
   await releaseEligibleTasks(caseId, new Date());
   await recalcInstanceCounts(instanceId, new Date());
+
+  // Directive 6.3 B/C: the deterministic rules engine derives the required
+  // actions (IT/Finance/provider emails, assets, survey, benefits) as soon as
+  // the workflow starts. Runs outside the activation transaction - the
+  // derivation is idempotent and manages its own transactions.
+  const { deriveActionsForCase } = await import('./derivedActionService.ts');
+  await deriveActionsForCase(caseId, new Date());
   return { instanceId };
 }
 
@@ -574,6 +581,28 @@ export async function cancelLiveWorkflowForCaseTx(
     where: {
       caseId,
       status: { in: ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'READY_FOR_MANUAL_SEND'] },
+    },
+    data: {
+      status: 'CANCELLED',
+      cancelReason: `case ${toStatus.toLowerCase()}: ${reason}`,
+      rowVersion: { increment: 1 },
+    },
+  });
+  // Directive 6.3 T: live confirmation links die with the case - a closed
+  // case must not accept acknowledgements.
+  const caseRecords = await tx.notificationRecord.findMany({
+    where: { caseId },
+    select: { id: true },
+  });
+  const { revokeTokensForRecordTx } = await import('./ackTokenService.ts');
+  for (const r of caseRecords) {
+    await revokeTokensForRecordTx(tx, r.id, caseId, `case ${toStatus.toLowerCase()}: ${reason}`);
+  }
+  // Pending automatic dispatch stops too.
+  await tx.notificationOutbox.updateMany({
+    where: {
+      notificationRecord: { caseId },
+      status: { in: ['PENDING', 'FAILED_RETRYABLE'] },
     },
     data: {
       status: 'CANCELLED',

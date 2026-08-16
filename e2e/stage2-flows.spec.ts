@@ -1,5 +1,8 @@
 /**
- * Stage 2 acceptance scenarios (Directive 2 section N: Scenarios 1-4).
+ * Stage 2 acceptance scenarios (Directive 2 section N: Scenarios 1-4),
+ * updated for Directive 6.3: the Action Form is HR-controlled (the assigned
+ * HR Officer prepares, finishes and completes it - no manager or Finance
+ * approval step exists) and the IT/Finance responder logins are retired.
  * All cases use TEST record purpose: feature flags stay disabled for
  * operational records. Synthetic identities only.
  */
@@ -40,22 +43,6 @@ async function createTestCase(
   return page.url().split('?')[0]!;
 }
 
-async function addParticipantOnCase(
-  page: Page,
-  caseUrl: string,
-  userLabel: string,
-  role: string,
-): Promise<void> {
-  await page.goto(caseUrl);
-  await page.locator('details.action > summary', { hasText: 'Add participant' }).click();
-  const value = await page.locator('#p-user option', { hasText: userLabel }).getAttribute('value');
-  await page.getByLabel('User').selectOption(value!);
-  await page.locator('#p-role').selectOption(role);
-  await page.locator('#p-reason').fill('Stage 2 synthetic assignment.');
-  await page.getByRole('button', { name: 'Add participant' }).click();
-  await expect(page.getByText('Participant added.')).toBeVisible();
-}
-
 test('Scenario 1 - resignation document: draft, approve, render, authorized download', async ({
   page,
 }) => {
@@ -91,14 +78,15 @@ test('Scenario 1 - resignation document: draft, approve, render, authorized down
   expect(dl.headers()['content-disposition']).toContain('attachment');
   await signOut(page);
 
-  // Unauthorized download: IT responder gets a non-disclosing failure.
-  await signInAs(page, 'IT Responder');
+  // Unauthorized download: a non-case role gets a non-disclosing failure
+  // (Directive 6.3: IT has no login; the line manager covers the negative).
+  await signInAs(page, 'Line Manager');
   const denied = await page.request.get(pdfHref!);
   expect([403, 404]).toContain(denied.status());
   await signOut(page);
 });
 
-test('Scenario 2 - action form: HR -> Finance -> Manager -> HR final, PDF and audit', async ({
+test('Scenario 2 - action form: HR-only completion (Directive 6.3), PDF and audit', async ({
   page,
 }) => {
   test.setTimeout(180_000);
@@ -107,19 +95,13 @@ test('Scenario 2 - action form: HR -> Finance -> Manager -> HR final, PDF and au
     employeeQuery: 'jordan',
     type: 'IMMEDIATE_RESIGNATION',
   });
-  await signOut(page);
 
-  // HR Manager assigns finance + manager participants.
-  await signInAs(page, 'HR Manager');
-  await addParticipantOnCase(page, caseUrl, 'Finance Responder', 'FINANCE');
-  await addParticipantOnCase(page, caseUrl, 'Line Manager', 'MANAGER');
-  await signOut(page);
-
-  // HR officer completes the draft.
-  await signInAs(page, 'HR Officer');
+  // The HR Officer prepares the whole form: managers, IT and Finance have no
+  // approval role on it any more (Directive 6.3 D/I/J).
   await page.goto(`${caseUrl}/action-form`);
   await page.getByRole('button', { name: 'Create action form' }).click();
   await expect(page.getByText('Action form draft created.')).toBeVisible();
+  await expect(page.getByText(/Managers, IT and Finance have no approval role/)).toBeVisible();
   for (const key of [
     'caseInfoVerified',
     'evidenceRecorded',
@@ -136,12 +118,9 @@ test('Scenario 2 - action form: HR -> Finance -> Manager -> HR final, PDF and au
   await page.locator('#ackReason').fill('Employee left immediately; not obtainable.');
   await page.getByRole('button', { name: 'Save HR section' }).click();
   await expect(page.getByText('HR section saved.')).toBeVisible();
-  await signOut(page);
 
-  // Finance completes its checklist.
-  await signInAs(page, 'Finance Responder');
-  await page.goto(`${caseUrl}/action-form`);
-  await expect(page.getByText(/minimum information required for your assigned role/)).toBeVisible();
+  // Finance works OUTSIDE the application; HR records what the automated
+  // notification and returned evidence establish.
   for (const key of [
     'financeNotified',
     'workpaperInitiated',
@@ -151,44 +130,32 @@ test('Scenario 2 - action form: HR -> Finance -> Manager -> HR final, PDF and au
   ]) {
     await page.locator(`#fin-${key}`).selectOption('DONE');
   }
-  await page.getByRole('button', { name: 'Save finance checklist' }).click();
-  await expect(page.getByText('Finance checklist saved.')).toBeVisible();
-  // Finance must not see restricted HR content.
-  await expect(page.getByText('General HR remarks')).toHaveCount(0);
-  await signOut(page);
+  await page.getByRole('button', { name: 'Save Finance evidence' }).click();
+  await expect(page.getByText('Finance evidence saved.')).toBeVisible();
 
-  // Officer submits for manager approval.
-  await signInAs(page, 'HR Officer');
-  await page.goto(`${caseUrl}/action-form`);
-  await page.getByRole('button', { name: 'Submit for manager approval' }).click();
-  await expect(page.getByText('Form submitted for manager approval.')).toBeVisible();
-  await signOut(page);
+  // Officer completion flow: finish preparation, then complete (attested).
+  await page.getByRole('button', { name: 'Finish preparation (ready for review)' }).click();
+  await expect(page.getByText('Form finished and ready for review.')).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Complete action form (attested, renders final PDF)' })
+    .click();
+  await expect(page.getByText(/Action form completed/)).toBeVisible();
+  await expect(page.getByText('Complete').first()).toBeVisible();
 
-  // Assigned manager approves from the minimum view.
-  await signInAs(page, 'Line Manager');
-  await page.goto(`${caseUrl}/action-form`);
-  await expect(page.getByText(/minimum information/)).toBeVisible();
-  await expect(page.getByText('General HR remarks')).toHaveCount(0); // F.4 restriction
-  await page.getByRole('button', { name: 'Approve as responsible manager (attested)' }).click();
-  await expect(page.getByText('Manager approval recorded (attested).')).toBeVisible();
-  await signOut(page);
-
-  // HR Manager gives final approval; PDF is available; audit shows steps.
-  await signInAs(page, 'HR Manager');
-  await page.goto(`${caseUrl}/action-form`);
-  await page.getByRole('button', { name: /Give HR final approval/ }).click();
-  await expect(page.getByText(/HR final approval recorded/)).toBeVisible();
-  await expect(page.getByText('APPROVED').first()).toBeVisible();
+  // The final PDF is rendered and downloadable by authorized HR.
   const formPdf = await page.getByRole('link', { name: 'Download final PDF' }).getAttribute('href');
   const dl = await page.request.get(formPdf!);
   expect(dl.status()).toBe(200);
   expect(dl.headers()['content-type']).toContain('application/pdf');
 
+  // Audit history shows preparation and the attested HR completion.
   await page.goto(caseUrl);
   const timeline = page.locator('ul.timeline').last();
   await expect(timeline.getByText('form created', { exact: false })).toHaveCount(1);
-  await expect(timeline.getByText('form manager approved', { exact: false })).toHaveCount(1);
-  await expect(timeline.getByText('form hr approved', { exact: false })).toHaveCount(1);
+  await expect(
+    timeline.getByText('finished preparing the action form', { exact: false }),
+  ).toHaveCount(1);
+  await expect(timeline.getByText('completed the action form', { exact: false })).toHaveCount(1);
   await signOut(page);
 });
 
@@ -256,8 +223,9 @@ test('Scenario 4 - restricted termination: new surfaces disclose nothing', async
   }
   await signOut(page);
 
-  // Departmental and admin roles: same non-disclosure.
-  for (const who of ['IT Responder', 'System Administrator']) {
+  // Non-HR and admin roles: same non-disclosure (Directive 6.3: IT/Finance
+  // have no logins; the line manager and admin cover the negative).
+  for (const who of ['Line Manager', 'System Administrator']) {
     await signInAs(page, who);
     await page.goto(`${caseUrl}/documents`);
     await expect(page.getByText('Page or record not found')).toBeVisible();

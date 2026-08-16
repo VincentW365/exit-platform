@@ -360,12 +360,17 @@ describe('escalation defaults (I.6, N)', () => {
 });
 
 describe('queue access (J, R.8)', () => {
-  it('maps roles to departments; SYSTEM_ADMIN gets nothing', () => {
-    expect(queueDepartmentsForActor({ userId: 'u', roles: ['HR_OFFICER'] })).toEqual(['HR']);
-    expect(queueDepartmentsForActor({ userId: 'u', roles: ['IT_RESPONDER'] })).toEqual(['IT']);
-    expect(queueDepartmentsForActor({ userId: 'u', roles: ['FINANCE_RESPONDER'] })).toEqual([
+  it('maps roles to departments; retired department logins get nothing (Directive 6.3 I/J)', () => {
+    // HR works every residual department queue on legacy (v1) instances so no
+    // historical case is stranded when IT/Finance logins retire.
+    expect(queueDepartmentsForActor({ userId: 'u', roles: ['HR_OFFICER'] })).toEqual([
+      'HR',
+      'IT',
       'FINANCE',
     ]);
+    // AC invariants 3-4: the retired roles grant no queue at all.
+    expect(queueDepartmentsForActor({ userId: 'u', roles: ['IT_RESPONDER'] })).toEqual([]);
+    expect(queueDepartmentsForActor({ userId: 'u', roles: ['FINANCE_RESPONDER'] })).toEqual([]);
     expect(queueDepartmentsForActor({ userId: 'u', roles: ['LINE_MANAGER'] })).toEqual([
       'LINE_MANAGER',
     ]);
@@ -459,14 +464,16 @@ describe('asset rules (L)', () => {
     expect(assetDispositionError('WRITTEN_OFF', 'value below threshold', true)).toBeNull();
   });
 
-  it('clearance: open items block; UNRESOLVED needs an approved exception (L.2/L.3)', () => {
-    expect(assetsSatisfyClearance(items, false).ok).toBe(false);
+  it('clearance: open items block; UNRESOLVED needs an approved exception FOR THAT ITEM (L.2/L.3, Directive 6.3)', () => {
+    expect(assetsSatisfyClearance(items, []).ok).toBe(false);
     const closed: AssetItemLike[] = [
-      { status: 'RETURNED', requiredForClearance: true },
-      { status: 'UNRESOLVED', requiredForClearance: true },
+      { id: 'a1', status: 'RETURNED', requiredForClearance: true },
+      { id: 'a2', status: 'UNRESOLVED', requiredForClearance: true },
     ];
-    expect(assetsSatisfyClearance(closed, false).ok).toBe(false);
-    expect(assetsSatisfyClearance(closed, true).ok).toBe(true);
+    expect(assetsSatisfyClearance(closed, []).ok).toBe(false);
+    // A case-wide approval for a DIFFERENT item no longer covers this one.
+    expect(assetsSatisfyClearance(closed, ['a1']).ok).toBe(false);
+    expect(assetsSatisfyClearance(closed, ['a2']).ok).toBe(true);
   });
 });
 
@@ -493,6 +500,7 @@ describe('handover credential detection (M.2/M.3, D.15)', () => {
 });
 
 describe('clearance gate (O)', () => {
+  // A legacy (v1) instance: department-login tasks present, judged task-based.
   const readyFacts: ClearanceFacts = {
     departureType: 'RESIGNATION_WITH_NOTICE',
     tasks: [
@@ -503,18 +511,29 @@ describe('clearance gate (O)', () => {
         required: true,
         status: 'COMPLETED',
         taskKind: 'ACCESS_REVOCATION',
+        department: 'IT',
+      },
+      {
+        taskCode: 'FIN_ACKNOWLEDGE',
+        title: 'Finance acknowledgement',
+        required: true,
+        status: 'COMPLETED',
+        taskKind: 'STANDARD',
+        department: 'FINANCE',
       },
       { taskCode: 'B', title: 'B', required: false, status: 'READY', taskKind: 'STANDARD' },
     ],
     letterStatus: 'RENDERED',
     letterRequired: true,
     actionFormStatus: 'APPROVED',
-    assets: [{ status: 'RETURNED', requiredForClearance: true }],
-    assetUnresolvedExceptionApproved: false,
+    assets: [{ id: 'a1', status: 'RETURNED', requiredForClearance: true }],
+    approvedUnresolvedAssetIds: [],
     handoverRequired: true,
     handoverStatus: 'COMPLETED',
     openCriticalExceptionCount: 0,
     accessSecurityExceptionApproved: false,
+    emailActions: [],
+    benefitsUnresolvedCount: 0,
   };
 
   it('passes when every condition is satisfied; optional tasks never block', () => {
@@ -578,5 +597,138 @@ describe('clearance gate (O)', () => {
     ).toBe(true);
     expect(clearanceChecksum({ a: 1 })).toBe(clearanceChecksum({ a: 1 }));
     expect(clearanceChecksum({ a: 1 })).not.toBe(clearanceChecksum({ a: 2 }));
+  });
+});
+
+describe('clearance gate — v2 evidence mode (Directive 6.3 AA)', () => {
+  // A v2 instance: no IT/FINANCE department tasks; email-action evidence rules.
+  const v2Facts: ClearanceFacts = {
+    departureType: 'RESIGNATION_WITH_NOTICE',
+    tasks: [
+      {
+        taskCode: 'HR_VERIFY_CASE',
+        title: 'Verify',
+        required: true,
+        status: 'COMPLETED',
+        taskKind: 'STANDARD',
+        department: 'HR',
+      },
+      {
+        taskCode: 'MGR_HANDOVER_COMPLETE',
+        title: 'Handover',
+        required: true,
+        status: 'COMPLETED',
+        taskKind: 'STANDARD',
+        department: 'LINE_MANAGER',
+      },
+    ],
+    letterStatus: 'RENDERED',
+    letterRequired: true,
+    actionFormStatus: 'COMPLETE',
+    assets: [{ id: 'a1', status: 'RETURNED', requiredForClearance: true }],
+    approvedUnresolvedAssetIds: [],
+    handoverRequired: true,
+    handoverStatus: 'COMPLETED',
+    openCriticalExceptionCount: 0,
+    accessSecurityExceptionApproved: false,
+    emailActions: [
+      {
+        notificationType: 'IT_ACCESS_REMOVAL',
+        applicable: true,
+        sentAt: new Date('2026-08-01T12:00:00Z'),
+        acknowledgedAt: new Date('2026-08-01T12:30:00Z'),
+        completionConfirmedAt: new Date('2026-08-01T13:00:00Z'),
+        exceptionApproved: false,
+      },
+      {
+        notificationType: 'FINANCE_OFFBOARDING',
+        applicable: true,
+        sentAt: new Date('2026-08-01T12:00:00Z'),
+        acknowledgedAt: null,
+        completionConfirmedAt: null,
+        exceptionApproved: false,
+      },
+      {
+        notificationType: 'SAGICOR_GROUP_HEALTH_REMOVAL',
+        applicable: true,
+        sentAt: new Date('2026-08-02T09:00:00Z'),
+        acknowledgedAt: null,
+        completionConfirmedAt: null,
+        exceptionApproved: false,
+      },
+    ],
+    benefitsUnresolvedCount: 0,
+  };
+
+  it('clears on evidence: IT confirmed, Finance sent, providers sent where applicable', () => {
+    const r = evaluateClearance(v2Facts);
+    expect(r.ok).toBe(true);
+    expect(r.items.find((i) => i.key === 'itEvidence')?.ok).toBe(true);
+    expect(r.items.find((i) => i.key === 'financeEvidence')?.ok).toBe(true);
+    expect(r.items.find((i) => i.key === 'providers')?.ok).toBe(true);
+    // No task-based IT/Finance/access items exist in v2 mode.
+    expect(r.items.find((i) => i.key === 'accessRevocation')).toBeUndefined();
+    expect(r.items.find((i) => i.key === 'tasks:IT')).toBeUndefined();
+  });
+
+  it('email delivery alone is NOT completion for IT (AC invariant 17)', () => {
+    const r = evaluateClearance({
+      ...v2Facts,
+      emailActions: v2Facts.emailActions.map((a) =>
+        a.notificationType === 'IT_ACCESS_REMOVAL'
+          ? { ...a, acknowledgedAt: null, completionConfirmedAt: null }
+          : a,
+      ),
+    });
+    expect(r.items.find((i) => i.key === 'itEvidence')?.ok).toBe(false);
+    expect(r.ok).toBe(false);
+  });
+
+  it('an approved exception covers unconfirmed IT evidence (AA)', () => {
+    const r = evaluateClearance({
+      ...v2Facts,
+      emailActions: v2Facts.emailActions.map((a) =>
+        a.notificationType === 'IT_ACCESS_REMOVAL'
+          ? { ...a, completionConfirmedAt: null, exceptionApproved: true }
+          : a,
+      ),
+    });
+    expect(r.items.find((i) => i.key === 'itEvidence')?.ok).toBe(true);
+  });
+
+  it('unresolved benefits applicability blocks clearance (V)', () => {
+    expect(evaluateClearance({ ...v2Facts, benefitsUnresolvedCount: 1 }).ok).toBe(false);
+  });
+
+  it('unsent applicable provider notifications block; inapplicable ones never appear', () => {
+    const r = evaluateClearance({
+      ...v2Facts,
+      emailActions: v2Facts.emailActions.map((a) =>
+        a.notificationType === 'SAGICOR_GROUP_HEALTH_REMOVAL' ? { ...a, sentAt: null } : a,
+      ),
+    });
+    expect(r.items.find((i) => i.key === 'providers')?.ok).toBe(false);
+    const none = evaluateClearance({
+      ...v2Facts,
+      emailActions: v2Facts.emailActions.filter(
+        (a) => a.notificationType !== 'SAGICOR_GROUP_HEALTH_REMOVAL',
+      ),
+    });
+    // With no applicable provider actions there is nothing to gate on.
+    expect(none.items.find((i) => i.key === 'providers')).toBeUndefined();
+    expect(none.ok).toBe(true);
+  });
+
+  it('legacy APPROVED and new COMPLETE action forms both satisfy the gate (AD)', () => {
+    expect(
+      evaluateClearance({ ...v2Facts, actionFormStatus: 'APPROVED' }).items.find(
+        (i) => i.key === 'actionForm',
+      )?.ok,
+    ).toBe(true);
+    expect(
+      evaluateClearance({ ...v2Facts, actionFormStatus: 'READY_FOR_HR_REVIEW' }).items.find(
+        (i) => i.key === 'actionForm',
+      )?.ok,
+    ).toBe(false);
   });
 });

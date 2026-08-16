@@ -12,6 +12,7 @@ import {
   maskDestination,
   recipientUsableErrors,
   EXTERNAL_RECIPIENT_CLASSES,
+  PROVIDER_PURPOSES,
   RECIPIENT_CLASSES,
   NOTIFICATION_TYPES,
   type Actor,
@@ -35,6 +36,10 @@ export const recipientInputSchema = z.object({
   effectiveFrom: z
     .union([z.null(), z.literal('').transform(() => null), z.coerce.date()])
     .optional(),
+  // Directive 6.3 N/P: provider purpose + human identity fields.
+  purpose: z.enum(PROVIDER_PURPOSES).nullable().optional(),
+  organizationName: z.string().trim().max(200).nullable().optional(),
+  contactName: z.string().trim().max(200).nullable().optional(),
 });
 
 export async function listRecipients(actor: Actor) {
@@ -75,6 +80,9 @@ export async function upsertRecipient(actor: Actor, rawInput: unknown, existingI
     environment: environment(),
     effectiveFrom: input.effectiveFrom ?? null,
     changeReason: input.changeReason,
+    purpose: input.purpose ?? null,
+    organizationName: input.organizationName ?? null,
+    contactName: input.contactName ?? null,
     // Any change resets approval and verification (D.3/D.7).
     approvalStatus: 'PENDING_APPROVAL' as const,
     approvedById: null,

@@ -206,3 +206,47 @@ The deterministic check returns PASS/FAIL plus unmet conditions:
 - required approvals/evidence present.
 
 The check result is stored with the completion decision.
+
+## 10. Directive 6.3 delta (2026-08-16): workflow v2 - the HR-validated model
+
+Product direction: HR operational feedback (DEC-044..DEC-050). The three
+departure-type workflows are re-issued as v2 definitions; v1 is superseded
+for NEW cases and running instances stay pinned to v1, finish task-based
+and are never reinterpreted (dual-mode clearance).
+
+### What v2 removes from the task matrices above
+
+| Removed v1 tasks | Replaced by |
+| --- | --- |
+| IT tasks (RN/IR/TM access review + revocation, `IT_RESPONDER` owner) | Derived IT access-removal EMAIL ACTION with the exact effective time, secure confirmation link, HR-recorded evidence alternative, CRITICAL escalation if unconfirmed at the effective instant, and the v2 clearance IT-evidence gate (delivery is never completion). |
+| Finance tasks (`FIN_ACKNOWLEDGE`, workpaper init/done, `FINANCE_RESPONDER` owner) | Derived Finance offboarding EMAIL ACTION (acknowledgement link); the Action Form's Finance checklist records evidence of work performed OUTSIDE the application. |
+| `MGR_ACTION_FORM_APPROVE` / `HRM_ACTION_FORM_FINAL` | Officer completion of the Action Form; optional configuration-gated HR-Manager review (DEC-050). The manager keeps ONLY the handover tasks. |
+| `HR_SAGICOR_APPLICABILITY`, `HR_NCB_APPLICABILITY`, `HR_EXTERNAL_NOTIFICATIONS` | One-time benefits confirmation (YES/NO/UNKNOWN) on the case; the rules engine derives, prepares and (per send control level) dispatches provider notifications. |
+| `HR_SURVEY_INVITE` (manual scheduling) | Automatic survey-invitation scheduling by the worker under the standard automation gates; the survey never blocks clearance. |
+| Generic asset-checklist creation from the 11-type catalogue | Asset recovery actions derived strictly from the employee's issued assets; ADD UNLISTED ASSET is the explicit exception path. |
+
+### What v2 keeps
+
+- HR tasks: case validation, date confirmation, resignation document,
+  HRIS/BambooHR update, clearance review - with their v1 due rules and the
+  approved Jamaica calendar.
+- The manager handover tasks (plan → reassign → complete) unchanged.
+- Versioning discipline: definitions are versioned, pinned per case, and
+  activation supersedes atomically; conditional tasks are created only when
+  applicable; mandatory tasks cannot be skipped without a valid waiver.
+- Restricted-termination confidentiality: v2 email actions honour it with
+  confidential timing (IT released no earlier than one hour before the
+  effective instant, Finance at the effective instant) and the
+  stricter-of send-control override for RESTRICTED cases.
+
+### Derived actions instead of scattered conditionals
+
+The applicability examples in section 6 are implemented as the
+deterministic derived-action rules (`packages/domain/src/derivedActions.ts`,
+rules version `hr-validated-workflow-v2`): every rule records its key, its
+exact source fields and its result on the `CaseRequiredAction` row, and the
+UI explains "derived from ..." per item. Overrides are authorized, reasoned
+and audited, and win over re-derivation until removed. Material fact
+changes (dates, departure type, benefits confirmation) re-run derivation
+idempotently - rows update in place, nothing duplicates, superseded items
+are marked.

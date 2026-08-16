@@ -3,19 +3,20 @@ import { notFound } from 'next/navigation';
 import { ServiceError, getActionForm } from '@exit/db';
 import {
   FINANCE_CHECKLIST_ITEMS,
+  FORM_STATUS_LABELS,
   HR_CHECKLIST_ITEMS,
   formatInstant,
+  type ActionFormStatus,
   type ChecklistState,
 } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
 import {
+  completeFormAction,
   createFormAction,
-  hrApproveAction,
-  hrReturnAction,
-  managerApproveAction,
-  managerReturnAction,
+  hrReviewAction,
+  returnFormAction,
   saveFinanceSectionAction,
   saveHrSectionAction,
   submitFormAction,
@@ -27,13 +28,22 @@ export const dynamic = 'force-dynamic';
 
 const FORM_BADGE: Record<string, string> = {
   DRAFT: 'badge--neutral',
+  READY_FOR_HR_REVIEW: 'badge--info',
+  HR_REVIEWED: 'badge--info',
+  COMPLETE: 'badge--success',
+  RETURNED_FOR_CORRECTION: 'badge--warning',
+  SUPERSEDED: 'badge--neutral',
+  VOIDED: 'badge--neutral',
+  // Legacy statuses stay renderable on historical rows (Directive 6.3 AD).
   RETURNED: 'badge--warning',
   PENDING_MANAGER: 'badge--warning',
   PENDING_HR: 'badge--warning',
   APPROVED: 'badge--success',
-  SUPERSEDED: 'badge--neutral',
-  VOIDED: 'badge--neutral',
 };
+
+const EDITABLE_STATUSES = ['DRAFT', 'RETURNED', 'RETURNED_FOR_CORRECTION'];
+const REVIEWABLE_STATUSES = ['READY_FOR_HR_REVIEW', 'HR_REVIEWED', 'PENDING_MANAGER', 'PENDING_HR'];
+const CLOSED_STATUSES = ['COMPLETE', 'APPROVED', 'VOIDED', 'SUPERSEDED'];
 
 function ChecklistFields({
   prefix,
@@ -96,11 +106,11 @@ export default async function ActionFormPage({
     | null;
   const cap = data.capabilities;
   const snap = (f?.fieldSnapshot ?? {}) as Record<string, string | null>;
-  const editable = f ? ['DRAFT', 'RETURNED'].includes(f.status) : false;
-  const limited = data.level === 'FINANCE_FORM' || data.level === 'MANAGER_FORM';
-  // Informed final approval: approval is NOT blocked on the Finance checklist
-  // (its gating semantics are an open decision, spec Q-6), but the approver
-  // must see what the immutable PDF will record before attesting.
+  const editable = f ? EDITABLE_STATUSES.includes(f.status) : false;
+  const reviewable = f ? REVIEWABLE_STATUSES.includes(f.status) : false;
+  const legacyRow = f ? ['PENDING_MANAGER', 'PENDING_HR'].includes(f.status) : false;
+  // Informed completion: it is NOT blocked on the Finance checklist, but the
+  // completing officer must see what the immutable PDF will record.
   const financePendingCount =
     f?.financeChecklist != null
       ? Object.values(f.financeChecklist).filter((v) => v === 'PENDING').length
@@ -108,16 +118,14 @@ export default async function ActionFormPage({
 
   return (
     <>
-      <h1>{data.caseNumber} - Employee Action Form (offboarding)</h1>
-      {!limited ? <CaseNav caseId={id} active="action-form" /> : null}
+      <h1>{data.caseNumber} - Offboarding Action Form</h1>
+      <CaseNav caseId={id} active="action-form" />
       <Feedback err={sp.err} ok={sp.ok} />
-      {limited ? (
-        <p className="banner-baseline">
-          You see the minimum information required for your assigned role (
-          {data.level === 'FINANCE_FORM' ? 'Finance checklist' : 'Manager review'}). Restricted HR
-          fields are not shown.
-        </p>
-      ) : null}
+      <p className="hint">
+        This form is an HR-controlled record: the assigned HR Officer prepares it, reviews the
+        pre-populated information and completes it. Managers, IT and Finance have no approval role
+        here - their responsibilities are handled through handover and the automated notifications.
+      </p>
 
       {!f ? (
         <section className="panel">
@@ -134,8 +142,8 @@ export default async function ActionFormPage({
           <section className="panel" aria-labelledby="af-status">
             <h2 id="af-status" style={{ marginTop: 0 }}>
               Version {f.version}{' '}
-              <span className={`badge ${FORM_BADGE[f.status]}`}>
-                {f.status.replaceAll('_', ' ')}
+              <span className={`badge ${FORM_BADGE[f.status] ?? 'badge--neutral'}`}>
+                {FORM_STATUS_LABELS[f.status as ActionFormStatus] ?? f.status.replaceAll('_', ' ')}
               </span>
               {f.hasPdf ? (
                 <>
@@ -146,9 +154,21 @@ export default async function ActionFormPage({
                 </>
               ) : null}
             </h2>
-            {f.returnReason && f.status === 'RETURNED' ? (
+            {f.returnReason && ['RETURNED', 'RETURNED_FOR_CORRECTION'].includes(f.status) ? (
               <p className="banner-baseline">Returned: {f.returnReason}</p>
             ) : null}
+            {legacyRow ? (
+              <p className="banner-baseline">
+                This form started under the previous approval workflow. Manager approval is no
+                longer required - the assigned HR Officer completes it directly.
+              </p>
+            ) : null}
+            <h3 style={{ marginBottom: '0.3rem' }}>
+              Employee and case details{' '}
+              <span className="badge badge--neutral" title="Pre-populated from the case record">
+                From case record
+              </span>
+            </h3>
             <dl className="kv">
               <dt>Employee</dt>
               <dd>
@@ -179,13 +199,15 @@ export default async function ActionFormPage({
             </dl>
             {data.attestations.length ? (
               <>
-                <h3>Approvals (authenticated attestations)</h3>
+                <h3>Completion and approvals (authenticated attestations)</h3>
                 <ul>
                   {data.attestations.map((a, i) => (
                     <li key={i}>
                       {a.kind === 'MANAGER_FORM_APPROVAL'
-                        ? 'Manager approval'
-                        : 'HR final approval'}
+                        ? 'Manager approval (historical)'
+                        : a.kind === 'HR_FORM_COMPLETION'
+                          ? 'HR completion'
+                          : 'HR final approval (historical)'}
                       : {a.actorDisplayName} ({a.actorRole}) - {formatInstant(a.createdAt)} - form v
                       {a.subjectVersion}
                       {a.invalidatedAt ? <strong> INVALIDATED</strong> : null}
@@ -199,8 +221,12 @@ export default async function ActionFormPage({
           {cap.canEdit && 'hrChecklist' in f && f.hrChecklist ? (
             <section className="panel" aria-labelledby="hr-sec">
               <h2 id="hr-sec" style={{ marginTop: 0 }}>
-                HR section (checklist = completion evidence, not approval)
+                HR section{' '}
+                <span className="badge badge--neutral" title="Recorded by HR">
+                  HR-entered
+                </span>
               </h2>
+              <p className="hint">Checklist entries are completion evidence, not approvals.</p>
               <form action={saveHrSectionAction} className="stack">
                 <input type="hidden" name="caseId" value={id} />
                 <input type="hidden" name="formId" value={f.id} />
@@ -280,20 +306,21 @@ export default async function ActionFormPage({
                 <form action={submitFormAction} style={{ marginTop: '0.6rem' }}>
                   <input type="hidden" name="caseId" value={id} />
                   <input type="hidden" name="formId" value={f.id} />
-                  <button type="submit">Submit for manager approval</button>
+                  <button type="submit">Finish preparation (ready for review)</button>
                 </form>
               ) : null}
             </section>
           ) : null}
 
-          {(cap.canFinanceEdit || (cap.canEdit && 'financeChecklist' in f)) &&
-          f.financeChecklist ? (
+          {cap.canEdit && 'financeChecklist' in f && f.financeChecklist ? (
             <section className="panel" aria-labelledby="fin-sec">
               <h2 id="fin-sec" style={{ marginTop: 0 }}>
-                Finance checklist (all financial work happens outside this application)
+                Finance evidence (recorded by HR; Finance works outside this application)
               </h2>
               <p className="hint">
-                No pay amounts are recorded here and nothing on this form calculates or changes pay.
+                Finance receives the automated notification and completes its process in its own
+                systems. Record here what the notification and any returned evidence establish. No
+                pay amounts are recorded and nothing on this form calculates or changes pay.
               </p>
               <form action={saveFinanceSectionAction} className="stack">
                 <input type="hidden" name="caseId" value={id} />
@@ -302,9 +329,7 @@ export default async function ActionFormPage({
                   prefix="fin"
                   items={FINANCE_CHECKLIST_ITEMS}
                   state={f.financeChecklist}
-                  disabled={
-                    f.status === 'APPROVED' || f.status === 'VOIDED' || f.status === 'SUPERSEDED'
-                  }
+                  disabled={CLOSED_STATUSES.includes(f.status)}
                 />
                 <div className="field">
                   <label htmlFor="financeNotes">Finance notes (limited, non-sensitive)</label>
@@ -316,68 +341,56 @@ export default async function ActionFormPage({
                     defaultValue={('financeNotes' in f ? f.financeNotes : '') ?? ''}
                   />
                 </div>
-                <button type="submit">Save finance checklist</button>
+                {!CLOSED_STATUSES.includes(f.status) ? (
+                  <button type="submit">Save Finance evidence</button>
+                ) : null}
               </form>
             </section>
           ) : null}
 
-          {f.status === 'PENDING_MANAGER' && cap.canManagerApprove ? (
-            <section className="panel actions-row" aria-label="Manager approval">
-              <form action={managerApproveAction}>
-                <input type="hidden" name="caseId" value={id} />
-                <input type="hidden" name="formId" value={f.id} />
-                <button type="submit">Approve as responsible manager (attested)</button>
-              </form>
-              <details className="action">
-                <summary>Return with reason</summary>
-                <form action={managerReturnAction} className="stack">
-                  <input type="hidden" name="caseId" value={id} />
-                  <input type="hidden" name="formId" value={f.id} />
-                  <div className="field">
-                    <label htmlFor="mgr-reason">Reason (required)</label>
-                    <textarea id="mgr-reason" name="reason" rows={2} required />
-                  </div>
-                  <button type="submit" className="secondary">
-                    Return
-                  </button>
-                </form>
-              </details>
-            </section>
-          ) : null}
-
-          {f.status === 'PENDING_HR' && cap.canHrApprove && financePendingCount > 0 ? (
+          {reviewable && cap.canComplete && financePendingCount > 0 ? (
             <p className="banner-baseline" role="status">
-              The Finance checklist still has {financePendingCount} item(s) marked PENDING. Final
-              approval freezes this version and the final PDF will permanently record them as
-              PENDING. Confirm with the assigned Finance participant that nothing further will be
-              recorded, or return the form instead.
+              The Finance evidence still has {financePendingCount} item(s) marked Pending.
+              Completion freezes this version and the final PDF will permanently record them as
+              Pending. Confirm nothing further will be recorded, or return the form instead.
             </p>
           ) : null}
-          {f.status === 'PENDING_HR' && cap.canHrApprove ? (
-            <section className="panel actions-row" aria-label="HR final approval">
-              <form action={hrApproveAction}>
-                <input type="hidden" name="caseId" value={id} />
-                <input type="hidden" name="formId" value={f.id} />
-                <button type="submit">Give HR final approval (attested, renders final PDF)</button>
-              </form>
-              <details className="action">
-                <summary>Return with reason</summary>
-                <form action={hrReturnAction} className="stack">
+          {reviewable ? (
+            <section className="panel actions-row" aria-label="Review and completion">
+              {f.status === 'READY_FOR_HR_REVIEW' && cap.canHrReview && cap.requireHrReview ? (
+                <form action={hrReviewAction}>
                   <input type="hidden" name="caseId" value={id} />
                   <input type="hidden" name="formId" value={f.id} />
-                  <div className="field">
-                    <label htmlFor="hr-reason">Reason (required)</label>
-                    <textarea id="hr-reason" name="reason" rows={2} required />
-                  </div>
-                  <button type="submit" className="secondary">
-                    Return
-                  </button>
+                  <button type="submit">Record management review</button>
                 </form>
-              </details>
+              ) : null}
+              {cap.canComplete ? (
+                <form action={completeFormAction}>
+                  <input type="hidden" name="caseId" value={id} />
+                  <input type="hidden" name="formId" value={f.id} />
+                  <button type="submit">Complete action form (attested, renders final PDF)</button>
+                </form>
+              ) : null}
+              {cap.canReturn ? (
+                <details className="action">
+                  <summary>Return for correction</summary>
+                  <form action={returnFormAction} className="stack">
+                    <input type="hidden" name="caseId" value={id} />
+                    <input type="hidden" name="formId" value={f.id} />
+                    <div className="field">
+                      <label htmlFor="ret-reason">Reason (required)</label>
+                      <textarea id="ret-reason" name="reason" rows={2} required />
+                    </div>
+                    <button type="submit" className="secondary">
+                      Return
+                    </button>
+                  </form>
+                </details>
+              ) : null}
             </section>
           ) : null}
 
-          {cap.canVoid && !['APPROVED', 'VOIDED', 'SUPERSEDED'].includes(f.status) ? (
+          {cap.canVoid && !CLOSED_STATUSES.includes(f.status) ? (
             <details className="action">
               <summary>Void form</summary>
               <form action={voidFormAction} className="stack">
@@ -400,7 +413,8 @@ export default async function ActionFormPage({
               <ul>
                 {data.history.map((h) => (
                   <li key={h.id}>
-                    Version {h.version} - {h.status}
+                    Version {h.version} -{' '}
+                    {FORM_STATUS_LABELS[h.status as ActionFormStatus] ?? h.status}
                   </li>
                 ))}
               </ul>

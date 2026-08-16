@@ -6,7 +6,7 @@ import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import { claimTaskAction, returnTaskAction } from './actions';
 
-export const metadata: Metadata = { title: 'My work queue' };
+export const metadata: Metadata = { title: 'My work' };
 export const dynamic = 'force-dynamic';
 
 // Directive 6.2 (V/W): ONE consolidated filter row. Additional service views
@@ -52,14 +52,14 @@ export default async function QueuePage({
     if (e instanceof ServiceError && e.code === 'FORBIDDEN')
       return (
         <>
-          <h1>My work queue</h1>
-          <p className="panel">Your role does not have a department work queue.</p>
+          <h1>My work</h1>
+          <p className="panel">Your role does not have a work queue.</p>
         </>
       );
     if (e instanceof ServiceError) {
       return (
         <>
-          <h1>My work queue</h1>
+          <h1>My work</h1>
           <p className="panel">Invalid filter; showing nothing. Adjust the filters and retry.</p>
         </>
       );
@@ -88,11 +88,15 @@ export default async function QueuePage({
 
   return (
     <>
-      <h1>My work queue</h1>
+      <h1>My work</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint">
-        Departments visible to you: {data.departments.join(', ') || 'none'}. Tasks show only the
-        minimum information needed to do the work; a task never grants wider case access.
+        IT and Finance receive automated email notifications — the queues below cover HR work and
+        any older cases still running the previous workflow.
+      </p>
+      <p className="hint">
+        Queues visible to you: {data.departments.join(', ') || 'none'}. Tasks show only the minimum
+        information needed to do the work; a task never grants wider case access.
       </p>
 
       <nav aria-label="Queue views" className="panel" style={{ padding: '0.4rem 0.75rem' }}>

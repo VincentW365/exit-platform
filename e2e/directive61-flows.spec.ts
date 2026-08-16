@@ -65,7 +65,12 @@ test('Scenario F - missing manager blocks activation until an audited override',
 
   // Assign the officer, then resolve the manager with an audited override.
   await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
-  await page.locator('#of-user').selectOption({ label: 'HR Officer' });
+  // Directive 6.3 correction 7: options read "<name> - <job title>".
+  const officerValueF = await page
+    .locator('#of-user option', { hasText: 'HR Officer' })
+    .first()
+    .getAttribute('value');
+  await page.locator('#of-user').selectOption(officerValueF!);
   await page.locator('#of-reason').fill('Scenario F assignment.');
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
@@ -91,9 +96,10 @@ test('Scenario F - missing manager blocks activation until an audited override',
   await signOut(page);
 });
 
-test('Scenario D - IT queue claim, return to queue and reclaim through the UI', async ({
-  page,
-}) => {
+// Directive 6.3: the IT responder logins are retired, so the claim/return
+// journey runs on the HR department queue - the mechanics (claim from the
+// unassigned view, audited return, reclaim) are identical.
+test('Scenario D - queue claim, return to queue and reclaim through the UI', async ({ page }) => {
   test.setTimeout(300_000);
   await signInAs(page, 'HR Officer');
   const { url: caseUrl, number: caseNo } = await createTestCase(page, {
@@ -110,7 +116,12 @@ test('Scenario D - IT queue claim, return to queue and reclaim through the UI', 
   await expect(page.getByText(/Case approved/)).toBeVisible();
   await page.goto(`${caseUrl}/assignment`);
   await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
-  await page.locator('#of-user').selectOption({ label: 'HR Officer' });
+  // Directive 6.3 correction 7: options read "<name> - <job title>".
+  const officerValueD = await page
+    .locator('#of-user option', { hasText: 'HR Officer' })
+    .first()
+    .getAttribute('value');
+  await page.locator('#of-user').selectOption(officerValueD!);
   await page.locator('#of-reason').fill('Scenario D assignment.');
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
@@ -129,23 +140,19 @@ test('Scenario D - IT queue claim, return to queue and reclaim through the UI', 
   await expect(page.getByText(/Case activated/)).toBeVisible();
   await signOut(page);
 
-  // IT responder A claims from the unassigned view.
-  await signInAs(page, 'IT Responder');
+  // The HR Officer claims an unassigned HR task from the queue.
+  await signInAs(page, 'HR Officer');
   await page.goto(`/queue?view=unassigned&q=${caseNo}`);
-  const row = page
-    .locator('tr', { hasText: 'Review systems and access requiring removal' })
-    .first();
+  const row = page.locator('tr', { hasText: 'Verify resignation and case information' }).first();
   await row.getByRole('button', { name: 'Claim' }).click();
   await expect(page.getByText('Task claimed - it is now assigned to you (audited).')).toBeVisible();
 
   // My-tasks view shows the claimed task with the assignee name.
   await page.goto(`/queue?view=myTasks&q=${caseNo}`);
-  await expect(page.getByText('IT Responder').first()).toBeVisible();
+  await expect(page.getByText('HR Officer').first()).toBeVisible();
 
   // Return it to the queue with a reason; it becomes claimable again.
-  const mine = page
-    .locator('tr', { hasText: 'Review systems and access requiring removal' })
-    .first();
+  const mine = page.locator('tr', { hasText: 'Verify resignation and case information' }).first();
   await mine.locator('details.action > summary', { hasText: 'Return to queue' }).click();
   await mine.locator('input[name="reason"]').fill('Scenario D - handing back for reallocation.');
   await mine.getByRole('button', { name: 'Return task' }).click();
@@ -153,7 +160,7 @@ test('Scenario D - IT queue claim, return to queue and reclaim through the UI', 
   await page.goto(`/queue?view=unassigned&q=${caseNo}`);
   await expect(
     page
-      .locator('tr', { hasText: 'Review systems and access requiring removal' })
+      .locator('tr', { hasText: 'Verify resignation and case information' })
       .first()
       .getByRole('button', { name: 'Claim' }),
   ).toBeVisible();

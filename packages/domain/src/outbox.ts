@@ -100,6 +100,9 @@ export const RECIPIENT_CLASSES = [
   'NCB_GROUP_LIFE',
   'EMPLOYEE_PERSONAL',
   'OTHER_APPROVED_EXTERNAL',
+  // Directive 6.3 N: independently configurable provider purposes.
+  'PAYROLL_BANK',
+  'PENSION_PROVIDER',
 ] as const;
 export type RecipientClassName = (typeof RECIPIENT_CLASSES)[number];
 
@@ -108,7 +111,19 @@ export const EXTERNAL_RECIPIENT_CLASSES: readonly RecipientClassName[] = [
   'NCB_GROUP_LIFE',
   'EMPLOYEE_PERSONAL',
   'OTHER_APPROVED_EXTERNAL',
+  'PAYROLL_BANK',
+  'PENSION_PROVIDER',
 ];
+
+/** Directive 6.3 N/P: configurable provider purposes (TS-level, no DB enum). */
+export const PROVIDER_PURPOSES = [
+  'GROUP_HEALTH_REMOVAL',
+  'GROUP_LIFE_REMOVAL',
+  'PAYROLL_OR_BANK_NOTIFICATION',
+  'PENSION_NOTIFICATION',
+  'OTHER_APPROVED_PROVIDER',
+] as const;
+export type ProviderPurpose = (typeof PROVIDER_PURPOSES)[number];
 
 const DEV_ONLY_DESTINATION = /@example\.invalid$|@localhost$|^capture:\/\//i;
 const PLAUSIBLE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

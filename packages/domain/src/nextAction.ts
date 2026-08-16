@@ -20,6 +20,14 @@ export interface NextActionInput {
   readonly openRequiredTasks: number;
   readonly overdueTasks: number;
   readonly blockedTasks: number;
+  /**
+   * Directive 6.3 X: items from the Required Actions panel that need a human
+   * decision right now (recipient required, benefits unknown, failed email,
+   * overdue confirmation). The first one becomes the case's next action.
+   */
+  readonly attentionCount?: number;
+  readonly firstAttentionLabel?: string;
+  readonly firstAttentionHref?: string;
 }
 
 export interface CaseNextAction {
@@ -59,7 +67,18 @@ export function computeCaseNextAction(
       return null;
   }
 
-  // ACTIVE / REOPENED: pick the most urgent open work.
+  // ACTIVE / REOPENED: exception-first (Directive 6.3 X) - anything in
+  // "Requires your attention" beats routine open work.
+  if ((input.attentionCount ?? 0) > 0 && input.firstAttentionLabel) {
+    return {
+      label:
+        (input.attentionCount ?? 0) > 1
+          ? `${input.firstAttentionLabel} (+${(input.attentionCount ?? 0) - 1} more needing attention)`
+          : input.firstAttentionLabel,
+      href: input.firstAttentionHref ?? base,
+      tone: 'attention',
+    };
+  }
   if (input.blockedTasks > 0) {
     return {
       label: `${input.blockedTasks} blocked task(s) - clear the blocker(s)`,

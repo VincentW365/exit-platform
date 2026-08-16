@@ -30,14 +30,18 @@ import {
   resetDb,
   seedStage3Fixtures,
   VALID_DRAFT,
+  FIXTURE_CONFIRMED_LAST_DAY,
 } from './helpers.ts';
 
 const prisma = getPrisma();
 
 let officer: Awaited<ReturnType<typeof createUser>>;
 let manager: Awaited<ReturnType<typeof createUser>>;
+// Directive 6.3 I/J: department logins are retired - queue mechanics are
+// exercised by HR officers (and the retired roles prove they get nothing).
+let hrA: Awaited<ReturnType<typeof createUser>>;
+let hrB: Awaited<ReturnType<typeof createUser>>;
 let itA: Awaited<ReturnType<typeof createUser>>;
-let itB: Awaited<ReturnType<typeof createUser>>;
 let finA: Awaited<ReturnType<typeof createUser>>;
 let lineMgr: Awaited<ReturnType<typeof createUser>>;
 let lineMgr2: Awaited<ReturnType<typeof createUser>>;
@@ -46,7 +50,7 @@ const TEST_DRAFT = {
   ...VALID_DRAFT,
   recordPurpose: 'TEST',
   measurementCohort: null,
-  confirmedLastDay: '2026-08-14T00:00:00.000Z',
+  confirmedLastDay: FIXTURE_CONFIRMED_LAST_DAY,
 } as const;
 
 async function approvedCase(overrides: Record<string, unknown> = {}): Promise<string> {
@@ -63,9 +67,15 @@ async function activeCase(overrides: Record<string, unknown> = {}): Promise<stri
   return caseId;
 }
 
-async function releasedItTask(caseId: string) {
+async function releasedHrTask(caseId: string) {
   const t = await prisma.workflowTask.findFirstOrThrow({
-    where: { caseId, department: 'IT', status: 'READY' },
+    where: {
+      caseId,
+      department: 'HR',
+      status: 'READY',
+      requiredRole: 'HR_OFFICER',
+      assigneeId: null,
+    },
     orderBy: { sortOrder: 'asc' },
   });
   return t;
@@ -76,8 +86,9 @@ beforeAll(async () => {
   await seedStage3Fixtures();
   officer = await createUser('D61A Officer', 'HR_OFFICER');
   manager = await createUser('D61A Manager', 'HR_MANAGER');
+  hrA = await createUser('D61A HR One', 'HR_OFFICER');
+  hrB = await createUser('D61A HR Two', 'HR_OFFICER');
   itA = await createUser('D61A IT One', 'IT_RESPONDER');
-  itB = await createUser('D61A IT Two', 'IT_RESPONDER');
   finA = await createUser('D61A Finance', 'FINANCE_RESPONDER');
   lineMgr = await createUser('D61A Line Manager', 'LINE_MANAGER');
   lineMgr2 = await createUser('D61A Other Manager', 'LINE_MANAGER');
@@ -122,7 +133,7 @@ describe('manager routing and the activation gate (F/J; AM 14-18)', () => {
     // Managers do not resolve to app accounts in this DB -> MISSING MANAGER.
     await expect(activateCase(manager.actor, caseId)).rejects.toMatchObject({
       code: 'VALIDATION',
-      details: [expect.stringContaining('MISSING MANAGER — ACTION REQUIRED')],
+      details: [expect.stringContaining('MISSING MANAGER')],
     });
     await overrideManager(manager.actor, caseId, lineMgr.userId, 'No account for the manager.');
     await expect(activateCase(manager.actor, caseId)).rejects.toMatchObject({
@@ -181,62 +192,64 @@ describe('manager routing and the activation gate (F/J; AM 14-18)', () => {
   });
 });
 
-describe('department queue lifecycle (G/H/I; AM 20-27)', () => {
-  it('claim: released + unassigned only; dueAt untouched; audited (AM 20/21/24)', async () => {
+describe('work queue lifecycle - HR-operated under the v2 model (G/H/I; AM 20-27, Directive 6.3)', () => {
+  it('claim: released + unassigned only; dueAt untouched; audited; retired logins see nothing (AM 20/21/24, AC 3-4)', async () => {
     const caseId = await activeCase({ employeeSourceId: 'EMP-TEST-001' });
-    const t = await releasedItTask(caseId);
+    const t = await releasedHrTask(caseId);
     const dueBefore = t.dueAt?.toISOString() ?? null;
-    // Finance responder cannot even see the IT task (NOT_FOUND, no leak).
+    // Retired department logins cannot even see the task (NOT_FOUND, no leak).
     await expect(claimTask(finA.actor, t.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    await claimTask(itA.actor, t.id);
+    await expect(claimTask(itA.actor, t.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await claimTask(hrA.actor, t.id);
     const claimed = await prisma.workflowTask.findUniqueOrThrow({ where: { id: t.id } });
-    expect(claimed.assigneeId).toBe(itA.userId);
+    expect(claimed.assigneeId).toBe(hrA.userId);
     expect(claimed.dueAt?.toISOString() ?? null).toBe(dueBefore);
     // Second claim refuses.
-    await expect(claimTask(itB.actor, t.id)).rejects.toMatchObject({ code: 'VALIDATION' });
+    await expect(claimTask(hrB.actor, t.id)).rejects.toMatchObject({ code: 'VALIDATION' });
     const audit = await prisma.auditEvent.findFirst({
       where: { caseId, eventType: 'TASK_CLAIMED', objectId: t.id },
     });
     expect(audit).not.toBeNull();
-    // An unreleased task cannot be claimed (invisible to the department).
+    // An unreleased task cannot be claimed.
     const notReady = await prisma.workflowTask.findFirstOrThrow({
-      where: { caseId, department: 'IT', status: 'NOT_READY' },
+      where: { caseId, department: 'HR', status: 'NOT_READY' },
     });
-    await expect(claimTask(itB.actor, notReady.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(claimTask(hrB.actor, notReady.id)).rejects.toMatchObject({ code: 'VALIDATION' });
   });
 
   it('peer assignment works only for unassigned tasks; targets validated (AM 22)', async () => {
     const caseId = await activeCase({ employeeSourceId: 'EMP-TEST-002' });
-    const t = await releasedItTask(caseId);
-    await expect(assignTask(itB.actor, t.id, finA.userId, 'wrong dept')).rejects.toMatchObject({
+    const t = await releasedHrTask(caseId);
+    // A retired-role target is not a valid holder of HR work.
+    await expect(assignTask(hrB.actor, t.id, finA.userId, 'wrong role')).rejects.toMatchObject({
       code: 'VALIDATION',
     });
-    await assignTask(itB.actor, t.id, itA.userId, 'Load balancing within IT.');
+    await assignTask(hrB.actor, t.id, hrA.userId, 'Load balancing within HR.');
     const assigned = await prisma.auditEvent.findFirst({
       where: { caseId, eventType: 'TASK_ASSIGNED', objectId: t.id },
     });
     const meta = assigned!.metadata as Record<string, unknown>;
     expect(meta['previousAssigneeId']).toBeNull();
-    expect(meta['newAssigneeId']).toBe(itA.userId);
+    expect(meta['newAssigneeId']).toBe(hrA.userId);
     // Already assigned -> peers must not assign again.
-    await expect(assignTask(itB.actor, t.id, itB.userId, 'grab it')).rejects.toMatchObject({
+    await expect(assignTask(hrB.actor, t.id, hrB.userId, 'grab it')).rejects.toMatchObject({
       code: 'VALIDATION',
     });
   });
 
   it('return-to-queue keeps history and the SLA clock (AM 23/24)', async () => {
     const caseId = await activeCase({ employeeSourceId: 'EMP-TEST-003' });
-    const t = await releasedItTask(caseId);
-    await claimTask(itA.actor, t.id);
-    await startTask(itA.actor, t.id);
+    const t = await releasedHrTask(caseId);
+    await claimTask(hrA.actor, t.id);
+    await startTask(hrA.actor, t.id);
     const started = await prisma.workflowTask.findUniqueOrThrow({ where: { id: t.id } });
     expect(started.status).toBe('IN_PROGRESS');
     const dueBefore = started.dueAt?.toISOString() ?? null;
     // Someone else cannot return it.
-    await expect(returnTaskToQueue(itB.actor, t.id, 'not mine')).rejects.toMatchObject({
+    await expect(returnTaskToQueue(hrB.actor, t.id, 'not mine')).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
-    await returnTaskToQueue(itA.actor, t.id, 'Wrong specialty for this system.');
+    await returnTaskToQueue(hrA.actor, t.id, 'Handing back before leave.');
     const returned = await prisma.workflowTask.findUniqueOrThrow({ where: { id: t.id } });
     expect(returned.assigneeId).toBeNull();
     expect(returned.status).toBe('READY');
@@ -246,46 +259,46 @@ describe('department queue lifecycle (G/H/I; AM 20-27)', () => {
       where: { caseId, eventType: 'TASK_RETURNED_TO_QUEUE', objectId: t.id },
     });
     const meta = audit!.metadata as Record<string, unknown>;
-    expect(meta['previousAssigneeId']).toBe(itA.userId);
+    expect(meta['previousAssigneeId']).toBe(hrA.userId);
     expect(meta['wasInProgress']).toBe(true);
   });
 
   it('reassignment records the former assignee and validates targets (AM 24)', async () => {
     const caseId = await activeCase({ employeeSourceId: 'EMP-TEST-004' });
-    const t = await releasedItTask(caseId);
-    await claimTask(itA.actor, t.id);
+    const t = await releasedHrTask(caseId);
+    await claimTask(hrA.actor, t.id);
     await expect(
-      reassignTask(manager.actor, t.id, finA.userId, 'wrong department'),
+      reassignTask(manager.actor, t.id, finA.userId, 'retired role'),
     ).rejects.toMatchObject({ code: 'VALIDATION' });
     const dueBefore = t.dueAt?.toISOString() ?? null;
-    await reassignTask(manager.actor, t.id, itB.userId, 'Primary responder unavailable.');
+    await reassignTask(manager.actor, t.id, hrB.userId, 'Primary officer unavailable.');
     const after = await prisma.workflowTask.findUniqueOrThrow({ where: { id: t.id } });
-    expect(after.assigneeId).toBe(itB.userId);
+    expect(after.assigneeId).toBe(hrB.userId);
     expect(after.dueAt?.toISOString() ?? null).toBe(dueBefore);
     const audit = await prisma.auditEvent.findFirst({
       where: { caseId, eventType: 'TASK_REASSIGNED', objectId: t.id },
       orderBy: { occurredAt: 'desc' },
     });
     const meta = audit!.metadata as Record<string, unknown>;
-    expect(meta['previousAssigneeId']).toBe(itA.userId);
-    expect(meta['newAssigneeId']).toBe(itB.userId);
+    expect(meta['previousAssigneeId']).toBe(hrA.userId);
+    expect(meta['newAssigneeId']).toBe(hrB.userId);
   });
 
   it('completed evidence keeps the original actor (AM 25)', async () => {
     const caseId = await activeCase({ employeeSourceId: 'EMP-TEST-005' });
-    const t = await releasedItTask(caseId);
-    await claimTask(itA.actor, t.id);
-    await startTask(itA.actor, t.id);
-    await completeTask(itA.actor, t.id, 'Access list reviewed and archived.');
+    const t = await releasedHrTask(caseId);
+    await claimTask(hrA.actor, t.id);
+    await startTask(hrA.actor, t.id);
+    await completeTask(hrA.actor, t.id, 'Case details verified and archived.');
     const done = await prisma.workflowTask.findUniqueOrThrow({ where: { id: t.id } });
-    expect(done.completedById).toBe(itA.userId);
+    expect(done.completedById).toBe(hrA.userId);
     // Closed tasks cannot be returned or reassigned away from the evidence.
     await expect(returnTaskToQueue(manager.actor, t.id, 'tidy up')).rejects.toMatchObject({
       code: 'VALIDATION',
     });
     expect(
       (await prisma.workflowTask.findUniqueOrThrow({ where: { id: t.id } })).completedById,
-    ).toBe(itA.userId);
+    ).toBe(hrA.userId);
   });
 
   it('LINE_MANAGER access stays assignment-scoped (D; AM 26)', async () => {
@@ -303,14 +316,14 @@ describe('department queue lifecycle (G/H/I; AM 20-27)', () => {
 
   it('queue quick views and assignee names (G; AM 27)', async () => {
     const caseId = await activeCase({ employeeSourceId: 'EMP-TEST-010' });
-    const t = await releasedItTask(caseId);
-    await claimTask(itA.actor, t.id);
-    const mine = await listMyQueue(itA.actor, { view: 'myTasks' });
+    const t = await releasedHrTask(caseId);
+    await claimTask(hrA.actor, t.id);
+    const mine = await listMyQueue(hrA.actor, { view: 'myTasks' });
     expect(mine.rows.some((r) => r.id === t.id)).toBe(true);
-    expect(mine.rows.find((r) => r.id === t.id)?.assigneeName).toBe('D61A IT One');
-    const unassigned = await listMyQueue(itB.actor, { view: 'unassigned' });
+    expect(mine.rows.find((r) => r.id === t.id)?.assigneeName).toBe('D61A HR One');
+    const unassigned = await listMyQueue(hrB.actor, { view: 'unassigned' });
     expect(unassigned.rows.every((r) => r.assigneeId === null)).toBe(true);
-    const critical = await listMyQueue(itA.actor, { view: 'critical' });
+    const critical = await listMyQueue(hrA.actor, { view: 'critical' });
     expect(critical.rows.every((r) => r.priority === 'CRITICAL' || r.status !== 'NOT_READY')).toBe(
       true,
     );

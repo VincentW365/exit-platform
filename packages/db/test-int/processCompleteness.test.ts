@@ -23,6 +23,10 @@ import {
   requestClearance,
 } from '../src/services/clearanceService.ts';
 import { resolveException } from '../src/services/exceptionService.ts';
+import { confirmBenefits } from '../src/services/derivedActionService.ts';
+import { transitionNotification } from '../src/services/notificationService.ts';
+import { processOutbox } from '../src/services/outboxService.ts';
+import { recordManualEvidence } from '../src/services/ackTokenService.ts';
 import { activateTemplate, createDraftTemplate } from '../src/services/templateService.ts';
 import {
   approveDocument,
@@ -30,9 +34,8 @@ import {
   submitDocument,
 } from '../src/services/documentService.ts';
 import {
+  completeActionForm,
   createActionForm,
-  hrApproveForm,
-  managerApproveForm,
   submitActionForm,
   updateActionFormHr,
 } from '../src/services/actionFormService.ts';
@@ -48,18 +51,19 @@ const prisma = getPrisma();
 
 let officer: Awaited<ReturnType<typeof createUser>>;
 let manager: Awaited<ReturnType<typeof createUser>>;
-let itUser: Awaited<ReturnType<typeof createUser>>;
-let finUser: Awaited<ReturnType<typeof createUser>>;
 let lineMgr: Awaited<ReturnType<typeof createUser>>;
 
-// Effective separation in the recent past so every release gate has fired.
+// Effective separation in the recent past so every release gate has fired
+// (dynamic anchors - fixed calendar dates go stale; Directive 6.3 logic audit).
+const DAY = 86_400_000;
+const SWEEP_CLOCK = new Date(Date.now() + DAY);
 const BASE = {
   ...VALID_DRAFT,
   recordPurpose: 'TEST',
   measurementCohort: null,
-  receivedAt: '2026-07-20T14:00:00.000Z',
-  confirmedLastDay: '2026-08-01T00:00:00.000Z',
-  effectiveSeparationAt: '2026-08-01T22:00:00.000Z',
+  receivedAt: new Date(Date.now() - 26 * DAY).toISOString(),
+  confirmedLastDay: new Date(Date.now() - 15 * DAY).toISOString(),
+  effectiveSeparationAt: new Date(Date.now() - 14 * DAY).toISOString(),
 } as const;
 
 const TEMPLATE_BODY = `DEVELOPMENT TEMPLATE - REQUIRES HR APPROVAL BEFORE OPERATIONAL USE
@@ -88,8 +92,6 @@ beforeAll(async () => {
   setStorageForTests(new LocalStorageAdapter(mkdtempSync(path.join(tmpdir(), 'exit-gap-'))));
   officer = await createUser('Gap Officer', 'HR_OFFICER');
   manager = await createUser('Gap Manager', 'HR_MANAGER');
-  itUser = await createUser('Gap IT', 'IT_RESPONDER');
-  finUser = await createUser('Gap Finance', 'FINANCE_RESPONDER');
   lineMgr = await createUser('Gap Line Manager', 'LINE_MANAGER');
   for (const documentType of [
     'RESIGNATION_ACCEPTANCE_WITH_NOTICE',
@@ -112,7 +114,7 @@ function tasksOf(caseId: string) {
 async function completeAllRequired(caseId: string, hrActor: typeof officer): Promise<void> {
   for (let round = 0; round < 12; round++) {
     // Sweeping with a future clock releases anything still schedule-gated.
-    await runStage3Sweep(new Date('2026-09-01T00:00:00.000Z'));
+    await runStage3Sweep(SWEEP_CLOCK);
     const open = (await tasksOf(caseId)).filter(
       (t) => t.required && ['READY', 'IN_PROGRESS', 'NOT_READY', 'BLOCKED'].includes(t.status),
     );
@@ -122,7 +124,7 @@ async function completeAllRequired(caseId: string, hrActor: typeof officer): Pro
       if (t.status === 'NOT_READY') continue; // dependency/release-gated; next round
       try {
         if (t.taskKind === 'ACCESS_REVOCATION') {
-          await completeAccessTask(itUser.actor, t.id, {
+          await completeAccessTask(hrActor.actor, t.id, {
             systemsCompleted: ['Network account', 'Email', 'Business applications'],
             systemsUnresolved: [],
             note: 'Gap-proof completion.',
@@ -139,14 +141,8 @@ async function completeAllRequired(caseId: string, hrActor: typeof officer): Pro
           progressed = true;
           continue;
         }
-        const actor =
-          t.department === 'FINANCE'
-            ? finUser.actor
-            : t.department === 'IT'
-              ? itUser.actor
-              : t.requiredRole === 'HR_MANAGER'
-                ? manager.actor
-                : hrActor.actor;
+        // Directive 6.3 I/J: HR records residual legacy department work.
+        const actor = t.requiredRole === 'HR_MANAGER' ? manager.actor : hrActor.actor;
         await completeTask(actor, t.id, `${t.taskCode} completed (gap-proof).`);
         progressed = true;
       } catch {
@@ -167,6 +163,29 @@ async function finishCase(caseId: string): Promise<void> {
     if (item.status === 'EXPECTED') {
       await setAssetDisposition(manager.actor, item.id, { status: 'RETURNED', condition: 'Good' });
     }
+  }
+  // Directive 6.3 AA: the v2 gate clears on email-action EVIDENCE. Release
+  // anything still awaiting review (restricted cases demand HR-Manager
+  // release), dispatch through the capture provider, then record completion
+  // evidence for IT - delivery alone is never completion.
+  const derived = await prisma.notificationRecord.findMany({
+    where: { caseId, origin: 'DERIVED' },
+  });
+  for (const r of derived) {
+    if (r.status === 'PENDING_APPROVAL') {
+      await transitionNotification(manager.actor, r.id, 'approve');
+    }
+  }
+  await processOutbox(new Date());
+  const itRecord = await prisma.notificationRecord.findFirst({
+    where: { caseId, notificationType: 'IT_ACCESS_REMOVAL', origin: 'DERIVED' },
+  });
+  if (itRecord && ['SENT', 'ACKNOWLEDGED'].includes(itRecord.status)) {
+    await recordManualEvidence(manager.actor, itRecord.id, {
+      kind: 'COMPLETED',
+      channel: 'EMAIL',
+      note: 'IT confirmed all access removed (gap-proof evidence).',
+    });
   }
   for (const e of await prisma.caseException.findMany({ where: { caseId, status: 'OPEN' } })) {
     await resolveException(
@@ -193,6 +212,11 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
     await transitionCase(manager.actor, caseId, 'approve');
     await readyAssignment(caseId, manager.actor, officer.userId, lineMgr.userId);
     await activateCase(manager.actor, caseId);
+    await confirmBenefits(officer.actor, caseId, {
+      groupHealth: 'NO',
+      groupLife: 'NO',
+      otherProvider: 'NO',
+    });
 
     const doc = await createLetterDraft(officer.actor, caseId);
     await submitDocument(officer.actor, doc.id);
@@ -203,11 +227,12 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
       hrChecklist: HR_CHECKLIST,
       ackStatus: 'ACKNOWLEDGED',
       ackMethod: 'Signed acknowledgement in HR office',
-      ackDate: new Date('2026-07-29T14:00:00.000Z'),
+      ackDate: new Date(Date.now() - 20 * DAY),
     });
     await submitActionForm(officer.actor, form.id);
-    await managerApproveForm(lineMgr.actor, form.id);
-    await hrApproveForm(manager.actor, form.id);
+    // Directive 6.3 F (AC invariant 1): the assigned HR Officer completes the
+    // form - no manager approval exists.
+    await completeActionForm(officer.actor, form.id);
 
     await updateHandover(lineMgr.actor, caseId, {
       dutiesToReassign: 'Open sales orders and till reconciliation.',
@@ -231,6 +256,11 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
     await transitionCase(manager.actor, caseId, 'approve');
     await readyAssignment(caseId, manager.actor, officer.userId, lineMgr.userId);
     await activateCase(manager.actor, caseId);
+    await confirmBenefits(officer.actor, caseId, {
+      groupHealth: 'NO',
+      groupLife: 'NO',
+      otherProvider: 'NO',
+    });
 
     const doc = await createLetterDraft(officer.actor, caseId);
     await submitDocument(officer.actor, doc.id);
@@ -243,8 +273,9 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
       ackReason: 'Employee left immediately; acknowledgement not obtainable.',
     });
     await submitActionForm(officer.actor, form.id);
-    await managerApproveForm(lineMgr.actor, form.id);
-    await hrApproveForm(manager.actor, form.id);
+    // Directive 6.3 F (AC invariant 1): the assigned HR Officer completes the
+    // form - no manager approval exists.
+    await completeActionForm(officer.actor, form.id);
 
     await updateHandover(lineMgr.actor, caseId, {
       dutiesToReassign: 'Warehouse receiving duties reconstructed from records.',
@@ -270,6 +301,11 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
     // officer (HR officers cannot see restricted cases by default).
     await readyAssignment(caseId, manager.actor, manager.userId, lineMgr.userId);
     await activateCase(manager.actor, caseId);
+    await confirmBenefits(manager.actor, caseId, {
+      groupHealth: 'NO',
+      groupLife: 'NO',
+      otherProvider: 'NO',
+    });
 
     // Restricted action form processed by the HR Manager; the manager
     // approval step is attempted but never required to be reachable by a
@@ -281,12 +317,7 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
       ackReason: 'Restricted separation; acknowledgement not obtainable.',
     });
     await submitActionForm(manager.actor, form.id);
-    try {
-      await managerApproveForm(lineMgr.actor, form.id);
-    } catch {
-      // acceptable on restricted flows when the line manager lacks access
-    }
-    await hrApproveForm(manager.actor, form.id);
+    await completeActionForm(manager.actor, form.id);
 
     await completeAllRequired(caseId, manager);
     await finishCase(caseId);

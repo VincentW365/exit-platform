@@ -79,12 +79,17 @@ async function main(): Promise<void> {
     }
     if (i % 10 === 6) {
       try {
-        const n = await db.prepareNotification(officer as never, caseId, {
-          notificationType: 'IT_ACCESS_REMOVAL',
+        // Directive 6.3: activation derives the IT access-removal email;
+        // approving the derived record from the review queue lands the
+        // approved-notification volume (no manual prepare - it would collide
+        // with the derived record's idempotency key).
+        const n = await prisma.notificationRecord.findFirst({
+          where: { caseId, notificationType: 'IT_ACCESS_REMOVAL' },
         });
-        await db.transitionNotification(officer as never, n.id, 'submit');
-        await db.transitionNotification(manager as never, n.id, 'approve');
-        notifications++;
+        if (n && n.status === 'PENDING_APPROVAL') {
+          await db.transitionNotification(manager as never, n.id, 'approve');
+        }
+        if (n) notifications++;
       } catch {
         // acceptable in a smoke seed (e.g. recipient rules); volumes still land
       }

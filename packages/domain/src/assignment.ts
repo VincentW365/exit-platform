@@ -21,8 +21,8 @@ export const CONFIRMATION_LABELS: Readonly<Record<ConfirmationKey, string>> = {
   'employee-identity': 'Employee information reviewed',
   'manager-routing': 'Reporting manager confirmed',
   'hr-ownership': 'HR Officer assigned',
-  'it-routing': 'IT department routing reviewed',
-  'finance-routing': 'Finance department routing reviewed',
+  'it-routing': 'IT notification routing reviewed (automated email)',
+  'finance-routing': 'Finance notification routing reviewed (automated email)',
   'workflow-selection': 'Effective separation date/time and workflow confirmed',
 };
 

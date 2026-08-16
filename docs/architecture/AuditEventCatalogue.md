@@ -120,6 +120,42 @@ Audit events provide evidence of who did what, to which object, when, under whic
 | SECURITY_INCIDENT_CREATED | Security | Security/privacy incident opened | incident, awareness time, severity, owner |
 | PRIVACY_BREACH_NOTIFICATION_RECORDED | Security | Regulatory/data-subject notification evidence recorded | incident, notification type/time/actor; no unnecessary content |
 
+## Directive 6.3 additions (2026-08-16, HR-validated workflow)
+
+Automated decisions are SYSTEM-actor events carrying rule provenance -
+automation is more auditable than the manual flow it replaces. No event
+metadata ever contains a raw token, a recipient address (masks only) or
+notification body content.
+
+| Event type | Area | Meaning | Minimum safe metadata |
+| --- | --- | --- | --- |
+| DERIVED_ACTIONS_COMPUTED | Derived actions | The rules engine derived/refreshed the case's required actions | case, rules version, derived/not-applicable/requires-review counts |
+| DERIVED_ACTION_OVERRIDDEN | Derived actions | Authorized override of a derived action | action key/title, applicable flag, actor, reason |
+| BENEFITS_APPLICABILITY_SET | Case | HR confirmed benefits applicability | case, group health/group life/other values, actor |
+| NOTIFICATION_AUTO_PREPARED | Notification | Derived notification prepared by the system | notification, type, template version, control level, scheduled send |
+| NOTIFICATION_AUTO_APPROVED | Notification | AUTO_SEND release: system approval + outbox enqueue | notification, type, control level, scheduled send |
+| NOTIFICATION_SENT | Notification | Automated dispatch recorded (capture provider outside production) | notification, correlation; masked destination only |
+| NOTIFICATION_ACKNOWLEDGED | Notification | Receipt acknowledged | notification, via (TOKEN / HR_RECORDED), channel where HR-recorded, actor where applicable |
+| NOTIFICATION_COMPLETION_CONFIRMED | Notification | Completion confirmed (internal department actions) | notification, via (TOKEN / HR_RECORDED), channel, actor where applicable |
+| NOTIFICATION_RECIPIENT_SET | Notification | HR entered a case-only recipient | notification, scope CASE_ONLY, masked destination, organization, actor |
+| ACK_TOKEN_ISSUED | Token | Acknowledgement token issued at dispatch | token, purpose, expiry; never the raw value |
+| ACK_TOKEN_USED | Token | Token redeemed (single-use claim) | token, purpose |
+| ACK_TOKEN_EXPIRED | Token | Worker expired a stale token (hash nulled) | token, purpose |
+| ACK_TOKEN_REVOKED | Token | Live token(s) revoked (re-dispatch/cancel/supersede/closure) | notification, reason, count |
+| FORM_SENT_FOR_HR_REVIEW | Action form | Officer finished preparation | form, version, target status |
+| FORM_HR_REVIEWED | Action form | Optional configuration-gated HR-Manager review recorded | form, version, actor |
+| FORM_COMPLETED | Action form | Officer completed the form (attested, PDF rendered) | form, version, actor |
+| FORM_SUPERSEDED | Action form | Finalized form superseded on material case correction (now actually emitted - LR-008) | form, version, reason |
+| TEMPLATE_NOTIFICATION_DRAFTED | Configuration | Notification template version drafted | type, version, actor, change reason |
+| TEMPLATE_NOTIFICATION_UPDATED | Configuration | Draft template updated | type, version, actor |
+| TEMPLATE_NOTIFICATION_ACTIVATED | Configuration | Template activated; prior ACTIVE superseded atomically | type, version, actor |
+| TEMPLATE_NOTIFICATION_RETIRED | Configuration | Draft template retired | type, version, actor, reason |
+| TEMPLATE_NOTIFICATION_TEST_SENT | Configuration | Test render/send to the development capture (synthetic sample values) | type, version, actor, mode |
+
+New exception types flowing through the existing EXCEPTION_* events:
+`RECIPIENT_MISSING`, `BENEFITS_APPLICABILITY_UNKNOWN`,
+`ACKNOWLEDGEMENT_OVERDUE`, `AUTO_SEND_BLOCKED`.
+
 ## Audit integrity rules
 
 - append-only to normal application roles;

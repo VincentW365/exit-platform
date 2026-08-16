@@ -13,6 +13,7 @@ import {
   evaluateClearance,
   letterTypeForDeparture,
   CLEARANCE_MEANING,
+  FORM_LIVE_STATUSES,
   LIVE_INSTANCE_STATUSES,
   type Actor,
   type ClearanceFacts,
@@ -35,14 +36,6 @@ const LIVE_DOC_STATUSES = [
   'RENDER_FAILED',
 ] as const;
 
-const LIVE_FORM_STATUSES = [
-  'DRAFT',
-  'RETURNED',
-  'PENDING_MANAGER',
-  'PENDING_HR',
-  'APPROVED',
-] as const;
-
 /** Gather the clearance facts for a case's live workflow. */
 export async function computeClearanceFacts(caseId: string): Promise<{
   facts: ClearanceFacts;
@@ -58,31 +51,95 @@ export async function computeClearanceFacts(caseId: string): Promise<{
   if (!instance) return null;
 
   const letterType = letterTypeForDeparture(c.departureType);
-  const [letter, form, assets, handover, criticalOpen, securityApproved, assetExceptionApproved] =
-    await Promise.all([
-      letterType
-        ? prisma.documentInstance.findFirst({
-            where: { caseId, documentType: letterType, status: { in: [...LIVE_DOC_STATUSES] } },
-            orderBy: { version: 'desc' },
-          })
-        : Promise.resolve(null),
-      prisma.actionFormVersion.findFirst({
-        where: { caseId, status: { in: [...LIVE_FORM_STATUSES] } },
-        orderBy: { version: 'desc' },
-      }),
-      prisma.assetRecoveryItem.findMany({
-        where: { caseId },
-        select: { status: true, requiredForClearance: true },
-      }),
-      prisma.handoverRecord.findUnique({ where: { caseId } }),
-      prisma.caseException.count({ where: { caseId, status: 'OPEN', severity: 'CRITICAL' } }),
-      prisma.caseException.count({
-        where: { caseId, status: 'RESOLVED', securityExceptionApproved: true },
-      }),
-      prisma.caseException.count({
-        where: { caseId, status: 'RESOLVED', exceptionType: 'ASSET_UNRESOLVED' },
-      }),
-    ]);
+  const [
+    letter,
+    form,
+    assets,
+    handover,
+    criticalOpen,
+    securityApproved,
+    approvedAssetExceptions,
+    emailRecords,
+    requiredEmailActions,
+    resolvedEmailExceptions,
+  ] = await Promise.all([
+    letterType
+      ? prisma.documentInstance.findFirst({
+          where: { caseId, documentType: letterType, status: { in: [...LIVE_DOC_STATUSES] } },
+          orderBy: { version: 'desc' },
+        })
+      : Promise.resolve(null),
+    prisma.actionFormVersion.findFirst({
+      where: { caseId, status: { in: [...FORM_LIVE_STATUSES] } },
+      orderBy: { version: 'desc' },
+    }),
+    prisma.assetRecoveryItem.findMany({
+      where: { caseId },
+      select: { id: true, status: true, requiredForClearance: true },
+    }),
+    prisma.handoverRecord.findUnique({ where: { caseId } }),
+    prisma.caseException.count({ where: { caseId, status: 'OPEN', severity: 'CRITICAL' } }),
+    prisma.caseException.count({
+      where: { caseId, status: 'RESOLVED', securityExceptionApproved: true },
+    }),
+    // Directive 6.3 logic-audit fix: exception coverage is PER ITEM.
+    prisma.caseException.findMany({
+      where: { caseId, status: 'RESOLVED', exceptionType: 'ASSET_UNRESOLVED' },
+      select: { refId: true },
+    }),
+    prisma.notificationRecord.findMany({
+      where: { caseId, origin: 'DERIVED' },
+      select: {
+        id: true,
+        notificationType: true,
+        status: true,
+        sentAt: true,
+        manualSentAt: true,
+        acknowledgedAt: true,
+        completionConfirmedAt: true,
+      },
+    }),
+    prisma.caseRequiredAction.findMany({
+      where: { caseId, kind: 'EMAIL_ACTION', supersededAt: null },
+      select: { actionKey: true, applicable: true, refId: true },
+    }),
+    prisma.caseException.findMany({
+      where: {
+        caseId,
+        status: 'RESOLVED',
+        exceptionType: {
+          in: ['ACKNOWLEDGEMENT_OVERDUE', 'AUTO_SEND_BLOCKED', 'RECIPIENT_MISSING'],
+        },
+      },
+      select: { refId: true, exceptionType: true, securityExceptionApproved: true },
+    }),
+  ]);
+
+  // Directive 6.3 AA: fold record evidence + applicability into per-action
+  // facts. IT exceptions must be management-approved (security posture);
+  // Finance/provider exceptions need documented resolution.
+  const emailActions = emailRecords.map((r) => {
+    const isIt = r.notificationType === 'IT_ACCESS_REMOVAL';
+    const covering = resolvedEmailExceptions.filter((e) => e.refId === r.id);
+    return {
+      notificationType: r.notificationType,
+      applicable:
+        requiredEmailActions.find((a) => a.refId === r.id)?.applicable ??
+        !['CANCELLED', 'SUPERSEDED'].includes(r.status),
+      sentAt: r.sentAt ?? r.manualSentAt,
+      acknowledgedAt: r.acknowledgedAt,
+      completionConfirmedAt: r.completionConfirmedAt,
+      exceptionApproved: isIt
+        ? covering.some((e) => e.securityExceptionApproved)
+        : covering.length > 0,
+    };
+  });
+
+  const benefitsUnresolvedCount = [
+    c.groupHealthApplicability,
+    c.groupLifeApplicability,
+    c.otherProviderApplicability,
+  ].filter((v) => v === 'UNKNOWN').length;
 
   const facts: ClearanceFacts = {
     departureType: c.departureType,
@@ -98,11 +155,15 @@ export async function computeClearanceFacts(caseId: string): Promise<{
     letterRequired: letterType !== null,
     actionFormStatus: form?.status ?? null,
     assets,
-    assetUnresolvedExceptionApproved: assetExceptionApproved > 0,
+    approvedUnresolvedAssetIds: approvedAssetExceptions
+      .map((e) => e.refId)
+      .filter((id): id is string => id !== null),
     handoverRequired: handover?.requiredForClearance ?? false,
     handoverStatus: handover?.status ?? null,
     openCriticalExceptionCount: criticalOpen,
     accessSecurityExceptionApproved: securityApproved > 0,
+    emailActions,
+    benefitsUnresolvedCount,
   };
   return { facts, instanceId: instance.id };
 }
