@@ -55,7 +55,7 @@ test('UAT tablet spot-check: representative surfaces per role', async ({ page })
 
   // Directive 6.3: IT/Finance have no logins - the line manager is the
   // representative departmental queue user ("My work").
-  await signInAs(page, 'Line Manager');
+  await signInAs(page, 'System Administrator');
   await page.goto('/queue');
   await tabletCheck(page, '06-department-queue');
   await signOut(page);

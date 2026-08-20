@@ -5,7 +5,7 @@ import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import { approveReasonAction, retireReasonAction, upsertReasonAction } from './actions';
 
-export const metadata: Metadata = { title: 'Reason taxonomy' };
+export const metadata: Metadata = { title: 'Reason Taxonomy' };
 export const dynamic = 'force-dynamic';
 
 export default async function ReasonsPage({
@@ -22,7 +22,7 @@ export default async function ReasonsPage({
     if (e instanceof ServiceError)
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">Reason taxonomy requires an authorized role.</p>
         </>
       );
@@ -32,7 +32,7 @@ export default async function ReasonsPage({
 
   return (
     <>
-      <h1>Reason taxonomy</h1>
+      <h1>Reason Taxonomy</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
         Versioned configurable reference data - never a code enum. Synthetic examples require HR
@@ -99,7 +99,7 @@ export default async function ReasonsPage({
                       <summary>Retire</summary>
                       <form action={retireReasonAction}>
                         <input type="hidden" name="id" value={c.id} />
-                        <label htmlFor={`rr-${c.id}`}>Reason (audited)</label>
+                        <label htmlFor={`rr-${c.id}`}>Reason (Audited)</label>
                         <input id={`rr-${c.id}`} name="reason" required maxLength={500} />
                         <button type="submit">Retire category</button>
                       </form>
@@ -116,29 +116,29 @@ export default async function ReasonsPage({
         <details className="action">
           <summary>Add or revise a category (creates a new version)</summary>
           <form action={upsertReasonAction}>
-            <label htmlFor="rc-code">Code (A-Z, 0-9, dashes)</label>
+            <label htmlFor="rc-code">Code (A-Z, 0-9, Dashes)</label>
             <input id="rc-code" name="code" required maxLength={40} />
             <label htmlFor="rc-label">Label</label>
             <input id="rc-label" name="label" required maxLength={200} />
             <label htmlFor="rc-desc">Description</label>
             <textarea id="rc-desc" name="description" rows={2} maxLength={1000} />
-            <label htmlFor="rc-vol">Voluntary / involuntary applicability</label>
+            <label htmlFor="rc-vol">Voluntary / Involuntary Applicability</label>
             <select id="rc-vol" name="voluntary" defaultValue="">
               <option value="">Any</option>
               <option value="true">Voluntary only</option>
               <option value="false">Involuntary only</option>
             </select>
             <fieldset>
-              <legend>Departure-type applicability (none = all)</legend>
+              <legend>Applies to Departure Types</legend>
               {DEPARTURE_TYPES.map((t) => (
                 <label key={t} style={{ display: 'block' }}>
                   <input type="checkbox" name="departureTypes" value={t} /> {t}
                 </label>
               ))}
             </fieldset>
-            <label htmlFor="rc-group">Reporting group</label>
+            <label htmlFor="rc-group">Reporting Group</label>
             <input id="rc-group" name="reportingGroup" maxLength={100} />
-            <label htmlFor="rc-sort">Sort order</label>
+            <label htmlFor="rc-sort">Sort Order</label>
             <input
               id="rc-sort"
               name="sortOrder"
@@ -148,9 +148,9 @@ export default async function ReasonsPage({
               defaultValue={0}
             />
             <label>
-              <input type="checkbox" name="sensitive" /> Sensitive (reported only through its group)
+              <input type="checkbox" name="sensitive" /> Sensitive (Reported Only Through Its Group)
             </label>
-            <label htmlFor="rc-reason">Change reason (required, audited)</label>
+            <label htmlFor="rc-reason">Change Reason (Required, Audited)</label>
             <input id="rc-reason" name="changeReason" required maxLength={500} />
             <button type="submit">Save as new version (requires approval)</button>
           </form>

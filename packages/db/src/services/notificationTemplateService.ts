@@ -31,9 +31,8 @@ const SAMPLE_VALUES: Record<string, string> = {
   CASE_REFERENCE: 'OFF-2026-0000',
   DEPARTMENT: 'Operations',
   EFFECTIVE_SEPARATION_DATE: '29 Aug 2026',
-  EFFECTIVE_SEPARATION_TIME: '29 Aug 2026, 5:00 PM (America/Jamaica)',
+  EFFECTIVE_SEPARATION_TIME: '29 Aug 2026, 5:00 PM',
   CONFIRMED_LAST_WORKING_DATE: '28 Aug 2026',
-  HANDOVER_DUE_DATE: '28 Aug 2026',
   ACCESS_SYSTEMS_SUMMARY: 'Network account; Email; Business applications; Building access',
   SURVEY_EXPIRY_NOTE:
     'The survey link is provided separately and expires 14 days after it is sent.',

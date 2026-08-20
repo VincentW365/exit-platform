@@ -198,7 +198,7 @@ async function stage4Sweep(): Promise<void> {
     // Directive 5.1 D.2: prepared scheduled directory sync - a no-op unless
     // the bamboohr.scheduledSync configuration flag is explicitly enabled.
     const directorySync = await scheduledDirectorySyncIfEnabled();
-    if (directorySync !== 'disabled') {
+    if (directorySync !== 'disabled' && directorySync !== 'fresh') {
       log('directory_scheduled_sync', { outcome: directorySync }); // counts only, never names
     }
     // PII-free heartbeat for readiness gates and the health dashboard.

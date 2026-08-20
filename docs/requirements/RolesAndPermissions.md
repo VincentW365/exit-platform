@@ -92,6 +92,27 @@ formal policy/legal approval.
   lifecycle (`recipients.approveExternal`, HR Manager) - unchanged from
   Stage 4.
 
+### HR samples implementation note (2026-08-20)
+
+- **Exit checklist for return items (DEC-053)** reuses the asset permissions:
+  `asset.view` to see it on the case, `asset.manage` to record or correct it.
+  The recipient needs no permission at all - the secure single-use link is the
+  authorization, under the DEC-048 token discipline.
+- **Issuing the acceptance letter by email (DEC-054)** is `doc.markIssued`,
+  the same management-grade authority that already covered recording a manual
+  issue. Maker-checker on employee-facing documents is unchanged: the officer
+  drafts and addresses, the HR Manager approves and issues. Typing the address
+  from the resignation scan is officer work (`doc.edit`).
+- **New global permission** `notifications.routing` (HR Manager +
+  SYSTEM_ADMIN) edits the routing table (DEC-056). Who receives which
+  notification is a business decision with a technical consequence, so both
+  hold it. Reading the email log rides on `outbox.view`.
+- **New global permission** `notifications.testMode` (HR Manager +
+  SYSTEM_ADMIN) turns rehearsal mode on and off (DEC-055). It is deliberately
+  held by both: HR runs the rehearsal, the administrator owns delivery - the
+  same shape as pilot management. Reading the current setting rides on
+  `outbox.view`, because a diversion nobody can see is worse than none.
+
 ## Capability matrix
 
 Legend: `Full` means within approved record scope, not unrestricted database access.

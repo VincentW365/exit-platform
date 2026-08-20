@@ -10,8 +10,9 @@ import {
   retireTemplateAction,
   updateTemplateAction,
 } from './actions';
+import { humanize } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'Document templates' };
+export const metadata: Metadata = { title: 'Document Templates' };
 export const dynamic = 'force-dynamic';
 
 const TPL_BADGE: Record<string, string> = {
@@ -35,7 +36,7 @@ export default async function TemplatesPage({
 
   return (
     <>
-      <h1>Controlled document templates</h1>
+      <h1>Controlled Document Templates</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint">
         Active templates are immutable; edits create a new draft version. Officers draft, HR
@@ -48,7 +49,7 @@ export default async function TemplatesPage({
           <summary>Create a new draft version</summary>
           <form action={createTemplateAction} className="stack panel">
             <div className="field">
-              <label htmlFor="t-type">Document type</label>
+              <label htmlFor="t-type">Document Type</label>
               <select id="t-type" name="documentType" required defaultValue="">
                 <option value="" disabled>
                   Choose...
@@ -69,13 +70,13 @@ export default async function TemplatesPage({
             </div>
             <div className="field" style={{ maxWidth: '46rem' }}>
               <label htmlFor="t-body">
-                Content (plain text; placeholders like [[EMPLOYEE_LEGAL_NAME]])
+                Content (Plain Text; Placeholders Like [[EMPLOYEE_LEGAL_NAME]])
               </label>
               <textarea id="t-body" name="contentBody" rows={12} />
               <p className="hint">Allowed placeholders: {DOCUMENT_PLACEHOLDERS.join(', ')}</p>
             </div>
             <div className="field">
-              <label htmlFor="t-reason">Reason for change</label>
+              <label htmlFor="t-reason">Reason for Change</label>
               <input id="t-reason" name="changeReason" type="text" maxLength={200} />
             </div>
             <button type="submit">Create draft</button>
@@ -87,11 +88,11 @@ export default async function TemplatesPage({
         <section key={t.id} className="panel" aria-label={`${t.name} v${t.version}`}>
           <h2 style={{ marginTop: 0 }}>
             {t.name} <span className="badge badge--neutral">v{t.version}</span>{' '}
-            <span className={`badge ${TPL_BADGE[t.status]}`}>{t.status}</span>
+            <span className={`badge ${TPL_BADGE[t.status]}`}>{humanize(t.status)}</span>
           </h2>
           <dl className="kv">
             <dt>Type</dt>
-            <dd>{t.documentType.replaceAll('_', ' ').toLowerCase()}</dd>
+            <dd>{humanize(t.documentType)}</dd>
             <dt>Checksum</dt>
             <dd>
               <code>{t.contentChecksum.slice(0, 16)}...</code>
@@ -104,7 +105,7 @@ export default async function TemplatesPage({
             ) : null}
             {t.changeReason ? (
               <>
-                <dt>Change reason</dt>
+                <dt>Change Reason</dt>
                 <dd>{t.changeReason}</dd>
               </>
             ) : null}
@@ -156,7 +157,7 @@ export default async function TemplatesPage({
                     />
                   </div>
                   <div className="field">
-                    <label htmlFor={`r-${t.id}`}>Reason for change</label>
+                    <label htmlFor={`r-${t.id}`}>Reason for Change</label>
                     <input id={`r-${t.id}`} name="changeReason" type="text" maxLength={200} />
                   </div>
                   <button type="submit">Save draft</button>
@@ -177,7 +178,7 @@ export default async function TemplatesPage({
                 <form action={retireTemplateAction} className="stack">
                   <input type="hidden" name="templateId" value={t.id} />
                   <div className="field">
-                    <label htmlFor={`ret-${t.id}`}>Reason (required)</label>
+                    <label htmlFor={`ret-${t.id}`}>Reason (Required)</label>
                     <input id={`ret-${t.id}`} name="reason" type="text" required maxLength={200} />
                   </div>
                   <button type="submit" className="danger">

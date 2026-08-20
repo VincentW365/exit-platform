@@ -20,9 +20,9 @@ import { ServiceError } from '../errors.ts';
 export type ProgressStageKey =
   | 'CASE'
   | 'DOCUMENTS'
-  | 'HANDOVER'
   | 'IT'
   | 'FINANCE'
+  | 'EMAIL_ACTIONS'
   | 'BENEFITS'
   | 'ASSETS'
   | 'SURVEY'
@@ -82,7 +82,6 @@ export async function caseProgressSummary(
   const [
     tasksByDept,
     documents,
-    handover,
     assets,
     invitations,
     clearance,
@@ -97,10 +96,6 @@ export async function caseProgressSummary(
       _count: { _all: true },
     }),
     prisma.documentInstance.findMany({ where: { caseId }, select: { status: true } }),
-    prisma.handoverRecord.findUnique({
-      where: { caseId },
-      select: { status: true, requiredForClearance: true, notApplicableReason: true },
-    }),
     prisma.assetRecoveryItem.findMany({ where: { caseId }, select: { status: true } }),
     prisma.surveyInvitation.findMany({
       where: { caseId },
@@ -231,12 +226,51 @@ export async function caseProgressSummary(
 
   const legacyIt = dept('IT').total > 0;
   const legacyFinance = dept('FINANCE').total > 0;
-  const itStage = legacyIt
-    ? { ...deptState('IT'), href: `${base}/workflow` }
-    : { ...itEmailState(), href: `${base}/notifications` };
-  const financeStage = legacyFinance
-    ? { ...deptState('FINANCE'), href: `${base}/workflow` }
-    : { ...financeEmailState(), href: `${base}/notifications` };
+
+  // IT and Finance no longer sign in or hold a queue, so the case Overview
+  // stopped carrying a chip for each of them (owner request, 2026-08-19).
+  // Their controlled emails progress as one item that links to the Email
+  // Actions tab. Legacy cases whose pinned workflow really did create IT and
+  // Finance task queues keep their own chips so old records still read true.
+  const departmentStages: ProgressStage[] = [];
+  if (legacyIt)
+    departmentStages.push({
+      key: 'IT',
+      label: 'IT',
+      ...deptState('IT'),
+      href: `${base}/workflow`,
+    });
+  if (legacyFinance)
+    departmentStages.push({
+      key: 'FINANCE',
+      label: 'Finance',
+      ...deptState('FINANCE'),
+      href: `${base}/workflow`,
+    });
+  if (!legacyIt || !legacyFinance) {
+    const parts = [
+      ...(legacyIt ? [] : [itEmailState()]),
+      ...(legacyFinance ? [] : [financeEmailState()]),
+    ];
+    const worst: ProgressState = parts.some((s) => s.state === 'BLOCKED')
+      ? 'BLOCKED'
+      : parts.some((s) => s.state === 'NOT_STARTED')
+        ? 'NOT_STARTED'
+        : parts.some((s) => s.state === 'IN_PROGRESS')
+          ? 'IN_PROGRESS'
+          : 'COMPLETED';
+    const detail =
+      worst === 'COMPLETED'
+        ? 'Department notifications complete'
+        : (parts.find((s) => s.state === worst)?.detail ?? 'Awaiting automated notifications');
+    departmentStages.push({
+      key: 'EMAIL_ACTIONS',
+      label: 'Email Actions',
+      state: worst,
+      detail,
+      href: `${base}/notifications`,
+    });
+  }
 
   // Benefits & providers (Directive 6.3 V): confirmed once by HR; anything
   // still unknown keeps the stage open.
@@ -273,16 +307,6 @@ export async function caseProgressSummary(
       detail: `${done.length} of ${active.length} finalized`,
     } as const;
   })();
-
-  const handoverState: { state: ProgressState; detail: string } = !handover
-    ? { state: 'NOT_STARTED', detail: 'Created at activation' }
-    : handover.status === 'COMPLETED'
-      ? { state: 'COMPLETED', detail: 'Manager attested' }
-      : handover.status === 'NOT_APPLICABLE' || handover.status === 'WAIVED'
-        ? { state: 'NOT_APPLICABLE', detail: handover.status.replaceAll('_', ' ').toLowerCase() }
-        : handover.status === 'NOT_STARTED'
-          ? { state: 'NOT_STARTED', detail: 'Not started' }
-          : { state: 'IN_PROGRESS', detail: handover.status.replaceAll('_', ' ').toLowerCase() };
 
   const assetState: { state: ProgressState; detail: string } = (() => {
     if (assets.length === 0)
@@ -321,9 +345,7 @@ export async function caseProgressSummary(
   const stages: ProgressStage[] = [
     { key: 'CASE', label: 'Case', ...caseState, href: base },
     { key: 'DOCUMENTS', label: 'Documents', ...docState, href: `${base}/documents` },
-    { key: 'HANDOVER', label: 'Handover', ...handoverState, href: `${base}/handover` },
-    { key: 'IT', label: 'IT', ...itStage },
-    { key: 'FINANCE', label: 'Finance', ...financeStage },
+    ...departmentStages,
     { key: 'BENEFITS', label: 'Benefits', ...benefitsState, href: base },
     { key: 'ASSETS', label: 'Assets', ...assetState, href: `${base}/assets` },
     { key: 'SURVEY', label: 'Survey', ...surveyState, href: `${base}/survey` },

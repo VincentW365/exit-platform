@@ -4,7 +4,7 @@
  * the stage acceptance suites:
  *
  *   - one INTEGRATED resignation-with-notice case through workflow, document,
- *     benefits confirmation, HR-completed action form, handover, assets,
+ *     benefits confirmation, HR-completed action form, assets,
  *     automated IT/Finance email actions with recorded completion evidence,
  *     outbox capture, survey, clearance, completion and report reflection
  *     (plan sets UAT-1..UAT-5);
@@ -38,21 +38,25 @@ async function createTestCase(
   opts: { employeeQuery: string; type: string; confirmedLastDay?: boolean },
 ): Promise<{ url: string; number: string }> {
   await page.goto('/cases/new');
-  await page.getByLabel(/Search the employee source/).fill(opts.employeeQuery);
+  await page.getByLabel('Employee Name or Number').fill(opts.employeeQuery);
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure type (required)').selectOption(opts.type);
-  await page.getByLabel('Receipt date and time (required)').fill('2026-07-22T09:30');
-  await page.getByLabel('Source of the receipt timestamp (required)').fill('Synthetic UAT receipt');
-  if (opts.confirmedLastDay !== false) {
-    await page.getByLabel('Confirmed last working day').fill('2026-08-14');
+  await page.getByLabel('Departure Type').selectOption(opts.type);
+  await page.getByLabel('Date and Time Received').fill('2026-07-22T09:30');
+  // A resignation with notice ends at close of business on the final working
+  // date, so the platform derives the instant and the field is not offered.
+  if (opts.type === 'RESIGNATION_WITH_NOTICE') {
+    await page.getByLabel('Final Working Date').fill('2026-08-14');
+  } else {
+    if (opts.confirmedLastDay !== false) {
+      await page.getByLabel('Final Working Date').fill('2026-08-14');
+    }
+    await page.getByLabel(/Employment Ends/).fill('2026-08-14T17:00');
   }
-  await page.getByLabel(/Effective separation date and exact time/).fill('2026-08-14T17:00');
-  await page.getByLabel('Record purpose').selectOption('TEST');
   await page.getByRole('button', { name: 'Create draft case' }).click();
-  const banner = page.getByText(/Draft case OFF-\d{4}-\d{4} created/);
+  const banner = page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/);
   await expect(banner).toBeVisible();
-  const number = /OFF-\d{4}-\d{4}/.exec((await banner.textContent()) ?? '')![0];
+  const number = /OFF-\d{4}-\d{4,}(?:-\d)?/.exec((await banner.textContent()) ?? '')![0];
   return { url: page.url().split('?')[0]!, number };
 }
 
@@ -86,7 +90,7 @@ async function completeAssignmentPlan(
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
-  await page.locator('#am-user').selectOption({ label: 'Line Manager' });
+  await page.locator('#am-user').selectOption({ index: 1 });
   await page.locator('#am-reason').fill('UAT manager routing.');
   await page.getByRole('button', { name: 'Record alternate manager' }).click();
   await expect(page.getByText('Alternate manager recorded')).toBeVisible();
@@ -105,20 +109,6 @@ async function completeTaskFromWorkflow(
 ): Promise<void> {
   await page.goto(`${caseUrl}/workflow`);
   await page.getByRole('link', { name: title, exact: true }).click();
-  await page.locator('details.action > summary', { hasText: 'Complete with evidence' }).click();
-  await page.locator('#c-note').fill(note);
-  await page.getByRole('button', { name: 'Complete task' }).click();
-  await expect(page.getByText('Task completed with evidence.')).toBeVisible();
-}
-
-async function completeTaskViaQueue(
-  page: Page,
-  caseNumber: string,
-  title: string,
-  note = 'Completed in the synthetic UAT run.',
-): Promise<void> {
-  await page.goto(`/queue?view=all&q=${caseNumber}`);
-  await page.getByRole('link', { name: title, exact: true }).first().click();
   await page.locator('details.action > summary', { hasText: 'Complete with evidence' }).click();
   await page.locator('#c-note').fill(note);
   await page.getByRole('button', { name: 'Complete task' }).click();
@@ -189,14 +179,14 @@ test('UAT-1..5 - integrated resignation with notice: one case end to end (Direct
   // Workflow preview reviewed, then activated.
   await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/workflow`);
-  await expect(page.getByText('Workflow preview (read-only, before activation)')).toBeVisible();
+  await expect(page.getByText('Workflow Preview (Read-only, Before Activation)')).toBeVisible();
   await page.getByRole('button', { name: 'Activate case and create these tasks' }).click();
   await expect(page.getByText(/Case activated/)).toBeVisible();
 
   // UAT-3: activation derived the IT and Finance email actions automatically -
   // zero clicks prepared them; the rows show business-language statuses.
   await page.goto(`${caseUrl}/notifications`);
-  await expect(page.getByRole('heading', { name: /Email actions/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Email Actions/ })).toBeVisible();
   const itAction = page.locator('section[aria-label="IT access removal email action"]').first();
   await expect(itAction).toBeVisible();
   await expect(itAction.locator('.badge').first()).toHaveText(
@@ -211,6 +201,12 @@ test('UAT-1..5 - integrated resignation with notice: one case end to end (Direct
   await page.goto(`${caseUrl}/documents`);
   await page.getByRole('button', { name: 'Create resignation document draft' }).click();
   await expect(page.getByText('Draft document created')).toBeVisible();
+  // The acceptance letter is addressed, so HR types the address from the
+  // resignation letter scan before submitting (DEC-054).
+  await page.getByLabel('Employee Address').fill('12 Synthetic Avenue, Kingston 5');
+  await page.getByRole('button', { name: 'Save address' }).click();
+  await expect(page.getByText(/Address recorded/)).toBeVisible();
+  await page.getByRole('button', { name: 'Refresh fields from case' }).click();
   await page.getByRole('button', { name: 'Validate and submit for approval' }).click();
   await expect(page.getByText('Document submitted for HR Manager approval.')).toBeVisible();
 
@@ -221,7 +217,6 @@ test('UAT-1..5 - integrated resignation with notice: one case end to end (Direct
     .click();
   await page.locator('#ben-health').selectOption('NO');
   await page.locator('#ben-life').selectOption('NO');
-  await page.locator('#ben-other').selectOption('NO');
   await page.getByRole('button', { name: 'Confirm applicability' }).click();
   await expect(page.getByText(/Benefits applicability confirmed/)).toBeVisible();
   await completeTaskFromWorkflow(page, caseUrl, 'Confirm benefits and provider applicability');
@@ -285,7 +280,7 @@ test('UAT-1..5 - integrated resignation with notice: one case end to end (Direct
   await expect(
     page
       .locator('section[aria-label="Captured message"]', { hasText: caseNo })
-      .filter({ hasText: /Access removal required/i })
+      .filter({ hasText: /Access Removal/i })
       .first(),
   ).toBeVisible();
 
@@ -303,27 +298,12 @@ test('UAT-1..5 - integrated resignation with notice: one case end to end (Direct
   await expect(page.getByText('Completion evidence recorded.')).toBeVisible();
   await signOut(page);
 
-  // UAT-3.4: the manager completes the handover and the manager tasks
-  // (auto-assigned through the assignment plan).
-  await signInAs(page, 'Line Manager');
-  await page.goto(`${caseUrl}/handover`);
-  await page.locator('#ho-dutiesToReassign').fill('Parts counter scheduling and escalations.');
-  await page.locator('#ho-openWorkDeadlines').fill('August stock count preparation.');
-  await page.locator('#ho-replacementOwner').fill('Interim owner: warehouse coordinator.');
-  await page.getByRole('button', { name: 'Save handover record' }).click();
-  await expect(page.getByText('Handover record saved.')).toBeVisible();
-  await page
-    .locator('details.action > summary', { hasText: 'Complete handover (manager attestation)' })
-    .click();
-  await page.getByRole('button', { name: 'Complete with attestation' }).click();
-  await expect(page.getByText('Handover completed with manager attestation.')).toBeVisible();
-  // The attestation auto-completes the manager handover tasks (plan +
-  // knowledge-transfer); only the released duty-reassignment task remains.
-  await completeTaskViaQueue(page, caseNo, 'Reassign open duties and deadlines');
-  await signOut(page);
-
   // UAT-1/5: HR closes the remaining tasks; assets returned; survey issued.
   await signInAs(page, 'HR Officer');
+
+  // UAT-3.4: the manager is told by email and records nothing in the platform.
+  await page.goto(`${caseUrl}/notifications`);
+  await expect(page.getByText(/departure notice/i).first()).toBeVisible();
   await completeTaskFromWorkflow(
     page,
     caseUrl,
@@ -347,14 +327,14 @@ test('UAT-1..5 - integrated resignation with notice: one case end to end (Direct
     await expect(page.getByText('Invitation created.')).toBeVisible();
   }
   await page.getByRole('button', { name: 'Generate secure link' }).click();
-  await expect(page.getByText('Secure invitation link (shown once)')).toBeVisible();
+  await expect(page.getByText('Secure Invitation Link (Shown Once)')).toBeVisible();
   const link = await page.locator('code').first().textContent();
   await page.getByRole('button', { name: 'Record manually sent' }).click();
   await expect(page.getByText(/Recorded as manually sent/)).toBeVisible();
 
   // UAT-5: clearance requested with every condition met.
   await page.goto(`${caseUrl}/clearance`);
-  await expect(page.getByText('ALL CONDITIONS MET')).toBeVisible();
+  await expect(page.getByText('All conditions met')).toBeVisible();
   await page.getByRole('button', { name: 'Request clearance review' }).click();
   await expect(page.getByText(/Case moved to clearance review/)).toBeVisible();
   await signOut(page);
@@ -400,6 +380,12 @@ test('Document correction - invalidation, supersede, re-approval (audited)', asy
   await page.goto(`${caseUrl}/documents`);
   await page.getByRole('button', { name: 'Create resignation document draft' }).click();
   await expect(page.getByText('Draft document created')).toBeVisible();
+  // The acceptance letter is addressed, so HR types the address from the
+  // resignation letter scan before submitting (DEC-054).
+  await page.getByLabel('Employee Address').fill('12 Synthetic Avenue, Kingston 5');
+  await page.getByRole('button', { name: 'Save address' }).click();
+  await expect(page.getByText(/Address recorded/)).toBeVisible();
+  await page.getByRole('button', { name: 'Refresh fields from case' }).click();
   await page.getByRole('button', { name: 'Validate and submit for approval' }).click();
   await expect(page.getByText('Document submitted for HR Manager approval.')).toBeVisible();
   await signOut(page);
@@ -454,7 +440,7 @@ test('UAT-7 continuity - outage and manual fallback: FB refs, one-time reconcili
 
   await signInAs(page, 'HR Manager');
   await page.goto('/continuity');
-  await expect(page.getByText('Blank fallback forms (print and use manually)')).toBeVisible();
+  await expect(page.getByText('Blank Fallback Forms (Print and Use Manually)')).toBeVisible();
 
   // 1: declare a synthetic outage.
   await page.locator('details.action > summary', { hasText: 'Declare an outage' }).click();

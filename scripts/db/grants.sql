@@ -55,6 +55,7 @@ GRANT SELECT, INSERT, UPDATE ON
   handover_record,
   case_exception,
   notification_outbox,
+  notification_routing,
   recipient_config,
   system_config,
   pilot_activation,
@@ -67,7 +68,9 @@ GRANT SELECT, INSERT, UPDATE ON
   support_ticket,
   backup_record,
   case_required_action,
-  action_token
+  action_token,
+  return_items_checklist,
+  return_items_checklist_entry
 TO exit_app;
 
 -- Attestations: insert + read + update (update restricted by trigger to the

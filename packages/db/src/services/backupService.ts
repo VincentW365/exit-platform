@@ -24,7 +24,14 @@ const execFileAsync = promisify(execFile);
 function migrateUrl(): URL {
   const raw = process.env['DATABASE_URL_MIGRATE'];
   if (!raw) throw ServiceError.validation(['DATABASE_URL_MIGRATE is required for backup work.']);
-  return new URL(raw);
+  const url = new URL(raw);
+  // Owner credentials, but ALWAYS the database this process actually runs
+  // against: the integration harness promotes DATABASE_URL to the isolated
+  // test database while DATABASE_URL_MIGRATE still names the development one
+  // - dumping that would capture a DIFFERENT environment's data (latent flaw
+  // found 2026-08-17 when a freshly rebuilt dev database exposed it).
+  url.pathname = new URL(getConfig().DATABASE_URL).pathname;
+  return url;
 }
 
 /** Q: repeatable synthetic database backup with recorded evidence. */

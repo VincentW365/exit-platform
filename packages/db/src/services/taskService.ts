@@ -899,7 +899,7 @@ export async function listMyQueue(actor: Actor, rawFilter: unknown = {}) {
   const f = parsed.data;
 
   const departments = queueDepartmentsForActor(actor);
-  if (departments.length === 0) return { departments: [], rows: [] };
+  if (departments.length === 0) return { departments: [], departmentsWithWork: [], rows: [] };
   const selected =
     f.department && departments.includes(f.department) ? [f.department] : departments;
 
@@ -1020,6 +1020,24 @@ export async function listMyQueue(actor: Actor, rawFilter: unknown = {}) {
     },
   });
 
+  // Which departments actually HAVE live work for this actor? The v2
+  // workflow has HR (and manager handover) tasks only, so the department
+  // filter/column are noise unless a legacy instance is still running
+  // (owner request, 2026-08-18). Authorization is unchanged - this is a
+  // presentation fact computed from the same authorized clauses.
+  const departmentsWithWork = (
+    await getPrisma().workflowTask.groupBy({
+      by: ['department'],
+      where: {
+        AND: [
+          { OR: deptClauses },
+          { status: { not: 'NOT_READY' } },
+          { instance: { is: { status: { in: ['ACTIVE', 'ON_HOLD', 'CLEARANCE_PENDING'] } } } },
+        ],
+      },
+    })
+  ).map((g) => g.department);
+
   // Directive 6.1 (G): responders see WHO holds each task, not just a UUID.
   // One batched lookup (assigneeId has no schema relation by design).
   const assigneeIds = [...new Set(rows.map((t) => t.assigneeId).filter((v): v is string => !!v))];
@@ -1034,6 +1052,7 @@ export async function listMyQueue(actor: Actor, rawFilter: unknown = {}) {
 
   return {
     departments,
+    departmentsWithWork,
     rows: rows.map((t) => {
       const ctx: CaseAccessContext = {
         ownerId: t.case.ownerId,

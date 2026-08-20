@@ -59,7 +59,7 @@ export async function overrideManagerAction(formData: FormData): Promise<void> {
   await touchSession();
   const caseId = str(formData, 'caseId');
   try {
-    await overrideManager(actor, caseId, str(formData, 'managerUserId'), str(formData, 'reason'));
+    await overrideManager(actor, caseId, str(formData, 'managerSourceId'), str(formData, 'reason'));
     revalidatePath(`/cases/${caseId}/assignment`);
     back(caseId, { ok: 'Alternate manager recorded with before/after audit evidence.' });
   } catch (e) {

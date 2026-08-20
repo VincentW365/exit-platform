@@ -7,24 +7,35 @@ import { logoutAction } from '@/app/signin/actions';
 import { ActiveLink, BackButton, Breadcrumbs, MobileMenu } from '@/components/chrome';
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import type { ReactNode } from 'react';
+import { roleList } from '@/lib/text';
+import {
+  AdminIcon,
+  AlertIcon,
+  AuditIcon,
+  BookIcon,
+  CasesIcon,
+  ChartIcon,
+  DirectoryIcon,
+  DocumentIcon,
+  HomeIcon,
+  LifebuoyIcon,
+  QueueIcon,
+  ReportsIcon,
+  ShieldIcon,
+} from '@/components/icons';
 
 /** Human role names for the topbar (correction 7); retired roles kept for safety. */
-const ROLE_LABELS: Record<string, string> = {
-  HR_MANAGER: 'HR Manager',
-  HR_OFFICER: 'HR Officer',
-  LINE_MANAGER: 'Line Manager',
-  SYSTEM_ADMIN: 'System Administrator',
-  IT_RESPONDER: 'IT Responder',
-  FINANCE_RESPONDER: 'Finance Responder',
-  AUDITOR: 'Auditor',
-  PRIVACY_OFFICER: 'Privacy Officer',
-};
-const roleLabel = (r: string): string =>
-  ROLE_LABELS[r] ??
-  r
-    .replaceAll('_', ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+
+/** Two-letter monogram for the signed-in person's avatar. */
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join('');
+}
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, actor } = await requireAuth();
@@ -36,31 +47,36 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // reach Templates, Workflows and Baseline through the hub; everyone else
   // keeps direct links (they cannot open /admin).
   const hasAdminHub = can(actor, 'admin.roles') || can(actor, 'admin.calendar');
-  type Item = { href: string; label: string };
-  const work: Item[] = [{ href: '/', label: 'Dashboard' }];
-  if (can(actor, 'case.list')) work.push({ href: '/cases', label: 'Cases' });
-  if (can(actor, 'case.create')) work.push({ href: '/cases/new', label: 'New case' });
-  if (can(actor, 'queue.view')) work.push({ href: '/queue', label: 'My work' });
-  if (can(actor, 'exceptions.viewFeed')) work.push({ href: '/exceptions', label: 'Exceptions' });
+  type Item = { href: string; label: string; icon: ReactNode };
+  const work: Item[] = [{ href: '/', label: 'Exit Center', icon: <HomeIcon /> }];
+  if (can(actor, 'case.list')) work.push({ href: '/cases', label: 'Cases', icon: <CasesIcon /> });
+  if (can(actor, 'queue.view'))
+    work.push({ href: '/queue', label: 'My Work', icon: <QueueIcon /> });
+  if (can(actor, 'exceptions.viewFeed'))
+    work.push({ href: '/exceptions', label: 'Exceptions', icon: <AlertIcon /> });
 
   const insight: Item[] = [];
-  if (can(actor, 'employeeSource.search')) insight.push({ href: '/directory', label: 'Directory' });
-  if (can(actor, 'reports.view')) insight.push({ href: '/reports', label: 'Reports' });
+  if (can(actor, 'employeeSource.search'))
+    insight.push({ href: '/directory', label: 'Directory', icon: <DirectoryIcon /> });
+  if (can(actor, 'reports.view'))
+    insight.push({ href: '/reports', label: 'Reports', icon: <ReportsIcon /> });
   if (!hasAdminHub && can(actor, 'baseline.viewDashboard'))
-    insight.push({ href: '/baseline', label: 'Baseline' });
+    insight.push({ href: '/baseline', label: 'Baseline', icon: <ChartIcon /> });
   if (can(actor, 'audit.viewGlobal') || can(actor, 'audit.viewTechnical'))
-    insight.push({ href: '/audit', label: 'Audit centre' });
+    insight.push({ href: '/audit', label: 'Audit Center', icon: <AuditIcon /> });
 
   const manage: Item[] = [];
   if (!hasAdminHub && can(actor, 'template.view'))
-    manage.push({ href: '/admin/templates', label: 'Templates' });
+    manage.push({ href: '/admin/templates', label: 'Templates', icon: <DocumentIcon /> });
   if (!hasAdminHub && can(actor, 'workflowDef.view'))
-    manage.push({ href: '/admin/workflows', label: 'Workflows' });
-  if (hasAdminHub) manage.push({ href: '/admin', label: 'Administration' });
+    manage.push({ href: '/admin/workflows', label: 'Workflows', icon: <ShieldIcon /> });
+  if (hasAdminHub) manage.push({ href: '/admin', label: 'Administration', icon: <AdminIcon /> });
 
   const help: Item[] = [];
-  if (can(actor, 'sop.view')) help.push({ href: '/operations', label: 'Operations' });
-  if (can(actor, 'support.use')) help.push({ href: '/support', label: 'Support' });
+  if (can(actor, 'sop.view'))
+    help.push({ href: '/operations', label: 'Operations', icon: <BookIcon /> });
+  if (can(actor, 'support.use'))
+    help.push({ href: '/support', label: 'Support', icon: <LifebuoyIcon /> });
 
   const groups = [
     { title: 'Work', items: work },
@@ -76,7 +92,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <p className="side-nav__title">{g.title}</p>
           {g.items.map((l) => (
             <ActiveLink key={l.href} href={l.href}>
-              {l.label}
+              {l.icon}
+              <span>{l.label}</span>
             </ActiveLink>
           ))}
         </div>
@@ -117,7 +134,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {can(actor, 'case.list') ? (
             <form action="/cases" method="get" role="search" className="topbar__search">
               <label className="sr-only" htmlFor="topbar-q">
-                Find a case by number or employee
+                Find a Case by Number or Employee
               </label>
               <input
                 id="topbar-q"
@@ -129,11 +146,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </form>
           ) : null}
           <div className="topbar__user">
+            <span className="avatar" aria-hidden="true">
+              {initials(user.displayName)}
+            </span>
             <span className="topbar__identity">
               <strong>{user.displayName}</strong>
-              <span className="topbar__roles">
-                {user.roles.map(roleLabel).join(', ') || 'no role'}
-              </span>
+              <span className="topbar__roles">{roleList(user.roles)}</span>
             </span>
             <ThemeToggle initial={theme} />
             <form action={logoutAction}>

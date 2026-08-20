@@ -194,7 +194,39 @@ export class LiveBambooDirectoryAdapter implements BambooAdapter {
         employeeNumber: mapped.employeeNumber,
       });
     }
+    await this.attachEmployeeNumbers(rows);
     return rows;
+  }
+
+  /**
+   * The directory feed carries the internal record id but NOT the HR-assigned
+   * "Employee #" (owner question, 2026-08-18: the two are different values,
+   * and the Employee # is the one HR recognizes). It is only available
+   * per-employee, so fetch it with a small concurrency pool and leave the
+   * field null when a row cannot be read - a missing number must never fail
+   * an entire directory synchronization. Still GET-only, still one approved
+   * field: no other employee data is requested here.
+   */
+  private async attachEmployeeNumbers(rows: BambooEmployee[]): Promise<void> {
+    const CONCURRENCY = 8;
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      while (next < rows.length) {
+        const row = rows[next++]!;
+        if (row.employeeNumber) continue;
+        try {
+          const body = await this.get(
+            `/employees/${encodeURIComponent(row.sourceId)}?fields=employeeNumber`,
+          );
+          const value = (body as { employeeNumber?: unknown }).employeeNumber;
+          const text = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+          row.employeeNumber = text.trim() === '' ? null : text.trim();
+        } catch {
+          row.employeeNumber = null;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, rows.length) }, worker));
   }
 }
 
@@ -206,6 +238,28 @@ export async function getBambooAdapter(): Promise<BambooAdapter> {
 const SOURCE_SYSTEM_FOR_MODE = { fixture: 'SYNTHETIC', live: 'BAMBOOHR' } as const;
 
 /**
+ * The live directory feed carries only the supervisor's display NAME. Resolve
+ * manager ids within the same feed by exact-name match, linking ONLY when the
+ * name is unique in the organization: two distinct people sharing an exact
+ * name (or a feed row already carrying an id) are never guessed. Distinct
+ * names such as "Avery Brown" vs "Avery Brown Jr" match exactly and can
+ * never cross-link (owner clarification 2026-08-17).
+ */
+function resolveManagerIds(employees: BambooEmployee[]): BambooEmployee[] {
+  const idsByName = new Map<string, string[]>();
+  for (const e of employees) {
+    const list = idsByName.get(e.displayName) ?? [];
+    list.push(e.sourceId);
+    idsByName.set(e.displayName, list);
+  }
+  return employees.map((e) => {
+    if (e.managerSourceId || !e.managerName) return e;
+    const matches = idsByName.get(e.managerName) ?? [];
+    return matches.length === 1 ? { ...e, managerSourceId: matches[0]! } : e;
+  });
+}
+
+/**
  * F.5 / 5.1-D: synchronize selected employee metadata into the SOURCE cache
  * with recorded provenance. Case snapshots and case fields are never written.
  * Records absent from the feed are NEVER deleted - reconciliation reports
@@ -215,7 +269,7 @@ export async function syncEmployees(actor: Actor) {
   if (!can(actor, 'sync.run')) throw ServiceError.forbidden();
   const adapter = await getBambooAdapter();
   const startedAt = new Date();
-  const employees = await adapter.listEmployees();
+  const employees = resolveManagerIds(await adapter.listEmployees());
   const sourceSystem = SOURCE_SYSTEM_FOR_MODE[adapter.mode];
   const prisma = getPrisma();
   const correlationId = newCorrelationId();
@@ -650,13 +704,32 @@ export async function liveDirectoryPresence(): Promise<{ present: boolean; recor
  * D.2: scheduled synchronization is PREPARED but disabled unless the
  * system configuration flag is explicitly set. Called by the worker sweep.
  */
-export async function scheduledDirectorySyncIfEnabled(): Promise<'disabled' | 'ran' | 'failed'> {
+export async function scheduledDirectorySyncIfEnabled(): Promise<
+  'disabled' | 'fresh' | 'ran' | 'failed'
+> {
   const enabled = (await getSystemConfigValue('bamboohr.scheduledSync')) === true;
   if (!enabled) return 'disabled';
   try {
     const prisma = getPrisma();
+    // Freshness guard: the worker sweeps every minute, but a real directory
+    // changes slowly and the live API must never be polled that hard. Sync
+    // only when the newest scheduled run is older than the configured
+    // interval (default 6 hours; system config 'bamboohr.scheduledSyncMinutes').
+    const intervalRaw = await getSystemConfigValue('bamboohr.scheduledSyncMinutes');
+    const intervalMinutes =
+      typeof intervalRaw === 'number' && Number.isFinite(intervalRaw) && intervalRaw > 0
+        ? intervalRaw
+        : 360;
+    const latest = await prisma.employeeSyncRun.findFirst({
+      where: { source: 'BAMBOOHR', mode: { endsWith: '_SCHEDULED' } },
+      orderBy: { startedAt: 'desc' },
+      select: { startedAt: true },
+    });
+    if (latest && Date.now() - latest.startedAt.getTime() < intervalMinutes * 60_000) {
+      return 'fresh';
+    }
     const adapter = await getBambooAdapter();
-    const employees = await adapter.listEmployees();
+    const employees = resolveManagerIds(await adapter.listEmployees());
     const sourceSystem = SOURCE_SYSTEM_FOR_MODE[adapter.mode];
     const now = new Date();
     for (const e of employees) {

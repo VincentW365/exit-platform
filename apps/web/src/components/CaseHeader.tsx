@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { formatInstant } from '@exit/domain';
 import { ClassificationBadge, PurposeBadge, StatusBadge } from './ui';
 import type { CaseNextAction, CaseStatus } from '@exit/domain';
+import { humanize } from '@/lib/text';
 
 export interface CaseHeaderData {
   caseId: string;
@@ -39,7 +40,7 @@ export function CaseHeader({ data }: { data: CaseHeaderData }) {
           {data.employeeDisplayName}
         </h1>
         <p className="case-header__meta">
-          {data.departureType.replaceAll('_', ' ').toLowerCase()}
+          {humanize(data.departureType)}
           {data.jobTitle ? ` - ${data.jobTitle}` : ''} - {data.department} / {data.location}
         </p>
         <p className="case-header__badges">
@@ -50,13 +51,13 @@ export function CaseHeader({ data }: { data: CaseHeaderData }) {
       </div>
       <dl className="case-header__facts">
         <div>
-          <dt>Effective separation</dt>
+          <dt>Effective Separation</dt>
           <dd>
-            {data.effectiveSeparationAt ? formatInstant(data.effectiveSeparationAt) : 'not set'}
+            {data.effectiveSeparationAt ? formatInstant(data.effectiveSeparationAt) : 'Not set'}
           </dd>
         </div>
         <div>
-          <dt>Accountable / operational HR</dt>
+          <dt>Accountable / Operational HR</dt>
           <dd>
             {data.ownerName}
             {data.officerName ? ` / ${data.officerName}` : ' / unassigned'}
@@ -64,11 +65,11 @@ export function CaseHeader({ data }: { data: CaseHeaderData }) {
         </div>
         <div>
           <dt>Manager</dt>
-          <dd>{data.managerUserName ?? data.managerName ?? 'not derived'}</dd>
+          <dd>{data.managerUserName ?? data.managerName ?? 'Not derived'}</dd>
         </div>
         {action ? (
           <div>
-            <dt>Next action</dt>
+            <dt>Next Action</dt>
             <dd
               className={action.tone === 'attention' ? 'case-header__next--attention' : undefined}
             >

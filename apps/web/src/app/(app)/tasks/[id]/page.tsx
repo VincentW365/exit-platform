@@ -19,6 +19,7 @@ import {
   updateAccessSystemsAction,
   waiveTaskAction,
 } from './actions';
+import { humanize, roleList } from '@/lib/text';
 
 export const metadata: Metadata = { title: 'Task' };
 export const dynamic = 'force-dynamic';
@@ -62,14 +63,14 @@ export default async function TaskPage({
       <h1>
         {t.title}{' '}
         <span className={`badge ${TASK_BADGE[t.status] ?? 'badge--neutral'}`}>{t.status}</span>
-        {overdue ? <span className="badge badge--danger"> OVERDUE</span> : null}
+        {overdue ? <span className="badge badge--danger"> Overdue</span> : null}
         {t.confidential ? <span className="badge badge--warning"> Restricted</span> : null}
       </h1>
       <Feedback err={sp.err} ok={sp.ok} />
 
       <section className="panel" aria-labelledby="task-facts-h">
         <h2 id="task-facts-h" style={{ marginTop: 0 }}>
-          Task details
+          Task Details
         </h2>
         <dl className="kv">
           <dt>Case</dt>
@@ -81,26 +82,26 @@ export default async function TaskPage({
             )}
           </dd>
           <dt>Assignee</dt>
-          <dd>{data.assigneeName ?? 'Unassigned (department queue)'}</dd>
+          <dd>{data.assigneeName ?? 'Unassigned'}</dd>
           <dt>Employee</dt>
           <dd>{t.employeeDisplayName}</dd>
           {t.departureType ? (
             <>
-              <dt>Departure type</dt>
+              <dt>Departure Type</dt>
               <dd>{t.departureType}</dd>
             </>
           ) : null}
-          <dt>Department / role</dt>
+          <dt>Department / Role</dt>
           <dd>
             {t.department} ({t.requiredRole})
           </dd>
           <dt>Priority</dt>
-          <dd>{t.priority}</dd>
+          <dd>{humanize(t.priority)}</dd>
           <dt>Required</dt>
           <dd>{t.required ? 'Required for clearance' : 'Optional'}</dd>
           <dt>Due</dt>
           <dd>
-            {t.dueAt ? `${formatInstant(t.dueAt)} (America/Jamaica)` : 'No due date'}
+            {t.dueAt ? formatInstant(t.dueAt) : 'No due date'}
             {t.dueRule ? <span className="hint"> - rule: {t.dueRule}</span> : null}
             {t.originalDueAt && t.dueAt && t.originalDueAt.getTime() !== t.dueAt.getTime() ? (
               <span className="hint">
@@ -119,7 +120,7 @@ export default async function TaskPage({
           <dd>{t.description || '-'}</dd>
           {t.dependsOnCodes.length ? (
             <>
-              <dt>Depends on</dt>
+              <dt>Depends On</dt>
               <dd>{t.dependsOnCodes.join(', ')}</dd>
             </>
           ) : null}
@@ -155,7 +156,7 @@ export default async function TaskPage({
       {isAccess ? (
         <section className="panel" aria-labelledby="access-h">
           <h2 id="access-h" style={{ marginTop: 0 }}>
-            Exact-time access revocation
+            Exact-time Access Revocation
           </h2>
           <p>
             Due at the exact approved effective separation time
@@ -166,7 +167,7 @@ export default async function TaskPage({
           <p className="hint" role="note">
             {CREDENTIAL_WARNING}
           </p>
-          <h3>Access categories on record</h3>
+          <h3>Access Categories on Record</h3>
           <ul>
             {t.accessSystems.map((s) => (
               <li key={s}>{s}</li>
@@ -178,7 +179,7 @@ export default async function TaskPage({
                 <summary>Update the systems list (preparation)</summary>
                 <form action={updateAccessSystemsAction}>
                   <input type="hidden" name="taskId" value={id} />
-                  <label htmlFor="acc-systems">Systems / access categories (one per line)</label>
+                  <label htmlFor="acc-systems">Systems / Access Categories (One per Line)</label>
                   <textarea
                     id="acc-systems"
                     name="systems"
@@ -193,7 +194,7 @@ export default async function TaskPage({
                 <summary>Record access-revocation completion</summary>
                 <form action={completeAccessTaskAction}>
                   <input type="hidden" name="taskId" value={id} />
-                  <label htmlFor="acc-done">Systems completed (one per line)</label>
+                  <label htmlFor="acc-done">Systems Completed (One per Line)</label>
                   <textarea
                     id="acc-done"
                     name="systemsCompleted"
@@ -201,16 +202,16 @@ export default async function TaskPage({
                     defaultValue={t.accessSystems.join('\n')}
                   />
                   <label htmlFor="acc-unres">
-                    Systems that could NOT be removed (one per line; leave empty if all removed)
+                    Systems That Could NOT Be Removed (One per Line; Leave Empty if All Removed)
                   </label>
                   <textarea id="acc-unres" name="systemsUnresolved" rows={2} />
-                  <label htmlFor="acc-note">Completion evidence note (required)</label>
+                  <label htmlFor="acc-note">Completion Evidence Note (Required)</label>
                   <textarea id="acc-note" name="note" rows={3} required maxLength={2000} />
                   <label htmlFor="acc-early">
-                    Early-completion reason (required ONLY if completing before the effective time)
+                    Early-completion Reason (Required ONLY if Completing Before the Effective Time)
                   </label>
                   <input id="acc-early" name="earlyCompletionReason" maxLength={500} />
-                  <label htmlFor="acc-incident">Incident reference (if applicable)</label>
+                  <label htmlFor="acc-incident">Incident Reference (if Applicable)</label>
                   <input id="acc-incident" name="incidentRef" maxLength={120} />
                   <button type="submit">Record completion</button>
                 </form>
@@ -261,9 +262,9 @@ export default async function TaskPage({
           <summary>Mark blocked</summary>
           <form action={blockTaskAction}>
             <input type="hidden" name="taskId" value={id} />
-            <label htmlFor="b-reason">Blocker reason (required, safe operational text only)</label>
+            <label htmlFor="b-reason">Blocker Reason (Required, Safe Operational Text Only)</label>
             <textarea id="b-reason" name="reason" rows={2} required maxLength={2000} />
-            <label htmlFor="b-owner">Blocker owner (who must act)</label>
+            <label htmlFor="b-owner">Blocker Owner (Who Must Act)</label>
             <input id="b-owner" name="blockerOwner" maxLength={200} />
             <button type="submit">Mark blocked</button>
           </form>
@@ -282,7 +283,7 @@ export default async function TaskPage({
           <summary>Waive task (HR Manager)</summary>
           <form action={waiveTaskAction}>
             <input type="hidden" name="taskId" value={id} />
-            <label htmlFor="w-reason">Waiver reason (required, audited)</label>
+            <label htmlFor="w-reason">Waiver Reason (Required, Audited)</label>
             <textarea id="w-reason" name="reason" rows={2} required maxLength={2000} />
             <button type="submit">Waive task</button>
           </form>
@@ -298,18 +299,18 @@ export default async function TaskPage({
 
       {data.canAssign ? (
         <details className="action">
-          <summary>Assign to a responder</summary>
+          <summary>Assign to a colleague</summary>
           <form action={assignTaskDetailAction}>
             <input type="hidden" name="taskId" value={id} />
-            <label htmlFor="as-user">Assignee ({t.department} responders)</label>
+            <label htmlFor="as-user">Assignee</label>
             <select id="as-user" name="assigneeId" required>
               {users.map((u) => (
                 <option key={u.userId} value={u.userId}>
-                  {u.displayName} ({u.roles.join(', ')})
+                  {u.displayName}
                 </option>
               ))}
             </select>
-            <label htmlFor="as-reason">Reason (required, audited)</label>
+            <label htmlFor="as-reason">Reason (Required, Audited)</label>
             <textarea id="as-reason" name="reason" rows={2} required maxLength={500} />
             <button type="submit">Assign task</button>
           </form>
@@ -318,10 +319,10 @@ export default async function TaskPage({
 
       {data.canReturn ? (
         <details className="action">
-          <summary>Return to department queue</summary>
+          <summary>Return to the queue</summary>
           <form action={returnTaskDetailAction}>
             <input type="hidden" name="taskId" value={id} />
-            <label htmlFor="rq-reason">Reason (required, audited)</label>
+            <label htmlFor="rq-reason">Reason (Required, Audited)</label>
             <textarea id="rq-reason" name="reason" rows={2} required maxLength={500} />
             <p className="hint">
               History and the due date are preserved; the SLA clock never resets.
@@ -342,11 +343,11 @@ export default async function TaskPage({
             <select id="r-user" name="assigneeId" required>
               {users.map((u) => (
                 <option key={u.userId} value={u.userId}>
-                  {u.displayName} ({u.roles.join(', ')})
+                  {u.displayName} ({roleList(u.roles)})
                 </option>
               ))}
             </select>
-            <label htmlFor="r-reason">Reason (required, audited)</label>
+            <label htmlFor="r-reason">Reason (Required, Audited)</label>
             <textarea id="r-reason" name="reason" rows={2} required maxLength={500} />
             <button type="submit">Reassign</button>
           </form>
@@ -361,11 +362,11 @@ export default async function TaskPage({
             <p className="hint">
               The original value is preserved in an append-only correction record.
             </p>
-            <label htmlFor="cor-value">Corrected completion note</label>
+            <label htmlFor="cor-value">Corrected Completion Note</label>
             <textarea id="cor-value" name="correctedValue" rows={2} required maxLength={2000} />
-            <label htmlFor="cor-reason">Correction reason (required)</label>
+            <label htmlFor="cor-reason">Correction Reason (Required)</label>
             <textarea id="cor-reason" name="reason" rows={2} required maxLength={1000} />
-            <label htmlFor="cor-effect">Effect on clearance</label>
+            <label htmlFor="cor-effect">Effect on Clearance</label>
             <input
               id="cor-effect"
               name="clearanceEffect"

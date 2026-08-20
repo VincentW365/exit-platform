@@ -48,7 +48,7 @@ test('topbar quick search jumps to filtered cases', async ({ page }) => {
   await page.goto('/signin');
   await page.getByRole('button', { name: 'Sign in as HR Officer', exact: true }).click();
   await page.waitForURL('**/');
-  const box = page.getByLabel('Find a case by number or employee');
+  const box = page.getByLabel('Find a Case by Number or Employee');
   await box.fill('OFF-2026');
   await box.press('Enter');
   await page.waitForURL('**/cases?q=OFF-2026');

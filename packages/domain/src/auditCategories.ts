@@ -127,6 +127,8 @@ const PREFIX_RULES: ReadonlyArray<readonly [RegExp, AuditCategory]> = [
   [/^NOTIFICATION_/, 'COMMUNICATION'],
   [/^OUTBOX_/, 'COMMUNICATION'],
   [/^ASSET_/, 'ASSET'],
+  // The exit checklist records the return of company property.
+  [/^RETURN_CHECKLIST_/, 'ASSET'],
   [/^HANDOVER_/, 'HANDOVER'],
   [/^EXCEPTION_/, 'EXCEPTION'],
   [/^CLEARANCE_/, 'CLEARANCE'],

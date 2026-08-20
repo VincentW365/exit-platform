@@ -3,7 +3,7 @@ import { collectHealth, operationalDiagnostics } from '@exit/db';
 import { can } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 
-export const metadata: Metadata = { title: 'Integration health' };
+export const metadata: Metadata = { title: 'Integration Health' };
 export const dynamic = 'force-dynamic';
 
 /** Directive 4 V.5: administrator health dashboard - PII- and secret-free. */
@@ -12,7 +12,7 @@ export default async function HealthPage() {
   if (!can(actor, 'health.view'))
     return (
       <>
-        <h1>Access restricted</h1>
+        <h1>Access Restricted</h1>
         <p className="panel">The health dashboard requires an authorized role.</p>
       </>
     );
@@ -21,9 +21,9 @@ export default async function HealthPage() {
   return (
     <>
       <h1>
-        Integration and operational health{' '}
+        Integration and Operational Health{' '}
         <span className={`badge ${health.ok ? 'badge--success' : 'badge--danger'}`}>
-          {health.ok ? 'HEALTHY' : 'ATTENTION'}
+          {health.ok ? 'Healthy' : 'Needs attention'}
         </span>
       </h1>
       <p className="hint" role="note">
@@ -38,7 +38,7 @@ export default async function HealthPage() {
           {health.components.map((c) => (
             <li key={c.component} style={{ marginBottom: '0.35rem' }}>
               <span className={`badge ${c.ok ? 'badge--success' : 'badge--danger'}`}>
-                {c.ok ? 'OK' : 'DOWN'}
+                {c.ok ? 'OK' : 'Down'}
               </span>{' '}
               <strong>{c.component}</strong> - {c.detail}
             </li>
@@ -47,30 +47,30 @@ export default async function HealthPage() {
       </section>
       <section className="panel" aria-labelledby="diag-h">
         <h2 id="diag-h" style={{ marginTop: 0 }}>
-          Operational diagnostics (Directive 6.2 - not corporate KPIs)
+          Operational Diagnostics
         </h2>
         <dl className="kv">
-          <dt>Unassigned IT/Finance tasks</dt>
+          <dt>Unassigned IT/Finance Tasks</dt>
           <dd className="tabular-nums">
             {diagnostics.unassignedDeptTasks} (oldest {diagnostics.oldestUnassignedHours}h)
           </dd>
-          <dt>Blocked tasks</dt>
+          <dt>Blocked Tasks</dt>
           <dd className="tabular-nums">
             {diagnostics.blockedTasks} (oldest {diagnostics.oldestBlockedHours}h)
           </dd>
-          <dt>Cases awaiting HR approval</dt>
+          <dt>Cases Awaiting HR Approval</dt>
           <dd className="tabular-nums">
             {diagnostics.approvalsWaiting} (oldest wait {diagnostics.oldestApprovalWaitHours}h)
           </dd>
-          <dt>Task claims / reassignments (30 days)</dt>
+          <dt>Task Claims / Reassignments (30 Days)</dt>
           <dd className="tabular-nums">
             {diagnostics.taskClaims30d} / {diagnostics.taskReassignments30d}
           </dd>
-          <dt>HR officer reassignments (30 days)</dt>
+          <dt>HR Officer Reassignments (30 Days)</dt>
           <dd className="tabular-nums">{diagnostics.officerReassignments30d}</dd>
-          <dt>Exceptions raised (30 days)</dt>
+          <dt>Exceptions Raised (30 Days)</dt>
           <dd className="tabular-nums">{diagnostics.exceptions30d}</dd>
-          <dt>Case intake data entry</dt>
+          <dt>Case Intake Data Entry</dt>
           <dd>
             {diagnostics.intakeSourceDerivedFields} fields copy from the directory;{' '}
             {diagnostics.intakeManualFields} separation-specific fields are entered by HR
@@ -79,7 +79,7 @@ export default async function HealthPage() {
       </section>
       <section className="panel" aria-labelledby="metrics-h">
         <h2 id="metrics-h" style={{ marginTop: 0 }}>
-          Operational metrics
+          Operational Metrics
         </h2>
         <dl className="kv">
           {Object.entries(health.metrics).map(([k, v]) => (

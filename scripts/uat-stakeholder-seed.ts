@@ -58,11 +58,10 @@ async function main(): Promise<void> {
   };
 
   // Directive 6.1 (E/F/J): activation requires the assignment plan. The seed
-  // assigns the HR Officer, routes manager tasks to the dev line manager
-  // (audited override where derivation did not resolve), and confirms.
-  const lineManager = await prisma.user.findUniqueOrThrow({
-    where: { identitySubject: 'dev|line-manager' },
-  });
+  // assigns the HR Officer and confirms it. Since the owner decision of
+  // 2026-08-19 the manager is a DIRECTORY person, not an application account,
+  // so the departure notice needs a directory colleague with a work email -
+  // recorded by audited override only where the source data left none.
   const { CONFIRMATION_KEYS } = await import('../packages/domain/src/index.ts');
   const readyAssignment = async (caseId: string) => {
     await db.assignOfficer(
@@ -71,12 +70,28 @@ async function main(): Promise<void> {
       (officer as { userId: string }).userId,
       `${LABEL} - operational officer assignment.`,
     );
-    await db.overrideManager(
-      manager as never,
-      caseId,
-      lineManager.id,
-      `${LABEL} - manager routing for the UAT dataset.`,
-    );
+    const c = await prisma.offboardingCase.findUniqueOrThrow({
+      where: { id: caseId },
+      select: { employeeSourceSystem: true, employeeSourceId: true, managerSourceId: true },
+    });
+    if (!c.managerSourceId) {
+      const alternate = await prisma.employeeSourceRecord.findFirst({
+        where: {
+          sourceSystem: c.employeeSourceSystem,
+          active: true,
+          NOT: [{ workEmail: null }, { workEmail: '' }, { sourceId: c.employeeSourceId }],
+        },
+        orderBy: { sourceId: 'asc' },
+        select: { sourceId: true },
+      });
+      if (alternate)
+        await db.overrideManager(
+          manager as never,
+          caseId,
+          alternate.sourceId,
+          `${LABEL} - manager routing for the UAT dataset.`,
+        );
+    }
     await db.confirmAssignmentPlan(manager as never, caseId, [...CONFIRMATION_KEYS]);
   };
 
@@ -151,6 +166,10 @@ async function main(): Promise<void> {
   await db.transitionCase(officer as never, s4.caseId, 'submit');
   await db.transitionCase(manager as never, s4.caseId, 'approve');
   const s4doc = await db.createLetterDraft(officer as never, s4.caseId);
+  await db.setEmployeeAddress(officer as never, s4.caseId, {
+    employeeAddress: '12 Synthetic Avenue, Kingston 5',
+  });
+  await db.refreshDraftFields(officer as never, s4doc.id);
   await db.submitDocument(officer as never, s4doc.id);
   await db.approveDocument(manager as never, s4doc.id);
   const newEffective = new Date(Date.now() + 16 * 86_400_000);

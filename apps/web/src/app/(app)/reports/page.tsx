@@ -6,7 +6,7 @@ import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import { createScheduleAction, toggleScheduleAction } from './actions';
 
-export const metadata: Metadata = { title: 'Reporting centre' };
+export const metadata: Metadata = { title: 'Reporting Center' };
 export const dynamic = 'force-dynamic';
 
 export default async function ReportsPage({
@@ -19,8 +19,8 @@ export default async function ReportsPage({
   if (!can(actor, 'reports.view'))
     return (
       <>
-        <h1>Access restricted</h1>
-        <p className="panel">The reporting centre requires an authorized role.</p>
+        <h1>Access Restricted</h1>
+        <p className="panel">The reporting center requires an authorized role.</p>
       </>
     );
 
@@ -47,7 +47,7 @@ export default async function ReportsPage({
 
   return (
     <>
-      <h1>Reporting centre</h1>
+      <h1>Reporting Center</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
         TRAINING/TEST records are excluded by default; restricted cases never appear for
@@ -57,7 +57,7 @@ export default async function ReportsPage({
 
       <section className="panel" aria-labelledby="cat-h">
         <h2 id="cat-h" style={{ marginTop: 0 }}>
-          Report catalogue
+          Report Catalogue
         </h2>
         {families.map((family) => (
           <div key={family}>
@@ -121,7 +121,7 @@ export default async function ReportsPage({
 
       <section className="panel" aria-labelledby="sch-h">
         <h2 id="sch-h" style={{ marginTop: 0 }}>
-          Scheduled reports
+          Scheduled Reports
         </h2>
         {schedules.length === 0 ? <p>No schedules.</p> : null}
         <ul>
@@ -129,7 +129,7 @@ export default async function ReportsPage({
             <li key={s.id}>
               {s.name} ({s.reportKey}, {s.frequency}, to {s.recipientClass}){' '}
               <span className={`badge ${s.active ? 'badge--success' : 'badge--neutral'}`}>
-                {s.active ? 'active' : 'paused'}
+                {s.active ? 'Active' : 'Paused'}
               </span>{' '}
               next {formatInstant(s.nextRunAt)}
               {s.lastRunAt ? ` - last ${formatInstant(s.lastRunAt)} (${s.lastStatus})` : ''}
@@ -165,7 +165,7 @@ export default async function ReportsPage({
                 <option value="WEEKLY">Weekly</option>
                 <option value="MONTHLY">Monthly</option>
               </select>
-              <label htmlFor="sr-rec">Recipient class</label>
+              <label htmlFor="sr-rec">Recipient Class</label>
               <select id="sr-rec" name="recipientClass" required>
                 {RECIPIENT_CLASSES.map((c) => (
                   <option key={c} value={c}>

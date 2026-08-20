@@ -73,30 +73,47 @@ export async function createManualEmployeeAction(formData: FormData): Promise<vo
   }
 }
 
+/**
+ * Compose the stored receipt-source evidence string from the one-click
+ * channel picker plus its optional detail ("Signed letter - handed to the HR
+ * front desk"). 'Other' carries no evidence on its own, so it demands the
+ * detail. Falls back to a plain receiptSource field (draft-edit form).
+ */
+function composedReceiptSource(formData: FormData): string | null {
+  const kind = str(formData, 'receiptSourceKind');
+  const detail = str(formData, 'receiptSourceDetail');
+  if (!kind) return opt(formData, 'receiptSource');
+  if (kind === 'Other' && !detail) return null;
+  return detail ? `${kind} - ${detail}` : kind;
+}
+
 export async function createCaseAction(formData: FormData): Promise<void> {
   const { actor } = await requireAuth();
   await touchSession();
+  const receiptSource = composedReceiptSource(formData);
+  if (!receiptSource) {
+    feedbackRedirect('/cases/new', {
+      err: 'Describe how the resignation was received (required when the channel is Other).',
+    });
+  }
   try {
     const result = await createDraft(actor, {
       employeeSourceId: str(formData, 'employeeSourceId'),
       departureType: str(formData, 'departureType'),
       receivedAt: opt(formData, 'receivedAt'),
-      receiptSource: str(formData, 'receiptSource'),
-      proposedLastDay: opt(formData, 'proposedLastDay'),
+      receiptSource,
       confirmedLastDay: opt(formData, 'confirmedLastDay'),
       effectiveSeparationAt: opt(formData, 'effectiveSeparationAt'),
       department: opt(formData, 'department') ?? undefined,
       location: opt(formData, 'location') ?? undefined,
-      measurementCohort:
-        str(formData, 'recordPurpose') === 'OPERATIONAL'
-          ? (opt(formData, 'measurementCohort') ?? 'BASELINE')
-          : null,
-      recordPurpose: str(formData, 'recordPurpose') || 'OPERATIONAL',
+      // Final-product mode (owner request, 2026-08-17): the classification
+      // choice left the UI - every new case is a real operational record in
+      // the active rollout cohort (baseline capture concluded; DEC-007's
+      // baseline exclusion still protects the remaining BASELINE records).
+      measurementCohort: 'PILOT',
+      recordPurpose: 'OPERATIONAL',
       reasonCaptureStatus: str(formData, 'reasonCaptureStatus') || 'PENDING',
       reasonNotes: opt(formData, 'reasonNotes') ?? undefined,
-      noticeProvidedDays: opt(formData, 'noticeProvidedDays'),
-      noticeRequiredDays: opt(formData, 'noticeRequiredDays'),
-      noticeTreatment: opt(formData, 'noticeTreatment') ?? undefined,
     });
     revalidatePath('/cases');
     const dup = result.duplicateWarnings.length
@@ -128,22 +145,30 @@ export async function updateDraftAction(formData: FormData): Promise<void> {
     const putIfPresent = (key: string) => {
       if (formData.has(key)) patch[key] = str(formData, key);
     };
+    // Receipt-source picker on the edit form: a chosen channel recomposes the
+    // evidence string; leaving it on "(keep current)" changes nothing.
+    if (str(formData, 'receiptSourceKind')) {
+      const composed = composedReceiptSource(formData);
+      if (!composed) {
+        feedbackRedirect(`/cases/${caseId}`, {
+          err: 'Describe how the resignation was received (required when the channel is Other).',
+        });
+      }
+      patch['receiptSource'] = composed;
+    }
     for (const k of [
       'receivedAt',
       'receiptSource',
-      'proposedLastDay',
       'confirmedLastDay',
       'effectiveSeparationAt',
       'department',
       'location',
       'measurementCohort',
       'reasonCaptureStatus',
-      'noticeProvidedDays',
-      'noticeRequiredDays',
     ])
       putIfFilled(k);
     // Free-text fields may be cleared deliberately by submitting them empty.
-    for (const k of ['reasonNotes', 'noticeTreatment']) putIfPresent(k);
+    for (const k of ['reasonNotes']) putIfPresent(k);
     await updateDraft(actor, caseId, patch);
     revalidatePath(`/cases/${caseId}`);
     feedbackRedirect(`/cases/${caseId}`, { ok: 'Draft updated.' });
@@ -248,10 +273,12 @@ export async function confirmBenefitsAction(formData: FormData): Promise<void> {
   await touchSession();
   const caseId = str(formData, 'caseId');
   try {
+    // The "other provider" question left the benefits section (owner request,
+    // 2026-08-19). Omitting it lets the schema default apply; sending an empty
+    // string would fail validation and block every confirmation.
     await confirmBenefits(actor, caseId, {
       groupHealth: str(formData, 'groupHealth'),
       groupLife: str(formData, 'groupLife'),
-      otherProvider: str(formData, 'otherProvider'),
     });
     revalidatePath(`/cases/${caseId}`);
     feedbackRedirect(`/cases/${caseId}`, {

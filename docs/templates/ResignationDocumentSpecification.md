@@ -32,20 +32,42 @@ These four concepts are distinct and templates must not blur them:
 | --- | --- | --- | --- |
 | 1 | Company letterhead area | Approved brand asset via the controlled branding mechanism (`DocumentOutputSpecification.md` section 5); synthetic placeholder in development. | brand owner (worksheet row 16) |
 | 2 | Confidentiality marking | Approved marking, e.g. classification label; wording owner HR Manager. | static |
-| 3 | Recipient block | `[[EMPLOYEE_NAME]]`; internal delivery context only - **no postal address in Stage 2** (dictionary rule 2). | `employee.legal_name` |
+| 3 | Recipient block | `[[EMPLOYEE_LEGAL_NAME]]` followed by `[[EMPLOYEE_ADDRESS]]`. **Superseded by DEC-054**: the Stage 2 "no postal address" rule no longer holds for DOC-01, because the supplied HR sample letter is addressed. The address is typed by HR from the resignation letter scan (the directory holds none), is required before the letter can be submitted, and appears in the letter only - never in logs, emails or audit metadata. | `case.employee_address` (HR-entered) |
 | 4 | Document date | `[[DOCUMENT_DATE]]` | `document.date` |
 | 5 | Greeting | Approved salutation + `[[EMPLOYEE_NAME]]` (or approved preferred-name rule). | wording owner |
 | 6 | Subject | Approved subject naming the case: includes `[[CASE_REFERENCE]]`. | `case.reference` |
 | 7 | Resignation acknowledgement section | States receipt on `[[RESIGNATION_RECEIVED_DATE]]` and the employer's acceptance. Acknowledgement and acceptance wording are separate approved sentences (section 0). | wording owner (row 5) |
 | 8 | Confirmed-date section | Confirms `[[CONFIRMED_LAST_WORKING_DATE]]` as the last working date and `[[EFFECTIVE_SEPARATION_DATE]]` as the effective separation date; the two sentences are distinct and both required. | wording owner (row 5) |
-| 9 | Property-return wording placeholder | APPROVED STATIC WORDING ONLY - policy-sensitive (row 8). May reference the return of company property without amounts or threats. | property wording owner |
-| 10 | Final-pay policy wording placeholder | APPROVED STATIC WORDING ONLY - policy-sensitive (row 7). May point to the applicable policy/process; **no amounts, no deduction statements unless the approved wording permits**. | final-pay wording owner |
+| 9 | Property-return wording | Approved HR sample wording naming the items and a return date: `[[PROPERTY_RETURN_DEADLINE]]`. The deadline is NOT a new rule - it restates `[[CONFIRMED_LAST_WORKING_DATE]]`, the date already confirmed on the case (DEC-054). Required before submission. | property wording owner |
+| 10 | Final-pay policy wording | APPROVED STATIC WORDING ONLY - policy-sensitive (row 7). The HR sample supplied under DEC-054 is that approved wording, and it does state that outstanding amounts will be deducted from the final payment. The platform reproduces the sentence and **computes nothing**: no amount, entitlement or deduction is calculated, stored or sent (CLAUDE.md rule 10). | final-pay wording owner |
 | 11 | Contact/follow-up section | Approved sentence naming the HR contact route (role-based, not personal contact details). | wording owner |
 | 12 | Closing | Approved closing phrase. | wording owner |
 | 13 | Approver identity | `[[APPROVER_NAME]]`, `[[APPROVER_TITLE]]` - the authenticated HR Manager who approved this version (DEC-025 Option B record; **no signature image**). | `approver.hr_manager` |
 | 14 | Document reference/version | Case reference, document version, template version, generation timestamp, checksum (short form). | system fields 25-27, 31 |
 
 Optional approved clauses (each versioned; preparer selects, never edits): notice-period statement using `[[NOTICE_PERIOD]]`; handover-expectation sentence; benefits-contact pointer. Each requires its own owner approval before activation.
+
+### 2.1 Issuing DOC-01 by email (DEC-054)
+
+After the existing maker-checker approval and rendering, the HR Manager may issue
+the letter to the employee by email. This is the same authority that approves it:
+employee-facing documents keep maker-checker, so issuing stays management-grade.
+
+- **Recipient**: the employee email recorded on the case. No address, no send.
+- **Copies**: HR colleagues the manager selects from a directory dropdown -
+  directory records whose department reads as Human Resources plus the people
+  holding HR roles in the application. The dropdown shows masked addresses only.
+- **Attachment**: the rendered PDF, read from object storage and verified against
+  the checksum recorded at render time. The bytes are never duplicated into the
+  notification record or the outbox, and a tampered or missing object fails the
+  send rather than mailing an empty letter.
+- **Transport**: the ordinary transactional outbox and provider boundary, so
+  development captures the message instead of delivering it. Copied addresses are
+  encrypted together as one value with readable names and masks alongside.
+- **Finality**: an issued letter cannot be recalled. A correction goes through
+  supersession, which opens a new version through the same approval chain.
+- **Audit**: `DOC_ISSUED_BY_EMAIL` records the document, version, notification
+  record, destination mask and the copied names and masks - never an address.
 
 ## 3. DOC-02 — Immediate resignation acknowledgement: section specification
 

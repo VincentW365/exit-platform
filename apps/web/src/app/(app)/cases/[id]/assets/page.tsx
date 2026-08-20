@@ -1,13 +1,15 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { ServiceError, listCaseAssets } from '@exit/db';
+import { ServiceError, getReturnItemsChecklist, listCaseAssets } from '@exit/db';
 import { formatInstant, ASSET_TYPES, ASSET_TYPE_LABELS } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
-import { Feedback } from '@/components/ui';
+import { CaseTitle, Feedback } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
 import { addAssetAction, assetDispositionAction } from './actions';
+import { ReturnChecklistPanel, type ChecklistView } from './ReturnChecklistPanel';
+import { humanize } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'Asset recovery' };
+export const metadata: Metadata = { title: 'Asset Recovery' };
 export const dynamic = 'force-dynamic';
 
 const BADGE: Record<string, string> = {
@@ -42,18 +44,19 @@ export default async function CaseAssetsPage({
     if (e instanceof ServiceError && e.code === 'FORBIDDEN')
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">This area requires full case access.</p>
         </>
       );
     throw e;
   }
 
+  const checklist = (await getReturnItemsChecklist(actor, id)) as ChecklistView | null;
   const m = data.metrics;
 
   return (
     <>
-      <h1>Asset recovery - {data.caseNumber}</h1>
+      <CaseTitle title="Asset Recovery" caseNumber={data.caseNumber} />
       <CaseNav caseId={id} active="assets" />
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
@@ -62,23 +65,25 @@ export default async function CaseAssetsPage({
         asset creates a review exception for authorized HR/Finance review only.
       </p>
 
+      {checklist ? <ReturnChecklistPanel caseId={id} checklist={checklist} /> : null}
+
       <section className="panel" aria-labelledby="asset-metrics-h">
         <h2 id="asset-metrics-h" style={{ marginTop: 0 }}>
-          Recovery measures
+          Recovery Measures
         </h2>
         <dl className="kv">
-          <dt>Disposition documentation rate</dt>
+          <dt>Disposition Documentation Rate</dt>
           <dd>
             {m.documentationRatePct === null ? '-' : `${m.documentationRatePct}%`} (
             {m.documentedCount} of {m.requiredCount} required items documented)
           </dd>
-          <dt>Physical recovery rate</dt>
+          <dt>Physical Recovery Rate</dt>
           <dd>
             {m.physicalRecoveryRatePct === null ? '-' : `${m.physicalRecoveryRatePct}%`} (
             {m.physicallyReturned} of {m.physicalDenominator} issued-and-due items returned;
             NOT_ISSUED excluded)
           </dd>
-          <dt>Open / unresolved</dt>
+          <dt>Open / Unresolved</dt>
           <dd>
             {m.openCount} open, {m.unresolvedCount} unresolved
           </dd>
@@ -121,13 +126,13 @@ export default async function CaseAssetsPage({
                     {i.overdue ? (
                       <>
                         {' '}
-                        <span className="badge badge--danger">OVERDUE</span>
+                        <span className="badge badge--danger">Overdue</span>
                       </>
                     ) : null}
                   </td>
                   <td>
                     <span className={`badge ${BADGE[i.status] ?? 'badge--neutral'}`}>
-                      {i.status}
+                      {humanize(i.status)}
                     </span>
                   </td>
                   <td>
@@ -143,30 +148,30 @@ export default async function CaseAssetsPage({
                         <form action={assetDispositionAction}>
                           <input type="hidden" name="caseId" value={id} />
                           <input type="hidden" name="itemId" value={i.id} />
-                          <label htmlFor={`st-${i.id}`}>New status</label>
+                          <label htmlFor={`st-${i.id}`}>New Status</label>
                           <select id={`st-${i.id}`} name="status" required>
-                            <option value="REQUESTED">REQUESTED</option>
-                            <option value="PARTIALLY_RETURNED">PARTIALLY_RETURNED</option>
-                            <option value="RETURNED">RETURNED (final)</option>
-                            <option value="NOT_ISSUED">NOT_ISSUED (final)</option>
-                            <option value="LOST">LOST (final, reason required)</option>
-                            <option value="DAMAGED">DAMAGED (final, reason required)</option>
+                            <option value="REQUESTED">Requested</option>
+                            <option value="PARTIALLY_RETURNED">Partially returned</option>
+                            <option value="RETURNED">Returned (final)</option>
+                            <option value="NOT_ISSUED">Not issued (final)</option>
+                            <option value="LOST">Lost (final, reason required)</option>
+                            <option value="DAMAGED">Damaged (final, reason required)</option>
                             {data.canWaiveWriteOff ? (
                               <>
-                                <option value="WAIVED">WAIVED (HR Manager, reason required)</option>
+                                <option value="WAIVED">Waived (HR Manager, reason required)</option>
                                 <option value="WRITTEN_OFF">
-                                  WRITTEN_OFF (HR Manager, reason required)
+                                  Written off (HR Manager, reason required)
                                 </option>
                               </>
                             ) : null}
-                            <option value="UNRESOLVED">UNRESOLVED (reason required)</option>
+                            <option value="UNRESOLVED">Unresolved (reason required)</option>
                           </select>
                           <label htmlFor={`cond-${i.id}`}>Condition</label>
                           <input id={`cond-${i.id}`} name="condition" maxLength={300} />
                           <label htmlFor={`rem-${i.id}`}>Remarks</label>
                           <input id={`rem-${i.id}`} name="remarks" maxLength={1000} />
                           <label htmlFor={`rsn-${i.id}`}>
-                            Reason (required for LOST / DAMAGED / WAIVED / WRITTEN_OFF / UNRESOLVED)
+                            Reason (Required for LOST / DAMAGED / WAIVED / WRITTEN_OFF / UNRESOLVED)
                           </label>
                           <input id={`rsn-${i.id}`} name="reason" maxLength={1000} />
                           <button type="submit">Record</button>
@@ -186,7 +191,7 @@ export default async function CaseAssetsPage({
           <summary>Add an asset recovery item</summary>
           <form action={addAssetAction}>
             <input type="hidden" name="caseId" value={id} />
-            <label htmlFor="a-type">Asset type</label>
+            <label htmlFor="a-type">Asset Type</label>
             <select id="a-type" name="assetType" required>
               {ASSET_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -194,22 +199,21 @@ export default async function CaseAssetsPage({
                 </option>
               ))}
             </select>
-            <label htmlFor="a-label">Label (required)</label>
+            <label htmlFor="a-label">Label (Required)</label>
             <input id="a-label" name="label" required maxLength={200} />
             <label htmlFor="a-ident">Identifier</label>
             <input id="a-ident" name="identifier" maxLength={100} />
-            <label htmlFor="a-serial">Serial / reference number</label>
+            <label htmlFor="a-serial">Serial / Reference Number</label>
             <input id="a-serial" name="serialNumber" maxLength={100} />
-            <label htmlFor="a-dept">Responsible department</label>
+            <label htmlFor="a-dept">Responsible Department</label>
             <select id="a-dept" name="responsibleDepartment">
               <option value="HR">HR</option>
               <option value="IT">IT</option>
               <option value="FINANCE">Finance</option>
-              <option value="LINE_MANAGER">Line manager</option>
             </select>
             <label>
               <input type="checkbox" name="requiredForClearance" defaultChecked /> Required for
-              clearance
+              Clearance
             </label>
             <button type="submit">Add item</button>
           </form>

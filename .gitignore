@@ -68,3 +68,7 @@ Thumbs.db
 
 # Local acceptance evidence (screenshots etc.)
 artifacts/
+
+# HR-supplied samples: real employee names, addresses and mailboxes.
+# Reference material only - never committed (CLAUDE.md rule 7).
+Sample Information for Offboarding Site for HR.pdf

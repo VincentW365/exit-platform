@@ -14,8 +14,11 @@ import {
   retireNotifTemplateAction,
   testSendNotifTemplateAction,
 } from './actions';
+import { humanize } from '@/lib/text';
+import { EmptyState } from '@/components/EmptyState';
+import { MailIcon } from '@/components/icons';
 
-export const metadata: Metadata = { title: 'Notification templates' };
+export const metadata: Metadata = { title: 'Notification Templates' };
 export const dynamic = 'force-dynamic';
 
 const TPL_BADGE: Record<string, string> = {
@@ -55,7 +58,7 @@ export default async function NotificationTemplatesPage({
 
   return (
     <>
-      <h1>Notification templates</h1>
+      <h1>Notification Templates</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
         Versioned, deterministic, plain-text email templates. Officers draft; HR Managers activate
@@ -67,7 +70,7 @@ export default async function NotificationTemplatesPage({
       {preview ? (
         <section className="panel" aria-labelledby="preview-h">
           <h2 id="preview-h" style={{ marginTop: 0 }}>
-            Rendered output
+            Rendered Output
           </h2>
           <p className="hint">{preview.note}</p>
           <p>
@@ -102,7 +105,7 @@ export default async function NotificationTemplatesPage({
                     <td>v{t.version}</td>
                     <td>
                       <span className={`badge ${TPL_BADGE[t.status] ?? 'badge--neutral'}`}>
-                        {t.status}
+                        {humanize(t.status)}
                       </span>
                     </td>
                     <td>{t.name}</td>
@@ -133,7 +136,7 @@ export default async function NotificationTemplatesPage({
                             <summary>Retire draft</summary>
                             <form action={retireNotifTemplateAction} className="stack">
                               <input type="hidden" name="templateId" value={t.id} />
-                              <label htmlFor={`rr-${t.id}`}>Reason (required, audited)</label>
+                              <label htmlFor={`rr-${t.id}`}>Reason (Required, Audited)</label>
                               <input id={`rr-${t.id}`} name="reason" required maxLength={500} />
                               <button type="submit" className="danger compact">
                                 Retire draft
@@ -151,7 +154,13 @@ export default async function NotificationTemplatesPage({
         </section>
       ))}
       {templates.length === 0 ? (
-        <p className="panel">No notification template versions exist yet.</p>
+        <div className="panel">
+          <EmptyState
+            icon={<MailIcon />}
+            title="No templates yet"
+            body="Draft a version below; automated notifications use the active version of each template."
+          />
+        </div>
       ) : null}
 
       {canDraft ? (
@@ -159,7 +168,7 @@ export default async function NotificationTemplatesPage({
           <summary>Draft a new version</summary>
           <form action={draftNotifTemplateAction} className="stack panel">
             <div className="field">
-              <label htmlFor="nt-type">Notification type</label>
+              <label htmlFor="nt-type">Notification Type</label>
               <select id="nt-type" name="notificationType" required defaultValue="">
                 <option value="" disabled>
                   Choose...
@@ -186,21 +195,21 @@ export default async function NotificationTemplatesPage({
               <input id="nt-name" name="name" required maxLength={200} />
             </div>
             <div className="field">
-              <label htmlFor="nt-subject">Subject (plain text, [[PLACEHOLDER]] tokens)</label>
+              <label htmlFor="nt-subject">Subject (Plain Text, [[PLACEHOLDER]] Tokens)</label>
               <input id="nt-subject" name="subjectTemplate" required maxLength={300} />
             </div>
             <div className="field" style={{ maxWidth: '46rem' }}>
-              <label htmlFor="nt-body">Body (plain text, [[PLACEHOLDER]] tokens)</label>
+              <label htmlFor="nt-body">Body (Plain Text, [[PLACEHOLDER]] Tokens)</label>
               <textarea id="nt-body" name="bodyTemplate" required rows={12} maxLength={10000} />
             </div>
             <div className="field">
               <label htmlFor="nt-mindata">
-                Minimum-data note (what this email may carry, and why)
+                Minimum-data Note (What This Email May Carry, and Why)
               </label>
               <textarea id="nt-mindata" name="minimumDataNote" required rows={2} maxLength={1000} />
             </div>
             <div className="field">
-              <label htmlFor="nt-reason">Change reason (required, audited)</label>
+              <label htmlFor="nt-reason">Change Reason (Required, Audited)</label>
               <input id="nt-reason" name="changeReason" required maxLength={500} />
             </div>
             <button type="submit">Create draft version</button>

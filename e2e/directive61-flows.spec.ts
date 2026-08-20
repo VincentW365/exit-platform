@@ -23,19 +23,21 @@ async function createTestCase(
   opts: { employeeQuery: string; type: string },
 ): Promise<{ url: string; number: string }> {
   await page.goto('/cases/new');
-  await page.getByLabel(/Search the employee source/).fill(opts.employeeQuery);
+  await page.getByLabel('Employee Name or Number').fill(opts.employeeQuery);
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure type (required)').selectOption(opts.type);
-  await page.getByLabel('Receipt date and time (required)').fill('2026-07-22T09:30');
-  await page.getByLabel('Source of the receipt timestamp (required)').fill('D61 synthetic receipt');
-  await page.getByLabel('Confirmed last working day').fill('2026-08-14');
-  await page.getByLabel(/Effective separation date and exact time/).fill('2026-08-14T17:00');
-  await page.getByLabel('Record purpose').selectOption('TEST');
+  await page.getByLabel('Departure Type').selectOption(opts.type);
+  await page.getByLabel('Date and Time Received').fill('2026-07-22T09:30');
+  await page.getByLabel('Final Working Date').fill('2026-08-14');
+  // A resignation with notice ends at close of business on the final working
+  // date, so the platform derives the instant and the field is not offered.
+  if (opts.type !== 'RESIGNATION_WITH_NOTICE') {
+    await page.getByLabel(/Employment Ends/).fill('2026-08-14T17:00');
+  }
   await page.getByRole('button', { name: 'Create draft case' }).click();
-  const banner = page.getByText(/Draft case OFF-\d{4}-\d{4} created/);
+  const banner = page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/);
   await expect(banner).toBeVisible();
-  const number = /OFF-\d{4}-\d{4}/.exec((await banner.textContent()) ?? '')![0];
+  const number = /OFF-\d{4}-\d{4,}(?:-\d)?/.exec((await banner.textContent()) ?? '')![0];
   return { url: page.url().split('?')[0]!, number };
 }
 
@@ -61,7 +63,7 @@ test('Scenario F - missing manager blocks activation until an audited override',
 
   // The assignment plan shows the hard blocker.
   await page.goto(`${caseUrl}/assignment`);
-  await expect(page.getByText('MISSING MANAGER — ACTION REQUIRED').first()).toBeVisible();
+  await expect(page.getByText('No manager — action required').first()).toBeVisible();
 
   // Assign the officer, then resolve the manager with an audited override.
   await page.locator('details.action > summary', { hasText: 'Assign HR Officer' }).click();
@@ -75,11 +77,11 @@ test('Scenario F - missing manager blocks activation until an audited override',
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
-  await page.locator('#am-user').selectOption({ label: 'Line Manager' });
+  await page.locator('#am-user').selectOption({ index: 1 });
   await page.locator('#am-reason').fill('Directory records no manager for this employee.');
   await page.getByRole('button', { name: 'Record alternate manager' }).click();
   await expect(page.getByText('Alternate manager recorded')).toBeVisible();
-  await expect(page.getByText('MISSING MANAGER — ACTION REQUIRED')).toHaveCount(0);
+  await expect(page.getByText('No manager — action required')).toHaveCount(0);
   for (const box of await page.locator('input[name="confirmations"]').all()) {
     if (!(await box.isChecked())) await box.check();
   }
@@ -126,7 +128,7 @@ test('Scenario D - queue claim, return to queue and reclaim through the UI', asy
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
-  await page.locator('#am-user').selectOption({ label: 'Line Manager' });
+  await page.locator('#am-user').selectOption({ index: 1 });
   await page.locator('#am-reason').fill('Scenario D routing.');
   await page.getByRole('button', { name: 'Record alternate manager' }).click();
   await expect(page.getByText('Alternate manager recorded')).toBeVisible();
@@ -172,7 +174,7 @@ test('Scenario I - audit investigation in the Audit Centre', async ({ page }) =>
   // The HR Manager investigates recent assignment activity.
   await signInAs(page, 'HR Manager');
   await page.goto('/audit');
-  await expect(page.getByRole('heading', { name: 'Audit centre' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Audit center' })).toBeVisible();
   await expect(page.getByText('Events today')).toBeVisible();
   await page.locator('#af-category').selectOption('ASSIGNMENT');
   await page.getByRole('button', { name: 'Filter' }).click();
@@ -188,7 +190,7 @@ test('Scenario I - audit investigation in the Audit Centre', async ({ page }) =>
   // The HR Manager filters by outcome (DEC-042: HR is the audit audience).
   await signInAs(page, 'HR Manager');
   await page.goto('/audit');
-  await expect(page.getByRole('heading', { name: 'Audit centre' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Audit center' })).toBeVisible();
   await page.locator('#af-result').selectOption('DENIED');
   await page.getByRole('button', { name: 'Filter' }).click();
   // Either denials exist or the empty state explains itself.
@@ -202,6 +204,6 @@ test('Scenario I - audit investigation in the Audit Centre', async ({ page }) =>
   await signInAs(page, 'System Administrator');
   await page.goto('/audit');
   await expect(page.getByText(/technical events only/)).toBeVisible();
-  await expect(page.getByText(/OFF-\d{4}-\d{4}/)).toHaveCount(0);
+  await expect(page.getByText(/OFF-\d{4}-\d{4,}(?:-\d)?/)).toHaveCount(0);
   await signOut(page);
 });

@@ -40,6 +40,19 @@ async function snap(page: Page, name: string): Promise<void> {
 }
 
 async function axeCheck(page: Page, name: string): Promise<void> {
+  // The root layout streams its metadata. A scan fired while that stream is
+  // still open can catch the document between head writes and report a
+  // document-title violation that is not real - the title is present before
+  // and after. Wait for the stream to finish AND for the element to exist in
+  // the DOM (page.title() alone can read a stale value).
+  await page.waitForLoadState('networkidle');
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => document.querySelector('title')?.textContent?.trim().length ?? 0),
+      { timeout: 15_000 },
+    )
+    .toBeGreaterThan(0);
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
   const serious = results.violations.filter(
     (v) => v.impact === 'critical' || v.impact === 'serious',
@@ -64,20 +77,19 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
   await axeCheck(page, 'dashboard');
 
   await page.goto('/cases/new');
-  await page.getByLabel(/Search the employee source/).fill('avery');
+  await page.getByLabel('Employee Name or Number').fill('avery');
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
   await snap(page, '04-create-case');
   await axeCheck(page, 'create-case');
 
-  await page.getByLabel('Departure type (required)').selectOption('RESIGNATION_WITH_NOTICE');
-  await page.getByLabel('Receipt date and time (required)').fill('2026-07-20T09:30');
-  await page
-    .getByLabel('Source of the receipt timestamp (required)')
-    .fill('Visual QA synthetic receipt');
-  await page.getByLabel(/Effective separation date and exact time/).fill('2026-08-14T17:00');
+  await page.getByLabel('Departure Type').selectOption('RESIGNATION_WITH_NOTICE');
+  await page.getByLabel('Date and Time Received').fill('2026-07-20T09:30');
+  // A resignation with notice ends at close of business on the final working
+  // date, so the platform derives the instant and the field is not offered.
+  await page.getByLabel('Final Working Date').fill('2026-08-14');
   await page.getByRole('button', { name: 'Create draft case' }).click();
-  await expect(page.getByText(/Draft case OFF-\d{4}-\d{4} created/)).toBeVisible();
+  await expect(page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/)).toBeVisible();
   const caseUrl = page.url().split('?')[0]!;
   await snap(page, '05-review-submit-step');
   await axeCheck(page, 'case-review');
@@ -110,15 +122,12 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
 
   // Restricted case: authorized view.
   await page.goto('/cases/new');
-  await page.getByLabel(/Search the employee source/).fill('morgan');
+  await page.getByLabel('Employee Name or Number').fill('morgan');
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure type (required)').selectOption('TERMINATION');
-  await page.getByLabel('Receipt date and time (required)').fill('2026-07-21T10:00');
-  await page
-    .getByLabel('Source of the receipt timestamp (required)')
-    .fill('Visual QA synthetic termination');
-  await page.getByLabel(/Effective separation date and exact time/).fill('2026-08-01T17:00');
+  await page.getByLabel('Departure Type').selectOption('TERMINATION');
+  await page.getByLabel('Date and Time Received').fill('2026-07-21T10:00');
+  await page.getByLabel(/Employment Ends/).fill('2026-08-01T17:00');
   await page.getByRole('button', { name: 'Create draft case' }).click();
   const restrictedUrl = page.url().split('?')[0]!;
   await snap(page, '14a-restricted-authorized');
@@ -140,7 +149,7 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
 
   // Unauthorized page as a non-HR role (Directive 6.3: the IT/Finance
   // responder logins are retired; the line manager covers this negative).
-  await signInAs(page, 'Line Manager');
+  await signInAs(page, 'System Administrator');
   await page.goto('/cases');
   await page.waitForURL('**/unauthorized');
   await snap(page, '12-unauthorized');
@@ -164,7 +173,7 @@ test('keyboard access and 200% zoom function (spot checks)', async ({ page }) =>
   // 200% zoom equivalent: halve the viewport CSS pixels via device scale.
   await page.setViewportSize({ width: 640, height: 400 });
   await page.goto('/cases');
-  await expect(page.getByRole('heading', { name: 'Offboarding cases' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Offboarding Cases' })).toBeVisible();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );

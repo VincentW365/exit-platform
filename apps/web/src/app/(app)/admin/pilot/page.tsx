@@ -9,8 +9,9 @@ import {
   proposeActivationAction,
   suspendActivationAction,
 } from './actions';
+import { countOf, humanize } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'Pilot readiness' };
+export const metadata: Metadata = { title: 'Pilot Readiness' };
 export const dynamic = 'force-dynamic';
 
 export default async function PilotPage({
@@ -27,7 +28,7 @@ export default async function PilotPage({
     if (e instanceof ServiceError)
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">Pilot readiness requires an authorized role.</p>
         </>
       );
@@ -38,7 +39,7 @@ export default async function PilotPage({
   return (
     <>
       <h1>
-        Pilot activation and readiness{' '}
+        Pilot Activation and Readiness{' '}
         <span
           className={`badge ${
             data.state === 'PILOT_ACTIVE'
@@ -48,7 +49,7 @@ export default async function PilotPage({
                 : 'badge--info'
           }`}
         >
-          {data.state}
+          {humanize(data.state)}
         </span>
       </h1>
       <Feedback err={sp.err} ok={sp.ok} />
@@ -60,7 +61,7 @@ export default async function PilotPage({
 
       <section className="panel" aria-labelledby="gates-h">
         <h2 id="gates-h" style={{ marginTop: 0 }}>
-          Readiness gates ({data.blockers.length} mandatory blocker(s))
+          Readiness Gates ({countOf(data.blockers.length, 'mandatory blocker')})
         </h2>
         <ul style={{ listStyle: 'none', padding: 0 }}>
           {data.gates.map((g) => (
@@ -68,7 +69,7 @@ export default async function PilotPage({
               <span
                 className={`badge ${g.ok ? 'badge--success' : g.mandatory ? 'badge--danger' : 'badge--warning'}`}
               >
-                {g.ok ? 'PASS' : g.mandatory ? 'BLOCKED' : 'ADVISORY'}
+                {g.ok ? 'Pass' : g.mandatory ? 'Blocked' : 'Advisory'}
               </span>{' '}
               <strong>{g.label}</strong> - {g.detail}
             </li>
@@ -79,7 +80,7 @@ export default async function PilotPage({
       {current ? (
         <section className="panel" aria-labelledby="current-h">
           <h2 id="current-h" style={{ marginTop: 0 }}>
-            Current activation record: {current.state} ({current.cohort})
+            Current Activation Record: {humanize(current.state)} ({humanize(current.cohort)})
           </h2>
           <p className="hint">
             Created {formatInstant(current.createdAt)} - checksum{' '}
@@ -118,33 +119,33 @@ export default async function PilotPage({
           <details className="action">
             <summary>Propose a new activation state</summary>
             <form action={proposeActivationAction}>
-              <label htmlFor="pa-state">Target state</label>
+              <label htmlFor="pa-state">Target State</label>
               <select id="pa-state" name="targetState" required>
-                <option value="TEST_ONLY">TEST_ONLY</option>
-                <option value="TRAINING_ENABLED">TRAINING_ENABLED</option>
-                <option value="PILOT_READY">PILOT_READY</option>
-                <option value="PILOT_ACTIVE">PILOT_ACTIVE</option>
-                <option value="DISABLED">DISABLED</option>
+                <option value="TEST_ONLY">Test only</option>
+                <option value="TRAINING_ENABLED">Training enabled</option>
+                <option value="PILOT_READY">Pilot ready</option>
+                <option value="PILOT_ACTIVE">Pilot active</option>
+                <option value="DISABLED">Disabled</option>
               </select>
               <label htmlFor="pa-cohort">Cohort</label>
               <select id="pa-cohort" name="cohort">
-                <option value="PILOT">PILOT</option>
-                <option value="POST_ROLLOUT">POST_ROLLOUT</option>
-                <option value="NONE">NONE</option>
+                <option value="PILOT">Pilot</option>
+                <option value="POST_ROLLOUT">Post rollout</option>
+                <option value="NONE">None</option>
               </select>
-              <label htmlFor="pa-dept">Scope: departments (comma-separated; empty = all)</label>
+              <label htmlFor="pa-dept">Scope: Departments (Comma-separated; Empty = All)</label>
               <input id="pa-dept" name="departments" maxLength={300} />
-              <label htmlFor="pa-loc">Scope: locations</label>
+              <label htmlFor="pa-loc">Scope: Locations</label>
               <input id="pa-loc" name="locations" maxLength={300} />
-              <label htmlFor="pa-types">Scope: departure types</label>
+              <label htmlFor="pa-types">Scope: Departure Types</label>
               <input id="pa-types" name="departureTypes" maxLength={300} />
-              <label htmlFor="pa-max">Maximum active pilot cases</label>
+              <label htmlFor="pa-max">Maximum Active Pilot Cases</label>
               <input id="pa-max" name="maxActiveCases" type="number" min={1} max={500} />
-              <label htmlFor="pa-int">Enabled integrations (comma-separated)</label>
+              <label htmlFor="pa-int">Enabled Integrations (Comma-separated)</label>
               <input id="pa-int" name="enabledIntegrations" maxLength={300} />
               <label htmlFor="pa-cond">Conditions</label>
               <textarea id="pa-cond" name="conditions" rows={2} maxLength={2000} />
-              <label htmlFor="pa-rb">Rollback plan (required)</label>
+              <label htmlFor="pa-rb">Rollback Plan (Required)</label>
               <textarea id="pa-rb" name="rollbackPlan" rows={3} required maxLength={4000} />
               <button type="submit">Record activation proposal</button>
             </form>
@@ -152,7 +153,7 @@ export default async function PilotPage({
           <details className="action">
             <summary>Suspend (stops new automated integration work)</summary>
             <form action={suspendActivationAction}>
-              <label htmlFor="sus-reason">Reason (required, audited)</label>
+              <label htmlFor="sus-reason">Reason (Required, Audited)</label>
               <textarea id="sus-reason" name="reason" rows={2} required maxLength={500} />
               <button type="submit">Suspend now</button>
             </form>

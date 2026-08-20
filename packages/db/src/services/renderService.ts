@@ -233,7 +233,7 @@ export async function renderLetterPdf(input: LetterRenderInput): Promise<Rendere
     .fontSize(8)
     .fillColor(MUTED)
     .text(
-      `${approvedBy}Recorded in the Offboarding Platform on ${formatInstant(input.approvedAt)} (America/Jamaica). ${input.attestationNote}`,
+      `${approvedBy}Recorded in the Offboarding Platform on ${formatInstant(input.approvedAt)}. ${input.attestationNote}`,
       { lineGap: 1.5 },
     )
     .fillColor('black');
@@ -316,7 +316,7 @@ export async function renderActionFormPdf(input: FormRenderInput): Promise<Rende
 
   sectionHeading(doc, 'Approvals (authenticated attestations)');
   for (const a of input.approvals) {
-    fieldRow(doc, a.label, `${a.name} (${a.role}) - ${formatInstant(a.at)} (America/Jamaica)`);
+    fieldRow(doc, a.label, `${a.name} (${a.role}) - ${formatInstant(a.at)}`);
   }
 
   if (doc.y > doc.page.height - doc.page.margins.bottom - 48) doc.addPage();

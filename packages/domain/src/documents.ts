@@ -42,6 +42,8 @@ export const DOCUMENT_PLACEHOLDERS = [
   'DOCUMENT_DATE',
   'EMPLOYEE_LEGAL_NAME',
   'EMPLOYEE_DISPLAY_NAME',
+  'EMPLOYEE_FIRST_NAME',
+  'EMPLOYEE_ADDRESS',
   'EMPLOYEE_ID',
   'POSITION',
   'DEPARTMENT',
@@ -53,6 +55,7 @@ export const DOCUMENT_PLACEHOLDERS = [
   'CONFIRMED_LAST_WORKING_DATE',
   'EFFECTIVE_SEPARATION_DATE',
   'EFFECTIVE_SEPARATION_TIME',
+  'PROPERTY_RETURN_DEADLINE',
   'HR_APPROVER_NAME',
   'HR_APPROVER_TITLE',
   'TEMPLATE_VERSION',
@@ -74,9 +77,11 @@ export const REQUIRED_LETTER_PLACEHOLDERS: Readonly<
     'CASE_REFERENCE',
     'DOCUMENT_DATE',
     'EMPLOYEE_LEGAL_NAME',
+    'EMPLOYEE_ADDRESS',
     'RESIGNATION_RECEIVED_DATE',
     'CONFIRMED_LAST_WORKING_DATE',
     'EFFECTIVE_SEPARATION_DATE',
+    'PROPERTY_RETURN_DEADLINE',
   ],
   IMMEDIATE_RESIGNATION_ACKNOWLEDGEMENT: [
     'CASE_REFERENCE',
@@ -88,6 +93,36 @@ export const REQUIRED_LETTER_PLACEHOLDERS: Readonly<
   ],
 };
 
+/**
+ * The Company's resignation acceptance letter (DEC-054), transcribed from the
+ * HR sample with every value the sample spelled out replaced by a
+ * placeholder. The final-payment paragraph is HR's own approved wording: the
+ * platform states it and calculates nothing.
+ */
+export const RESIGNATION_ACCEPTANCE_LETTER_BODY = `[[DOCUMENT_DATE]]
+
+[[EMPLOYEE_LEGAL_NAME]]
+[[EMPLOYEE_ADDRESS]]
+
+Dear [[EMPLOYEE_FIRST_NAME]],
+
+Re: Acknowledgement of Resignation
+
+We acknowledge receipt and acceptance of your resignation.
+
+Your final salary payment, inclusive of notice pay and vacation leave earned up to your final day of employment (where applicable), will be processed accordingly. Please note that any outstanding amounts owed to the Company, including lunch or other deductions, will be deducted from your final payment.
+
+Kindly ensure that all Company property in your possession - including your employee ID, health and lunch cards, and uniforms - is returned to the HR Department no later than [[PROPERTY_RETURN_DEADLINE]].
+
+We thank you for your contributions during your tenure and wish you every success in your future endeavors.
+
+Sincerely,
+BERT'S AUTO PARTS LIMITED
+
+[[HR_APPROVER_NAME]]
+[[HR_APPROVER_TITLE]]
+
+Case reference: [[CASE_REFERENCE]] | Resignation received [[RESIGNATION_RECEIVED_DATE]] | Last working day [[CONFIRMED_LAST_WORKING_DATE]] | Employment ends [[EFFECTIVE_SEPARATION_DATE]]`;
 const PLACEHOLDER_RE = /\[\[([A-Z0-9_]+)\]\]/g;
 
 /** Validate template body content (section B rule 6/7). */
@@ -136,10 +171,32 @@ export interface CaseFieldsForDocument {
   department: string;
   location: string;
   managerName: string | null;
+  /** HR-typed from the resignation letter scan; the letter is addressed. */
+  employeeAddress: string | null;
   receivedAt: Date;
   proposedLastDay: Date | null;
   confirmedLastDay: Date | null;
   effectiveSeparationAt: Date | null;
+}
+
+/** "Avery Brown" -> "Avery". The letter greets the employee by first name. */
+export function firstNameOf(fullName: string): string {
+  return fullName.trim().split(/s+/)[0] ?? '';
+}
+
+/**
+ * The date company property is due back. This is NOT a new HR rule: it is the
+ * last working date already confirmed on the case, restated in the letter's
+ * own words. Where no last working date exists yet, the effective separation
+ * date stands in; where neither does, the placeholder stays empty and the
+ * letter cannot be submitted.
+ */
+export function propertyReturnDeadline(c: {
+  confirmedLastDay: Date | null;
+  effectiveSeparationAt: Date | null;
+}): string {
+  const due = c.confirmedLastDay ?? c.effectiveSeparationAt;
+  return due ? formatDateOnly(due) : '';
 }
 
 const DEPARTURE_PHRASE: Record<string, string> = {
@@ -159,6 +216,8 @@ export function buildFieldSnapshot(
     DOCUMENT_DATE: formatDateOnly(documentDate),
     EMPLOYEE_LEGAL_NAME: c.employeeLegalName,
     EMPLOYEE_DISPLAY_NAME: c.employeeDisplayName,
+    EMPLOYEE_FIRST_NAME: firstNameOf(c.employeeLegalName || c.employeeDisplayName),
+    EMPLOYEE_ADDRESS: c.employeeAddress ?? '',
     EMPLOYEE_ID: c.employeeSourceId,
     POSITION: c.jobTitle ?? '',
     DEPARTMENT: c.department,
@@ -172,8 +231,9 @@ export function buildFieldSnapshot(
       ? formatDateOnly(c.effectiveSeparationAt)
       : '',
     EFFECTIVE_SEPARATION_TIME: c.effectiveSeparationAt
-      ? formatInstant(c.effectiveSeparationAt).split(', ')[1] + ' (America/Jamaica)'
+      ? (formatInstant(c.effectiveSeparationAt).split(', ')[1] ?? '')
       : '',
+    PROPERTY_RETURN_DEADLINE: propertyReturnDeadline(c),
     TEMPLATE_VERSION: `v${templateVersion}`,
     DOCUMENT_VERSION: `v${documentVersion}`,
   };
@@ -264,6 +324,7 @@ export type DocumentStatus =
   | 'RENDERING'
   | 'RENDERED'
   | 'MANUALLY_ISSUED'
+  | 'ISSUED_BY_EMAIL'
   | 'SUPERSEDED'
   | 'VOIDED'
   | 'RENDER_FAILED';
@@ -297,7 +358,12 @@ export const DOC_TRANSITIONS = {
   renderOk: { from: ['RENDERING'], to: 'RENDERED', reasonRequired: false },
   renderFail: { from: ['RENDERING'], to: 'RENDER_FAILED', reasonRequired: false },
   markIssued: { from: ['RENDERED'], to: 'MANUALLY_ISSUED', reasonRequired: false },
-  supersede: { from: ['RENDERED', 'MANUALLY_ISSUED'], to: 'SUPERSEDED', reasonRequired: true },
+  issueByEmail: { from: ['RENDERED'], to: 'ISSUED_BY_EMAIL', reasonRequired: false },
+  supersede: {
+    from: ['RENDERED', 'MANUALLY_ISSUED', 'ISSUED_BY_EMAIL'],
+    to: 'SUPERSEDED',
+    reasonRequired: true,
+  },
   void: {
     from: [
       'DRAFT',
@@ -330,6 +396,7 @@ export function docTransitionError(
 export const DOWNLOADABLE_DOC_STATUSES: readonly DocumentStatus[] = [
   'RENDERED',
   'MANUALLY_ISSUED',
+  'ISSUED_BY_EMAIL',
   'SUPERSEDED',
 ];
 
@@ -343,5 +410,6 @@ export const LIVE_DOC_STATUSES: readonly DocumentStatus[] = [
   'RENDERING',
   'RENDERED',
   'MANUALLY_ISSUED',
+  'ISSUED_BY_EMAIL',
   'RENDER_FAILED',
 ];

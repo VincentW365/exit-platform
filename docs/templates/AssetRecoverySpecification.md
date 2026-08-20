@@ -129,6 +129,35 @@ At case/workflow activation:
 
 A new catalogue version does not silently add items to active cases.
 
+### 7.1 Exit Checklist for Return Items (as implemented, DEC-053)
+
+Alongside the asset recovery items above, activation creates one **Exit Checklist for
+Return Items** per case: the HR paper form, carrying its ten items in the printed order
+(Identification Card, Health Cards, Access Card / Door Pass, Uniforms, Laptop, ePay Card,
+Employee Handbook, Phone, and the two `KEYS` rows Desk and Door).
+
+- **Request.** A derived, controlled email (`RETURN_ITEMS_CHECKLIST`, AUTO_SEND) carries a
+  single-use secure link under the DEC-048 token discipline. The link opens **that
+  employee's** checklist directly at `/checklist/<token>` - no sign-in, no searching.
+  Sending is recorded on the checklist itself (`RETURN_CHECKLIST_SENT`, recipient **mask**
+  only).
+- **Statuses.** Each item takes exactly one of `RETURNED`, `NOT_RETURNED`,
+  `NOT_APPLICABLE` or `LOST_OR_DAMAGED`; `OUTSTANDING` is the absence of a decision.
+  A remark is required for anything not returned.
+- **Overall status is derived, never chosen:** `NOT_STARTED` → `IN_PROGRESS` →
+  `COMPLETED` or `COMPLETED_WITH_OUTSTANDING`. Property still owed keeps its items
+  visible after submission; submitting never clears an item.
+- **Rejected submissions keep their work.** An incomplete form is refused with named
+  reasons, but what was entered is saved (`RETURN_CHECKLIST_SAVED`) and the checklist
+  stays `IN_PROGRESS`.
+- **HR side.** The case Assets tab shows the checklist and lets an officer with
+  `asset.manage` record it (paper form returned) or correct it afterwards - audited as
+  `RETURN_CHECKLIST_SUBMITTED` or `RETURN_CHECKLIST_CORRECTED`.
+- **Boundaries.** The checklist never marks an asset recovery record cleared on its own
+  and never creates a payroll instruction. It blocks clearance only once it has actually
+  come back reporting outstanding property; before that the asset recovery items above are
+  the operative gate.
+
 ## 8. Return recording
 
 The authorized receiver:

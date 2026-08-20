@@ -91,6 +91,8 @@ export const REPORT_CATALOG: ReadonlyArray<{ key: string; title: string; family:
   { key: 'accessTimeliness', title: 'Access-revocation timeliness', family: 'Workflow' },
   { key: 'assetDocumentation', title: 'Asset disposition documentation', family: 'Assets' },
   { key: 'assetRecovery', title: 'Physical asset recovery', family: 'Assets' },
+  { key: 'returnChecklist', title: 'Exit checklist for return items', family: 'Assets' },
+  { key: 'letterIssuance', title: 'Resignation letter issuance', family: 'Documents' },
   { key: 'surveyParticipation', title: 'Exit-survey participation', family: 'Survey' },
   { key: 'surveyRatings', title: 'Survey rating distributions', family: 'Survey' },
   {
@@ -98,7 +100,11 @@ export const REPORT_CATALOG: ReadonlyArray<{ key: string; title: string; family:
     title: 'Aggregate survey keyword summary (deterministic, no AI)',
     family: 'Survey',
   },
-  { key: 'handoverCompletion', title: 'Handover completion', family: 'Workflow' },
+  {
+    key: 'handoverCompletion',
+    title: 'Handover completion (historical)',
+    family: 'Workflow',
+  },
   { key: 'clearanceCycle', title: 'Clearance cycle time', family: 'Workflow' },
   { key: 'endToEndCycle', title: 'End-to-end cycle time', family: 'Cases' },
   { key: 'exceptions', title: 'Exceptions and escalations', family: 'Operations' },
@@ -349,6 +355,90 @@ export async function runReport(
             note: 'NOT_ISSUED items are excluded from the physical denominator; documentation is a separate measure.',
           };
     }
+    // DEC-053: did the checklist come back, and did it come back clean?
+    case 'returnChecklist': {
+      const checklists = await prisma.returnItemsChecklist.findMany({
+        where: { case: { is: where } },
+        select: { status: true, sentAt: true, submittedAt: true },
+      });
+      const byStatus = new Map<string, number>();
+      for (const c of checklists) byStatus.set(c.status, (byStatus.get(c.status) ?? 0) + 1);
+      const sent = checklists.filter((c) => c.sentAt).length;
+      const returned = checklists.filter((c) => c.submittedAt).length;
+      const turnaround = checklists
+        .filter((c) => c.sentAt && c.submittedAt)
+        .map((c) => (c.submittedAt!.getTime() - c.sentAt!.getTime()) / 86_400_000)
+        .sort((a, b) => a - b);
+      const outstanding = await prisma.returnItemsChecklistEntry.count({
+        where: {
+          checklist: { is: { case: { is: where } } },
+          status: { in: ['NOT_RETURNED', 'LOST_OR_DAMAGED'] },
+        },
+      });
+      return {
+        key,
+        title: 'Exit checklist for return items',
+        columns: ['Measure', 'Value'],
+        rows: [
+          ['Checklists created', checklists.length],
+          ['Requested by email', sent],
+          ['Completed', returned],
+          [
+            'Return rate (of those requested)',
+            sent ? `${Math.round((returned / sent) * 100)}%` : null,
+          ],
+          [
+            'Median days to return',
+            turnaround.length
+              ? Math.round(turnaround[Math.floor((turnaround.length - 1) / 2)]! * 10) / 10
+              : null,
+          ],
+          ...[...byStatus.entries()].map(([status, count]) => [`Status: ${status}`, count]),
+          ['Items still owed (not returned or lost/damaged)', outstanding],
+        ],
+        note: 'A checklist reporting outstanding property is COMPLETED_WITH_OUTSTANDING, never COMPLETED - submitting never clears an item.',
+      };
+    }
+    // DEC-054: was the acceptance letter actually issued, and how?
+    case 'letterIssuance': {
+      const letters = await prisma.documentInstance.findMany({
+        where: {
+          case: { is: where },
+          documentType: {
+            in: ['RESIGNATION_ACCEPTANCE_WITH_NOTICE', 'IMMEDIATE_RESIGNATION_ACKNOWLEDGEMENT'],
+          },
+        },
+        select: { status: true, issueMethod: true, renderedAt: true, issuedAt: true },
+      });
+      const byStatus = new Map<string, number>();
+      for (const d of letters) byStatus.set(d.status, (byStatus.get(d.status) ?? 0) + 1);
+      const byMethod = new Map<string, number>();
+      for (const d of letters.filter((x) => x.issueMethod))
+        byMethod.set(d.issueMethod!, (byMethod.get(d.issueMethod!) ?? 0) + 1);
+      const toIssue = letters
+        .filter((d) => d.renderedAt && d.issuedAt)
+        .map((d) => (d.issuedAt!.getTime() - d.renderedAt!.getTime()) / 86_400_000)
+        .sort((a, b) => a - b);
+      const rendered = letters.filter((d) => d.status === 'RENDERED').length;
+      return {
+        key,
+        title: 'Resignation letter issuance',
+        columns: ['Measure', 'Value'],
+        rows: [
+          ['Letters created', letters.length],
+          ...[...byStatus.entries()].map(([status, count]) => [`Status: ${status}`, count]),
+          ...[...byMethod.entries()].map(([method, count]) => [`Issued by: ${method}`, count]),
+          ['Rendered but not yet issued', rendered],
+          [
+            'Median days from render to issue',
+            toIssue.length
+              ? Math.round(toIssue[Math.floor((toIssue.length - 1) / 2)]! * 10) / 10
+              : null,
+          ],
+        ],
+        note: 'An issued letter cannot be recalled; a correction goes through supersession, which appears here as a new version.',
+      };
+    }
     case 'surveyParticipation': {
       const inv = await prisma.surveyInvitation.groupBy({
         by: ['status'],
@@ -432,9 +522,10 @@ export async function runReport(
       });
       return {
         key,
-        title: 'Handover completion',
+        title: 'Handover completion (historical)',
         columns: ['Status', 'Count'],
         rows: records.map((r) => [r.status, r._count._all]),
+        note: 'Historical only. The platform stopped recording handover under DEC-052; existing records stay readable and nothing new is added.',
       };
     }
     case 'clearanceCycle':

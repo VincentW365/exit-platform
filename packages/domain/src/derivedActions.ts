@@ -168,6 +168,56 @@ export function deriveRequiredActions(facts: DerivationFacts, now: Date): Derive
     scheduledSendAt: itSendAt,
   });
 
+  // --- Exit checklist for return items (owner directive, 2026-08-19) --------
+  // Sent when the case activates, carrying a secure link to this employee's
+  // checklist. Sending is a REQUEST: completion is the submitted form.
+  specs.push({
+    actionKey: 'EMAIL:RETURN_ITEMS_CHECKLIST',
+    group: 'ASSETS',
+    kind: 'EMAIL_ACTION',
+    title: 'Exit checklist for return items',
+    applicable: true,
+    determination: 'DERIVED',
+    ruleKey: 'RULE_RETURN_ITEMS_CHECKLIST_V1',
+    sourceFields: { departureType: facts.departureType },
+    result: {
+      schedule: 'Sent when the offboarding process starts, with a secure form link.',
+    },
+    notificationType: 'RETURN_ITEMS_CHECKLIST',
+    scheduledSendAt: now,
+  });
+
+  // --- Line manager departure notice (owner decision, 2026-08-19) -----------
+  // The manager has no login and no task in the platform. They receive one
+  // controlled email telling them who is leaving, when, and what to do; the
+  // work itself happens in their own team, outside this system.
+  specs.push({
+    actionKey: 'EMAIL:MANAGER_DEPARTURE_NOTICE',
+    group: 'MANAGER_HANDOVER',
+    kind: 'EMAIL_ACTION',
+    title: 'Line manager departure notice',
+    applicable: true,
+    determination: 'DERIVED',
+    ruleKey: 'RULE_MANAGER_DEPARTURE_EMAIL_V1',
+    sourceFields: {
+      departureType: facts.departureType,
+      classification: facts.classification,
+    },
+    result: {
+      schedule:
+        facts.departureType === 'TERMINATION'
+          ? 'Confidential timing: released at the effective separation time.'
+          : 'Sent when the offboarding process starts.',
+    },
+    notificationType: 'LINE_MANAGER_HANDOVER',
+    scheduledSendAt:
+      facts.departureType === 'TERMINATION'
+        ? facts.effectiveSeparationAt.getTime() > now.getTime()
+          ? facts.effectiveSeparationAt
+          : now
+        : now,
+  });
+
   // --- Finance notification (always required) --------------------------------
   specs.push({
     actionKey: 'EMAIL:FINANCE_OFFBOARDING',

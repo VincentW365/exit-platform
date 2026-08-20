@@ -7,9 +7,11 @@ import {
   approveDocument,
   createLetterDraft,
   createManualExceptionDraft,
+  issueDocumentByEmail,
   markManuallyIssued,
   refreshDraftFields,
   returnDocument,
+  setEmployeeAddress,
   submitDocument,
   supersedeAndRecreate,
   voidDocument,
@@ -108,6 +110,34 @@ export async function markIssuedAction(formData: FormData): Promise<void> {
       note: str(fd, 'note') || undefined,
     });
     return 'Manual issue recorded (no email was sent).';
+  });
+}
+
+/**
+ * Record the address the acceptance letter is written to, typed by HR from
+ * the resignation letter scan.
+ */
+export async function setAddressAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    await setEmployeeAddress(actor as never, str(fd, 'caseId'), {
+      employeeAddress: str(fd, 'employeeAddress'),
+    });
+    return str(fd, 'employeeAddress')
+      ? 'Address recorded. Refresh the letter draft to pick it up.'
+      : 'Address cleared.';
+  });
+}
+
+/** Send the rendered letter to the employee, copying the selected HR staff. */
+export async function issueByEmailAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    const outcome = await issueDocumentByEmail(actor as never, str(fd, 'docId'), {
+      ccIds: fd.getAll('ccIds').map((v) => String(v)),
+      note: str(fd, 'note') || undefined,
+    });
+    return outcome.ccCount > 0
+      ? `Letter queued for ${outcome.destinationMask}, copying ${outcome.ccCount} HR colleague(s).`
+      : `Letter queued for ${outcome.destinationMask}.`;
   });
 }
 

@@ -10,7 +10,7 @@ import {
 } from '@exit/db';
 import { formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
-import { Feedback } from '@/components/ui';
+import { CaseTitle, Feedback } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
 import {
   activateWorkflowAction,
@@ -19,6 +19,7 @@ import {
   resumeCaseAction,
   supersedeWorkflowAction,
 } from './actions';
+import { countOf, humanize } from '@/lib/text';
 
 export const metadata: Metadata = { title: 'Workflow' };
 export const dynamic = 'force-dynamic';
@@ -52,7 +53,7 @@ export default async function CaseWorkflowPage({
     if (e instanceof ServiceError && e.code === 'FORBIDDEN')
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">This area requires full case access.</p>
         </>
       );
@@ -74,9 +75,7 @@ export default async function CaseWorkflowPage({
 
   return (
     <>
-      <h1>
-        Workflow - {data.caseNumber} ({data.caseStatus})
-      </h1>
+      <CaseTitle title="Workflow" caseNumber={data.caseNumber} status={data.caseStatus} />
       <CaseNav caseId={id} active="workflow" />
       <Feedback err={sp.err} ok={sp.ok} />
 
@@ -96,7 +95,7 @@ export default async function CaseWorkflowPage({
 
       {preview ? (
         <section className="panel" aria-labelledby="preview-h">
-          <h2 id="preview-h">Workflow preview (read-only, before activation)</h2>
+          <h2 id="preview-h">Workflow Preview (Read-only, Before Activation)</h2>
           {preview.definition ? (
             <>
               <p>
@@ -130,7 +129,7 @@ export default async function CaseWorkflowPage({
                           {t.taskKind === 'ACCESS_REVOCATION' ? (
                             <>
                               {' '}
-                              <span className="badge badge--danger">EXACT TIME</span>
+                              <span className="badge badge--attention">Exact time</span>
                             </>
                           ) : null}
                           {t.confidential ? (
@@ -140,7 +139,7 @@ export default async function CaseWorkflowPage({
                             </>
                           ) : null}
                         </td>
-                        <td>{t.department}</td>
+                        <td>{humanize(t.department)}</td>
                         <td>{t.required ? 'Required' : 'Optional'}</td>
                         <td>{t.dependsOnCodes.join(', ') || '-'}</td>
                         <td>
@@ -184,7 +183,7 @@ export default async function CaseWorkflowPage({
               A hold pauses eligible administrative due dates only. Access revocation, security
               tasks and the exact effective-separation event are never paused.
             </p>
-            <label htmlFor="hold-reason">Reason (required, audited)</label>
+            <label htmlFor="hold-reason">Reason (Required, Audited)</label>
             <textarea id="hold-reason" name="reason" required maxLength={500} rows={2} />
             <button type="submit">Place on hold</button>
           </form>
@@ -195,7 +194,7 @@ export default async function CaseWorkflowPage({
           <summary>Resume case from hold</summary>
           <form action={resumeCaseAction}>
             <input type="hidden" name="caseId" value={id} />
-            <label htmlFor="resume-reason">Reason (required, audited)</label>
+            <label htmlFor="resume-reason">Reason (Required, Audited)</label>
             <textarea id="resume-reason" name="reason" required maxLength={500} rows={2} />
             <button type="submit">Resume case</button>
           </form>
@@ -211,13 +210,13 @@ export default async function CaseWorkflowPage({
               replacement workflow is created and only matching completed evidence is carried
               forward.
             </p>
-            <label htmlFor="sup-type">New departure type</label>
+            <label htmlFor="sup-type">New Departure Type</label>
             <select id="sup-type" name="newType" required>
               <option value="RESIGNATION_WITH_NOTICE">Resignation with notice</option>
               <option value="IMMEDIATE_RESIGNATION">Immediate resignation</option>
               <option value="TERMINATION">Termination (restricted)</option>
             </select>
-            <label htmlFor="sup-reason">Reason (required, audited)</label>
+            <label htmlFor="sup-reason">Reason (Required, Audited)</label>
             <textarea id="sup-reason" name="reason" required maxLength={500} rows={2} />
             <button type="submit">Supersede and recreate workflow</button>
           </form>
@@ -232,9 +231,9 @@ export default async function CaseWorkflowPage({
               Reopening records an audited reactivation plan. The completed workflow is preserved
               untouched - nothing is overwritten.
             </p>
-            <label htmlFor="ro-reason">Reason (required)</label>
+            <label htmlFor="ro-reason">Reason (Required)</label>
             <textarea id="ro-reason" name="reason" required maxLength={500} rows={2} />
-            <label htmlFor="ro-plan">Reactivation plan (required)</label>
+            <label htmlFor="ro-plan">Reactivation Plan (Required)</label>
             <textarea id="ro-plan" name="plan" required maxLength={4000} rows={3} />
             <button type="submit">Reopen case</button>
           </form>
@@ -243,7 +242,7 @@ export default async function CaseWorkflowPage({
 
       {impact.length > 0 ? (
         <section className="panel" aria-labelledby="impact-h">
-          <h2 id="impact-h">Tasks affected by an effective-time change</h2>
+          <h2 id="impact-h">Tasks Affected by an Effective-time Change</h2>
           <p className="hint">
             If the effective separation time is corrected (case overview), these open tasks will be
             recalculated. Old due dates are retained and retrospective moves appear in the exception
@@ -252,8 +251,9 @@ export default async function CaseWorkflowPage({
           <ul>
             {impact.map((t) => (
               <li key={t.id}>
-                {t.title} ({t.department}) - currently due {t.dueAt ? formatInstant(t.dueAt) : '-'}{' '}
-                - basis {t.basis}
+                {t.title} ({humanize(t.department)}) - currently due{' '}
+                {t.dueAt ? formatInstant(t.dueAt) : '-'} - based on the{' '}
+                {humanize(t.basis).toLowerCase()}
               </li>
             ))}
           </ul>
@@ -262,14 +262,14 @@ export default async function CaseWorkflowPage({
 
       {data.instances.length === 0 && !preview ? (
         <p className="panel">
-          No workflow exists yet. The workflow is created when an APPROVED case is activated.
+          No workflow exists yet. The workflow is created when an approved case is activated.
         </p>
       ) : null}
 
       {data.instances.map((inst) => (
         <section className="panel" key={inst.id} aria-label={`Workflow ${inst.status}`}>
           <h2 style={{ marginTop: 0 }}>
-            {inst.definition.name} v{inst.definitionVersion}{' '}
+            {inst.definition.name} V{inst.definitionVersion}{' '}
             <span
               className={`badge ${
                 inst.status === 'COMPLETED'
@@ -282,14 +282,46 @@ export default async function CaseWorkflowPage({
               {inst.status}
             </span>
           </h2>
-          <p>
-            Activated {formatInstant(inst.activatedAt)} - checksum{' '}
-            <code>{inst.configChecksum.slice(0, 12)}...</code> - completion {inst.completionPct}% (
-            {inst.completedTaskCount} completed, {inst.waivedTaskCount} waived of{' '}
-            {inst.requiredTaskCount} required) - {inst.blockedTaskCount} blocked -{' '}
-            {inst.overdueTaskCount} overdue -{' '}
-            {inst.clearanceReady ? 'READY for clearance' : 'not yet ready for clearance'}
-          </p>
+          <div className="wf-progress">
+            <div className="wf-progress__head">
+              <span className="wf-progress__pct">{inst.completionPct}%</span>
+              <span className="hint">
+                {inst.completedTaskCount} of {inst.requiredTaskCount} required tasks complete
+                {inst.waivedTaskCount > 0 ? ` (${inst.waivedTaskCount} waived)` : ''}
+              </span>
+              <span
+                className={`badge ${inst.clearanceReady ? 'badge--success' : 'badge--neutral'}`}
+              >
+                {inst.clearanceReady ? 'Ready for clearance' : 'Not yet ready for clearance'}
+              </span>
+            </div>
+            <div
+              className="meter"
+              role="img"
+              aria-label={`${inst.completionPct}% of required tasks complete`}
+            >
+              <span className="meter__fill" style={{ width: `${inst.completionPct}%` }} />
+            </div>
+            <p className="wf-progress__facts">
+              {inst.overdueTaskCount > 0 ? (
+                <span className="badge badge--danger">
+                  {countOf(inst.overdueTaskCount, 'task')} overdue
+                </span>
+              ) : null}
+              {inst.blockedTaskCount > 0 ? (
+                <span className="badge badge--warning">
+                  {countOf(inst.blockedTaskCount, 'task')} blocked
+                </span>
+              ) : null}
+              {inst.overdueTaskCount === 0 && inst.blockedTaskCount === 0 ? (
+                <span className="badge badge--success">Nothing overdue or blocked</span>
+              ) : null}
+              <span className="hint">
+                Activated {formatInstant(inst.activatedAt)} · checksum{' '}
+                <code>{inst.configChecksum.slice(0, 12)}...</code>
+              </span>
+            </p>
+          </div>
           <div style={{ overflowX: 'auto' }} tabIndex={0}>
             <table>
               <caption className="visually-hidden">Workflow tasks</caption>
@@ -310,7 +342,7 @@ export default async function CaseWorkflowPage({
                     t.dueAt.getTime() < now &&
                     ['READY', 'IN_PROGRESS', 'BLOCKED'].includes(t.status);
                   return (
-                    <tr key={t.id}>
+                    <tr key={t.id} className={overdue ? 'row--critical' : undefined}>
                       <td>
                         <Link href={`/tasks/${t.id}`}>{t.title}</Link>
                         {t.taskKind === 'ACCESS_REVOCATION' ? (
@@ -324,16 +356,20 @@ export default async function CaseWorkflowPage({
                       <td>{t.department}</td>
                       <td>
                         <span className={`badge ${TASK_BADGE[t.status] ?? 'badge--neutral'}`}>
-                          {t.status}
+                          {humanize(t.status)}
                         </span>
                         {overdue ? (
                           <>
                             {' '}
-                            <span className="badge badge--danger">OVERDUE</span>
+                            <span className="badge badge--danger">Overdue</span>
                           </>
                         ) : null}
                       </td>
-                      <td>{t.priority}</td>
+                      <td>
+                        <span className={`priority priority--${t.priority.toLowerCase()}`}>
+                          {humanize(t.priority)}
+                        </span>
+                      </td>
                       <td>
                         {t.dueAt ? formatInstant(t.dueAt) : '-'}
                         {t.dueRecalcReason ? (

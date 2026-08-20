@@ -11,6 +11,7 @@ import {
   documentValidationErrors,
   hasMissingMarkers,
   letterTypeForDeparture,
+  maskDestination,
   substitute,
   DOWNLOADABLE_DOC_STATUSES,
   LIVE_DOC_STATUSES,
@@ -29,14 +30,6 @@ const LETTER_TITLES: Partial<Record<DocumentType, string>> = {
   IMMEDIATE_RESIGNATION_ACKNOWLEDGEMENT: 'Acknowledgement of Immediate Resignation',
 };
 
-async function managerNameForCase(caseId: string): Promise<string | null> {
-  const row = await getPrisma().caseParticipant.findFirst({
-    where: { caseId, participantRole: 'MANAGER', removedAt: null },
-    include: { user: { select: { displayName: true } } },
-  });
-  return row?.user.displayName ?? null;
-}
-
 async function snapshotForCase(caseId: string, documentVersion: number, templateVersion: number) {
   const c = await getPrisma().offboardingCase.findUniqueOrThrow({ where: { id: caseId } });
   return buildFieldSnapshot(
@@ -49,7 +42,8 @@ async function snapshotForCase(caseId: string, documentVersion: number, template
       jobTitle: c.jobTitle,
       department: c.department,
       location: c.location,
-      managerName: await managerNameForCase(caseId),
+      managerName: c.managerName,
+      employeeAddress: c.employeeAddress,
       receivedAt: c.receivedAt,
       proposedLastDay: c.proposedLastDay,
       confirmedLastDay: c.confirmedLastDay,
@@ -213,13 +207,26 @@ export async function getCaseDocuments(actor: Actor, caseId: string) {
   const attestations = await getPrisma().attestation.findMany({
     where: { subjectType: 'DOCUMENT', subjectId: { in: docs.map((x) => x.id) } },
   });
+  // DEC-054: what the page needs to address and send the letter. The
+  // employee's address is shown to HR because HR typed it; the email is
+  // masked because nothing on a page needs the whole address.
+  const c = await getPrisma().offboardingCase.findUniqueOrThrow({
+    where: { id: caseId },
+    select: { employeeAddress: true, employeeWorkEmail: true },
+  });
   return {
     docs,
     attestations,
+    delivery: {
+      employeeAddress: c.employeeAddress,
+      employeeEmailMask: c.employeeWorkEmail ? maskDestination(c.employeeWorkEmail) : null,
+    },
     capabilities: {
       canCreate: canActOnCase(actor, 'doc.create', ctx),
       canApprove: canActOnCase(actor, 'doc.approve', ctx),
       canDownload: canActOnCase(actor, 'doc.download', ctx),
+      canEdit: canActOnCase(actor, 'doc.edit', ctx),
+      canIssue: canActOnCase(actor, 'doc.markIssued', ctx),
     },
   };
 }

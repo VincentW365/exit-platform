@@ -10,7 +10,7 @@ import {
   type ChecklistState,
 } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
-import { Feedback } from '@/components/ui';
+import { CaseTitle, Feedback } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
 import {
   completeFormAction,
@@ -22,8 +22,11 @@ import {
   submitFormAction,
   voidFormAction,
 } from './actions';
+import { humanize } from '@/lib/text';
+import { EmptyState } from '@/components/EmptyState';
+import { DocumentIcon } from '@/components/icons';
 
-export const metadata: Metadata = { title: 'Action form' };
+export const metadata: Metadata = { title: 'Action Form' };
 export const dynamic = 'force-dynamic';
 
 const FORM_BADGE: Record<string, string> = {
@@ -118,7 +121,7 @@ export default async function ActionFormPage({
 
   return (
     <>
-      <h1>{data.caseNumber} - Offboarding Action Form</h1>
+      <CaseTitle title="Offboarding Action Form" caseNumber={data.caseNumber} />
       <CaseNav caseId={id} active="action-form" />
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint">
@@ -129,7 +132,11 @@ export default async function ActionFormPage({
 
       {!f ? (
         <section className="panel">
-          <p>No action form exists for this case yet.</p>
+          <EmptyState
+            icon={<DocumentIcon />}
+            title="No action form yet"
+            body="The offboarding action form records the HR checklist and the final approvals for this case."
+          />
           {cap.canEdit ? (
             <form action={createFormAction}>
               <input type="hidden" name="caseId" value={id} />
@@ -143,7 +150,7 @@ export default async function ActionFormPage({
             <h2 id="af-status" style={{ marginTop: 0 }}>
               Version {f.version}{' '}
               <span className={`badge ${FORM_BADGE[f.status] ?? 'badge--neutral'}`}>
-                {FORM_STATUS_LABELS[f.status as ActionFormStatus] ?? f.status.replaceAll('_', ' ')}
+                {FORM_STATUS_LABELS[f.status as ActionFormStatus] ?? humanize(f.status)}
               </span>
               {f.hasPdf ? (
                 <>
@@ -164,9 +171,9 @@ export default async function ActionFormPage({
               </p>
             ) : null}
             <h3 style={{ marginBottom: '0.3rem' }}>
-              Employee and case details{' '}
+              Employee and Case Details{' '}
               <span className="badge badge--neutral" title="Pre-populated from the case record">
-                From case record
+                From Case Record
               </span>
             </h3>
             <dl className="kv">
@@ -178,15 +185,15 @@ export default async function ActionFormPage({
               <dd>
                 {snap['position'] || '-'} / {snap['department']} / {snap['location']}
               </dd>
-              <dt>Departure type</dt>
-              <dd>{(snap['departureType'] ?? '').replaceAll('_', ' ').toLowerCase()}</dd>
+              <dt>Departure Type</dt>
+              <dd>{humanize(snap['departureType'])}</dd>
               <dt>Dates</dt>
               <dd>
-                received {String(snap['receivedAt'] ?? '').slice(0, 10)}; confirmed last day{' '}
+                received {String(snap['receivedAt'] ?? '').slice(0, 10)}; final working date{' '}
                 {String(snap['confirmedLastDay'] ?? '').slice(0, 10) || '-'}; effective{' '}
                 {snap['effectiveSeparationAt'] ?? '-'}
               </dd>
-              <dt>Status change</dt>
+              <dt>Status Change</dt>
               <dd>
                 {f.priorStatus} to {f.newStatus}
               </dd>
@@ -199,7 +206,7 @@ export default async function ActionFormPage({
             </dl>
             {data.attestations.length ? (
               <>
-                <h3>Completion and approvals (authenticated attestations)</h3>
+                <h3>Completion and Approvals</h3>
                 <ul>
                   {data.attestations.map((a, i) => (
                     <li key={i}>
@@ -221,7 +228,7 @@ export default async function ActionFormPage({
           {cap.canEdit && 'hrChecklist' in f && f.hrChecklist ? (
             <section className="panel" aria-labelledby="hr-sec">
               <h2 id="hr-sec" style={{ marginTop: 0 }}>
-                HR section{' '}
+                HR Section{' '}
                 <span className="badge badge--neutral" title="Recorded by HR">
                   HR-entered
                 </span>
@@ -231,7 +238,7 @@ export default async function ActionFormPage({
                 <input type="hidden" name="caseId" value={id} />
                 <input type="hidden" name="formId" value={f.id} />
                 <fieldset>
-                  <legend>HR checklist</legend>
+                  <legend>HR Checklist</legend>
                   <ChecklistFields
                     prefix="hr"
                     items={HR_CHECKLIST_ITEMS}
@@ -240,7 +247,7 @@ export default async function ActionFormPage({
                   />
                 </fieldset>
                 <fieldset>
-                  <legend>Employee acknowledgement (not an internal approval)</legend>
+                  <legend>Employee Acknowledgement</legend>
                   <div className="field">
                     <label htmlFor="ackStatus">Status</label>
                     <select
@@ -278,7 +285,7 @@ export default async function ActionFormPage({
                     />
                   </div>
                   <div className="field">
-                    <label htmlFor="ackReason">Reason (required for NOT_OBTAINED)</label>
+                    <label htmlFor="ackReason">Reason (Required for NOT_OBTAINED)</label>
                     <input
                       id="ackReason"
                       name="ackReason"
@@ -290,7 +297,7 @@ export default async function ActionFormPage({
                   </div>
                 </fieldset>
                 <div className="field">
-                  <label htmlFor="hrRemarks">General HR remarks (restricted)</label>
+                  <label htmlFor="hrRemarks">General HR Remarks (Restricted)</label>
                   <textarea
                     id="hrRemarks"
                     name="hrRemarks"
@@ -315,7 +322,7 @@ export default async function ActionFormPage({
           {cap.canEdit && 'financeChecklist' in f && f.financeChecklist ? (
             <section className="panel" aria-labelledby="fin-sec">
               <h2 id="fin-sec" style={{ marginTop: 0 }}>
-                Finance evidence (recorded by HR; Finance works outside this application)
+                Finance Evidence
               </h2>
               <p className="hint">
                 Finance receives the automated notification and completes its process in its own
@@ -332,7 +339,7 @@ export default async function ActionFormPage({
                   disabled={CLOSED_STATUSES.includes(f.status)}
                 />
                 <div className="field">
-                  <label htmlFor="financeNotes">Finance notes (limited, non-sensitive)</label>
+                  <label htmlFor="financeNotes">Finance Notes (Limited, Non-sensitive)</label>
                   <textarea
                     id="financeNotes"
                     name="financeNotes"
@@ -378,7 +385,7 @@ export default async function ActionFormPage({
                     <input type="hidden" name="caseId" value={id} />
                     <input type="hidden" name="formId" value={f.id} />
                     <div className="field">
-                      <label htmlFor="ret-reason">Reason (required)</label>
+                      <label htmlFor="ret-reason">Reason (Required)</label>
                       <textarea id="ret-reason" name="reason" rows={2} required />
                     </div>
                     <button type="submit" className="secondary">
@@ -392,12 +399,12 @@ export default async function ActionFormPage({
 
           {cap.canVoid && !CLOSED_STATUSES.includes(f.status) ? (
             <details className="action">
-              <summary>Void form</summary>
+              <summary className="summary--danger">Void form</summary>
               <form action={voidFormAction} className="stack">
                 <input type="hidden" name="caseId" value={id} />
                 <input type="hidden" name="formId" value={f.id} />
                 <div className="field">
-                  <label htmlFor="void-reason">Reason (required)</label>
+                  <label htmlFor="void-reason">Reason (Required)</label>
                   <textarea id="void-reason" name="reason" rows={2} required />
                 </div>
                 <button type="submit" className="danger">
@@ -409,7 +416,7 @@ export default async function ActionFormPage({
 
           {data.history.length ? (
             <section className="panel">
-              <h2 style={{ marginTop: 0 }}>Version history</h2>
+              <h2 style={{ marginTop: 0 }}>Version History</h2>
               <ul>
                 {data.history.map((h) => (
                   <li key={h.id}>

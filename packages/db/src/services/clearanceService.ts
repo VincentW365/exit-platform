@@ -12,6 +12,7 @@ import {
   clearanceChecksum,
   evaluateClearance,
   letterTypeForDeparture,
+  unresolvedItems,
   CLEARANCE_MEANING,
   FORM_LIVE_STATUSES,
   LIVE_INSTANCE_STATUSES,
@@ -55,7 +56,6 @@ export async function computeClearanceFacts(caseId: string): Promise<{
     letter,
     form,
     assets,
-    handover,
     criticalOpen,
     securityApproved,
     approvedAssetExceptions,
@@ -77,7 +77,6 @@ export async function computeClearanceFacts(caseId: string): Promise<{
       where: { caseId },
       select: { id: true, status: true, requiredForClearance: true },
     }),
-    prisma.handoverRecord.findUnique({ where: { caseId } }),
     prisma.caseException.count({ where: { caseId, status: 'OPEN', severity: 'CRITICAL' } }),
     prisma.caseException.count({
       where: { caseId, status: 'RESOLVED', securityExceptionApproved: true },
@@ -135,6 +134,11 @@ export async function computeClearanceFacts(caseId: string): Promise<{
     };
   });
 
+  const returnChecklistRow = await prisma.returnItemsChecklist.findUnique({
+    where: { caseId },
+    include: { items: { orderBy: { sortOrder: 'asc' } } },
+  });
+
   const benefitsUnresolvedCount = [
     c.groupHealthApplicability,
     c.groupLifeApplicability,
@@ -158,12 +162,16 @@ export async function computeClearanceFacts(caseId: string): Promise<{
     approvedUnresolvedAssetIds: approvedAssetExceptions
       .map((e) => e.refId)
       .filter((id): id is string => id !== null),
-    handoverRequired: handover?.requiredForClearance ?? false,
-    handoverStatus: handover?.status ?? null,
     openCriticalExceptionCount: criticalOpen,
     accessSecurityExceptionApproved: securityApproved > 0,
     emailActions,
     benefitsUnresolvedCount,
+    returnChecklist: returnChecklistRow
+      ? {
+          submitted: returnChecklistRow.submittedAt !== null,
+          unresolvedLabels: unresolvedItems(returnChecklistRow.items).map((i) => i.label),
+        }
+      : null,
   };
   return { facts, instanceId: instance.id };
 }

@@ -9,8 +9,9 @@ import {
   reconcileEntryAction,
   recordEntryAction,
 } from './actions';
+import { humanize } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'Business continuity' };
+export const metadata: Metadata = { title: 'Business Continuity' };
 export const dynamic = 'force-dynamic';
 
 const BLANK_FORMS = [
@@ -47,8 +48,8 @@ export default async function ContinuityPage({
     if (e instanceof ServiceError)
       return (
         <>
-          <h1>Access restricted</h1>
-          <p className="panel">The continuity centre requires an authorized role.</p>
+          <h1>Access Restricted</h1>
+          <p className="panel">The continuity center requires an authorized role.</p>
         </>
       );
     throw e;
@@ -56,7 +57,7 @@ export default async function ContinuityPage({
 
   return (
     <>
-      <h1>Business continuity and manual fallback</h1>
+      <h1>Business Continuity and Manual Fallback</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
         Blank fallback forms are SANITIZED - never pre-filled with employee details. Manual records
@@ -66,7 +67,7 @@ export default async function ContinuityPage({
 
       <section className="panel" aria-labelledby="forms-h">
         <h2 id="forms-h" style={{ marginTop: 0 }}>
-          Blank fallback forms (print and use manually)
+          Blank Fallback Forms (Print and Use Manually)
         </h2>
         <ul>
           {BLANK_FORMS.map((f) => (
@@ -96,7 +97,7 @@ export default async function ContinuityPage({
           <h2 style={{ marginTop: 0, fontSize: '1.05rem' }}>
             {o.title}{' '}
             <span className={`badge ${o.status === 'CLOSED' ? 'badge--neutral' : 'badge--danger'}`}>
-              {o.status}
+              {humanize(o.status)}
             </span>
           </h2>
           <p className="hint">
@@ -119,10 +120,10 @@ export default async function ContinuityPage({
                         <form action={reconcileEntryAction}>
                           <input type="hidden" name="entryId" value={e.id} />
                           <label htmlFor={`rc-case-${e.id}`}>
-                            Linked system case ID (optional)
+                            Linked System Case ID (Optional)
                           </label>
                           <input id={`rc-case-${e.id}`} name="caseId" maxLength={40} />
-                          <label htmlFor={`rc-note-${e.id}`}>Reconciliation note (audited)</label>
+                          <label htmlFor={`rc-note-${e.id}`}>Reconciliation Note (Audited)</label>
                           <input id={`rc-note-${e.id}`} name="note" required maxLength={500} />
                           <button type="submit">Reconcile entry</button>
                         </form>
@@ -148,7 +149,7 @@ export default async function ContinuityPage({
                     <option value="CLEARANCE">Clearance</option>
                   </select>
                   <label htmlFor={`fe-sum-${o.id}`}>
-                    Safe summary (no personal detail beyond need)
+                    Safe Summary (No Personal Detail Beyond Need)
                   </label>
                   <textarea
                     id={`fe-sum-${o.id}`}
@@ -164,7 +165,7 @@ export default async function ContinuityPage({
                 <summary>Close outage (requires full reconciliation)</summary>
                 <form action={closeOutageAction}>
                   <input type="hidden" name="outageId" value={o.id} />
-                  <label htmlFor={`oc-note-${o.id}`}>Closure note (audited)</label>
+                  <label htmlFor={`oc-note-${o.id}`}>Closure Note (Audited)</label>
                   <input id={`oc-note-${o.id}`} name="note" required maxLength={500} />
                   <button type="submit">Close outage</button>
                 </form>

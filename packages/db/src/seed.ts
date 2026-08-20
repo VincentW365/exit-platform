@@ -7,7 +7,11 @@
  * categories are TEST-ONLY because DEC-031 is OPEN (IC-S1-008).
  */
 import { loadRootEnvFile } from '@exit/config';
-import { DEFAULT_SEND_CONTROL } from '@exit/domain';
+import {
+  DEFAULT_CLOSE_OF_BUSINESS,
+  DEFAULT_SEND_CONTROL,
+  RESIGNATION_ACCEPTANCE_LETTER_BODY,
+} from '@exit/domain';
 loadRootEnvFile(import.meta.dirname);
 
 const { getPrisma } = await import('./client.ts');
@@ -31,36 +35,16 @@ const DEV_USERS: ReadonlyArray<{ slug: string; name: string; email: string; role
     email: 'riley.okafor@example.test',
     roles: ['HR_OFFICER'],
   },
-  // Directive 6.3: the IT and Finance responder logins are RETIRED - those
-  // departments participate through automated controlled email notifications
-  // with no-login confirmation links. Accounts from earlier seeds are
-  // deactivated below with the DEC-042 pattern; none are seeded here.
-  {
-    slug: 'line-manager',
-    name: 'Line Manager',
-    email: 'jamie.douglas@example.test',
-    roles: ['LINE_MANAGER'],
-  },
+  // Directive 6.3 retired the IT and Finance responder logins; the owner
+  // decision of 2026-08-19 retired the line-manager login on the same
+  // grounds. Every department outside HR now participates through automated
+  // controlled email, so none of those accounts are seeded here - existing
+  // ones are deactivated above with the DEC-042 pattern.
   {
     slug: 'system-admin',
     name: 'System Administrator',
     email: 'marley.thompson@example.test',
     roles: ['SYSTEM_ADMIN'],
-  },
-  // Directive 6.1 (B/F): synthetic directory managers get application
-  // accounts (matching workEmail) so hierarchy-derived manager routing
-  // resolves end-to-end in development without any real data.
-  {
-    slug: 'ops-manager',
-    name: 'Operations Manager',
-    email: 'samira.cole@example.test',
-    roles: ['LINE_MANAGER'],
-  },
-  {
-    slug: 'warehouse-manager',
-    name: 'Warehouse Manager',
-    email: 'rowan.achebe@example.test',
-    roles: ['LINE_MANAGER'],
   },
 ];
 
@@ -142,6 +126,21 @@ const RETIRED_LOGINS: ReadonlyArray<{ slug: string; reason: string }> = [
     slug: 'it-responder-b',
     reason: 'Directive 6.3: IT/Finance participate by controlled email, not application logins.',
   },
+  {
+    slug: 'line-manager',
+    reason:
+      'Owner decision 2026-08-19: the line manager is informed by controlled email and holds no tasks, so the login is retired.',
+  },
+  {
+    slug: 'ops-manager',
+    reason:
+      'Owner decision 2026-08-19: the line manager is informed by controlled email and holds no tasks, so the login is retired.',
+  },
+  {
+    slug: 'warehouse-manager',
+    reason:
+      'Owner decision 2026-08-19: the line manager is informed by controlled email and holds no tasks, so the login is retired.',
+  },
 ];
 
 async function main(): Promise<void> {
@@ -192,11 +191,17 @@ async function main(): Promise<void> {
     }
   }
 
+  // Final-product operating mode (owner request, 2026-08-17): a fresh
+  // development environment comes up with the automation the platform is FOR
+  // already on - the audited admin path (setFlag) remains the way to change
+  // them, and a re-run never overrides an operator's later choice. Production
+  // safety never rests on these flags: live sending stays behind fail-closed
+  // provider configuration and pilot activation gates.
   for (const f of FEATURE_FLAGS) {
     await prisma.featureFlag.upsert({
       where: { key: f.key },
-      create: { key: f.key, description: f.description, enabled: false },
-      update: { description: f.description }, // never silently enable
+      create: { key: f.key, description: f.description, enabled: true },
+      update: { description: f.description }, // never silently flip a choice
     });
   }
 
@@ -218,6 +223,19 @@ async function main(): Promise<void> {
       key: 'notifications.sendControl.restrictedOverride',
       value: 'HR_MANAGER_APPROVAL_REQUIRED',
       reason: 'Directive 6.3 S defaults',
+    },
+    update: {},
+  });
+  // Close of business in the company timezone: a resignation with notice
+  // ends at this time on the final working date, so HR never re-types an
+  // instant the platform can derive (owner request, 2026-08-18). Editable
+  // through Administration > System with the usual audit trail.
+  await prisma.systemConfig.upsert({
+    where: { key: 'case.closeOfBusiness' },
+    create: {
+      key: 'case.closeOfBusiness',
+      value: DEFAULT_CLOSE_OF_BUSINESS,
+      reason: 'Default close of business for derived effective separation times.',
     },
     update: {},
   });
@@ -310,24 +328,7 @@ async function seedStage2(db: ReturnType<typeof getPrisma>): Promise<void> {
 
   const noticeBody = `${DEV_MARK}
 
-[[DOCUMENT_DATE]]
-
-Dear [[EMPLOYEE_LEGAL_NAME]],
-
-We acknowledge receipt of your resignation on [[RESIGNATION_RECEIVED_DATE]] and accept it on behalf of Bert's Auto Parts Ltd. (case [[CASE_REFERENCE]]).
-
-We confirm that your last working day is [[CONFIRMED_LAST_WORKING_DATE]] and that your employment ends effective [[EFFECTIVE_SEPARATION_DATE]].
-
-Human Resources will coordinate the remaining administrative steps of your offboarding with you. Please return any applicable company property on or before your last working day.
-
-If you have any questions, please contact the Human Resources office.
-
-Thank you for your professional service to the company.
-
-Sincerely,
-
-[[HR_APPROVER_NAME]]
-[[HR_APPROVER_TITLE]]`;
+${RESIGNATION_ACCEPTANCE_LETTER_BODY}`;
 
   const immediateBody = `${DEV_MARK}
 

@@ -1,14 +1,16 @@
 /** Small shared server components: status badges, banners, error summaries. */
+import type { ReactNode } from 'react';
 import type { CaseStatus } from '@exit/domain';
+import { humanize } from '@/lib/text';
 
 const STATUS_STYLE: Record<CaseStatus, { cls: string; label: string }> = {
   DRAFT: { cls: 'badge--neutral', label: 'Draft' },
-  PENDING_HR_REVIEW: { cls: 'badge--warning', label: 'Pending HR review' },
+  PENDING_HR_REVIEW: { cls: 'badge--warning', label: 'Pending HR Review' },
   APPROVED: { cls: 'badge--info', label: 'Approved' },
   ACTIVE: { cls: 'badge--info', label: 'Active' },
-  CLEARANCE_REVIEW: { cls: 'badge--warning', label: 'Clearance review' },
+  CLEARANCE_REVIEW: { cls: 'badge--warning', label: 'Clearance Review' },
   COMPLETED: { cls: 'badge--success', label: 'Completed' },
-  ON_HOLD: { cls: 'badge--warning', label: 'On hold' },
+  ON_HOLD: { cls: 'badge--warning', label: 'On Hold' },
   CANCELLED: { cls: 'badge--neutral', label: 'Cancelled' },
   VOIDED: { cls: 'badge--neutral', label: 'Voided' },
   REOPENED: { cls: 'badge--warning', label: 'Reopened' },
@@ -21,17 +23,25 @@ export function StatusBadge({ status }: { status: CaseStatus }) {
 
 export function ClassificationBadge({ classification }: { classification: string }) {
   return classification === 'RESTRICTED' ? (
-    <span className="badge badge--danger">RESTRICTED</span>
+    <span className="badge badge--danger">Restricted</span>
   ) : (
     <span className="badge badge--neutral">Confidential</span>
   );
 }
 
 export function PurposeBadge({ purpose, cohort }: { purpose: string; cohort: string | null }) {
+  // Final-product surface (owner request, 2026-08-17): the standard
+  // operational case carries no bookkeeping chip. Only legacy TEST/TRAINING
+  // and baseline-cohort records still identify themselves.
   if (purpose !== 'OPERATIONAL') {
-    return <span className="badge badge--warning">{purpose} (excluded from reporting)</span>;
+    return (
+      <span className="badge badge--warning">{humanize(purpose)} (excluded from reporting)</span>
+    );
   }
-  return <span className="badge badge--info">{cohort ?? 'OPERATIONAL'}</span>;
+  if (cohort === 'BASELINE') {
+    return <span className="badge badge--info">Baseline</span>;
+  }
+  return null;
 }
 
 export function RestrictedBanner() {
@@ -60,7 +70,7 @@ export function Feedback({ err, ok }: { err?: string | string[]; ok?: string | s
     <>
       {errText ? (
         <div className="error-summary" role="alert" aria-labelledby="err-heading">
-          <h2 id="err-heading">There is a problem</h2>
+          <h2 id="err-heading">There Is a Problem</h2>
           <ul>
             {errText.split('|').map((m, i) => (
               <li key={i}>{m}</li>
@@ -74,5 +84,36 @@ export function Feedback({ err, ok }: { err?: string | string[]; ok?: string | s
         </p>
       ) : null}
     </>
+  );
+}
+
+/**
+ * One page-title pattern for every case sub-page (owner request, 2026-08-18).
+ *
+ * The sub-pages had grown four different title shapes - "Asset recovery -
+ * OFF-2026-0015", "OFF-2026-0015 - Documents", "Final clearance -
+ * OFF-2026-0015 (CLEARANCE_REVIEW)" - which read as unfinished. Now the
+ * section name always leads, the case number follows as a quiet pill, and
+ * status (where it matters on that page) is a badge rather than a raw enum
+ * in brackets.
+ */
+export function CaseTitle({
+  title,
+  caseNumber,
+  status,
+  extra,
+}: {
+  title: string;
+  caseNumber: string;
+  status?: CaseStatus;
+  extra?: ReactNode;
+}) {
+  return (
+    <h1 className="page-title">
+      <span>{title}</span>
+      <span className="page-title__case">{caseNumber}</span>
+      {status ? <StatusBadge status={status} /> : null}
+      {extra}
+    </h1>
   );
 }

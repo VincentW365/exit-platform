@@ -1,23 +1,39 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { formatInstant, letterTypeForDeparture } from '@exit/domain';
-import { ServiceError, getCase, getCaseDocuments, listAttachments } from '@exit/db';
+import {
+  formatInstant,
+  letterTypeForDeparture,
+  RENDERABLE_LETTER_TYPES,
+  type DocumentType,
+} from '@exit/domain';
+import {
+  ServiceError,
+  getCase,
+  getCaseDocuments,
+  listAttachments,
+  listHrCcContacts,
+} from '@exit/db';
 import { requireAuth } from '@/lib/auth';
-import { Feedback, RestrictedBanner } from '@/components/ui';
+import { CaseTitle, Feedback, RestrictedBanner } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
 import {
   approveDocAction,
   createExceptionAction,
   createLetterAction,
+  issueByEmailAction,
   markIssuedAction,
+  setAddressAction,
   refreshFieldsAction,
   returnDocAction,
   submitDocAction,
   supersedeDocAction,
   voidDocAction,
 } from './actions';
+import { humanize } from '@/lib/text';
+import { EmptyState } from '@/components/EmptyState';
+import { DocumentIcon } from '@/components/icons';
 
-export const metadata: Metadata = { title: 'Case documents' };
+export const metadata: Metadata = { title: 'Case Documents' };
 export const dynamic = 'force-dynamic';
 
 const STATUS_BADGE: Record<string, string> = {
@@ -29,6 +45,7 @@ const STATUS_BADGE: Record<string, string> = {
   RENDERING: 'badge--info',
   RENDERED: 'badge--success',
   MANUALLY_ISSUED: 'badge--success',
+  ISSUED_BY_EMAIL: 'badge--success',
   SUPERSEDED: 'badge--neutral',
   VOIDED: 'badge--neutral',
   RENDER_FAILED: 'badge--danger',
@@ -55,7 +72,7 @@ export default async function CaseDocumentsPage({
     if (e instanceof ServiceError && e.code === 'FORBIDDEN')
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">This area requires explicit case assignment.</p>
         </>
       );
@@ -63,13 +80,16 @@ export default async function CaseDocumentsPage({
   }
   const c = caseData.case;
   const attachments = await listAttachments(actor, id);
+  // Only loaded where the officer can actually issue the letter.
+  const ccContacts = docsData.capabilities.canIssue ? await listHrCcContacts(actor, id) : [];
+  const letterType = letterTypeForDeparture(c.departureType);
   const uploadedExceptionDocs = attachments.filter(
     (a) => a.purpose === 'MANUAL_EXCEPTION_DOCUMENT' || a.purpose === 'SUPPORTING_DOCUMENT',
   );
 
   return (
     <>
-      <h1>{c.caseNumber} - Documents</h1>
+      <CaseTitle title="Documents" caseNumber={c.caseNumber} />
       {c.classification === 'RESTRICTED' ? <RestrictedBanner /> : null}
       <CaseNav caseId={id} active="documents" />
       <Feedback err={sp.err} ok={sp.ok} />
@@ -77,7 +97,7 @@ export default async function CaseDocumentsPage({
       {docsData.capabilities.canCreate && (
         <section className="panel actions-row" aria-label="Create documents">
           {/* H.1 (Directive 3): no letter path exists for terminations. */}
-          {letterTypeForDeparture(c.departureType) !== null ? (
+          {letterType !== null ? (
             <form action={createLetterAction}>
               <input type="hidden" name="caseId" value={id} />
               <button type="submit">Create resignation document draft</button>
@@ -88,7 +108,7 @@ export default async function CaseDocumentsPage({
             <form action={createExceptionAction} className="stack">
               <input type="hidden" name="caseId" value={id} />
               <div className="field">
-                <label htmlFor="ex-att">Uploaded final document (from Attachments)</label>
+                <label htmlFor="ex-att">Uploaded Final Document (From Attachments)</label>
                 <select id="ex-att" name="attachmentId" required defaultValue="">
                   <option value="" disabled>
                     Choose an uploaded file...
@@ -101,7 +121,7 @@ export default async function CaseDocumentsPage({
                 </select>
               </div>
               <div className="field">
-                <label htmlFor="ex-reason">Exception reason (required, audited)</label>
+                <label htmlFor="ex-reason">Exception Reason (Required, Audited)</label>
                 <textarea id="ex-reason" name="reason" rows={2} required maxLength={500} />
               </div>
               <button type="submit">Create exception document</button>
@@ -110,24 +130,62 @@ export default async function CaseDocumentsPage({
         </section>
       )}
 
+      {letterType !== null && docsData.capabilities.canEdit ? (
+        <section className="panel" aria-labelledby="letter-address-h">
+          <h2 id="letter-address-h" style={{ marginTop: 0 }}>
+            Address on the Letter
+          </h2>
+          <p className="hint">
+            Typed from the resignation letter scan. The directory holds no home address, so the
+            acceptance letter cannot be submitted until this is recorded.
+          </p>
+          <form action={setAddressAction} className="stack">
+            <input type="hidden" name="caseId" value={id} />
+            <div className="field">
+              <label htmlFor="emp-address">Employee Address</label>
+              <textarea
+                id="emp-address"
+                name="employeeAddress"
+                rows={3}
+                maxLength={300}
+                defaultValue={docsData.delivery.employeeAddress ?? ''}
+                placeholder={'14 Fictional Way,\nSt. Andrew'}
+              />
+              <span className="hint">
+                One line per line of the address, exactly as it should print.
+              </span>
+            </div>
+            <button type="submit" className="secondary">
+              Save address
+            </button>
+          </form>
+        </section>
+      ) : null}
+
       {docsData.docs.length === 0 ? (
-        <p className="panel">No documents yet.</p>
+        <div className="panel">
+          <EmptyState
+            icon={<DocumentIcon />}
+            title="No documents yet"
+            body="Letters and forms appear here once they are drafted for this case."
+          />
+        </div>
       ) : (
         docsData.docs.map((d) => {
           const att = docsData.attestations.filter((a) => a.subjectId === d.id);
           return (
             <section key={d.id} className="panel" aria-label={`${d.documentType} v${d.version}`}>
               <h2 style={{ marginTop: 0 }}>
-                {d.template?.name ?? d.documentType.replaceAll('_', ' ').toLowerCase()}{' '}
-                <span className="badge badge--neutral">v{d.version}</span>{' '}
+                {d.template?.name ?? humanize(d.documentType)}{' '}
+                <span className="badge badge--neutral">V{d.version}</span>{' '}
                 <span className={`badge ${STATUS_BADGE[d.status] ?? 'badge--neutral'}`}>
-                  {d.status.replaceAll('_', ' ')}
+                  {humanize(d.status)}
                 </span>
               </h2>
 
               {Array.isArray(d.validationErrors) && d.validationErrors.length > 0 ? (
                 <div className="error-summary" role="alert">
-                  <h3 style={{ marginTop: 0 }}>Validation issues</h3>
+                  <h3 style={{ marginTop: 0 }}>Validation Issues</h3>
                   <ul>
                     {(d.validationErrors as string[]).map((e, i) => (
                       <li key={i}>{e}</li>
@@ -168,14 +226,14 @@ export default async function CaseDocumentsPage({
               )}
 
               <dl className="kv" style={{ marginTop: '0.5rem' }}>
-                <dt>Template / document version</dt>
+                <dt>Template / Document Version</dt>
                 <dd>
                   {d.templateVersion ? `template v${d.templateVersion}` : 'n/a'} / document v
                   {d.version}
                 </dd>
                 {d.contentChecksum ? (
                   <>
-                    <dt>Content checksum</dt>
+                    <dt>Content Checksum</dt>
                     <dd>
                       <code>{d.contentChecksum.slice(0, 16)}...</code>
                     </dd>
@@ -195,11 +253,10 @@ export default async function CaseDocumentsPage({
                 ) : null}
                 {d.issuedAt ? (
                   <>
-                    <dt>Manually issued</dt>
+                    <dt>Manually Issued</dt>
                     <dd>
-                      {formatInstant(d.issuedAt)} -{' '}
-                      {d.issueMethod?.replaceAll('_', ' ').toLowerCase()} to{' '}
-                      {d.recipientClass?.replaceAll('_', ' ').toLowerCase()}
+                      {formatInstant(d.issuedAt)} - {humanize(d.issueMethod)} to{' '}
+                      {humanize(d.recipientClass)}
                       {d.issueNote ? ` (${d.issueNote})` : ''}
                     </dd>
                   </>
@@ -258,7 +315,7 @@ export default async function CaseDocumentsPage({
                         <input type="hidden" name="caseId" value={id} />
                         <input type="hidden" name="docId" value={d.id} />
                         <div className="field">
-                          <label htmlFor={`ret-${d.id}`}>Reason (required)</label>
+                          <label htmlFor={`ret-${d.id}`}>Reason (Required)</label>
                           <textarea id={`ret-${d.id}`} name="reason" rows={2} required />
                         </div>
                         <button type="submit" className="secondary">
@@ -275,7 +332,7 @@ export default async function CaseDocumentsPage({
                       <input type="hidden" name="caseId" value={id} />
                       <input type="hidden" name="docId" value={d.id} />
                       <div className="field">
-                        <label htmlFor={`m-${d.id}`}>Issue method</label>
+                        <label htmlFor={`m-${d.id}`}>Issue Method</label>
                         <select id={`m-${d.id}`} name="method" defaultValue="HAND_DELIVERY">
                           <option value="HAND_DELIVERY">Hand delivery</option>
                           <option value="REGISTERED_MAIL">Registered mail</option>
@@ -293,14 +350,57 @@ export default async function CaseDocumentsPage({
                         </select>
                       </div>
                       <div className="field">
-                        <label htmlFor={`n-${d.id}`}>Note (optional, non-sensitive)</label>
+                        <label htmlFor={`n-${d.id}`}>Note (Optional, Non-sensitive)</label>
                         <input id={`n-${d.id}`} name="note" type="text" maxLength={300} />
                       </div>
                       <button type="submit">Record issue</button>
                     </form>
                   </details>
                 ) : null}
-                {['RENDERED', 'MANUALLY_ISSUED'].includes(d.status) &&
+                {d.status === 'RENDERED' &&
+                docsData.capabilities.canIssue &&
+                RENDERABLE_LETTER_TYPES.includes(d.documentType as DocumentType) ? (
+                  <details className="action">
+                    <summary>Send to the employee by email</summary>
+                    <form action={issueByEmailAction} className="stack">
+                      <input type="hidden" name="caseId" value={id} />
+                      <input type="hidden" name="docId" value={d.id} />
+                      <p className="hint">
+                        The letter goes to{' '}
+                        <strong>
+                          {docsData.delivery.employeeEmailMask ?? 'no address on file'}
+                        </strong>{' '}
+                        with the signed PDF attached. Sending issues the letter - it cannot be
+                        recalled, only superseded by a corrected version.
+                      </p>
+                      <fieldset className="stack">
+                        <legend>Copy To (Human Resources)</legend>
+                        {ccContacts.length === 0 ? (
+                          <p className="hint">
+                            No Human Resources contacts with a work email are on record.
+                          </p>
+                        ) : (
+                          ccContacts.map((p) => (
+                            <label key={p.sourceId} className="checkbox-row">
+                              <input type="checkbox" name="ccIds" value={p.sourceId} />{' '}
+                              {p.displayName}
+                              {p.jobTitle ? ` - ${p.jobTitle}` : ''}{' '}
+                              <span className="hint">{p.emailMask}</span>
+                            </label>
+                          ))
+                        )}
+                      </fieldset>
+                      <div className="field">
+                        <label htmlFor={`en-${d.id}`}>Note (Optional, Non-sensitive)</label>
+                        <input id={`en-${d.id}`} name="note" type="text" maxLength={300} />
+                      </div>
+                      <button type="submit" disabled={!docsData.delivery.employeeEmailMask}>
+                        Send letter
+                      </button>
+                    </form>
+                  </details>
+                ) : null}
+                {['RENDERED', 'MANUALLY_ISSUED', 'ISSUED_BY_EMAIL'].includes(d.status) &&
                 docsData.capabilities.canApprove ? (
                   <details className="action">
                     <summary>Supersede with corrected version</summary>
@@ -308,7 +408,7 @@ export default async function CaseDocumentsPage({
                       <input type="hidden" name="caseId" value={id} />
                       <input type="hidden" name="docId" value={d.id} />
                       <div className="field">
-                        <label htmlFor={`s-${d.id}`}>Reason (required)</label>
+                        <label htmlFor={`s-${d.id}`}>Reason (Required)</label>
                         <textarea id={`s-${d.id}`} name="reason" rows={2} required />
                       </div>
                       <button type="submit" className="secondary">
@@ -317,15 +417,16 @@ export default async function CaseDocumentsPage({
                     </form>
                   </details>
                 ) : null}
-                {!['MANUALLY_ISSUED', 'SUPERSEDED', 'VOIDED'].includes(d.status) &&
-                docsData.capabilities.canApprove ? (
+                {!['MANUALLY_ISSUED', 'ISSUED_BY_EMAIL', 'SUPERSEDED', 'VOIDED'].includes(
+                  d.status,
+                ) && docsData.capabilities.canApprove ? (
                   <details className="action">
                     <summary>Void</summary>
                     <form action={voidDocAction} className="stack">
                       <input type="hidden" name="caseId" value={id} />
                       <input type="hidden" name="docId" value={d.id} />
                       <div className="field">
-                        <label htmlFor={`v-${d.id}`}>Reason (required)</label>
+                        <label htmlFor={`v-${d.id}`}>Reason (Required)</label>
                         <textarea id={`v-${d.id}`} name="reason" rows={2} required />
                       </div>
                       <button type="submit" className="danger">

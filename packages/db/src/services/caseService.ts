@@ -5,22 +5,29 @@
  */
 import { z } from 'zod';
 import {
+  type Actor,
   buildSnapshotPayload,
+  can,
   canActOnCase,
   canDiscoverCase,
   canViewCase,
-  can,
+  type CaseAccessContext,
+  caseNumberSearchTerm,
+  caseNumberYearFor,
+  type CaseTransitionAction,
   checkTransition,
   cohortPurposeErrors,
+  DEFAULT_CLOSE_OF_BUSINESS,
+  effectiveSeparationFromFinalDay,
+  formatCaseNumber,
+  noticeDaysProvided,
+  parseInstantInZone,
   purposeChangeErrors,
+  SNAPSHOT_SCHEMA_VERSION,
   snapshotChecksum,
   submitReadinessErrors,
-  SyntheticEmployeeSourceAdapter,
   SYNTHETIC_EMPLOYEES,
-  SNAPSHOT_SCHEMA_VERSION,
-  type Actor,
-  type CaseAccessContext,
-  type CaseTransitionAction,
+  SyntheticEmployeeSourceAdapter,
 } from '@exit/domain';
 import { getPrisma } from '../client.ts';
 import { resolveDirectoryManager } from './managerResolution.ts';
@@ -30,14 +37,31 @@ import { outdateDocumentsForCaseChange } from './documentService.ts';
 import { outdateFormsForCaseChange } from './actionFormService.ts';
 import { cancelLiveWorkflowForCaseTx, recalcTasksForEffectiveChange } from './workflowService.ts';
 import { supersedeNotificationsForCaseChange } from './notificationService.ts';
+import { getSystemConfigValue } from './systemConfigService.ts';
 
 const employeeSource = new SyntheticEmployeeSourceAdapter();
 
 // --- input schemas (REQ-NFR-005) --------------------------------------------
 
 // Guard against JS date-coercion pitfalls: null/'' must mean "absent" and
-// never silently coerce to the 1970 epoch.
-const isoDate = z.union([z.string().min(1), z.number(), z.date()]).pipe(z.coerce.date());
+// never silently coerce to the 1970 epoch. Strings are read as company-zone
+// wall-clock time, because a bare `2026-08-28` from a date input otherwise
+// becomes midnight UTC and displays as the 27th here (owner report,
+// 2026-08-19).
+const isoDate = z.union([z.string().min(1), z.number(), z.date()]).transform((value, ctx) => {
+  if (typeof value === 'string') {
+    const parsed = parseInstantInZone(value);
+    if (parsed) return parsed;
+    ctx.addIssue({ code: 'custom', message: 'Invalid date.' });
+    return z.NEVER;
+  }
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    ctx.addIssue({ code: 'custom', message: 'Invalid date.' });
+    return z.NEVER;
+  }
+  return d;
+});
 const optionalIsoDate = z
   .union([z.null(), z.literal('').transform(() => null), isoDate])
   .optional();
@@ -48,7 +72,10 @@ export const createDraftSchema = z.object({
   departureType: z.enum(['RESIGNATION_WITH_NOTICE', 'IMMEDIATE_RESIGNATION', 'TERMINATION']),
   receivedAt: isoDate,
   receiptSource: shortText(200).min(1),
-  proposedLastDay: optionalIsoDate,
+  // One working-date field (owner request, 2026-08-18): `confirmedLastDay`
+  // is the final working date - the one that drives due dates, asset
+  // returns, letters and notice. The retired `proposedLastDay` column keeps
+  // its historical values and is never written again.
   confirmedLastDay: optionalIsoDate,
   effectiveSeparationAt: optionalIsoDate,
   department: shortText(100).optional(),
@@ -60,13 +87,29 @@ export const createDraftSchema = z.object({
     .default('PENDING'),
   reasonCategoryId: z.uuid().nullable().optional(),
   reasonNotes: shortText(2000).optional(),
-  noticeProvidedDays: z.coerce.number().int().min(0).max(365).nullable().optional(),
-  noticeRequiredDays: z.coerce.number().int().min(0).max(365).nullable().optional(),
-  noticeTreatment: shortText(300).optional(),
 });
 export type CreateDraftInput = z.infer<typeof createDraftSchema>;
 
-export const updateDraftSchema = createDraftSchema.partial().omit({ employeeSourceId: true });
+/**
+ * Draft edits patch ONLY what the caller sends.
+ *
+ * `.partial()` alone was not enough: Zod still materializes a field's
+ * `.default()` when the key is absent, so an edit that touched one date was
+ * silently writing measurementCohort=BASELINE (disabling that case's
+ * automation), resetting reasonCaptureStatus to PENDING, and tripping the
+ * "record purpose cannot be changed by editing" guard on any non-OPERATIONAL
+ * record. The defaulted fields are therefore re-declared without defaults,
+ * and purpose/cohort are dropped entirely - neither is editable by design
+ * (purpose has its own audited correction path). Found 2026-08-18.
+ */
+export const updateDraftSchema = createDraftSchema
+  .partial()
+  .omit({ employeeSourceId: true, recordPurpose: true, measurementCohort: true })
+  .extend({
+    reasonCaptureStatus: z
+      .enum(['PENDING', 'PROVIDED', 'NOT_PROVIDED', 'NOT_APPLICABLE'])
+      .optional(),
+  });
 export type UpdateDraftInput = z.infer<typeof updateDraftSchema>;
 
 // --- helpers -----------------------------------------------------------------
@@ -97,18 +140,49 @@ function assertView(actor: Actor, ctx: CaseAccessContext): void {
   throw ServiceError.notFound();
 }
 
+/**
+ * Allocate the next case number (owner quality request, 2026-08-17):
+ * OFF-YYYY-NNNN-C with the business-timezone year and a Damm check digit
+ * (domain/caseNumber.ts). Runs INSIDE the creation transaction: the counter
+ * row lock serializes concurrent creators for that year and a rolled-back
+ * creation rolls the counter back with it - the sequence stays gapless.
+ */
 async function allocateCaseNumber(
   tx: Parameters<Parameters<ReturnType<typeof getPrisma>['$transaction']>[0]>[0],
   now: Date,
 ): Promise<string> {
-  const year = now.getUTCFullYear();
+  const year = caseNumberYearFor(now);
   const counter = await tx.caseNumberCounter.upsert({
     where: { year },
     create: { year, next: 2 },
     update: { next: { increment: 1 } },
   });
-  const seq = counter.next === 2 && counter.year === year ? 1 : counter.next - 1;
-  return `OFF-${year}-${String(seq).padStart(4, '0')}`;
+  // Both branches leave `next` pointing one past the allocated sequence.
+  return formatCaseNumber(year, counter.next - 1);
+}
+
+/**
+ * Configured close of business, e.g. "17:00" (system config
+ * `case.closeOfBusiness`; company timezone).
+ */
+async function closeOfBusiness(): Promise<string> {
+  const v = await getSystemConfigValue('case.closeOfBusiness');
+  return typeof v === 'string' && v.trim() ? v : DEFAULT_CLOSE_OF_BUSINESS;
+}
+
+/**
+ * Effective separation for a resignation WITH NOTICE: employment ends at
+ * close of business on the final working date, so HR never re-types a time
+ * the platform can work out (owner request, 2026-08-18). Immediate
+ * resignations and terminations always carry an explicitly entered instant -
+ * there the exact moment is a decision, and it drives access removal.
+ */
+async function derivedEffectiveSeparation(
+  departureType: string,
+  confirmedLastDay: Date | null | undefined,
+): Promise<Date | null> {
+  if (departureType !== 'RESIGNATION_WITH_NOTICE' || !confirmedLastDay) return null;
+  return effectiveSeparationFromFinalDay(confirmedLastDay, await closeOfBusiness());
 }
 
 // --- employee search ---------------------------------------------------------
@@ -147,6 +221,10 @@ export async function searchEmployees(actor: Actor, query: string) {
           NOT: { displayName: { startsWith: PURGED_SOURCE_PREFIX } },
           OR: [
             { displayName: { contains: q, mode: 'insensitive' } },
+            // The HR-assigned Employee # is what colleagues quote, so it has
+            // to be searchable alongside the directory's internal record id
+            // (owner question, 2026-08-18).
+            { employeeNumber: { contains: q, mode: 'insensitive' } },
             { sourceId: { contains: q, mode: 'insensitive' } },
             { department: { contains: q, mode: 'insensitive' } },
             { jobTitle: { contains: q, mode: 'insensitive' } },
@@ -321,6 +399,12 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
   // (DEC-035 / IC-S1-011).
   const classification = input.departureType === 'TERMINATION' ? 'RESTRICTED' : 'CONFIDENTIAL';
 
+  // Resignation with notice: employment ends at close of business on the
+  // final working date unless HR states otherwise (owner request 2026-08-18).
+  const effectiveSeparationAt =
+    input.effectiveSeparationAt ??
+    (await derivedEffectiveSeparation(input.departureType, input.confirmedLastDay));
+
   const prisma = getPrisma();
 
   // Duplicate warning (REQ-CASE-020) - warn, do not block. Restricted cases
@@ -392,12 +476,16 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
         jobTitle: employee.jobTitle,
         receivedAt: input.receivedAt,
         receiptSource: input.receiptSource,
-        proposedLastDay: input.proposedLastDay ?? null,
+        proposedLastDay: null,
         confirmedLastDay: input.confirmedLastDay ?? null,
-        effectiveSeparationAt: input.effectiveSeparationAt ?? null,
-        noticeProvidedDays: input.noticeProvidedDays ?? null,
-        noticeRequiredDays: input.noticeRequiredDays ?? null,
-        noticeTreatment: input.noticeTreatment || null,
+        effectiveSeparationAt,
+        // Notice tracking has no product surface (owner, 2026-08-17); the
+        // days-given figure still derives silently onto the record from
+        // receipt -> confirmed last day - for the file only, never displayed
+        // and never calculated from.
+        noticeProvidedDays: noticeDaysProvided(input.receivedAt, input.confirmedLastDay),
+        noticeRequiredDays: null,
+        noticeTreatment: null,
         reasonCategoryId: input.reasonCategoryId ?? null,
         reasonCaptureStatus: input.reasonCaptureStatus,
         reasonNotes: input.reasonNotes || null,
@@ -618,7 +706,18 @@ export async function listCases(actor: Actor, rawFilter: unknown = {}) {
     f.q
       ? {
           OR: [
-            { caseNumber: { contains: f.q, mode: 'insensitive' as const } },
+            // Case-number-aware search (domain/caseNumber.ts): a well-formed
+            // number matches exactly (modern) or by prefix (legacy shape,
+            // check digit omitted); anything else - including a mistyped
+            // check digit - falls back to substring so lookups never
+            // dead-end.
+            (() => {
+              const term = caseNumberSearchTerm(f.q!);
+              if (term?.match === 'exact') return { caseNumber: term.value };
+              if (term?.match === 'prefix')
+                return { caseNumber: { startsWith: term.value, mode: 'insensitive' as const } };
+              return { caseNumber: { contains: f.q!, mode: 'insensitive' as const } };
+            })(),
             // Employee-name search must not match rows the actor cannot read
             // in full; restricted rows are searchable by case number only.
             {
@@ -690,18 +789,12 @@ export async function updateDraft(actor: Actor, caseId: string, rawPatch: unknow
     throw ServiceError.validation(['Receipt time cannot be in the future.']);
   }
 
-  const nextCohort =
-    patch.measurementCohort !== undefined ? patch.measurementCohort : c.measurementCohort;
-  const nextPurpose = patch.recordPurpose ?? c.recordPurpose;
-  // Record-purpose changes go through the audited correction path, not edits.
-  if (nextPurpose !== c.recordPurpose) {
-    throw ServiceError.validation([
-      'Record purpose cannot be changed by editing; use the audited purpose correction.',
-    ]);
-  }
+  // Purpose and cohort are not editable here by design (the update schema
+  // drops them; purpose has its own audited correction path), so the stored
+  // pair is simply re-validated - an edit can never make it inconsistent.
   const cohortErrors = cohortPurposeErrors({
-    measurementCohort: nextCohort,
-    recordPurpose: nextPurpose,
+    measurementCohort: c.measurementCohort,
+    recordPurpose: c.recordPurpose,
   });
   if (cohortErrors.length) throw ServiceError.validation(cohortErrors);
 
@@ -714,6 +807,22 @@ export async function updateDraft(actor: Actor, caseId: string, rawPatch: unknow
       'A termination case cannot be re-typed; void it and create the correct case.',
     ]);
   }
+
+  // Moving the final working date carries the effective instant with it -
+  // but ONLY while that instant is still the derived close-of-business value.
+  // An explicitly entered time is a human decision and is never overwritten.
+  const nextDepartureType = patch.departureType ?? c.departureType;
+  const nextConfirmedLastDay =
+    'confirmedLastDay' in patch ? (patch.confirmedLastDay ?? null) : c.confirmedLastDay;
+  const previouslyDerived = await derivedEffectiveSeparation(c.departureType, c.confirmedLastDay);
+  const effectiveWasDerived =
+    c.effectiveSeparationAt === null ||
+    (previouslyDerived !== null &&
+      c.effectiveSeparationAt.getTime() === previouslyDerived.getTime());
+  const rederivedEffective =
+    !('effectiveSeparationAt' in patch) && effectiveWasDerived
+      ? await derivedEffectiveSeparation(nextDepartureType, nextConfirmedLastDay)
+      : null;
 
   const changedFields = Object.keys(patch);
   const correlationId = newCorrelationId();
@@ -732,16 +841,16 @@ export async function updateDraft(actor: Actor, caseId: string, rawPatch: unknow
         ...('receiptSource' in patch && patch.receiptSource
           ? { receiptSource: patch.receiptSource }
           : {}),
-        ...('proposedLastDay' in patch ? { proposedLastDay: patch.proposedLastDay ?? null } : {}),
         ...('confirmedLastDay' in patch
           ? { confirmedLastDay: patch.confirmedLastDay ?? null }
           : {}),
         ...('effectiveSeparationAt' in patch
           ? { effectiveSeparationAt: patch.effectiveSeparationAt ?? null }
-          : {}),
+          : rederivedEffective
+            ? { effectiveSeparationAt: rederivedEffective }
+            : {}),
         ...('department' in patch && patch.department ? { department: patch.department } : {}),
         ...('location' in patch && patch.location ? { location: patch.location } : {}),
-        ...('measurementCohort' in patch ? { measurementCohort: patch.measurementCohort } : {}),
         ...('reasonCaptureStatus' in patch && patch.reasonCaptureStatus
           ? { reasonCaptureStatus: patch.reasonCaptureStatus }
           : {}),
@@ -749,13 +858,15 @@ export async function updateDraft(actor: Actor, caseId: string, rawPatch: unknow
           ? { reasonCategoryId: patch.reasonCategoryId ?? null }
           : {}),
         ...('reasonNotes' in patch ? { reasonNotes: patch.reasonNotes || null } : {}),
-        ...('noticeProvidedDays' in patch
-          ? { noticeProvidedDays: patch.noticeProvidedDays ?? null }
+        // Notice given re-derives whenever either anchoring date changes.
+        ...('receivedAt' in patch || 'confirmedLastDay' in patch
+          ? {
+              noticeProvidedDays: noticeDaysProvided(
+                patch.receivedAt ?? c.receivedAt,
+                'confirmedLastDay' in patch ? (patch.confirmedLastDay ?? null) : c.confirmedLastDay,
+              ),
+            }
           : {}),
-        ...('noticeRequiredDays' in patch
-          ? { noticeRequiredDays: patch.noticeRequiredDays ?? null }
-          : {}),
-        ...('noticeTreatment' in patch ? { noticeTreatment: patch.noticeTreatment || null } : {}),
         version: { increment: 1 },
       },
     });

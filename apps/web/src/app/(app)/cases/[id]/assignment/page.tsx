@@ -4,7 +4,7 @@ import { ServiceError, getAssignmentPlan } from '@exit/db';
 import { formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { CaseNav } from '../CaseNav';
-import { Feedback } from '@/components/ui';
+import { CaseTitle, Feedback } from '@/components/ui';
 import { SubmitButton } from '@/components/SubmitButton';
 import {
   assignOfficerAction,
@@ -12,8 +12,9 @@ import {
   overrideManagerAction,
   refreshManagerAction,
 } from './actions';
+import { humanize } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'Assignment plan' };
+export const metadata: Metadata = { title: 'Assignment Plan' };
 export const dynamic = 'force-dynamic';
 
 const STATE_BADGE: Record<string, string> = {
@@ -41,7 +42,7 @@ export default async function AssignmentPage({
     if (e instanceof ServiceError && e.code === 'FORBIDDEN') {
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">The assignment plan requires case access.</p>
         </>
       );
@@ -53,7 +54,7 @@ export default async function AssignmentPage({
 
   return (
     <>
-      <h1>{plan.caseNumber} - Offboarding assignment plan</h1>
+      <CaseTitle title="Assignment Plan" caseNumber={plan.caseNumber} />
       <Feedback err={sp.err} ok={sp.ok} />
       <CaseNav caseId={id} active="assignment" />
 
@@ -72,27 +73,27 @@ export default async function AssignmentPage({
         <h2 id="emp-h">Employee</h2>
         <dl className="kv">
           <dt>Name</dt>
-          <dd>
-            {plan.employee.displayName} ({plan.employee.sourceId})
-          </dd>
+          <dd>{plan.employee.displayName}</dd>
+          <dt>Employee #</dt>
+          <dd>{plan.employee.employeeNumber ?? plan.employee.sourceId}</dd>
           <dt>Position</dt>
           <dd>{plan.employee.jobTitle ?? '-'}</dd>
-          <dt>Department / location</dt>
+          <dt>Department / Location</dt>
           <dd>
             {plan.employee.department} / {plan.employee.location}
             {plan.employee.division ? ` (division: ${plan.employee.division})` : ''}
           </dd>
-          <dt>Employment status</dt>
+          <dt>Employment Status</dt>
           <dd>
             {plan.employee.employmentActive === null
-              ? 'not recorded'
+              ? 'Not recorded'
               : plan.employee.employmentActive
                 ? 'Active'
                 : 'Inactive'}
           </dd>
-          <dt>Hierarchy source</dt>
+          <dt>Hierarchy Source</dt>
           <dd>
-            {plan.employee.sourceSystem}
+            {humanize(plan.employee.sourceSystem)}
             {plan.employee.lastSyncedAt
               ? ` - last synchronized ${formatInstant(plan.employee.lastSyncedAt)}`
               : ' - never synchronized'}
@@ -101,7 +102,7 @@ export default async function AssignmentPage({
       </section>
 
       <section className="panel" aria-labelledby="mgmt-h">
-        <h2 id="mgmt-h">Management routing</h2>
+        <h2 id="mgmt-h">Management Routing</h2>
         {m.changeFlaggedAt ? (
           <p className="banner-restricted" role="alert">
             The directory manager changed after confirmation ({formatInstant(m.changeFlaggedAt)}).
@@ -109,34 +110,31 @@ export default async function AssignmentPage({
           </p>
         ) : null}
         <dl className="kv">
-          <dt>Direct manager (directory)</dt>
+          <dt>Direct Manager (Directory)</dt>
           <dd>
-            {m.managerName ?? 'NOT RECORDED'}
+            {m.managerName ?? 'Not recorded'}
             {m.managerJobTitle ? ` - ${m.managerJobTitle}` : ''}
             {m.managerSource ? (
               <>
                 {' '}
                 <span className={`badge ${STATE_BADGE[m.managerSource] ?? 'badge--neutral'}`}>
-                  {m.managerSource}
+                  {humanize(m.managerSource)}
                 </span>
               </>
             ) : null}
           </dd>
-          <dt>Second-level manager</dt>
+          <dt>Second-level Manager</dt>
           <dd>{m.secondLevelManagerName ?? '-'}</dd>
-          <dt>Receives manager tasks</dt>
+          <dt>Receives the Departure Notice</dt>
           <dd>
-            {m.managerUser ? (
-              <>
-                {m.managerUser.displayName}
-                {m.managerUser.isActive ? '' : ' (INACTIVE ACCOUNT)'}
-              </>
+            {m.managerName ? (
+              m.managerName
             ) : (
-              <span className="badge badge--danger">MISSING MANAGER — ACTION REQUIRED</span>
+              <span className="badge badge--danger">No manager — action required</span>
             )}
           </dd>
           <dt>Confirmed</dt>
-          <dd>{m.confirmedAt ? formatInstant(m.confirmedAt) : 'not yet confirmed'}</dd>
+          <dd>{m.confirmedAt ? formatInstant(m.confirmedAt) : 'Not yet confirmed'}</dd>
         </dl>
         <div className="actions-row" style={{ marginTop: '0.75rem' }}>
           <form action={refreshManagerAction}>
@@ -151,20 +149,20 @@ export default async function AssignmentPage({
               <form action={overrideManagerAction} className="stack">
                 <input type="hidden" name="caseId" value={id} />
                 <div className="field">
-                  <label htmlFor="am-user">Alternate manager (LINE_MANAGER accounts)</label>
-                  <select id="am-user" name="managerUserId" required defaultValue="">
+                  <label htmlFor="am-user">Alternate Manager</label>
+                  <select id="am-user" name="managerSourceId" required defaultValue="">
                     <option value="" disabled>
                       Choose...
                     </option>
                     {plan.responders.managers.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.displayName}
+                        {u.label}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="field">
-                  <label htmlFor="am-reason">Reason (required, audited)</label>
+                  <label htmlFor="am-reason">Reason (Required, Audited)</label>
                   <input id="am-reason" name="reason" required maxLength={500} />
                 </div>
                 <SubmitButton pendingLabel="Recording…">Record alternate manager</SubmitButton>
@@ -175,16 +173,16 @@ export default async function AssignmentPage({
       </section>
 
       <section className="panel" aria-labelledby="hr-h">
-        <h2 id="hr-h">HR ownership</h2>
+        <h2 id="hr-h">HR Ownership</h2>
         <dl className="kv">
-          <dt>Accountable owner</dt>
+          <dt>Accountable Owner</dt>
           <dd>{plan.hr.accountableOwner.displayName} (HR Manager accountability)</dd>
           <dt>Operational HR Officer</dt>
           <dd>
             {plan.hr.assignedOfficer ? (
               plan.hr.assignedOfficer.displayName
             ) : (
-              <span className="badge badge--warning">NOT ASSIGNED</span>
+              <span className="badge badge--warning">Not assigned</span>
             )}
           </dd>
         </dl>
@@ -209,7 +207,7 @@ export default async function AssignmentPage({
                 </select>
               </div>
               <div className="field">
-                <label htmlFor="of-reason">Reason (required, audited)</label>
+                <label htmlFor="of-reason">Reason (Required, Audited)</label>
                 <input id="of-reason" name="reason" required maxLength={500} />
               </div>
               <SubmitButton pendingLabel="Assigning…">
@@ -223,7 +221,7 @@ export default async function AssignmentPage({
       </section>
 
       <section className="panel" aria-labelledby="dept-h">
-        <h2 id="dept-h">Notification routing</h2>
+        <h2 id="dept-h">Notification Routing</h2>
         <p>
           IT and Finance are notified by controlled email automatically. Recipients are maintained
           under Administration &rarr; Recipient directory.
@@ -233,28 +231,28 @@ export default async function AssignmentPage({
       <section className="panel" aria-labelledby="wf-h">
         <h2 id="wf-h">Workflow</h2>
         <dl className="kv">
-          <dt>Departure type</dt>
-          <dd>{plan.workflow.departureType.replaceAll('_', ' ').toLowerCase()}</dd>
-          <dt>Workflow version</dt>
+          <dt>Departure Type</dt>
+          <dd>{humanize(plan.workflow.departureType)}</dd>
+          <dt>Workflow Version</dt>
           <dd>
             {plan.workflow.workflowName
               ? `${plan.workflow.workflowName} (v${plan.workflow.workflowVersion})`
               : 'No ACTIVE definition'}
           </dd>
-          <dt>Last working day</dt>
+          <dt>Final Working Date</dt>
           <dd>
             {plan.workflow.confirmedLastDay
               ? formatInstant(plan.workflow.confirmedLastDay).split(',')[0]
               : '-'}
           </dd>
-          <dt>Effective separation</dt>
+          <dt>Effective Separation</dt>
           <dd>
             {plan.workflow.effectiveSeparationAt
               ? formatInstant(plan.workflow.effectiveSeparationAt)
               : '-'}
           </dd>
           <dt>Confidentiality</dt>
-          <dd>{plan.workflow.classification}</dd>
+          <dd>{humanize(plan.workflow.classification)}</dd>
         </dl>
         {plan.workflow.taskSummary.length > 0 ? (
           <div className="table-wrap" tabIndex={0} style={{ marginTop: '0.75rem' }}>
@@ -280,7 +278,7 @@ export default async function AssignmentPage({
                     <td className="tabular-nums" title={t.dueRule ?? undefined}>
                       {t.dueAt ? formatInstant(t.dueAt) : (t.dueRule ?? '-')}
                     </td>
-                    <td>{t.priority}</td>
+                    <td>{humanize(t.priority)}</td>
                     <td>
                       {t.dependsOn.length > 0 ? (
                         <code>{t.dependsOn.join(', ')}</code>
@@ -298,7 +296,7 @@ export default async function AssignmentPage({
       </section>
 
       <section className="panel" aria-labelledby="conf-h">
-        <h2 id="conf-h">HR confirmation</h2>
+        <h2 id="conf-h">HR Confirmation</h2>
         {plan.confirmations.complete ? (
           <p className="ok-summary" role="status">
             Assignment plan confirmed. Activation is available on the Workflow tab.

@@ -4,7 +4,7 @@
  * automated controlled email notifications (visible on the case "Email
  * actions" tab and in the development mailbox) instead of application logins,
  * and the Action Form is completed by the assigned HR Officer - no manager
- * approval step exists. All cases use TEST record purpose. Synthetic
+ * approval step exists. Cases are real operational records (final-product mode); email stays in the dev capture mailbox.
  * identities only.
  */
 import { expect, test, type Page } from '@playwright/test';
@@ -32,27 +32,25 @@ async function createTestCase(
   },
 ): Promise<{ url: string; number: string }> {
   await page.goto('/cases/new');
-  await page.getByLabel(/Search the employee source/).fill(opts.employeeQuery);
+  await page.getByLabel('Employee Name or Number').fill(opts.employeeQuery);
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure type (required)').selectOption(opts.type);
-  await page
-    .getByLabel('Receipt date and time (required)')
-    .fill(opts.receivedAt ?? '2026-07-20T09:30');
-  await page
-    .getByLabel('Source of the receipt timestamp (required)')
-    .fill('Stage 3 synthetic receipt');
-  if (opts.confirmedLastDay) {
-    await page.getByLabel('Confirmed last working day').fill('2026-08-14');
+  await page.getByLabel('Departure Type').selectOption(opts.type);
+  await page.getByLabel('Date and Time Received').fill(opts.receivedAt ?? '2026-07-20T09:30');
+  // A resignation with notice ends at close of business on the final working
+  // date, so the platform derives the instant and the field is not offered.
+  if (opts.type === 'RESIGNATION_WITH_NOTICE') {
+    await page.getByLabel('Final Working Date').fill('2026-08-14');
+  } else {
+    if (opts.confirmedLastDay) {
+      await page.getByLabel('Final Working Date').fill('2026-08-14');
+    }
+    await page.getByLabel(/Employment Ends/).fill(opts.effectiveAt ?? '2026-08-14T17:00');
   }
-  await page
-    .getByLabel(/Effective separation date and exact time/)
-    .fill(opts.effectiveAt ?? '2026-08-14T17:00');
-  await page.getByLabel('Record purpose').selectOption('TEST');
   await page.getByRole('button', { name: 'Create draft case' }).click();
-  const banner = page.getByText(/Draft case OFF-\d{4}-\d{4} created/);
+  const banner = page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/);
   await expect(banner).toBeVisible();
-  const number = /OFF-\d{4}-\d{4}/.exec((await banner.textContent()) ?? '')![0];
+  const number = /OFF-\d{4}-\d{4,}(?:-\d)?/.exec((await banner.textContent()) ?? '')![0];
   return { url: page.url().split('?')[0]!, number };
 }
 
@@ -86,7 +84,7 @@ async function completeAssignmentPlan(
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
-  await page.locator('#am-user').selectOption({ label: 'Line Manager' });
+  await page.locator('#am-user').selectOption({ index: 1 });
   await page.locator('#am-reason').fill('E2E manager routing.');
   await page.getByRole('button', { name: 'Record alternate manager' }).click();
   await expect(page.getByText('Alternate manager recorded')).toBeVisible();
@@ -106,24 +104,6 @@ async function completeTaskFromWorkflow(
 ): Promise<void> {
   await page.goto(`${caseUrl}/workflow`);
   await page.getByRole('link', { name: title, exact: true }).click();
-  await page.locator('details.action > summary', { hasText: 'Complete with evidence' }).click();
-  await page.locator('#c-note').fill(note);
-  await page.getByRole('button', { name: 'Complete task' }).click();
-  await expect(page.getByText('Task completed with evidence.')).toBeVisible();
-}
-
-/**
- * Line managers have no case-register access by design - they reach their
- * released tasks through the work queue ("My work").
- */
-async function completeTaskViaQueue(
-  page: Page,
-  caseNumber: string,
-  title: string,
-  note = 'Completed in the Stage 3 acceptance run.',
-): Promise<void> {
-  await page.goto(`/queue?view=all&q=${caseNumber}`);
-  await page.getByRole('link', { name: title, exact: true }).first().click();
   await page.locator('details.action > summary', { hasText: 'Complete with evidence' }).click();
   await page.locator('#c-note').fill(note);
   await page.getByRole('button', { name: 'Complete task' }).click();
@@ -210,14 +190,14 @@ test('Scenario 1 - resignation with notice: activate, HR journey, email evidence
   // HR activates from the read-only preview (B.8): tasks, owners, due dates.
   await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/workflow`);
-  await expect(page.getByText('Workflow preview (read-only, before activation)')).toBeVisible();
+  await expect(page.getByText('Workflow Preview (Read-only, Before Activation)')).toBeVisible();
   await page.getByRole('button', { name: 'Activate case and create these tasks' }).click();
   await expect(page.getByText(/Case activated/)).toBeVisible();
 
   // Directive 6.3: activation derives the IT and Finance email actions - no
   // department logins exist. The rows carry business-language statuses.
   await page.goto(`${caseUrl}/notifications`);
-  await expect(page.getByRole('heading', { name: /Email actions/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Email Actions/ })).toBeVisible();
   const itAction = page.locator('section[aria-label="IT access removal email action"]');
   await expect(itAction.first()).toBeVisible();
   await expect(itAction.first().locator('.badge').first()).toHaveText(BUSINESS_STATUS);
@@ -234,6 +214,12 @@ test('Scenario 1 - resignation with notice: activate, HR journey, email evidence
   await page.goto(`${caseUrl}/documents`);
   await page.getByRole('button', { name: 'Create resignation document draft' }).click();
   await expect(page.getByText('Draft document created')).toBeVisible();
+  // The acceptance letter is addressed, so HR types the address from the
+  // resignation letter scan before submitting (DEC-054).
+  await page.getByLabel('Employee Address').fill('12 Synthetic Avenue, Kingston 5');
+  await page.getByRole('button', { name: 'Save address' }).click();
+  await expect(page.getByText(/Address recorded/)).toBeVisible();
+  await page.getByRole('button', { name: 'Refresh fields from case' }).click();
   await page.getByRole('button', { name: 'Validate and submit for approval' }).click();
   await expect(page.getByText('Document submitted for HR Manager approval.')).toBeVisible();
 
@@ -244,7 +230,6 @@ test('Scenario 1 - resignation with notice: activate, HR journey, email evidence
     .click();
   await page.locator('#ben-health').selectOption('NO');
   await page.locator('#ben-life').selectOption('NO');
-  await page.locator('#ben-other').selectOption('NO');
   await page.getByRole('button', { name: 'Confirm applicability' }).click();
   await expect(page.getByText(/Benefits applicability confirmed/)).toBeVisible();
   await completeTaskFromWorkflow(page, caseUrl, 'Confirm benefits and provider applicability');
@@ -311,34 +296,13 @@ test('Scenario 1 - resignation with notice: activate, HR journey, email evidence
   await expect(page.getByText('Completion evidence recorded.')).toBeVisible();
   await signOut(page);
 
-  // The line manager: handover record and the manager workflow tasks
-  // (auto-assigned through the assignment plan - no HR reassignment needed).
-  await signInAs(page, 'Line Manager');
-  await page.goto(`${caseUrl}/handover`);
-  await expect(
-    page.getByText(/Do not enter passwords, access codes, private keys/).first(),
-  ).toBeVisible();
-  await page.locator('#ho-dutiesToReassign').fill('Parts counter scheduling and escalations.');
-  await page.locator('#ho-openWorkDeadlines').fill('August stock count preparation.');
-  await page.locator('#ho-replacementOwner').fill('Interim owner: warehouse coordinator.');
-  await page.getByRole('button', { name: 'Save handover record' }).click();
-  await expect(page.getByText('Handover record saved.')).toBeVisible();
-  await page
-    .locator('details.action > summary', { hasText: 'Complete handover (manager attestation)' })
-    .click();
-  await page.getByRole('button', { name: 'Complete with attestation' }).click();
-  await expect(page.getByText('Handover completed with manager attestation.')).toBeVisible();
-  // The attestation auto-completes the manager handover tasks (plan +
-  // knowledge-transfer); only the released duty-reassignment task remains.
-  await page.goto(`/queue?view=completed&q=${caseNo}`);
-  await expect(
-    page.getByRole('link', { name: 'Prepare handover plan', exact: true }).first(),
-  ).toBeVisible();
-  await completeTaskViaQueue(page, caseNo, 'Reassign open duties and deadlines');
-  await signOut(page);
-
   // HR: document task, assets, acknowledgement and HRIS tasks.
   await signInAs(page, 'HR Officer');
+
+  // The line manager holds no login and no task: the platform simply tells
+  // them their team member is leaving (owner decision, 2026-08-19).
+  await page.goto(`${caseUrl}/notifications`);
+  await expect(page.getByText(/departure notice/i).first()).toBeVisible();
   await completeTaskFromWorkflow(
     page,
     caseUrl,
@@ -351,7 +315,7 @@ test('Scenario 1 - resignation with notice: activate, HR journey, email evidence
   for (let i = 0; i < 3; i++) {
     await recordFirstAssetDisposition(page, 'RETURNED');
   }
-  await expect(page.getByText('Disposition documentation rate')).toBeVisible();
+  await expect(page.getByText('Disposition Documentation Rate')).toBeVisible();
 
   await completeTaskFromWorkflow(page, caseUrl, 'Complete asset recovery or final disposition');
   await completeTaskFromWorkflow(page, caseUrl, 'Complete employee acknowledgement handling');
@@ -359,7 +323,7 @@ test('Scenario 1 - resignation with notice: activate, HR journey, email evidence
 
   // Clearance: every gate condition met; HR requests, HR Manager approves.
   await page.goto(`${caseUrl}/clearance`);
-  await expect(page.getByText('ALL CONDITIONS MET')).toBeVisible();
+  await expect(page.getByText('All conditions met')).toBeVisible();
   await expect(page.getByText(/never\s+blocks clearance/i)).toBeVisible();
   await page.getByRole('button', { name: 'Request clearance review' }).click();
   await expect(page.getByText(/Case moved to clearance review/)).toBeVisible();
@@ -369,7 +333,7 @@ test('Scenario 1 - resignation with notice: activate, HR journey, email evidence
   await page.goto(`${caseUrl}/clearance`);
   await page.getByRole('button', { name: 'Approve final clearance' }).click();
   await expect(page.getByText(/Final clearance approved/)).toBeVisible();
-  await expect(page.getByText('Clearance records (immutable)')).toBeVisible();
+  await expect(page.getByText('Clearance Records')).toBeVisible();
   await page.goto(caseUrl);
   await expect(page.getByText('Completed').first()).toBeVisible();
   await signOut(page);
@@ -417,25 +381,14 @@ test('Scenario 2 - immediate resignation: urgent tasks, automated IT email, bloc
   await expect(page.getByText('HR section saved.')).toBeVisible();
   await signOut(page);
 
-  // Handover is manager-recorded or HR-Manager waived (G.11).
   await signInAs(page, 'HR Manager');
-  await page.goto(`${caseUrl}/handover`);
-  await page
-    .locator('details.action > summary', { hasText: 'Waive handover (HR Manager)' })
-    .click();
-  await page
-    .locator('#wv-reason')
-    .fill('No open duties; waiver approved for the urgent departure.');
-  await page.getByRole('button', { name: 'Waive handover' }).click();
-  await expect(page.getByText(/Handover waived by HR Manager/)).toBeVisible();
-
   // Clearance stays blocked while mandatory work is unresolved (including the
   // unconfirmed IT email evidence - delivery is not completion).
   await page.goto(`${caseUrl}/clearance`);
-  await expect(page.getByText('NOT READY')).toBeVisible();
+  await expect(page.getByText('Not ready')).toBeVisible();
   await expect(page.getByText('BLOCKED').first()).toBeVisible();
   await page.getByRole('button', { name: 'Request clearance review' }).click();
-  await expect(page.getByText('There is a problem')).toBeVisible();
+  await expect(page.getByText('There Is a Problem')).toBeVisible();
   await signOut(page);
 });
 
@@ -489,13 +442,13 @@ test('Scenario 3 - restricted termination: undiscoverable, minimum-data IT email
     /Needs your review|Scheduled|Sent|Recipient required/,
   );
   await expect(page.getByText('TERMINATION')).toHaveCount(0);
-  await expect(page.getByText('Departure type')).toHaveCount(0);
+  await expect(page.getByText('Departure Type')).toHaveCount(0);
   await signOut(page);
 
   // A non-participant HR officer cannot discover the case anywhere (H.3).
   await signInAs(page, 'HR Officer');
   await page.goto(caseUrl);
-  await expect(page.getByText('Page or record not found')).toBeVisible();
+  await expect(page.getByText('Page or Record Not Found')).toBeVisible();
   await page.goto('/queue');
   await expect(page.getByText('Morgan Reed')).toHaveCount(0);
   await page.goto('/exceptions');
@@ -592,8 +545,8 @@ test('Scenario 5 - asset exception: lost/unresolved assets, no pay effect, disti
   );
 
   // Documentation and physical recovery remain DISTINCT measures (L.1).
-  await expect(page.getByText('Disposition documentation rate')).toBeVisible();
-  await expect(page.getByText('Physical recovery rate')).toBeVisible();
+  await expect(page.getByText('Disposition Documentation Rate')).toBeVisible();
+  await expect(page.getByText('Physical Recovery Rate')).toBeVisible();
   await expect(page.getByText(/NOT_ISSUED excluded/)).toBeVisible();
   // No pay/amount input exists anywhere on the asset surface (default 18).
   await expect(page.locator('input[name*="amount" i], input[name*="pay" i]')).toHaveCount(0);

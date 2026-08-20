@@ -4,6 +4,7 @@
  * optimistic concurrency (Architecture.md section 8).
  */
 import { beforeAll, describe, expect, it } from 'vitest';
+import { effectiveSeparationFromFinalDay, formatInstant } from '@exit/domain';
 import { getPrisma } from '../src/client.ts';
 import {
   changeEffectiveTime,
@@ -27,13 +28,88 @@ beforeAll(async () => {
   manager = await createUser('Dana Manager', 'HR_MANAGER');
 });
 
+describe('effective separation derives from the final working date (owner request 2026-08-18)', () => {
+  it('a resignation with notice ends at close of business on the final working date', async () => {
+    const finalDay = new Date(Date.now() + 6 * 86_400_000);
+    const created = await createDraft(officer.actor, {
+      ...VALID_DRAFT,
+      recordPurpose: 'TEST',
+      measurementCohort: null,
+      confirmedLastDay: finalDay.toISOString(),
+      effectiveSeparationAt: null, // HR never typed one
+    });
+    const c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: created.caseId } });
+    expect(c.effectiveSeparationAt).not.toBeNull();
+    // 17:00 company time on the final working date (the seeded default).
+    expect(c.effectiveSeparationAt!.getTime()).toBe(
+      effectiveSeparationFromFinalDay(finalDay, '17:00')!.getTime(),
+    );
+    expect(formatInstant(c.effectiveSeparationAt!)).toContain('5:00 PM');
+  });
+
+  it('an explicitly entered instant always wins and survives a date change', async () => {
+    const chosen = new Date(Date.now() + 5 * 86_400_000);
+    chosen.setUTCHours(14, 30, 0, 0);
+    const created = await createDraft(officer.actor, {
+      ...VALID_DRAFT,
+      employeeSourceId: 'EMP-TEST-002',
+      recordPurpose: 'TEST',
+      measurementCohort: null,
+      confirmedLastDay: new Date(Date.now() + 6 * 86_400_000).toISOString(),
+      effectiveSeparationAt: chosen.toISOString(),
+    });
+    let c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: created.caseId } });
+    expect(c.effectiveSeparationAt!.getTime()).toBe(chosen.getTime());
+
+    // Moving the final working date must NOT overwrite a human decision.
+    await updateDraft(officer.actor, created.caseId, {
+      confirmedLastDay: new Date(Date.now() + 9 * 86_400_000).toISOString(),
+    });
+    c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: created.caseId } });
+    expect(c.effectiveSeparationAt!.getTime()).toBe(chosen.getTime());
+  });
+
+  it('a derived instant follows the final working date when it moves', async () => {
+    const created = await createDraft(officer.actor, {
+      ...VALID_DRAFT,
+      employeeSourceId: 'EMP-TEST-004',
+      recordPurpose: 'TEST',
+      measurementCohort: null,
+      confirmedLastDay: new Date(Date.now() + 6 * 86_400_000).toISOString(),
+      effectiveSeparationAt: null,
+    });
+    const movedTo = new Date(Date.now() + 11 * 86_400_000);
+    await updateDraft(officer.actor, created.caseId, {
+      confirmedLastDay: movedTo.toISOString(),
+    });
+    const c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: created.caseId } });
+    expect(c.effectiveSeparationAt!.getTime()).toBe(
+      effectiveSeparationFromFinalDay(movedTo, '17:00')!.getTime(),
+    );
+  });
+
+  it('immediate resignations derive nothing - the instant stays an explicit decision', async () => {
+    const created = await createDraft(officer.actor, {
+      ...VALID_DRAFT,
+      employeeSourceId: 'EMP-TEST-005',
+      departureType: 'IMMEDIATE_RESIGNATION',
+      recordPurpose: 'TEST',
+      measurementCohort: null,
+      confirmedLastDay: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+      effectiveSeparationAt: null,
+    });
+    const c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: created.caseId } });
+    expect(c.effectiveSeparationAt).toBeNull();
+  });
+});
+
 describe('happy path: create -> submit -> approve', () => {
   let caseId: string;
 
   it('creates a DRAFT with owner participation, history and audit', async () => {
     const created = await createDraft(officer.actor, VALID_DRAFT);
     caseId = created.caseId;
-    expect(created.caseNumber).toMatch(/^OFF-\d{4}-\d{4}$/);
+    expect(created.caseNumber).toMatch(/^OFF-\d{4}-\d{4,}-\d$/); // Damm check digit
 
     const participants = await prisma.caseParticipant.findMany({ where: { caseId } });
     expect(participants).toHaveLength(1);

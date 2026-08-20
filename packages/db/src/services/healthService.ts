@@ -5,6 +5,8 @@
  * counts, ages and stable codes only.
  */
 import { getConfig } from '@exit/config';
+import { maskDestination } from '@exit/domain';
+import { ServiceError } from '../errors.ts';
 import { getPrisma } from '../client.ts';
 import { getEmailProvider } from './emailProviders.ts';
 import { getBambooAdapter } from './bamboohrService.ts';
@@ -50,9 +52,36 @@ export async function collectHealth(): Promise<{
   const email = getEmailProvider();
   const emailHealth = await email.health();
   components.push({ component: `email (${email.mode})`, ...emailHealth });
-  const bamboo = await getBambooAdapter();
-  const bambooHealth = await bamboo.health();
-  components.push({ component: `bamboohr (${bamboo.mode})`, ...bambooHealth });
+  // Rehearsal mode diverts every outgoing message. A diversion nobody can see
+  // is worse than no diversion, so it is reported as a system condition -
+  // NOT as a failure, because a rehearsal is a legitimate state to be in.
+  const { currentTestMode } = await import('./outboxService.ts');
+  const testMode = await currentTestMode();
+  components.push({
+    component: 'email rehearsal mode',
+    ok: true,
+    detail: testMode.enabled
+      ? `ON - every message is diverted to ${maskDestination(testMode.redirectTo)} and marked as a test`
+      : 'off - messages go to their real recipients',
+  });
+  // A directory configured for live mode without credentials in this process
+  // is exactly what the health dashboard exists to report, so the failure
+  // becomes a DOWN component rather than a crashed page. The adapter reports
+  // the configuration CATEGORY only - never the credential itself.
+  try {
+    const bamboo = await getBambooAdapter();
+    const bambooHealth = await bamboo.health();
+    components.push({ component: `bamboohr (${bamboo.mode})`, ...bambooHealth });
+  } catch (e) {
+    components.push({
+      component: 'bamboohr (live)',
+      ok: false,
+      detail:
+        e instanceof ServiceError && e.details.length > 0
+          ? e.details.join('; ')
+          : 'directory adapter unavailable',
+    });
+  }
   const scanner = getScanner();
   const scannerHealth = await scanner.health();
   components.push({ component: `scanner (${scanner.mode})`, ...scannerHealth });

@@ -9,9 +9,12 @@ export async function resetDb(): Promise<void> {
   // integration cleanup uses TRUNCATE ... CASCADE as the database owner.
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      return_items_checklist_entry,
+      return_items_checklist,
       action_token,
       case_required_action,
       notification_outbox,
+      notification_routing,
       recipient_config,
       system_config,
       access_review,
@@ -122,13 +125,41 @@ export async function readyAssignment(
   caseId: string,
   hrManagerActor: Actor,
   officerUserId: string,
-  lineManagerUserId: string,
+  /**
+   * Kept for call-site compatibility and ignored: since the owner decision of
+   * 2026-08-19 an alternate manager is a DIRECTORY person, not an application
+   * account. The helper records one from the synthetic directory so every
+   * case has somewhere to send the departure notice.
+   */
+  _lineManagerUserId?: string,
 ): Promise<void> {
   const { assignOfficer, overrideManager, confirmAssignmentPlan } =
     await import('../src/services/caseAssignmentService.ts');
   const { CONFIRMATION_KEYS } = await import('@exit/domain');
+  const prisma = getPrisma();
   await assignOfficer(hrManagerActor, caseId, officerUserId, 'Integration test assignment.');
-  await overrideManager(hrManagerActor, caseId, lineManagerUserId, 'Integration test routing.');
+  const c = await prisma.offboardingCase.findUniqueOrThrow({
+    where: { id: caseId },
+    select: { employeeSourceSystem: true, employeeSourceId: true, managerSourceId: true },
+  });
+  if (!c.managerSourceId) {
+    const alternate = await prisma.employeeSourceRecord.findFirst({
+      where: {
+        sourceSystem: c.employeeSourceSystem,
+        active: true,
+        NOT: [{ workEmail: null }, { workEmail: '' }, { sourceId: c.employeeSourceId }],
+      },
+      orderBy: { sourceId: 'asc' },
+      select: { sourceId: true },
+    });
+    if (alternate)
+      await overrideManager(
+        hrManagerActor,
+        caseId,
+        alternate.sourceId,
+        'Integration test routing.',
+      );
+  }
   await confirmAssignmentPlan(hrManagerActor, caseId, [...CONFIRMATION_KEYS]);
 }
 
@@ -142,8 +173,16 @@ export async function readyAssignment(
 export async function withLegacyV1Definitions<T>(fn: () => Promise<T>): Promise<T> {
   const prisma = getPrisma();
   const now = new Date();
+  // Version-agnostic: remember whichever versions are ACTIVE now and put them
+  // back afterwards. Hard-coding "v2" broke the moment v3 shipped, and at most
+  // one version per type may be ACTIVE, so activating v1 alongside a live
+  // version violates the partial unique index.
+  const previouslyActive = await prisma.workflowDefinition.findMany({
+    where: { status: 'ACTIVE' },
+    select: { id: true },
+  });
   await prisma.workflowDefinition.updateMany({
-    where: { version: 2, status: 'ACTIVE' },
+    where: { id: { in: previouslyActive.map((d) => d.id) } },
     data: { status: 'SUPERSEDED', supersededAt: now },
   });
   await prisma.workflowDefinition.updateMany({
@@ -158,7 +197,7 @@ export async function withLegacyV1Definitions<T>(fn: () => Promise<T>): Promise<
       data: { status: 'SUPERSEDED', supersededAt: new Date() },
     });
     await prisma.workflowDefinition.updateMany({
-      where: { version: 2, status: 'SUPERSEDED' },
+      where: { id: { in: previouslyActive.map((d) => d.id) } },
       data: { status: 'ACTIVE', supersededAt: null },
     });
   }

@@ -19,20 +19,22 @@ async function createDraftCase(
   opts: { employeeQuery: string; type: string; purpose?: 'OPERATIONAL' | 'TEST' },
 ): Promise<string> {
   await page.goto('/cases/new');
-  await page.getByLabel(/Search the employee source/).fill(opts.employeeQuery);
+  await page.getByLabel('Employee Name or Number').fill(opts.employeeQuery);
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure type (required)').selectOption(opts.type);
-  await page.getByLabel('Receipt date and time (required)').fill('2026-07-20T09:30');
-  await page
-    .getByLabel('Source of the receipt timestamp (required)')
-    .fill('Synthetic acceptance-test receipt');
-  await page.getByLabel(/Effective separation date and exact time/).fill('2026-08-14T17:00');
+  await page.getByLabel('Departure Type').selectOption(opts.type);
+  await page.getByLabel('Date and Time Received').fill('2026-07-20T09:30');
+  // A resignation with notice ends at close of business on the final working
+  // date, so the platform derives the instant and the field is not offered.
+  if (opts.type === 'RESIGNATION_WITH_NOTICE') {
+    await page.getByLabel('Final Working Date').fill('2026-08-14');
+  } else {
+    await page.getByLabel(/Employment Ends/).fill('2026-08-14T17:00');
+  }
   if (opts.purpose === 'TEST') {
-    await page.getByLabel('Record purpose').selectOption('TEST');
   }
   await page.getByRole('button', { name: 'Create draft case' }).click();
-  await expect(page.getByText(/Draft case OFF-\d{4}-\d{4} created/)).toBeVisible();
+  await expect(page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/)).toBeVisible();
   return page.url().split('?')[0]!;
 }
 
@@ -56,7 +58,9 @@ test('J.3 return with reason -> correction -> resubmit; history preserved', asyn
 
   await signInAs(page, 'HR Officer');
   await page.goto(caseUrl);
-  await page.getByLabel(/Effective separation \(exact date and time\)/).fill('2026-08-14T18:00');
+  // Draft editing now lives as a disclosure under the case summary.
+  await page.locator('details.action > summary', { hasText: 'Edit these details' }).click();
+  await page.getByLabel(/Employment Ends/).fill('2026-08-14T18:00');
   await page.getByRole('button', { name: 'Save draft changes' }).click();
   await expect(page.getByText('Draft updated.')).toBeVisible();
   await page.getByRole('button', { name: 'Submit for HR review' }).click();
@@ -87,7 +91,7 @@ test('J.4 void requires a reason; history and audit remain visible', async ({ pa
   const timeline = page.locator('ul.timeline').last();
   await expect(timeline.getByText('case voided', { exact: false })).toHaveCount(1);
   await page.goto(caseUrl); // still reachable read-only, never deleted
-  await expect(page.getByRole('heading', { name: /OFF-\d{4}-\d{4}/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /OFF-\d{4}-\d{4,}(?:-\d)?/ })).toBeVisible();
   await signOut(page);
 });
 
@@ -98,7 +102,7 @@ test('J.5 restricted termination: assignment-gated access; no discovery for othe
   const caseUrl = await createDraftCase(page, { employeeQuery: 'morgan', type: 'TERMINATION' });
   await expect(page.getByText(/RESTRICTED case - visible to explicitly assigned/)).toBeVisible();
   const caseNumber = (await page
-    .getByRole('heading', { name: /OFF-\d{4}-\d{4}/ })
+    .getByRole('heading', { name: /OFF-\d{4}-\d{4,}(?:-\d)?/ })
     .textContent())!.split(' ')[0]!;
   await signOut(page);
 
@@ -112,15 +116,15 @@ test('J.5 restricted termination: assignment-gated access; no discovery for othe
   await page.goto('/cases?q=morgan');
   await expect(page.getByText(caseNumber)).toHaveCount(0);
   await page.goto(caseUrl);
-  await expect(page.getByText('Page or record not found')).toBeVisible();
+  await expect(page.getByText('Page or Record Not Found')).toBeVisible();
   await signOut(page);
 
   // Non-HR + admin roles: nothing anywhere (Directive 6.3: IT/Finance have
   // no logins at all; the line manager and admin cover the negative).
-  for (const who of ['Line Manager', 'System Administrator']) {
+  for (const who of ['System Administrator']) {
     await signInAs(page, who);
     await page.goto(caseUrl);
-    await expect(page.getByText('Page or record not found')).toBeVisible();
+    await expect(page.getByText('Page or Record Not Found')).toBeVisible();
     await signOut(page);
   }
 
@@ -168,7 +172,7 @@ test('J.6+J.8 cohort/purpose exclusion and audited export without restricted row
   await signOut(page);
 
   // Unauthorized roles cannot export.
-  await signInAs(page, 'Line Manager');
+  await signInAs(page, 'System Administrator');
   const denied = await page.request.get('/api/baseline-export');
   expect(denied.status()).toBe(403);
   await signOut(page);
@@ -201,7 +205,7 @@ test('J.7 attachment upload with clearly-labelled development scan transition', 
   await signOut(page);
 
   // Unauthorized role: download denied without disclosure.
-  await signInAs(page, 'Line Manager');
+  await signInAs(page, 'System Administrator');
   const denied = await page.request.get(href!);
   expect([403, 404]).toContain(denied.status());
   await signOut(page);
@@ -211,7 +215,7 @@ test('J.7 attachment upload with clearly-labelled development scan transition', 
 test('J.9 logout invalidates the session for protected routes', async ({ page }) => {
   await signInAs(page, 'HR Officer');
   await page.goto('/cases');
-  await expect(page.getByRole('heading', { name: 'Offboarding cases' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Offboarding Cases' })).toBeVisible();
   await signOut(page);
   await page.goto('/cases');
   await page.waitForURL('**/signin**');

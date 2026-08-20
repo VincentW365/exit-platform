@@ -10,8 +10,9 @@ import {
   retireDefinitionAction,
   updateDraftAction,
 } from '../actions';
+import { humanize } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'Workflow definition' };
+export const metadata: Metadata = { title: 'Workflow Definition' };
 export const dynamic = 'force-dynamic';
 
 export default async function WorkflowDefinitionPage({
@@ -33,7 +34,7 @@ export default async function WorkflowDefinitionPage({
     if (e instanceof ServiceError && e.code === 'FORBIDDEN')
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">Workflow definitions require an HR role.</p>
         </>
       );
@@ -78,7 +79,7 @@ export default async function WorkflowDefinitionPage({
   return (
     <>
       <h1>
-        {def.name} - v{def.version} ({def.status})
+        {def.name} - v{def.version} ({humanize(def.status)})
       </h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint">
@@ -92,7 +93,7 @@ export default async function WorkflowDefinitionPage({
 
       <section className="panel" aria-labelledby="matrix-h">
         <h2 id="matrix-h" style={{ marginTop: 0 }}>
-          Task matrix ({enabledTasks.length} tasks)
+          Task Matrix ({enabledTasks.length} Tasks)
         </h2>
         <div style={{ overflowX: 'auto' }} tabIndex={0}>
           <table>
@@ -182,7 +183,7 @@ export default async function WorkflowDefinitionPage({
           <summary>Retire this version (HR Manager)</summary>
           <form action={retireDefinitionAction}>
             <input type="hidden" name="definitionId" value={id} />
-            <label htmlFor="ret-reason">Reason (required, audited)</label>
+            <label htmlFor="ret-reason">Reason (Required, Audited)</label>
             <textarea id="ret-reason" name="reason" required rows={2} maxLength={500} />
             <button type="submit">Retire</button>
           </form>
@@ -204,7 +205,7 @@ export default async function WorkflowDefinitionPage({
               rows={2}
               maxLength={2000}
             />
-            <label htmlFor="e-cond">Activation conditions</label>
+            <label htmlFor="e-cond">Activation Conditions</label>
             <textarea
               id="e-cond"
               name="activationConditions"
@@ -212,7 +213,7 @@ export default async function WorkflowDefinitionPage({
               rows={2}
               maxLength={2000}
             />
-            <label htmlFor="e-tasks">Task definitions (JSON; validated on save)</label>
+            <label htmlFor="e-tasks">Task Definitions (JSON; Validated on Save)</label>
             <textarea
               id="e-tasks"
               name="tasks"
@@ -220,7 +221,7 @@ export default async function WorkflowDefinitionPage({
               rows={16}
               style={{ fontFamily: 'monospace' }}
             />
-            <label htmlFor="e-reason">Change reason (required)</label>
+            <label htmlFor="e-reason">Change Reason (Required)</label>
             <input id="e-reason" name="changeReason" required maxLength={500} />
             <button type="submit">Save draft</button>
           </form>
@@ -243,7 +244,7 @@ export default async function WorkflowDefinitionPage({
               rows={2}
               maxLength={2000}
             />
-            <label htmlFor="n-cond">Activation conditions</label>
+            <label htmlFor="n-cond">Activation Conditions</label>
             <textarea
               id="n-cond"
               name="activationConditions"
@@ -251,7 +252,7 @@ export default async function WorkflowDefinitionPage({
               rows={2}
               maxLength={2000}
             />
-            <label htmlFor="n-tasks">Task definitions (JSON)</label>
+            <label htmlFor="n-tasks">Task Definitions (JSON)</label>
             <textarea
               id="n-tasks"
               name="tasks"
@@ -259,7 +260,7 @@ export default async function WorkflowDefinitionPage({
               rows={16}
               style={{ fontFamily: 'monospace' }}
             />
-            <label htmlFor="n-reason">Change reason (required)</label>
+            <label htmlFor="n-reason">Change Reason (Required)</label>
             <input id="n-reason" name="changeReason" required maxLength={500} />
             <button type="submit">Create draft version</button>
           </form>

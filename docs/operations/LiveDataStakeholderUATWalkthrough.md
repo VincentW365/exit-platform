@@ -138,7 +138,7 @@ As the HR Officer on the case overview:
 
 ## Part 9 - Confirm benefits once
 
-As the HR Officer, open Benefits & providers:
+As the HR Officer, open Benefits and providers:
 
 1. Answer group health YES, group life NO, other provider NO.
 2. Watch the consequences: a provider notification is prepared for review

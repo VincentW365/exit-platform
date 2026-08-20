@@ -36,6 +36,8 @@ export const DEFAULT_SEND_CONTROL: Readonly<Record<NotificationType, SendControl
   IT_ACCESS_REMOVAL: 'AUTO_SEND',
   FINANCE_OFFBOARDING: 'AUTO_SEND',
   LINE_MANAGER_HANDOVER: 'AUTO_SEND',
+  RETURN_ITEMS_CHECKLIST: 'AUTO_SEND',
+  RESIGNATION_ACCEPTANCE_LETTER: 'HR_REVIEW_THEN_SEND',
   SAGICOR_GROUP_HEALTH_REMOVAL: 'HR_REVIEW_THEN_SEND',
   NCB_GROUP_LIFE_REMOVAL: 'HR_REVIEW_THEN_SEND',
   SURVEY_INVITATION_REFERENCE: 'HR_REVIEW_THEN_SEND',
@@ -129,7 +131,11 @@ export function itEmailScheduledAt(args: {
 
 // --- acknowledgement tokens (Directive 6.3 T) --------------------------------
 
-export const TOKEN_PURPOSES = ['ACKNOWLEDGE_RECEIPT', 'CONFIRM_COMPLETION'] as const;
+export const TOKEN_PURPOSES = [
+  'ACKNOWLEDGE_RECEIPT',
+  'CONFIRM_COMPLETION',
+  'COMPLETE_RETURN_CHECKLIST',
+] as const;
 export type ActionTokenPurpose = (typeof TOKEN_PURPOSES)[number];
 
 /** Same CSPRNG/hash discipline as the survey tokens (in-repo precedent). */
@@ -161,6 +167,13 @@ export function allowedTokenPurposes(type: NotificationType): readonly ActionTok
     case 'IT_ACCESS_REMOVAL':
     case 'FINANCE_OFFBOARDING':
       return ['ACKNOWLEDGE_RECEIPT', 'CONFIRM_COMPLETION'];
+    // The checklist link opens a form; it carries no acknowledgement.
+    case 'RETURN_ITEMS_CHECKLIST':
+      return ['COMPLETE_RETURN_CHECKLIST'];
+    // The letter carries itself. Asking a departing employee to click a link
+    // to acknowledge their own acceptance letter would be theatre.
+    case 'RESIGNATION_ACCEPTANCE_LETTER':
+      return [];
     case 'SAGICOR_GROUP_HEALTH_REMOVAL':
     case 'NCB_GROUP_LIFE_REMOVAL':
     case 'PAYROLL_OR_BANK_NOTIFICATION':
@@ -266,5 +279,5 @@ export const EMAIL_ACTION_STATE_LABELS: Readonly<Record<EmailActionDisplayState,
 
 /** Format a scheduled instant for HR display in the app timezone. */
 export function formatScheduledFor(at: Date): string {
-  return DateTime.fromJSDate(at, { zone: APP_ZONE }).toFormat("d LLL yyyy, h:mm a '(Jamaica)'");
+  return DateTime.fromJSDate(at, { zone: APP_ZONE }).toFormat('d LLL yyyy, h:mm a');
 }

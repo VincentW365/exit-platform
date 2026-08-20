@@ -10,6 +10,7 @@
  *  - only the sink email adapter is accepted in Stage 1;
  *  - missing required secrets fail startup instead of falling back silently.
  */
+import path from 'node:path';
 import { z } from 'zod';
 
 const boolString = z
@@ -35,6 +36,19 @@ const envSchema = z.object({
   // 'sink' (legacy no-op) and 'dev-capture' are development-only; 'graph' is
   // the production boundary; 'disabled' runs without email entirely.
   EMAIL_MODE: z.enum(['disabled', 'sink', 'dev-capture', 'graph']).default('dev-capture'),
+  /**
+   * Deployment environment for ROUTING purposes (email routing directive).
+   * Distinct from NODE_ENV, which governs how the app is built and run:
+   *   development - local work; recipients must be non-deliverable.
+   *   test        - UAT against real configuration; recipients are calculated
+   *                 exactly as in production but delivery is redirected to
+   *                 TEST_EMAIL, so a real mailbox can never be reached.
+   *   production  - real recipients, real delivery.
+   * Defaults from NODE_ENV so nothing has to be set to keep working.
+   */
+  APP_ENVIRONMENT: z.enum(['development', 'test', 'production']).optional(),
+  /** The one mailbox every message is redirected to while testing. */
+  TEST_EMAIL: z.string().optional(),
   GRAPH_TENANT_ID: z.string().optional(),
   GRAPH_CLIENT_ID: z.string().optional(),
   /// A REFERENCE to the credential location (vault path / secret name) -
@@ -82,6 +96,8 @@ export type AppConfig = Readonly<
     /** True only when BOTH safeguards hold (never in production). */
     devLoginEnabled: boolean;
     isProduction: boolean;
+    /** Resolved routing environment: development | test | production. */
+    appEnvironment: 'development' | 'test' | 'production';
   }
 >;
 
@@ -103,6 +119,28 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   }
   const c = parsed.data;
   const isProduction = c.NODE_ENV === 'production';
+  const appEnvironment = c.APP_ENVIRONMENT ?? (isProduction ? 'production' : 'development');
+
+  // A test/UAT deployment exists to exercise real routing without reaching a
+  // real mailbox. Without somewhere to redirect to, that promise cannot be
+  // kept, so the application refuses to start rather than deliver.
+  if (appEnvironment === 'test') {
+    const testEmail = (c.TEST_EMAIL ?? '').trim();
+    if (!testEmail) {
+      throw new ConfigError(
+        'FATAL: APP_ENVIRONMENT=test requires TEST_EMAIL - the single mailbox every message is redirected to.',
+      );
+    }
+    if (!/^[^s@]+@[^s@]+.[^s@]+$/.test(testEmail)) {
+      throw new ConfigError('FATAL: TEST_EMAIL must be a valid email address.');
+    }
+  }
+  // Production must never quietly run as a redirected environment.
+  if (isProduction && appEnvironment !== 'production') {
+    throw new ConfigError(
+      `FATAL: NODE_ENV=production cannot run with APP_ENVIRONMENT=${appEnvironment}; production delivers to real recipients.`,
+    );
+  }
 
   // CLAUDE.md authentication safeguard: refuse to start, do not merely disable.
   if (isProduction && c.ALLOW_DEV_LOGIN) {
@@ -205,6 +243,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   return Object.freeze({
     ...c,
     isProduction,
+    appEnvironment,
     devLoginEnabled: !isProduction && c.ALLOW_DEV_LOGIN,
   });
 }
@@ -214,6 +253,26 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
  * loader (no override of variables that are already set). Missing files are
  * ignored: real environments inject configuration directly (REQ-SEC-013).
  */
+/**
+ * Where the repository's .env was found. Relative paths in configuration
+ * (STORAGE_DIR above all) must mean the same directory for every process:
+ * the web app runs from apps/web and the worker from apps/worker, so
+ * resolving against cwd would give them separate object stores and the
+ * worker could not read a PDF the web app rendered.
+ */
+let repositoryRoot: string | null = null;
+
+/** The repository root, once loadRootEnvFile has located it. */
+export function getRepositoryRoot(): string | null {
+  return repositoryRoot;
+}
+
+/** Resolve a possibly relative path against the repository root. */
+export function resolveFromRoot(p: string): string {
+  if (!repositoryRoot) return path.resolve(p);
+  return path.isAbsolute(p) ? p : path.resolve(repositoryRoot, p);
+}
+
 export function loadRootEnvFile(startDir: string): void {
   let dir = startDir;
   for (let i = 0; i < 6; i++) {
@@ -228,6 +287,7 @@ export function loadRootEnvFile(startDir: string): void {
       } catch {
         // no .env.local - fine
       }
+      repositoryRoot = dir;
       return;
     } catch {
       // keep walking up

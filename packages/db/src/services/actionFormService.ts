@@ -507,8 +507,7 @@ export async function renderApprovedForm(formId: string, correlationId: string):
           rows: [
             ['Departure type', snap['departureType'] ?? ''],
             ['Resignation received', fmtDate(snap['receivedAt'])],
-            ['Proposed last working date', fmtDate(snap['proposedLastDay'])],
-            ['Confirmed last working date', fmtDate(snap['confirmedLastDay'])],
+            ['Final working date', fmtDate(snap['confirmedLastDay'])],
             ['Effective separation (instant)', snap['effectiveSeparationAt'] ?? '-'],
             ['Reason capture status', snap['reasonCaptureStatus'] ?? ''],
           ],

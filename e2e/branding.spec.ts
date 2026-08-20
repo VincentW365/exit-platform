@@ -72,11 +72,13 @@ test('directory page is HR-scoped and the employee selector shows provenance', a
   await page.getByRole('button', { name: 'Sign in as HR Officer' }).click();
   await page.waitForURL('**/');
   await page.goto('/directory');
-  await expect(page.getByText('Organization directory (case preparation)')).toBeVisible();
+  await expect(page.getByText('Organization Directory')).toBeVisible();
   await page.goto('/cases/new?q=avery');
-  await expect(page.getByText('Synthetic fixture').first()).toBeVisible();
-  await expect(page.getByRole('columnheader', { name: 'Source' })).toBeVisible();
-  await expect(page.getByRole('columnheader', { name: 'Last sync' })).toBeVisible();
+  // Final-product surface (owner request, 2026-08-17): no cache/provenance
+  // chrome in the selector - plain results with a match count.
+  await expect(page.getByText(/match(es)? for "avery"/)).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Source' })).toHaveCount(0);
+  await expect(page.getByRole('columnheader', { name: 'Last sync' })).toHaveCount(0);
   await expect(
     page.locator('details.action > summary', {
       hasText: 'Directory unavailable? Enter the employee manually',

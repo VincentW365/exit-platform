@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 function NeutralPage() {
   return (
     <main id="main" style={{ maxWidth: '38rem', margin: '2rem auto', padding: '0 1rem' }}>
-      <h1>Survey not available</h1>
+      <h1>Survey Not Available</h1>
       <p className="panel">
         This survey link is not available. If you believe this is a mistake, please contact the
         Human Resources office.
@@ -44,7 +44,7 @@ export default async function PublicSurveyPage({
       <p className="banner-baseline">{survey.privacyNotice}</p>
       {err ? (
         <div className="error-summary" role="alert">
-          <h2 style={{ marginTop: 0, fontSize: '1rem' }}>Please review your answers</h2>
+          <h2 style={{ marginTop: 0, fontSize: '1rem' }}>Please Review Your Answers</h2>
           <ul>
             {err.split('|').map((m, i) => (
               <li key={i}>{m}</li>

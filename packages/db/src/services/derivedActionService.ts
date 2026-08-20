@@ -229,7 +229,10 @@ export async function deriveActionsForCase(
 export const benefitsSchema = z.object({
   groupHealth: z.enum(['YES', 'NO', 'UNKNOWN']),
   groupLife: z.enum(['YES', 'NO', 'UNKNOWN']),
-  otherProvider: z.enum(['YES', 'NO']),
+  // Owner request 2026-08-19: the "other provider" question left the benefits
+  // section. The column stays for historical records and is always NO for new
+  // confirmations, so the rules engine derives nothing for it.
+  otherProvider: z.enum(['YES', 'NO']).default('NO'),
 });
 
 /**

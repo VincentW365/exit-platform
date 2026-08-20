@@ -5,6 +5,10 @@ import { can, formatDateOnly, formatInstant } from '@exit/domain';
 import { listCases } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { ClassificationBadge, Feedback, PurposeBadge, StatusBadge } from '@/components/ui';
+import { humanize } from '@/lib/text';
+import { PlusIcon } from '@/components/icons';
+import { EmptyState } from '@/components/EmptyState';
+import { CasesIcon } from '@/components/icons';
 
 export const metadata: Metadata = { title: 'Cases' };
 export const dynamic = 'force-dynamic';
@@ -29,28 +33,42 @@ export default async function CasesPage({
 
   return (
     <>
-      <h1>Offboarding cases</h1>
+      <div className="page-header">
+        <h1>Offboarding Cases</h1>
+        {can(actor, 'case.create') ? (
+          <Link className="button button--primary" href="/cases/new">
+            <PlusIcon />
+            Create New Case
+          </Link>
+        ) : null}
+      </div>
       <Feedback err={sp.err} ok={sp.ok} />
 
       <form method="get" className="panel" aria-label="Filter cases">
-        <div className="actions-row">
-          <div className="field" style={{ maxWidth: '16rem' }}>
-            <label htmlFor="f-q">Search (case number or employee)</label>
-            <input id="f-q" type="search" name="q" defaultValue={sp.q ?? ''} />
+        <div className="filter-toolbar">
+          <div className="field field--lg">
+            <label htmlFor="f-q">Case Number or Employee</label>
+            <input
+              id="f-q"
+              type="search"
+              name="q"
+              defaultValue={sp.q ?? ''}
+              placeholder="Search cases…"
+            />
           </div>
-          <div className="field" style={{ maxWidth: '13rem' }}>
+          <div className="field field--md">
             <label htmlFor="f-status">Status</label>
             <select id="f-status" name="status" defaultValue={sp.status ?? ''}>
               <option value="">Any</option>
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {s.replaceAll('_', ' ')}
+                  {humanize(s)}
                 </option>
               ))}
             </select>
           </div>
-          <div className="field" style={{ maxWidth: '15rem' }}>
-            <label htmlFor="f-type">Departure type</label>
+          <div className="field field--md">
+            <label htmlFor="f-type">Departure Type</label>
             <select id="f-type" name="departureType" defaultValue={sp.departureType ?? ''}>
               <option value="">Any</option>
               <option value="RESIGNATION_WITH_NOTICE">Resignation with notice</option>
@@ -58,36 +76,24 @@ export default async function CasesPage({
               <option value="TERMINATION">Termination</option>
             </select>
           </div>
-          <div className="field" style={{ maxWidth: '11rem' }}>
-            <label htmlFor="f-cohort">Cohort</label>
-            <select
-              id="f-cohort"
-              name="measurementCohort"
-              defaultValue={sp.measurementCohort ?? ''}
-            >
-              <option value="">Any</option>
-              <option value="BASELINE">BASELINE</option>
-              <option value="PILOT">PILOT</option>
-              <option value="POST_ROLLOUT">POST_ROLLOUT</option>
-            </select>
-          </div>
-          <div className="field" style={{ maxWidth: '11rem' }}>
-            <label htmlFor="f-purpose">Record purpose</label>
-            <select id="f-purpose" name="recordPurpose" defaultValue={sp.recordPurpose ?? ''}>
-              <option value="">Any</option>
-              <option value="OPERATIONAL">OPERATIONAL</option>
-              <option value="TRAINING">TRAINING</option>
-              <option value="TEST">TEST</option>
-            </select>
-          </div>
-          <div style={{ alignSelf: 'end' }}>
-            <button type="submit">Apply filters</button>
-          </div>
+          {/* Final-product surface (owner request, 2026-08-17): the cohort and
+              record-purpose filters left the UI; the query parameters still
+              work for legacy-record housekeeping. */}
+          <button type="submit" className="secondary">
+            Apply Filters
+          </button>
         </div>
       </form>
 
       {rows.length === 0 ? (
-        <p className="panel">No cases match your access and filters.</p>
+        <div className="panel">
+          <EmptyState
+            icon={<CasesIcon />}
+            title="No cases to show"
+            body="Nothing matches your filters, and restricted cases you are not assigned to are never listed. Clear the filters or start a new offboarding."
+            action={{ href: '/cases/new', label: 'Create New Case' }}
+          />
+        </div>
       ) : (
         <div className="table-wrap" tabIndex={0}>
           <table className="data">
@@ -101,7 +107,6 @@ export default async function CasesPage({
                 <th scope="col">Employee</th>
                 <th scope="col">Type</th>
                 <th scope="col">Status</th>
-                <th scope="col">Cohort / purpose</th>
                 <th scope="col">Received</th>
                 <th scope="col">Effective separation</th>
               </tr>
@@ -115,15 +120,13 @@ export default async function CasesPage({
                     ) : (
                       <Link href={`/cases/${c.id}`}>{c.caseNumber}</Link>
                     )}{' '}
-                    <ClassificationBadge classification={c.classification} />
+                    <ClassificationBadge classification={c.classification} />{' '}
+                    <PurposeBadge purpose={c.recordPurpose} cohort={c.measurementCohort} />
                   </td>
                   <td>{c.employeeDisplayName}</td>
-                  <td>{c.departureType.replaceAll('_', ' ').toLowerCase()}</td>
+                  <td>{humanize(c.departureType)}</td>
                   <td>
                     <StatusBadge status={c.status} />
-                  </td>
-                  <td>
-                    <PurposeBadge purpose={c.recordPurpose} cohort={c.measurementCohort} />
                   </td>
                   <td>{formatDateOnly(c.receivedAt)}</td>
                   <td>{c.effectiveSeparationAt ? formatInstant(c.effectiveSeparationAt) : '-'}</td>

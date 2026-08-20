@@ -23,6 +23,26 @@ describe('eventCategory', () => {
     }
   });
 
+  it('never leaves a business event in the SYSTEM fallback', () => {
+    // SYSTEM is the fallback for genuinely technical events. A new HR event
+    // that lands there is silently missing from every timeline chip.
+    const misfiled = AUDIT_EVENT_TYPES.filter(
+      (t) => eventCategory(t) === 'SYSTEM' && /^(RETURN_|DOC_|CASE_|FORM_|NOTIFICATION_)/.test(t),
+    );
+    expect(misfiled).toEqual([]);
+  });
+
+  it('files the exit checklist with the property it records (DEC-053)', () => {
+    for (const t of [
+      'RETURN_CHECKLIST_SENT',
+      'RETURN_CHECKLIST_SAVED',
+      'RETURN_CHECKLIST_SUBMITTED',
+      'RETURN_CHECKLIST_CORRECTED',
+    ] as const) {
+      expect(eventCategory(t), t).toBe('ASSET');
+    }
+  });
+
   it('maps the assignment lens correctly (M)', () => {
     for (const t of [
       'TASK_CLAIMED',

@@ -4,6 +4,9 @@ import { formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import { createTicketAction, updateTicketAction } from './actions';
+import { humanize } from '@/lib/text';
+import { EmptyState } from '@/components/EmptyState';
+import { LifebuoyIcon } from '@/components/icons';
 
 export const metadata: Metadata = { title: 'Support' };
 export const dynamic = 'force-dynamic';
@@ -31,7 +34,7 @@ export default async function SupportPage({
     if (e instanceof ServiceError)
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">Support requires an authenticated application role.</p>
         </>
       );
@@ -40,7 +43,7 @@ export default async function SupportPage({
 
   return (
     <>
-      <h1>Support and incidents</h1>
+      <h1>Support and Incidents</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
         Use SAFE operational descriptions only - never employee personal data. Technical support
@@ -69,25 +72,34 @@ export default async function SupportPage({
           </select>
           <label htmlFor="t-title">Title</label>
           <input id="t-title" name="title" required maxLength={200} />
-          <label htmlFor="t-desc">Safe description (no personal data)</label>
+          <label htmlFor="t-desc">Safe Description (No Personal Data)</label>
           <textarea id="t-desc" name="description" rows={3} required maxLength={2000} />
-          <label htmlFor="t-comp">Affected component</label>
+          <label htmlFor="t-comp">Affected Component</label>
           <input id="t-comp" name="affectedComponent" maxLength={100} />
           <button type="submit">Create record</button>
         </form>
       </details>
 
-      {data.tickets.length === 0 ? <p className="panel">No support records.</p> : null}
+      {data.tickets.length === 0 ? (
+        <div className="panel">
+          <EmptyState
+            icon={<LifebuoyIcon />}
+            tone="done"
+            title="No support records"
+            body="Incidents and support requests raised against the platform appear here."
+          />
+        </div>
+      ) : null}
       {data.tickets.map((t) => (
         <section className="panel" key={t.id} aria-label={t.title}>
           <h2 style={{ marginTop: 0, fontSize: '1.05rem' }}>
             {t.title}{' '}
             <span className={`badge ${SEV_BADGE[t.severity] ?? 'badge--neutral'}`}>
-              {t.severity}
+              {humanize(t.severity)}
             </span>{' '}
             <span className="badge badge--neutral">{t.category}</span>{' '}
             <span className={`badge ${t.status === 'OPEN' ? 'badge--warning' : 'badge--success'}`}>
-              {t.status}
+              {humanize(t.status)}
             </span>
           </h2>
           <p className="hint">
@@ -118,7 +130,7 @@ export default async function SupportPage({
       {bundle ? (
         <section className="panel" aria-labelledby="diag-h">
           <h2 id="diag-h" style={{ marginTop: 0 }}>
-            PII-safe diagnostic bundle
+            PII-safe Diagnostic Bundle
           </h2>
           <p className="hint">{bundle.note}</p>
           <pre style={{ whiteSpace: 'pre-wrap', overflowX: 'auto' }}>

@@ -446,7 +446,10 @@ export function overdueSeverity(
 export function queueDepartmentsForActor(actor: Actor): TaskDepartment[] {
   const out: TaskDepartment[] = [];
   if (hasRole(actor, 'HR_MANAGER', 'HR_OFFICER')) out.push('HR', 'IT', 'FINANCE');
-  if (hasRole(actor, 'LINE_MANAGER')) out.push('LINE_MANAGER');
+  // The line manager has no queue: they are informed by controlled email and
+  // hold no task in the platform (owner decision, 2026-08-19). Legacy cases
+  // may still carry LINE_MANAGER task rows; HR works those out through the
+  // case itself.
   return out;
 }
 

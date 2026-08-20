@@ -56,7 +56,7 @@ test('directive 6.1 surfaces: responsive + axe sweep', async ({ page }) => {
   // A case for header/progress/assignment surfaces.
   await page.goto('/cases');
   await page
-    .getByRole('link', { name: /OFF-\d{4}-\d{4}/ })
+    .getByRole('link', { name: /OFF-\d{4}-\d{4,}(?:-\d)?/ })
     .first()
     .click();
   await page.waitForLoadState('load');

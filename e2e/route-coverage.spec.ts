@@ -42,11 +42,11 @@ const STATIC_ROUTES = [
 // departments act on controlled emails, never application logins. The
 // remaining representative roles cover every reachable surface. (Note: the
 // /queue page heading is now "My work".)
-const ROLES = ['HR Manager', 'HR Officer', 'Line Manager', 'System Administrator'];
+const ROLES = ['HR Manager', 'HR Officer', 'System Administrator'];
 
 async function assertHealthy(page: Page, label: string): Promise<void> {
   // The global error boundary and Next's static error page must never show.
-  await expect(page.getByText('Something went wrong'), label).toHaveCount(0);
+  await expect(page.getByText('Something Went Wrong'), label).toHaveCount(0);
   await expect(
     page.getByText('Application error: a client-side exception has occurred'),
     label,
@@ -90,7 +90,6 @@ test('every case tab renders for the HR Manager on a real case', async ({ page }
     '/action-form',
     '/workflow',
     '/assets',
-    '/handover',
     '/clearance',
     '/notifications', // titled "Email actions" since Directive 6.3
     '/survey',

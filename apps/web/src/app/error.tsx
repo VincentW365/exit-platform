@@ -11,7 +11,7 @@ export default function GlobalError({
 }) {
   return (
     <main id="main" style={{ maxWidth: '40rem', margin: '2rem auto', padding: '0 1rem' }}>
-      <h1>Something went wrong</h1>
+      <h1>Something Went Wrong</h1>
       <p className="panel">
         The action could not be completed. The event was logged
         {error.digest ? (

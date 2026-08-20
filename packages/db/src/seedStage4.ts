@@ -87,7 +87,66 @@ const DEV_RECIPIENTS = [
     organizationName: 'Other approved provider (synthetic)',
     contactName: 'Provider Contact Team',
   },
+  // Email routing directive: the remaining departmental destinations, so an
+  // administrator can route any notification type without touching code.
+  {
+    recipientClass: 'HR_OFFICERS',
+    displayName: 'DEV HR Officers capture (synthetic)',
+    destination: 'capture://hr-officers',
+    purpose: null,
+    organizationName: null,
+    contactName: 'HR Officers',
+  },
+  {
+    recipientClass: 'PAYROLL',
+    displayName: 'DEV Payroll capture (synthetic)',
+    destination: 'capture://payroll',
+    purpose: null,
+    organizationName: null,
+    contactName: 'Payroll Team',
+  },
+  {
+    recipientClass: 'SECURITY',
+    displayName: 'DEV Security capture (synthetic)',
+    destination: 'capture://security',
+    purpose: null,
+    organizationName: null,
+    contactName: 'Security Team',
+  },
+  {
+    recipientClass: 'ASSET_WAREHOUSE',
+    displayName: 'DEV Asset / Warehouse capture (synthetic)',
+    destination: 'capture://asset-warehouse',
+    purpose: null,
+    organizationName: null,
+    contactName: 'Asset and Warehouse Team',
+  },
 ] as const;
+
+/**
+ * Write the shipped routes into the routing table on first seed. Storing them
+ * makes the configuration visible and editable from day one; the values are
+ * identical to what the code used to hard-code, so nothing about who receives
+ * what changes.
+ */
+async function seedRoutes(db: Db): Promise<void> {
+  const { DEFAULT_ROUTES } = await import('./services/routingService.ts');
+  for (const [notificationType, route] of Object.entries(DEFAULT_ROUTES)) {
+    const existing = await db.notificationRouting.findUnique({
+      where: { notificationType: notificationType as never },
+    });
+    if (existing) continue;
+    await db.notificationRouting.create({
+      data: {
+        notificationType: notificationType as never,
+        toDestination: route.to,
+        ccDestinations: route.cc ?? [],
+        bccDestinations: [],
+        note: route.note ?? null,
+      },
+    });
+  }
+}
 
 export async function seedStage4(db: Db): Promise<void> {
   const hrManager = await db.user.findUniqueOrThrow({
@@ -134,4 +193,5 @@ export async function seedStage4(db: Db): Promise<void> {
       },
     });
   }
+  await seedRoutes(db);
 }

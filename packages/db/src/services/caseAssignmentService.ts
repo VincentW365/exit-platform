@@ -71,6 +71,8 @@ export interface AssignmentPlan {
   employee: {
     displayName: string;
     sourceId: string;
+    /** HR-assigned Employee # from the directory; distinct from sourceId. */
+    employeeNumber: string | null;
     sourceSystem: string;
     jobTitle: string | null;
     department: string;
@@ -97,7 +99,8 @@ export interface AssignmentPlan {
   responders: {
     it: Array<{ id: string; displayName: string; openTasks: number }>;
     finance: Array<{ id: string; displayName: string; openTasks: number }>;
-    managers: Array<{ id: string; displayName: string }>;
+    /** Directory people who could receive the departure notice instead. */
+    managers: Array<{ id: string; displayName: string; label: string }>;
     /** label = human choice text: name plus directory job title (or role). */
     officers: Array<{ id: string; displayName: string; label: string }>;
   };
@@ -145,7 +148,7 @@ export async function getAssignmentPlan(actor: Actor, caseId: string): Promise<A
         sourceId: c.employeeSourceId,
       },
     },
-    select: { division: true, active: true, lastSyncedAt: true },
+    select: { division: true, active: true, lastSyncedAt: true, employeeNumber: true },
   });
   const managerRow = c.managerSourceId
     ? await prisma.employeeSourceRecord.findUnique({
@@ -162,7 +165,16 @@ export async function getAssignmentPlan(actor: Actor, caseId: string): Promise<A
   const [itUsers, financeUsers, managerUsers, officerOnly, hrManagers] = await Promise.all([
     activeUsersWithRole('IT_RESPONDER'),
     activeUsersWithRole('FINANCE_RESPONDER'),
-    activeUsersWithRole('LINE_MANAGER'),
+    prisma.employeeSourceRecord.findMany({
+      where: {
+        sourceSystem: c.employeeSourceSystem,
+        active: true,
+        NOT: [{ workEmail: null }, { workEmail: '' }, { sourceId: c.employeeSourceId }],
+      },
+      select: { sourceId: true, displayName: true, jobTitle: true, department: true },
+      orderBy: { displayName: 'asc' },
+      take: 500,
+    }),
     activeUsersWithRole('HR_OFFICER'),
     activeUsersWithRole('HR_MANAGER'),
   ]);
@@ -227,7 +239,7 @@ export async function getAssignmentPlan(actor: Actor, caseId: string): Promise<A
     blockers.push(
       c.managerName
         ? `Directory manager "${c.managerName}" has no active application account with the LINE_MANAGER role - override with an alternate manager.`
-        : 'MISSING MANAGER — ACTION REQUIRED: the directory records no manager for this employee; assign an alternate manager.',
+        : 'No manager on record — action required: the directory records no manager for this employee; assign an alternate manager.',
     );
   const confErrors = activationConfirmationErrors(confirmations, c.managerChangeFlaggedAt ?? null);
   blockers.push(...confErrors);
@@ -240,6 +252,7 @@ export async function getAssignmentPlan(actor: Actor, caseId: string): Promise<A
     employee: {
       displayName: c.employeeDisplayName,
       sourceId: c.employeeSourceId,
+      employeeNumber: sourceRow?.employeeNumber ?? null,
       sourceSystem: c.employeeSourceSystem,
       jobTitle: c.jobTitle,
       department: c.department,
@@ -278,7 +291,11 @@ export async function getAssignmentPlan(actor: Actor, caseId: string): Promise<A
         displayName: u.displayName,
         openTasks: countFor(u.id),
       })),
-      managers: managerUsers.map((u) => ({ id: u.id, displayName: u.displayName })),
+      managers: managerUsers.map((m) => ({
+        id: m.sourceId,
+        displayName: m.displayName,
+        label: [m.displayName, m.jobTitle, m.department].filter(Boolean).join(' - '),
+      })),
       officers: officerUsers.map((u) => ({
         id: u.id,
         displayName: u.displayName,
@@ -310,7 +327,7 @@ export async function getAssignmentPlan(actor: Actor, caseId: string): Promise<A
           owningQueue: t.department === 'LINE_MANAGER' ? 'Manager' : `${t.department} queue`,
           assignee:
             t.department === 'LINE_MANAGER'
-              ? (c.managerUser?.displayName ?? 'MISSING MANAGER')
+              ? (c.managerUser?.displayName ?? 'No manager on record')
               : t.department === 'HR'
                 ? (c.assignedOfficer?.displayName ?? 'Assigned HR Officer')
                 : 'Unassigned (claim from queue)',
@@ -461,10 +478,19 @@ export async function refreshManagerFromDirectory(actor: Actor, caseId: string):
  * F: audited manager override - the HR Manager routes manager-owned work to
  * an alternate LINE_MANAGER account (missing manager, or business decision).
  */
+/**
+ * Record an alternate manager for this case.
+ *
+ * Owner decision 2026-08-19: managers hold no login, so an override no longer
+ * points at an application account - it names the person from the company
+ * directory who should receive the departure notice instead of the manager the
+ * hierarchy derived. Everything else (HR-Manager authority, mandatory reason,
+ * before/after audit) is unchanged.
+ */
 export async function overrideManager(
   actor: Actor,
   caseId: string,
-  managerUserId: string,
+  managerSourceId: string,
   reason: string,
 ): Promise<void> {
   const { c, ctx } = await loadCase(caseId);
@@ -474,21 +500,26 @@ export async function overrideManager(
     throw ServiceError.forbidden();
   if (!reason.trim()) throw ServiceError.validation(['A reason is required (audited).']);
   const prisma = getPrisma();
-  const target = await prisma.user.findUnique({
-    where: { id: managerUserId },
-    include: { roleAssignments: { where: { revokedAt: null }, select: { role: true } } },
+  const target = await prisma.employeeSourceRecord.findUnique({
+    where: {
+      sourceSystem_sourceId: { sourceSystem: c.employeeSourceSystem, sourceId: managerSourceId },
+    },
+    select: { displayName: true, workEmail: true, active: true },
   });
-  if (!target || !target.isActive)
-    throw ServiceError.validation(['The selected user does not exist or is inactive.']);
-  if (!target.roleAssignments.some((r) => r.role === 'LINE_MANAGER'))
-    throw ServiceError.validation(['The alternate manager must hold the LINE_MANAGER role.']);
+  if (!target) throw ServiceError.validation(['That person is not in the employee directory.']);
+  if (!target.workEmail?.trim())
+    throw ServiceError.validation([
+      'That person has no work email in the directory, so the departure notice could not reach them.',
+    ]);
 
   const correlationId = newCorrelationId();
   await prisma.$transaction(async (tx) => {
     await tx.offboardingCase.update({
       where: { id: caseId },
       data: {
-        managerUserId,
+        managerSourceId,
+        managerName: target.displayName,
+        managerUserId: null,
         managerSource: 'OVERRIDE',
         managerChangeFlaggedAt: null,
         version: { increment: 1 },
@@ -508,7 +539,7 @@ export async function overrideManager(
         caseNumber: c.caseNumber,
         originalManagerName: c.managerName,
         originalManagerUserId: c.managerUserId,
-        replacementUserId: managerUserId,
+        replacementManagerSourceId: managerSourceId,
         replacementManagerName: target.displayName,
         reason,
       },
@@ -529,7 +560,9 @@ export async function confirmAssignmentPlan(
   if (errors.length) throw ServiceError.validation(errors);
   if (!c.assignedOfficerId)
     throw ServiceError.validation(['Assign the HR Officer before confirming the plan.']);
-  if (!c.managerUserId)
+  // The manager is emailed, not logged in, so what must be resolved is the
+  // directory manager the notice is addressed to (owner decision, 2026-08-19).
+  if (!c.managerSourceId && !c.managerName)
     throw ServiceError.validation([
       'Manager routing is unresolved - derive or override the manager before confirming.',
     ]);

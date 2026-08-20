@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { ServiceError, getClearanceView } from '@exit/db';
 import { formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
-import { Feedback } from '@/components/ui';
+import { CaseTitle, Feedback } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
 import {
   approveClearanceAction,
@@ -11,6 +11,9 @@ import {
   resolveExceptionAction,
   returnClearanceAction,
 } from './actions';
+import { humanize } from '@/lib/text';
+import { EmptyState } from '@/components/EmptyState';
+import { CheckCircleIcon } from '@/components/icons';
 
 export const metadata: Metadata = { title: 'Clearance' };
 export const dynamic = 'force-dynamic';
@@ -41,7 +44,7 @@ export default async function CaseClearancePage({
     if (e instanceof ServiceError && e.code === 'FORBIDDEN')
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">This area requires full case access.</p>
         </>
       );
@@ -52,20 +55,18 @@ export default async function CaseClearancePage({
 
   return (
     <>
-      <h1>
-        Final clearance - {data.caseNumber} ({data.caseStatus})
-      </h1>
+      <CaseTitle title="Final Clearance" caseNumber={data.caseNumber} status={data.caseStatus} />
       <CaseNav caseId={id} active="clearance" />
       <Feedback err={sp.err} ok={sp.ok} />
 
       {data.readiness ? (
         <section className="panel" aria-labelledby="gate-h">
           <h2 id="gate-h" style={{ marginTop: 0 }}>
-            Clearance gate{' '}
+            Clearance Gate{' '}
             {data.readiness.ok ? (
-              <span className="badge badge--success">ALL CONDITIONS MET</span>
+              <span className="badge badge--success">All conditions met</span>
             ) : (
-              <span className="badge badge--warning">NOT READY</span>
+              <span className="badge badge--warning">Not ready</span>
             )}
           </h2>
           {(() => {
@@ -103,7 +104,7 @@ export default async function CaseClearancePage({
                         {g.items.map((i) => (
                           <li key={i.key} style={{ marginBottom: '0.3rem' }}>
                             <span className={`badge ${i.ok ? 'badge--success' : 'badge--danger'}`}>
-                              {i.ok ? 'MET' : 'BLOCKED'}
+                              {i.ok ? 'Met' : 'Blocked'}
                             </span>{' '}
                             <strong>{i.label}</strong> - {i.detail}
                           </li>
@@ -142,7 +143,9 @@ export default async function CaseClearancePage({
           </p>
         </section>
       ) : (
-        <p className="panel">No live workflow exists; the gate applies to active workflows.</p>
+        <p className="panel">
+          Clearance opens once the case is active and its offboarding work is under way.
+        </p>
       )}
 
       <details className="action" style={{ marginBottom: '1rem' }}>
@@ -153,7 +156,7 @@ export default async function CaseClearancePage({
           <ul>
             {data.notifications.map((n) => (
               <li key={n.id}>
-                {n.notificationType}: {n.status}
+                {humanize(n.notificationType)}: {humanize(n.status)}
                 {n.manualSentAt ? ` (manually sent ${formatInstant(n.manualSentAt)})` : ''}
               </li>
             ))}
@@ -163,16 +166,23 @@ export default async function CaseClearancePage({
 
       <section className="panel" aria-labelledby="exc-h">
         <h2 id="exc-h" style={{ marginTop: 0 }}>
-          Exceptions ({openExceptions.length} open)
+          Exceptions ({openExceptions.length} Open)
         </h2>
-        {data.exceptions.length === 0 ? <p>No exceptions recorded.</p> : null}
+        {data.exceptions.length === 0 ? (
+          <EmptyState
+            icon={<CheckCircleIcon />}
+            tone="done"
+            title="No exceptions recorded"
+            body="Nothing on this case has needed an exception."
+          />
+        ) : null}
         {openExceptions.map((e) => (
           <div key={e.id} style={{ marginBottom: '0.6rem' }}>
             <span className={`badge ${SEV_BADGE[e.severity] ?? 'badge--neutral'}`}>
-              {e.severity}
+              {humanize(e.severity)}
             </span>{' '}
             <span className={`badge ${e.status === 'OPEN' ? 'badge--warning' : 'badge--success'}`}>
-              {e.status}
+              {humanize(e.status)}
             </span>{' '}
             <strong>{e.title}</strong>
             {e.detail ? <span className="hint"> - {e.detail}</span> : null}
@@ -188,7 +198,7 @@ export default async function CaseClearancePage({
                 <form action={resolveExceptionAction}>
                   <input type="hidden" name="caseId" value={id} />
                   <input type="hidden" name="exceptionId" value={e.id} />
-                  <label htmlFor={`res-${e.id}`}>Resolution (required, audited)</label>
+                  <label htmlFor={`res-${e.id}`}>Resolution (Required, Audited)</label>
                   <textarea
                     id={`res-${e.id}`}
                     name="resolution"
@@ -198,9 +208,9 @@ export default async function CaseClearancePage({
                   />
                   {e.severity === 'CRITICAL' ? (
                     <label>
-                      <input type="checkbox" name="securityException" /> Approve as a security
-                      exception (HR Manager; keeps clearance possible despite incomplete access
-                      removal)
+                      <input type="checkbox" name="securityException" /> Approve as a Security
+                      Exception (HR Manager; Keeps Clearance Possible Despite Incomplete Access
+                      Removal)
                     </label>
                   ) : null}
                   <button type="submit">Resolve exception</button>
@@ -219,7 +229,7 @@ export default async function CaseClearancePage({
               .map((e) => (
                 <div key={e.id} style={{ marginBottom: '0.5rem' }}>
                   <span className={`badge ${SEV_BADGE[e.severity] ?? 'badge--neutral'}`}>
-                    {e.severity}
+                    {humanize(e.severity)}
                   </span>{' '}
                   <span className="badge badge--success">{e.status}</span>{' '}
                   <strong>{e.title}</strong>
@@ -260,7 +270,7 @@ export default async function CaseClearancePage({
           <summary>Return to active (outstanding work found)</summary>
           <form action={returnClearanceAction}>
             <input type="hidden" name="caseId" value={id} />
-            <label htmlFor="ret-reason">Reason (required, audited)</label>
+            <label htmlFor="ret-reason">Reason (Required, Audited)</label>
             <textarea id="ret-reason" name="reason" required rows={2} maxLength={500} />
             <button type="submit">Return to active</button>
           </form>
@@ -270,7 +280,7 @@ export default async function CaseClearancePage({
       {data.clearanceRecords.length > 0 ? (
         <section className="panel" aria-labelledby="rec-h">
           <h2 id="rec-h" style={{ marginTop: 0 }}>
-            Clearance records (immutable)
+            Clearance Records
           </h2>
           {data.clearanceRecords.map((r) => (
             <p key={r.id}>

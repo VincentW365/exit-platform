@@ -80,7 +80,9 @@ export async function issueTokensForRecordTx(
       correlationId: newCorrelationId(),
       metadata: { purpose, expiresAt: token.expiresAt.toISOString() },
     });
-    links.push({ purpose, url: `${base}/ack/${raw}` });
+    // The checklist link opens a form, not the acknowledgement page.
+    const path = purpose === 'COMPLETE_RETURN_CHECKLIST' ? 'checklist' : 'ack';
+    links.push({ purpose, url: `${base}/${path}/${raw}` });
   }
   return links;
 }
@@ -94,6 +96,8 @@ export async function getActionByToken(rawToken: string): Promise<{
   purpose: ActionTokenPurpose;
   actionLabel: string;
   caseReference: string;
+  /** Server-side only: lets the checklist form load the right case. */
+  caseId: string;
   alreadyDone: boolean;
 } | null> {
   if (!isPlausibleActionToken(rawToken)) return null;
@@ -107,7 +111,7 @@ export async function getActionByToken(rawToken: string): Promise<{
           notificationType: true,
           subjectSnapshot: true,
           status: true,
-          case: { select: { caseNumber: true } },
+          case: { select: { id: true, caseNumber: true } },
         },
       },
     },
@@ -122,11 +126,14 @@ export async function getActionByToken(rawToken: string): Promise<{
     actionLabel: token.notificationRecord.subjectSnapshot ?? 'Offboarding notification',
     // The email already carries the case reference; nothing broader leaks.
     caseReference: token.notificationRecord.case.caseNumber,
+    caseId: token.notificationRecord.case.id,
     alreadyDone:
-      token.purpose === 'ACKNOWLEDGE_RECEIPT'
-        ? token.notificationRecord.status === 'ACKNOWLEDGED' ||
-          token.notificationRecord.status === 'CONFIRMED_COMPLETE'
-        : token.notificationRecord.status === 'CONFIRMED_COMPLETE',
+      token.purpose === 'COMPLETE_RETURN_CHECKLIST'
+        ? false
+        : token.purpose === 'ACKNOWLEDGE_RECEIPT'
+          ? token.notificationRecord.status === 'ACKNOWLEDGED' ||
+            token.notificationRecord.status === 'CONFIRMED_COMPLETE'
+          : token.notificationRecord.status === 'CONFIRMED_COMPLETE',
   };
 }
 

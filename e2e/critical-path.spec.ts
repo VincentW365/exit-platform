@@ -23,30 +23,33 @@ test('HR officer creates and submits; HR manager approves with snapshot; line ma
 }) => {
   // --- HR officer: create the draft -------------------------------------
   await signInAs(page, 'HR Officer');
-  await expect(page.getByRole('heading', { name: 'HR dashboard' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Exit Center' })).toBeVisible();
 
   await page.goto('/cases/new');
-  await page.getByLabel(/Search the employee source/).fill('avery');
+  await page.getByLabel('Employee Name or Number').fill('avery');
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
 
-  await page.getByLabel('Departure type (required)').selectOption('RESIGNATION_WITH_NOTICE');
-  await page.getByLabel('Receipt date and time (required)').fill('2026-07-20T09:30');
-  await page
-    .getByLabel('Source of the receipt timestamp (required)')
-    .fill('Signed resignation letter at HR front desk (synthetic)');
-  await page.getByLabel(/Effective separation date and exact time/).fill('2026-08-14T17:00');
+  await page.getByLabel('Departure Type').selectOption('RESIGNATION_WITH_NOTICE');
+  await page.getByLabel('Date and Time Received').fill('2026-07-20T09:30');
+  // Receipt channel: the picker defaults to "Signed letter" and the detail
+  // field stays hidden unless "Other" is chosen - nothing to fill.
+  // A resignation with notice ends at close of business on the final working
+  // date, so the platform derives the instant and the field is not offered.
+  await page.getByLabel('Final Working Date').fill('2026-08-14');
   await page.getByRole('button', { name: 'Create draft case' }).click();
 
-  await expect(page.getByText(/Draft case OFF-\d{4}-\d{4} created/)).toBeVisible();
+  await expect(page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/)).toBeVisible();
   const caseUrl = page.url().split('?')[0]!;
-  await expect(page.getByRole('heading', { name: /OFF-\d{4}-\d{4} - Avery Brown/ })).toBeVisible();
-  await expect(page.getByText('not yet captured (created at approval)')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: /OFF-\d{4}-\d{4,}(?:-\d)? - Avery Brown/ }),
+  ).toBeVisible();
+  await expect(page.getByText('Not yet captured (created at approval)')).toBeVisible();
 
   // --- submit for review --------------------------------------------------
   await page.getByRole('button', { name: 'Submit for HR review' }).click();
   await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
-  await expect(page.getByText('Pending HR review').first()).toBeVisible();
+  await expect(page.getByText('Pending HR Review').first()).toBeVisible();
 
   // The officer must not see an approval control (maker-checker).
   await expect(page.getByRole('button', { name: /Approve case/ })).toHaveCount(0);
@@ -67,9 +70,9 @@ test('HR officer creates and submits; HR manager approves with snapshot; line ma
   await expect(page.getByText('approved the case', { exact: false }).first()).toBeVisible();
   await signOut(page);
 
-  // --- line manager: least privilege (IT/Finance have no logins at all) ---
-  await signInAs(page, 'Line Manager');
-  await expect(page.getByText('Your department work queue')).toBeVisible();
+  // --- least privilege: no department login has HR case access at all ---
+  await signInAs(page, 'System Administrator');
+  await expect(page.getByText('Your Department Work Queue')).toHaveCount(0);
   // No Cases navigation is offered...
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByText('Cases')).toHaveCount(0);
   // ...and going there directly is refused server-side.
@@ -77,5 +80,5 @@ test('HR officer creates and submits; HR manager approves with snapshot; line ma
   await expect(page).toHaveURL(/unauthorized/);
   // A direct case URL leaks nothing (the manager is not on this case).
   await page.goto(caseUrl);
-  await expect(page.getByText('Page or record not found')).toBeVisible();
+  await expect(page.getByText('Page or Record Not Found')).toBeVisible();
 });

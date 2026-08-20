@@ -27,7 +27,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 function NeutralPage() {
   return (
     <Shell>
-      <h1>Link not available</h1>
+      <h1>Link Not Available</h1>
       <p className="panel">This link is not valid. It may have expired or already been used.</p>
     </Shell>
   );
@@ -48,7 +48,7 @@ export default async function PublicAckPage({
   if (sp.done === '1') {
     return (
       <Shell>
-        <h1>Thank you</h1>
+        <h1>Thank You</h1>
         <p className="panel">Recorded. You can close this page.</p>
       </Shell>
     );
@@ -60,7 +60,7 @@ export default async function PublicAckPage({
   if (action.alreadyDone) {
     return (
       <Shell>
-        <h1>Already recorded</h1>
+        <h1>Already Recorded</h1>
         <p className="panel">Already recorded. Nothing further is needed.</p>
       </Shell>
     );
@@ -83,7 +83,7 @@ export default async function PublicAckPage({
       <form action={redeemAckAction} className="stack">
         <input type="hidden" name="token" value={token} />
         <div className="field">
-          <label htmlFor="ack-note">Note (optional)</label>
+          <label htmlFor="ack-note">Note (Optional)</label>
           <textarea id="ack-note" name="note" rows={3} maxLength={500} />
         </div>
         <p className="hint">This secure link can be used once and then stops working.</p>

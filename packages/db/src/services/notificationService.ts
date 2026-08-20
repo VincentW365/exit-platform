@@ -46,7 +46,8 @@ import { appendAudit, newCorrelationId } from './auditService.ts';
 import { loadCaseAccess } from './shared.ts';
 import { autoResolveException, openException } from './exceptionService.ts';
 import { cancelPendingOutboxTx, enqueueOutboxTx, recipientClassForType } from './outboxService.ts';
-import { resolveUsableRecipient, upsertRecipient } from './recipientService.ts';
+import { resolveRoute, resolveStaticTo } from './routingService.ts';
+import { upsertRecipient } from './recipientService.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
 
 // --- provider-neutral delivery boundary (K.12-K.15) --------------------------
@@ -89,6 +90,29 @@ export async function listNotificationTemplates(actor: Actor) {
   });
 }
 
+/** HR signature block for a case: assigned officer, else the case owner. */
+async function hrSenderFor(caseId: string): Promise<{ name: string; title: string }> {
+  const prisma = getPrisma();
+  const c = await prisma.offboardingCase.findUnique({
+    where: { id: caseId },
+    select: { assignedOfficerId: true, ownerId: true },
+  });
+  const userId = c?.assignedOfficerId ?? c?.ownerId ?? null;
+  if (!userId) return { name: '', title: '' };
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { displayName: true, workEmail: true },
+  });
+  if (!user) return { name: '', title: '' };
+  const directory = user.workEmail
+    ? await prisma.employeeSourceRecord.findFirst({
+        where: { workEmail: user.workEmail },
+        select: { jobTitle: true },
+      })
+    : null;
+  return { name: user.displayName, title: directory?.jobTitle ?? 'Human Resources' };
+}
+
 // --- per-case notification records -------------------------------------------
 
 function buildFieldValues(
@@ -97,31 +121,37 @@ function buildFieldValues(
     employeeDisplayName: string;
     employeeSourceId: string;
     department: string;
+    jobTitle?: string | null;
     effectiveSeparationAt: Date | null;
     confirmedLastDay: Date | null;
   },
-  extras: { accessSystemsSummary?: string; manualNote?: string; handoverDueDate?: Date | null },
+  extras: {
+    accessSystemsSummary?: string;
+    manualNote?: string;
+    hrSenderName?: string | null;
+    hrSenderTitle?: string | null;
+  },
 ): Record<string, string> {
   return {
     EMPLOYEE_LEGAL_NAME: c.employeeDisplayName,
+    EMPLOYEE_FIRST_NAME: c.employeeDisplayName.split(/\s+/)[0] ?? c.employeeDisplayName,
     EMPLOYEE_REFERENCE: c.employeeSourceId,
     CASE_REFERENCE: c.caseNumber,
     DEPARTMENT: c.department,
+    JOB_TITLE: c.jobTitle ?? '',
+    // Signature block from the HR person accountable for the case.
+    HR_SENDER_NAME: extras.hrSenderName ?? '',
+    HR_SENDER_TITLE: extras.hrSenderTitle ?? '',
     EFFECTIVE_SEPARATION_DATE: c.effectiveSeparationAt
       ? formatDateOnly(c.effectiveSeparationAt)
       : '',
     EFFECTIVE_SEPARATION_TIME: c.effectiveSeparationAt
-      ? `${formatInstant(c.effectiveSeparationAt)} (America/Jamaica)`
+      ? formatInstant(c.effectiveSeparationAt)
       : '',
     // Immediate departures have no separate confirmed last day: the final
     // working date IS the effective separation date.
     CONFIRMED_LAST_WORKING_DATE: c.confirmedLastDay
       ? formatDateOnly(c.confirmedLastDay)
-      : c.effectiveSeparationAt
-        ? formatDateOnly(c.effectiveSeparationAt)
-        : '',
-    HANDOVER_DUE_DATE: extras.handoverDueDate
-      ? formatDateOnly(extras.handoverDueDate)
       : c.effectiveSeparationAt
         ? formatDateOnly(c.effectiveSeparationAt)
         : '',
@@ -205,16 +235,12 @@ export async function prepareNotification(actor: Actor, caseId: string, rawInput
       },
     },
   });
-  const handoverTask = await prisma.workflowTask.findFirst({
-    where: { caseId, department: 'LINE_MANAGER', taskCode: { contains: 'HANDOVER' } },
-    select: { dueAt: true },
-    orderBy: { sortOrder: 'asc' },
-  });
-
+  const hrSender = await hrSenderFor(caseId);
   const values = buildFieldValues(c, {
     accessSystemsSummary: instance?.tasks[0]?.accessSystems.join('; '),
     manualNote: input.manualNote,
-    handoverDueDate: handoverTask?.dueAt ?? null,
+    hrSenderName: hrSender.name,
+    hrSenderTitle: hrSender.title,
   });
   const subject = substitute(template.subjectTemplate, values);
   const body = substitute(template.bodyTemplate, values);
@@ -323,16 +349,33 @@ export async function prepareDerivedNotification(args: {
       tasks: { where: { taskKind: 'ACCESS_REVOCATION' }, select: { accessSystems: true } },
     },
   });
-  const handoverTask = await prisma.workflowTask.findFirst({
-    where: { caseId: args.caseId, department: 'LINE_MANAGER', taskCode: { contains: 'HANDOVER' } },
-    select: { dueAt: true },
-    orderBy: { sortOrder: 'asc' },
-  });
-
+  const hrSender = await hrSenderFor(args.caseId);
   const values = buildFieldValues(c, {
     accessSystemsSummary: instance?.tasks[0]?.accessSystems.join('; '),
-    handoverDueDate: handoverTask?.dueAt ?? null,
+    hrSenderName: hrSender.name,
+    hrSenderTitle: hrSender.title,
   });
+
+  // Centralized routing (email routing directive): the routing table says
+  // which destinations this notification type is addressed to, and this turns
+  // them into addresses. Static destinations come from the approved recipient
+  // directory; dynamic ones (this employee's manager, the assigned officer)
+  // come from the case. Nothing here names a mailbox.
+  const routed = await resolveRoute(args.notificationType, {
+    caseId: c.id,
+    employeeSourceSystem: c.employeeSourceSystem,
+    employeeWorkEmail: c.employeeWorkEmail,
+    employeeDisplayName: c.employeeDisplayName,
+    managerSourceId: c.managerSourceId,
+    assignedOfficerId: c.assignedOfficerId,
+    ownerId: c.ownerId,
+  });
+  // A per-case address (a manager, the employee) is held encrypted on the
+  // record; a directory mailbox is referenced by its configuration row.
+  const perCaseRecipient =
+    routed.to && !routed.to.recipientConfigId
+      ? { email: routed.to.email, name: routed.to.displayName }
+      : null;
   const recipientClass =
     template?.recipientClass ?? NOTIFICATION_RECIPIENT_CLASS[args.notificationType];
   const idempotencyKey = notificationIdempotencyKey({
@@ -371,15 +414,13 @@ export async function prepareDerivedNotification(args: {
   const subject = substitute(template.subjectTemplate, values);
   const body = substitute(template.bodyTemplate, values);
 
-  // Recipient resolution for display + enqueue eligibility.
-  const resolved = await resolveUsableRecipient(
-    recipientClassForType(args.notificationType),
-    args.notificationType,
-  );
-  const recipientRow =
-    'destination' in resolved
-      ? await prisma.recipientConfig.findUnique({ where: { id: resolved.id } })
-      : null;
+  // The configuration row behind a static destination, for display and for
+  // the enqueue path. A dynamic destination has none by definition.
+  const recipientRow = routed.to?.recipientConfigId
+    ? await prisma.recipientConfig.findUnique({ where: { id: routed.to.recipientConfigId } })
+    : null;
+  const routeCc = routed.cc;
+  const routeBcc = routed.bcc;
 
   const correlationId = newCorrelationId();
   const record = await prisma.$transaction(async (tx) => {
@@ -403,10 +444,29 @@ export async function prepareDerivedNotification(args: {
         derivedActionId: args.derivedActionId,
         controlLevel,
         scheduledSendAt: args.scheduledSendAt,
-        recipientConfigId: recipientRow?.id ?? null,
-        recipientName: recipientRow?.contactName ?? recipientRow?.displayName ?? null,
+        recipientConfigId: perCaseRecipient ? null : (recipientRow?.id ?? null),
+        recipientName:
+          perCaseRecipient?.name ?? recipientRow?.contactName ?? recipientRow?.displayName ?? null,
         recipientOrg: recipientRow?.organizationName ?? null,
-        recipientKind: recipientRow ? (recipientRow.isExternal ? 'EXTERNAL' : 'INTERNAL') : null,
+        recipientKind: perCaseRecipient
+          ? 'INTERNAL'
+          : recipientRow
+            ? recipientRow.isExternal
+              ? 'EXTERNAL'
+              : 'INTERNAL'
+            : null,
+        caseRecipientCiphertext: perCaseRecipient ? encryptValue(perCaseRecipient.email) : null,
+        caseRecipientMask: perCaseRecipient ? maskDestination(perCaseRecipient.email) : null,
+        ccCiphertext: routeCc.length
+          ? encryptValue(JSON.stringify(routeCc.map((r) => r.email)))
+          : null,
+        ccNames: routeCc.map((r) => r.displayName ?? r.label),
+        ccMasks: routeCc.map((r) => maskDestination(r.email)),
+        bccCiphertext: routeBcc.length
+          ? encryptValue(JSON.stringify(routeBcc.map((r) => r.email)))
+          : null,
+        bccNames: routeBcc.map((r) => r.displayName ?? r.label),
+        bccMasks: routeBcc.map((r) => maskDestination(r.email)),
         applicabilityNote: APPLICABILITY_GATED_TYPES.includes(args.notificationType)
           ? 'Derived from the confirmed benefits applicability on the case (Directive 6.3 V).'
           : null,
@@ -445,12 +505,15 @@ export async function prepareDerivedNotification(args: {
 
   // Missing recipient is an actionable HR exception - never a silent skip
   // and never a meaningless dropdown (correction 5).
-  if (!recipientRow) {
+  if (!routed.to) {
     await openException(args.caseId, {
       exceptionType: 'RECIPIENT_MISSING',
       severity: 'HIGH',
       title: `Recipient required: ${subject.slice(0, 80)}`,
+      // The routing table already knows WHICH destination failed, so the
+      // exception can say so instead of offering a generic apology.
       detail:
+        routed.unresolved.join(' ') ||
         'No approved recipient is configured for this notification. Enter one on the case (this case only) or save an approved recipient for future cases.',
       refType: 'NotificationRecord',
       refId: record.id,
@@ -488,10 +551,18 @@ export async function attemptAutoRelease(recordId: string, now: Date): Promise<b
   const template = await prisma.notificationTemplate.findFirst({
     where: { notificationType: record.notificationType, status: 'ACTIVE' },
   });
-  const resolved = await resolveUsableRecipient(
-    recipientClassForType(record.notificationType),
-    record.notificationType,
-  );
+  // A per-case recipient (an HR-entered address, or the manager this notice
+  // is addressed to) always wins over the shared directory mailbox.
+  // Centralized routing decides whether a shared mailbox is even the right
+  // answer: a route addressed to a PERSON on this case has no department
+  // inbox to fall back to, so an unresolved one stays unresolved rather than
+  // quietly posting someone's departure to a shared address.
+  const routeResolved = await resolveStaticTo(record.notificationType);
+  const resolved = record.caseRecipientCiphertext
+    ? { id: null, destinationMask: record.caseRecipientMask ?? '(case recipient)' }
+    : 'reason' in routeResolved
+      ? { reason: 'NO_RECIPIENT' as const }
+      : routeResolved;
   const recipientResolved = 'destination' in resolved || !!record.caseRecipientCiphertext;
 
   const blockers = autoSendBlockers({
@@ -797,10 +868,8 @@ export async function transitionNotification(
     // OPERATIONAL requires the notifications flag AND never BASELINE (live
     // activation is additionally pilot-gated at startup/provider level).
     if (await dispatchEligibility(record.caseId)) {
-      const resolved = await resolveUsableRecipient(
-        recipientClassForType(record.notificationType),
-        record.notificationType,
-      );
+      // Routing decides the mailbox; a per-case address still wins below.
+      const resolved = await resolveStaticTo(record.notificationType);
       if ('destination' in resolved) {
         enqueueRecipient = { id: resolved.id, destinationMask: resolved.destinationMask };
       } else if (record.caseRecipientCiphertext) {
@@ -924,7 +993,14 @@ export async function listCaseNotifications(actor: Actor, caseId: string) {
   const records = await getPrisma().notificationRecord.findMany({
     where: { caseId },
     orderBy: { createdAt: 'desc' },
-    include: { captures: { select: { id: true, capturedAt: true, note: true } } },
+    include: {
+      captures: { select: { id: true, capturedAt: true, note: true } },
+      // What actually travelled with the message, so the communications trail
+      // answers "who was copied" and "what was attached" without a query.
+      attachedDocument: {
+        select: { id: true, documentType: true, version: true, pdfChecksum: true },
+      },
+    },
   });
   return {
     caseNumber: c.caseNumber,

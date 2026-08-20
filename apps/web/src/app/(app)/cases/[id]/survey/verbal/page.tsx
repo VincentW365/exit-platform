@@ -6,7 +6,7 @@ import { Feedback } from '@/components/ui';
 import { SurveyQuestions } from '@/components/SurveyQuestions';
 import { verbalDebriefAction } from '../actions';
 
-export const metadata: Metadata = { title: 'Record verbal debrief' };
+export const metadata: Metadata = { title: 'Record Verbal Debrief' };
 export const dynamic = 'force-dynamic';
 
 export default async function VerbalDebriefPage({
@@ -38,7 +38,7 @@ export default async function VerbalDebriefPage({
 
   return (
     <>
-      <h1>Record verbal exit debrief</h1>
+      <h1>Record Verbal Exit Debrief</h1>
       <Feedback err={sp.err} />
       <p className="banner-baseline">
         This response will be stored as <strong>recorded by HR</strong> (verbal debrief channel).

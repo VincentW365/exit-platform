@@ -87,14 +87,20 @@ describe('Directive 6.3 AC invariants', () => {
     expect(actions).not.toContain('submitToManager');
   });
 
-  it('2. the manager keeps separate handover responsibilities', async () => {
-    const managerTasks = await prisma.workflowTask.findMany({
+  it('2. the manager is notified by email and holds nothing in the platform', async () => {
+    // Owner decision 2026-08-19: no manager login, no manager task, no
+    // handover record - one controlled email instead.
+    const managerTasks = await prisma.workflowTask.count({
       where: { caseId: sharedCaseId, department: 'LINE_MANAGER' },
     });
-    expect(managerTasks.length).toBeGreaterThan(0);
-    expect(managerTasks.some((t) => t.taskCode.includes('HANDOVER'))).toBe(true);
+    expect(managerTasks).toBe(0);
     const handover = await prisma.handoverRecord.findUnique({ where: { caseId: sharedCaseId } });
-    expect(handover?.managerId).toBe(lineMgr.userId);
+    expect(handover).toBeNull();
+    expect(queueDepartmentsForActor({ userId: 'x', roles: ['LINE_MANAGER'] })).toEqual([]);
+    const notice = await prisma.caseRequiredAction.findFirst({
+      where: { caseId: sharedCaseId, actionKey: 'EMAIL:MANAGER_DEPARTURE_NOTICE' },
+    });
+    expect(notice?.applicable).toBe(true);
   });
 
   it('3. no IT login is required or useful: the role gets no queue and no access', async () => {
@@ -127,7 +133,12 @@ describe('Directive 6.3 AC invariants', () => {
     const none = deriveRequiredActions(BASE_FACTS, new Date());
     expect(
       none.filter((s) => s.kind === 'EMAIL_ACTION' && s.applicable).map((s) => s.notificationType),
-    ).toEqual(['IT_ACCESS_REMOVAL', 'FINANCE_OFFBOARDING']);
+    ).toEqual([
+      'IT_ACCESS_REMOVAL',
+      'RETURN_ITEMS_CHECKLIST',
+      'LINE_MANAGER_HANDOVER',
+      'FINANCE_OFFBOARDING',
+    ]);
     const withHealth = deriveRequiredActions(
       { ...BASE_FACTS, groupHealthApplicability: 'YES' },
       new Date(),

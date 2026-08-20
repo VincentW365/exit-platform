@@ -25,8 +25,9 @@ import {
   syncEmployeesAction,
   testDirectoryConnectionAction,
 } from './actions';
+import { humanize, roleList } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'System administration' };
+export const metadata: Metadata = { title: 'System Administration' };
 export const dynamic = 'force-dynamic';
 
 /**
@@ -44,7 +45,7 @@ export default async function SystemAdminPage({
   if (!can(actor, 'admin.system'))
     return (
       <>
-        <h1>Access restricted</h1>
+        <h1>Access Restricted</h1>
         <p className="panel">System administration requires the SYSTEM_ADMIN role.</p>
       </>
     );
@@ -76,7 +77,7 @@ export default async function SystemAdminPage({
 
   return (
     <>
-      <h1>System administration (technical)</h1>
+      <h1>System Administration</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
         Technical configuration only - this area never grants HR case content access. Secrets are
@@ -85,7 +86,7 @@ export default async function SystemAdminPage({
 
       <section className="panel" aria-labelledby="cfg-h">
         <h2 id="cfg-h" style={{ marginTop: 0 }}>
-          System configuration
+          System Configuration
         </h2>
         {config.length === 0 ? <p>No configuration entries.</p> : null}
         <ul>
@@ -100,13 +101,13 @@ export default async function SystemAdminPage({
         <details className="action">
           <summary>Set a configuration value</summary>
           <form action={setConfigAction}>
-            <label htmlFor="sc-key">Key (e.g. sync.scheduledEnabled)</label>
+            <label htmlFor="sc-key">Key (E.g. Sync.scheduledEnabled)</label>
             <input id="sc-key" name="key" required maxLength={80} />
-            <label htmlFor="sc-value">Value (true/false, number or text - never a secret)</label>
+            <label htmlFor="sc-value">Value (True/false, Number or Text - Never a Secret)</label>
             <input id="sc-value" name="value" required maxLength={500} />
-            <label htmlFor="sc-secret">Secret REFERENCE (optional; vault path or env name)</label>
+            <label htmlFor="sc-secret">Secret REFERENCE (Optional; Vault Path or Env Name)</label>
             <input id="sc-secret" name="secretRef" maxLength={200} />
-            <label htmlFor="sc-reason">Reason (required, audited)</label>
+            <label htmlFor="sc-reason">Reason (Required, Audited)</label>
             <input id="sc-reason" name="reason" required maxLength={500} />
             <button type="submit">Save configuration</button>
           </form>
@@ -115,7 +116,7 @@ export default async function SystemAdminPage({
 
       <section className="panel" aria-labelledby="id-h">
         <h2 id="id-h" style={{ marginTop: 0 }}>
-          Identity lifecycle
+          Identity Lifecycle
         </h2>
         <form action={accessReviewAction} style={{ display: 'inline-block' }}>
           <button type="submit">Generate access review snapshot</button>
@@ -131,11 +132,11 @@ export default async function SystemAdminPage({
             <select id="du-user" name="userId" required>
               {users.map((u) => (
                 <option key={u.userId} value={u.userId}>
-                  {u.displayName} ({u.roles.join(', ') || 'no role'})
+                  {u.displayName} ({roleList(u.roles)})
                 </option>
               ))}
             </select>
-            <label htmlFor="du-reason">Reason (required, audited)</label>
+            <label htmlFor="du-reason">Reason (Required, Audited)</label>
             <input id="du-reason" name="reason" required maxLength={500} />
             <p className="hint">
               High-impact action: active sessions are rejected at once and open assignments are
@@ -148,14 +149,14 @@ export default async function SystemAdminPage({
 
       <section className="panel" aria-labelledby="sync-h">
         <h2 id="sync-h" style={{ marginTop: 0 }}>
-          Employee source (BambooHR read-only directory)
+          Employee Directory
         </h2>
         <p>
           Credential status:{' '}
           <span
             className={`badge ${directoryStatus === 'configured' ? 'badge--success' : directoryStatus === 'invalid configuration' ? 'badge--danger' : 'badge--neutral'}`}
           >
-            {directoryStatus}
+            {humanize(directoryStatus)}
           </span>{' '}
           - active adapter: <span className="badge badge--info">{adapterMode}</span>
           {directory ? (
@@ -173,7 +174,7 @@ export default async function SystemAdminPage({
           stays disabled unless <code>bamboohr.scheduledSync</code> is explicitly set.
         </p>
         <form action={syncEmployeesAction} style={{ display: 'inline-block' }}>
-          <button type="submit">Run directory sync ({adapterMode} adapter)</button>
+          <button type="submit">Synchronize the directory now</button>
         </form>{' '}
         <form action={testDirectoryConnectionAction} style={{ display: 'inline-block' }}>
           <button type="submit" className="secondary">
@@ -190,11 +191,11 @@ export default async function SystemAdminPage({
         </form>
         {directory && directory.recentRuns.length > 0 ? (
           <>
-            <h3>Synchronization history</h3>
+            <h3>Synchronization History</h3>
             <ul>
               {directory.recentRuns.map((s, i) => (
                 <li key={i}>
-                  {s.mode} - {formatInstant(s.startedAt)}
+                  {humanize(s.mode)} - {formatInstant(s.startedAt)}
                   {s.finishedAt ? ` to ${formatInstant(s.finishedAt)}` : ''} - {s.createdCount}{' '}
                   created, {s.updatedCount} updated.
                 </li>
@@ -204,14 +205,15 @@ export default async function SystemAdminPage({
         ) : null}
         {recon ? (
           <>
-            <h3>Latest reconciliation ({recon.adapterMode} adapter)</h3>
+            <h3>Latest Reconciliation ({humanize(recon.adapterMode)} Source)</h3>
             {recon.findings.length === 0 ? (
               <p>No mismatches.</p>
             ) : (
               <ul>
                 {recon.findings.map((f, i) => (
                   <li key={i}>
-                    <span className="badge badge--warning">{f.kind}</span> {f.sourceId} - {f.detail}
+                    <span className="badge badge--warning">{humanize(f.kind)}</span> {f.sourceId} -{' '}
+                    {f.detail}
                   </li>
                 ))}
               </ul>
@@ -227,7 +229,7 @@ export default async function SystemAdminPage({
 
       <section className="panel" aria-labelledby="bk-h">
         <h2 id="bk-h" style={{ marginTop: 0 }}>
-          Backup and restore
+          Backup and Restore
         </h2>
         <form action={createBackupAction} style={{ display: 'inline-block' }}>
           <button type="submit">Create database backup (pg_dump)</button>

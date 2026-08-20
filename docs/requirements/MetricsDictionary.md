@@ -182,6 +182,42 @@ All dashboards, pilot decisions and post-implementation claims must use these de
 | Frequency | Monthly |
 | Reaction plan | Use for capacity planning; no performance judgement based on volume alone. |
 
+## KPI-014 — Exit checklist return rate (DEC-053)
+
+| Field | Definition |
+| --- | --- |
+| Definition | Percentage of exit checklists requested by email that come back completed. |
+| Numerator/statistic | Checklists with a recorded submission. |
+| Denominator | Checklists whose secure link was sent. |
+| Exclusions | Checklists created but not yet requested (the case may not have reached that point). |
+| Target | To be approved with HR; trend monitored during the pilot. |
+| Owner | HR Officer |
+| Frequency | Per case; monthly summary |
+| Reaction plan | Chase the recipient; record it on the case if the paper form came back instead. Never assume a silent checklist means everything was returned. |
+| Reported as | Reporting centre → `Exit checklist for return items` (Assets), which also reports median days to return, the derived status mix and the count of items still owed. |
+
+**Reading it honestly:** a checklist submitted with property still owed is
+`COMPLETED_WITH_OUTSTANDING`, never `COMPLETED`. A high return rate with a
+high "items still owed" count is a recovery problem, not a paperwork success.
+
+## KPI-015 — Acceptance letter issuance (DEC-054)
+
+| Field | Definition |
+| --- | --- |
+| Definition | How resignation acceptance letters reach the employee, and how long it takes after rendering. |
+| Numerator/statistic | Letters by issue method (email, hand delivery, registered mail, other approved) and median days from render to issue. |
+| Denominator | Letters rendered. |
+| Exclusions | Superseded and voided versions are counted as their own rows, not as issued letters. |
+| Target | To be approved with HR; the existing pilot rule already targets 90% of eligible letters within two business days. |
+| Owner | HR Manager |
+| Frequency | Per case; monthly summary |
+| Reaction plan | Investigate letters rendered but not issued - a rendered, unissued letter is finished work sitting undelivered. |
+| Reported as | Reporting centre → `Resignation letter issuance` (Documents). |
+
+**Note:** issuance is not delivery. The platform records that the message was
+submitted to the provider and, in development, captured; it never represents
+provider acceptance as receipt by the employee.
+
 ## Pilot decision rule
 
 The source DMAIC proposes a two-consecutive-month pilot. The approved pilot uses the following minimums, subject to adequate case volume and qualitative UAT:

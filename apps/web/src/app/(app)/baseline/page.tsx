@@ -5,6 +5,9 @@ import { can, formatDateOnly, formatInstant, withinCaseCaptureSla } from '@exit/
 import { baselineDashboard, getActiveCalendar } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { BaselineBanner, StatusBadge } from '@/components/ui';
+import { humanize } from '@/lib/text';
+import { EmptyState } from '@/components/EmptyState';
+import { ChartIcon } from '@/components/icons';
 
 export const metadata: Metadata = { title: 'Baseline' };
 export const dynamic = 'force-dynamic';
@@ -17,7 +20,7 @@ export default async function BaselinePage() {
 
   return (
     <>
-      <h1>Baseline data completeness</h1>
+      <h1>Baseline Data Completeness</h1>
       <BaselineBanner />
       <p>
         BASELINE-cohort operational cases and their manually recorded facts
@@ -28,7 +31,13 @@ export default async function BaselinePage() {
       </p>
 
       {rows.length === 0 ? (
-        <p className="panel">No baseline cases yet.</p>
+        <div className="panel">
+          <EmptyState
+            icon={<ChartIcon />}
+            title="No baseline cases yet"
+            body="Baseline records are the manually measured cases used for before-and-after comparison."
+          />
+        </div>
       ) : (
         <div className="table-wrap" tabIndex={0}>
           <table className="data">
@@ -54,7 +63,7 @@ export default async function BaselinePage() {
                   <td>
                     <Link href={`/cases/${r.id}`}>{r.caseNumber}</Link>
                   </td>
-                  <td>{r.departureType.replaceAll('_', ' ').toLowerCase()}</td>
+                  <td>{humanize(r.departureType)}</td>
                   <td>
                     <StatusBadge status={r.status} />
                   </td>
@@ -80,7 +89,7 @@ export default async function BaselinePage() {
                       <span className="hint">
                         {r.missing
                           .slice(0, 4)
-                          .map((m) => m.replaceAll('_', ' ').toLowerCase())
+                          .map((m) => humanize(m))
                           .join(', ')}
                         {r.missing.length > 4 ? ` and ${r.missing.length - 4} more` : ''}
                       </span>

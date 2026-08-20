@@ -100,16 +100,16 @@ describe('workflow activation and pinning (T.1, T.2, T.25, B/C)', () => {
     expect(instances).toBe(0);
   });
 
-  it('previews then activates the HR-validated v2 workflow (T.1, B.8, Directive 6.3)', async () => {
+  it('previews then activates the HR-validated v3 workflow (T.1, B.8)', async () => {
     const created = await createDraft(officer.actor, TEST_DRAFT);
     await transitionCase(officer.actor, created.caseId, 'submit');
     await transitionCase(manager.actor, created.caseId, 'approve');
 
     const preview = await previewWorkflowForCase(officer.actor, created.caseId);
     expect(preview.definition?.workflowType).toBe('RESIGNATION_WITH_NOTICE');
-    expect(preview.definition?.version).toBe(2);
-    expect(preview.tasks.length).toBeGreaterThanOrEqual(12);
-    // v2 carries no department-login tasks at all (I/J).
+    expect(preview.definition?.version).toBe(3);
+    expect(preview.tasks.length).toBeGreaterThanOrEqual(9);
+    // v3 carries no department-login tasks and no manager tasks at all.
     expect(preview.tasks.some((t) => t.taskKind === 'ACCESS_REVOCATION')).toBe(false);
 
     await readyAssignment(created.caseId, manager.actor, officer.userId, lineMgr.userId);
@@ -118,16 +118,17 @@ describe('workflow activation and pinning (T.1, T.2, T.25, B/C)', () => {
       where: { caseId: created.caseId },
     });
     expect(instance.status).toBe('ACTIVE');
-    expect(instance.definitionVersion).toBe(2);
+    expect(instance.definitionVersion).toBe(3);
     expect(instance.configChecksum).toBe(preview.definition!.configChecksum);
 
     // Tasks without dependencies released immediately; dependent ones held.
     const tasks = await tasksOf(created.caseId);
     expect(tasks.find((t) => t.taskCode === 'HR_VERIFY_CASE')!.status).toBe('READY');
     expect(tasks.find((t) => t.taskCode === 'HR_CONFIRM_DATES')!.status).toBe('NOT_READY');
-    expect(tasks.some((t) => ['IT', 'FINANCE'].includes(t.department))).toBe(false);
-    // Handover record + asset items were created (M, L).
-    expect(await prisma.handoverRecord.count({ where: { caseId: created.caseId } })).toBe(1);
+    expect(tasks.some((t) => ['IT', 'FINANCE', 'LINE_MANAGER'].includes(t.department))).toBe(false);
+    // The manager is notified by email and holds no task, so activation
+    // creates no handover record at all (owner decision, 2026-08-19).
+    expect(await prisma.handoverRecord.count({ where: { caseId: created.caseId } })).toBe(0);
     expect(
       await prisma.assetRecoveryItem.count({ where: { caseId: created.caseId } }),
     ).toBeGreaterThanOrEqual(3); // EMP-TEST-001 issued assets
@@ -392,10 +393,11 @@ describe('notification control (T.9, T.10, T.11, K)', () => {
   });
 
   it('HR prepares a manual notice from the deterministic template (T.9)', async () => {
-    // The routine IT/Finance notices are derived automatically now; the
-    // manual path remains for exceptional communications.
+    // IT, Finance and the manager notice are all derived automatically now,
+    // so the manual path is exercised with an exceptional communication.
     const record = await prepareNotification(officer.actor, caseId, {
-      notificationType: 'LINE_MANAGER_HANDOVER',
+      notificationType: 'MANUAL_EXCEPTION_NOTIFICATION',
+      manualNote: 'Synthetic exceptional communication for the manual path.',
     });
     expect(record.status).toBe('DRAFT');
     expect(record.bodySnapshot).toContain('Avery Brown');
@@ -403,12 +405,13 @@ describe('notification control (T.9, T.10, T.11, K)', () => {
     expect(record.contentChecksum).toMatch(/^[a-f0-9]{64}$/);
 
     await transitionNotification(officer.actor, record.id, 'submit');
-    // Internal department notices: HR officer approval is sufficient (K.3).
-    await transitionNotification(officer.actor, record.id, 'approve');
+    // An employee-facing notice needs HR Manager approval (K.3) - the officer
+    // prepares it, the manager releases it.
+    await transitionNotification(manager.actor, record.id, 'approve');
     await transitionNotification(officer.actor, record.id, 'markReady');
     await transitionNotification(officer.actor, record.id, 'recordManualSend', {
       method: 'IN_PERSON',
-      destinationRef: 'Line manager (internal)',
+      destinationRef: 'Handed to the employee',
     });
     const sent = await prisma.notificationRecord.findUniqueOrThrow({ where: { id: record.id } });
     expect(sent.status).toBe('MANUALLY_SENT');

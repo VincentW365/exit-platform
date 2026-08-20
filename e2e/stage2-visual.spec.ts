@@ -35,6 +35,19 @@ async function snap(page: Page, name: string, mobileToo = false): Promise<void> 
 }
 
 async function axeCheck(page: Page, name: string): Promise<void> {
+  // The root layout streams its metadata. A scan fired while that stream is
+  // still open can catch the document between head writes and report a
+  // document-title violation that is not real - the title is present before
+  // and after. Wait for the stream to finish AND for the element to exist in
+  // the DOM (page.title() alone can read a stale value).
+  await page.waitForLoadState('networkidle');
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => document.querySelector('title')?.textContent?.trim().length ?? 0),
+      { timeout: 15_000 },
+    )
+    .toBeGreaterThan(0);
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
   const serious = results.violations.filter(
     (v) => v.impact === 'critical' || v.impact === 'serious',
@@ -61,17 +74,16 @@ test('stage 2 surfaces: visual + axe sweep', async ({ page }) => {
 
   // Build one case through the document flow for the remaining captures.
   await page.goto('/cases/new');
-  await page.getByLabel(/Search the employee source/).fill('casey');
+  await page.getByLabel('Employee Name or Number').fill('casey');
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure type (required)').selectOption('RESIGNATION_WITH_NOTICE');
-  await page.getByLabel('Receipt date and time (required)').fill('2026-07-21T10:00');
-  await page.getByLabel('Source of the receipt timestamp (required)').fill('Visual QA synthetic');
-  await page.getByLabel('Confirmed last working day').fill('2026-08-14');
-  await page.getByLabel(/Effective separation date and exact time/).fill('2026-08-14T17:00');
-  await page.getByLabel('Record purpose').selectOption('TEST');
+  await page.getByLabel('Departure Type').selectOption('RESIGNATION_WITH_NOTICE');
+  await page.getByLabel('Date and Time Received').fill('2026-07-21T10:00');
+  // A resignation with notice ends at close of business on the final working
+  // date, so the platform derives the instant and the field is not offered.
+  await page.getByLabel('Final Working Date').fill('2026-08-14');
   await page.getByRole('button', { name: 'Create draft case' }).click();
-  await expect(page.getByText(/Draft case OFF-\d{4}-\d{4} created/)).toBeVisible();
+  await expect(page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/)).toBeVisible();
   const caseUrl = page.url().split('?')[0]!;
 
   await page.goto(`${caseUrl}/documents`);
@@ -84,7 +96,7 @@ test('stage 2 surfaces: visual + axe sweep', async ({ page }) => {
   await page.getByRole('button', { name: 'Create action form' }).click();
   // Streamed metadata (async root layout): wait for the title to land before
   // the axe scan - a mid-stream snapshot would flag document-title.
-  await expect(page).toHaveTitle(/Action form/);
+  await expect(page).toHaveTitle(/Action Form/);
   await snap(page, '04-action-form', true);
   await axeCheck(page, 'action-form');
 

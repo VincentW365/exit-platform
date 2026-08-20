@@ -17,7 +17,6 @@ import {
   assignTask,
   claimTask,
   completeTask,
-  getTask,
   listMyQueue,
   reassignTask,
   returnTaskToQueue,
@@ -44,7 +43,6 @@ let hrB: Awaited<ReturnType<typeof createUser>>;
 let itA: Awaited<ReturnType<typeof createUser>>;
 let finA: Awaited<ReturnType<typeof createUser>>;
 let lineMgr: Awaited<ReturnType<typeof createUser>>;
-let lineMgr2: Awaited<ReturnType<typeof createUser>>;
 
 const TEST_DRAFT = {
   ...VALID_DRAFT,
@@ -91,7 +89,6 @@ beforeAll(async () => {
   itA = await createUser('D61A IT One', 'IT_RESPONDER');
   finA = await createUser('D61A Finance', 'FINANCE_RESPONDER');
   lineMgr = await createUser('D61A Line Manager', 'LINE_MANAGER');
-  lineMgr2 = await createUser('D61A Other Manager', 'LINE_MANAGER');
 });
 
 describe('HR officer ownership (E; AM 13)', () => {
@@ -130,12 +127,8 @@ describe('manager routing and the activation gate (F/J; AM 14-18)', () => {
       details: [expect.stringContaining('HR Officer must be assigned')],
     });
     await assignOfficer(manager.actor, caseId, officer.userId, 'Test.');
-    // Managers do not resolve to app accounts in this DB -> MISSING MANAGER.
-    await expect(activateCase(manager.actor, caseId)).rejects.toMatchObject({
-      code: 'VALIDATION',
-      details: [expect.stringContaining('MISSING MANAGER')],
-    });
-    await overrideManager(manager.actor, caseId, lineMgr.userId, 'No account for the manager.');
+    // The fixture directory names a manager for this employee, so the notice
+    // has somewhere to go and the remaining blocker is the confirmations.
     await expect(activateCase(manager.actor, caseId)).rejects.toMatchObject({
       code: 'VALIDATION',
       details: [expect.stringContaining('not confirmed')],
@@ -146,19 +139,29 @@ describe('manager routing and the activation gate (F/J; AM 14-18)', () => {
 
   it('override is HR-Manager-only, target-validated and audited before/after (AM 14)', async () => {
     const caseId = await approvedCase({ employeeSourceId: 'EMP-TEST-003' });
+    // An alternate manager is a DIRECTORY person now, not an account.
+    const alternate = await prisma.employeeSourceRecord.findFirstOrThrow({
+      where: { NOT: [{ workEmail: null }, { workEmail: '' }] },
+      select: { sourceId: true, displayName: true },
+    });
     await expect(
-      overrideManager(officer.actor, caseId, lineMgr.userId, 'not my call'),
+      overrideManager(officer.actor, caseId, alternate.sourceId, 'not my call'),
     ).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(
-      overrideManager(manager.actor, caseId, itA.userId, 'wrong role'),
+      overrideManager(manager.actor, caseId, 'NOT-IN-DIRECTORY', 'unknown person'),
     ).rejects.toMatchObject({ code: 'VALIDATION' });
-    await overrideManager(manager.actor, caseId, lineMgr2.userId, 'Manager on leave during UAT.');
+    await overrideManager(
+      manager.actor,
+      caseId,
+      alternate.sourceId,
+      'Manager on leave during UAT.',
+    );
     const e = await prisma.auditEvent.findFirst({
       where: { caseId, eventType: 'CASE_MANAGER_OVERRIDDEN' },
     });
     const meta = e!.metadata as Record<string, unknown>;
     expect(meta['originalManagerName']).toBe('Operations Manager');
-    expect(meta['replacementUserId']).toBe(lineMgr2.userId);
+    expect(meta['replacementManagerSourceId']).toBe(alternate.sourceId);
     expect(meta['reason']).toBe('Manager on leave during UAT.');
     const c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: caseId } });
     expect(c.managerSource).toBe('OVERRIDE');
@@ -167,7 +170,11 @@ describe('manager routing and the activation gate (F/J; AM 14-18)', () => {
   it('confirmation is all-or-nothing (AM 15)', async () => {
     const caseId = await approvedCase({ employeeSourceId: 'EMP-TEST-004' });
     await assignOfficer(manager.actor, caseId, officer.userId, 'Test.');
-    await overrideManager(manager.actor, caseId, lineMgr.userId, 'Routing.');
+    const routeTo = await prisma.employeeSourceRecord.findFirstOrThrow({
+      where: { NOT: [{ workEmail: null }, { workEmail: '' }] },
+      select: { sourceId: true },
+    });
+    await overrideManager(manager.actor, caseId, routeTo.sourceId, 'Routing.');
     await expect(
       confirmAssignmentPlan(manager.actor, caseId, ['employee-identity']),
     ).rejects.toMatchObject({ code: 'VALIDATION' });
@@ -176,19 +183,27 @@ describe('manager routing and the activation gate (F/J; AM 14-18)', () => {
     expect(plan.confirmations.complete).toBe(true);
   });
 
-  it('activation auto-adds the MANAGER participant and routes manager tasks (AM 17)', async () => {
+  it('activation notifies the manager by email and gives them nothing to do', async () => {
     const caseId = await activeCase({ employeeSourceId: 'EMP-TEST-005' });
+
+    // No participant: there is no login for that access to serve.
     const participant = await prisma.caseParticipant.findFirst({
-      where: { caseId, userId: lineMgr.userId, participantRole: 'MANAGER', removedAt: null },
+      where: { caseId, participantRole: 'MANAGER', removedAt: null },
     });
-    expect(participant).not.toBeNull();
-    const managerTasks = await prisma.workflowTask.findMany({
+    expect(participant).toBeNull();
+
+    // No manager task on the active workflow.
+    const managerTasks = await prisma.workflowTask.count({
       where: { caseId, department: 'LINE_MANAGER' },
     });
-    expect(managerTasks.length).toBeGreaterThan(0);
-    expect(managerTasks.every((t) => t.assigneeId === lineMgr.userId)).toBe(true);
-    const handover = await prisma.handoverRecord.findUniqueOrThrow({ where: { caseId } });
-    expect(handover.managerId).toBe(lineMgr.userId);
+    expect(managerTasks).toBe(0);
+
+    // Instead, the rules engine derived the departure notice.
+    const notice = await prisma.caseRequiredAction.findFirst({
+      where: { caseId, actionKey: 'EMAIL:MANAGER_DEPARTURE_NOTICE' },
+    });
+    expect(notice).not.toBeNull();
+    expect(notice?.applicable).toBe(true);
   });
 });
 
@@ -299,19 +314,6 @@ describe('work queue lifecycle - HR-operated under the v2 model (G/H/I; AM 20-27
     expect(
       (await prisma.workflowTask.findUniqueOrThrow({ where: { id: t.id } })).completedById,
     ).toBe(hrA.userId);
-  });
-
-  it('LINE_MANAGER access stays assignment-scoped (D; AM 26)', async () => {
-    const caseId = await activeCase({ employeeSourceId: 'EMP-TEST-008' });
-    const managerTask = await prisma.workflowTask.findFirstOrThrow({
-      where: { caseId, department: 'LINE_MANAGER' },
-    });
-    // The routed manager sees the task; an unrelated manager gets NOT_FOUND.
-    await expect(getTask(lineMgr2.actor, managerTask.id)).rejects.toMatchObject({
-      code: 'NOT_FOUND',
-    });
-    const queue2 = await listMyQueue(lineMgr2.actor, { view: 'all' });
-    expect(queue2.rows.some((r) => r.id === managerTask.id)).toBe(false);
   });
 
   it('queue quick views and assignee names (G; AM 27)', async () => {

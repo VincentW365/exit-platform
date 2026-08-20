@@ -224,3 +224,36 @@ describe('directory views and scheduled-sync gate (F, D.2)', () => {
     expect(await scheduledDirectorySyncIfEnabled()).toBe('disabled');
   });
 });
+
+// The directory feed carries BambooHR's internal record id, while HR quotes
+// the "Employee #" from the employee's record - different values entirely
+// (owner question, 2026-08-18). Both must find the person. Runs last: it adds
+// a directory row, and earlier assertions in this file count them.
+describe('employee search by HR-assigned Employee #', () => {
+  it('finds the employee by Employee # as well as by record id', async () => {
+    await prisma.employeeSourceRecord.upsert({
+      where: { sourceSystem_sourceId: { sourceSystem: 'BAMBOOHR', sourceId: '900001' } },
+      create: {
+        sourceSystem: 'BAMBOOHR',
+        sourceId: '900001',
+        displayName: 'Robin Fictional',
+        jobTitle: 'Parts Sales Associate',
+        department: 'Sales',
+        location: 'Molynes Road',
+        employeeNumber: 'M900',
+        retrievedAt: new Date(),
+        payload: {},
+      },
+      update: { employeeNumber: 'M900' },
+    });
+
+    const byEmployeeNumber = await searchEmployees(officer.actor, 'M900');
+    const hit = byEmployeeNumber.results.find((r) => r.sourceId === '900001');
+    expect(hit?.employeeNumber).toBe('M900');
+
+    // The internal record id keeps working, and the two are not the same value.
+    const byRecordId = await searchEmployees(officer.actor, '900001');
+    expect(byRecordId.results.map((r) => r.sourceId)).toContain('900001');
+    expect(hit?.employeeNumber).not.toBe(hit?.sourceId);
+  });
+});

@@ -12,8 +12,9 @@ import { ROLES, can, formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import { enableDirectoryAccountAction, mapDirectoryPersonAction } from './actions';
+import { countOf, humanize, roleLabel, roleList } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'Organization and assignment mapping' };
+export const metadata: Metadata = { title: 'Organization and Assignment Mapping' };
 export const dynamic = 'force-dynamic';
 
 const SEVERITY_BADGE: Record<string, string> = {
@@ -51,7 +52,7 @@ export default async function OrganizationAdminPage({
     if (e instanceof ServiceError)
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">Organization mapping requires an authorized role.</p>
         </>
       );
@@ -62,8 +63,8 @@ export default async function OrganizationAdminPage({
   return (
     <>
       <h1>
-        Organization and assignment mapping{' '}
-        <span className={`badge ${HEALTH_BADGE[r.health]}`}>{r.health.replaceAll('_', ' ')}</span>
+        Organization and Assignment Mapping{' '}
+        <span className={`badge ${HEALTH_BADGE[r.health]}`}>{humanize(r.health)}</span>
       </h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
@@ -75,7 +76,7 @@ export default async function OrganizationAdminPage({
       </p>
 
       <section className="panel" aria-labelledby="stats-h">
-        <h2 id="stats-h">Directory statistics</h2>
+        <h2 id="stats-h">Directory Statistics</h2>
         <div className="stat-grid">
           {(
             [
@@ -98,7 +99,7 @@ export default async function OrganizationAdminPage({
       </section>
 
       <section className="panel" aria-labelledby="checks-h">
-        <h2 id="checks-h">Hierarchy validation ({r.findings.length} finding(s))</h2>
+        <h2 id="checks-h">Hierarchy Validation ({countOf(r.findings.length, 'finding')})</h2>
         {r.findings.length === 0 ? (
           <p className="ok-summary" role="status">
             Every organization check passed - hierarchy-driven routing is trustworthy.
@@ -120,7 +121,7 @@ export default async function OrganizationAdminPage({
                   <tr key={`${f.checkId}-${f.subject}`}>
                     <td>
                       <span className={`badge ${SEVERITY_BADGE[f.severity]}`}>
-                        {f.severity.replaceAll('_', ' ')}
+                        {humanize(f.severity)}
                       </span>
                     </td>
                     <td>
@@ -137,7 +138,7 @@ export default async function OrganizationAdminPage({
       </section>
 
       <section className="panel" aria-labelledby="office-h">
-        <h2 id="office-h">Key officeholders (from the directory)</h2>
+        <h2 id="office-h">Key Officeholders</h2>
         {officeholders.length === 0 ? (
           <p className="hint">
             No officeholders resolved yet. After a directory synchronization this table names who
@@ -178,7 +179,7 @@ export default async function OrganizationAdminPage({
       </section>
 
       <section className="panel" aria-labelledby="map-h">
-        <h2 id="map-h">Directory role mapping (live UAT)</h2>
+        <h2 id="map-h">Directory Role Mapping</h2>
         <p className="hint">
           Map real colleagues from the synchronized directory to their application responsibilities
           (DEC-043). Accounts exist only in this local environment; sign-in lists them under
@@ -204,7 +205,7 @@ export default async function OrganizationAdminPage({
                   <tr key={u.userId}>
                     <td>{u.displayName}</td>
                     <td>{u.department ?? '-'}</td>
-                    <td>{u.roles.join(', ') || 'none'}</td>
+                    <td>{roleList(u.roles, 'None')}</td>
                     <td>{u.isActive ? 'Active' : 'Disabled'}</td>
                     {canMap ? (
                       <td>
@@ -219,7 +220,7 @@ export default async function OrganizationAdminPage({
                             <form action={enableDirectoryAccountAction} className="stack">
                               <input type="hidden" name="userId" value={u.userId} />
                               <div className="field">
-                                <label htmlFor={`en-reason-${u.userId}`}>Reason (audited)</label>
+                                <label htmlFor={`en-reason-${u.userId}`}>Reason (Audited)</label>
                                 <input id={`en-reason-${u.userId}`} name="reason" required />
                               </div>
                               <button type="submit">Re-enable account (audited)</button>
@@ -239,7 +240,7 @@ export default async function OrganizationAdminPage({
             <summary>Map a directory person to an application account</summary>
             <form action={mapDirectoryPersonAction} className="stack">
               <div className="field">
-                <label htmlFor="map-person">Directory person</label>
+                <label htmlFor="map-person">Directory Person</label>
                 <select id="map-person" name="person" required defaultValue="">
                   <option value="" disabled>
                     Choose from the synchronized directory...
@@ -261,15 +262,15 @@ export default async function OrganizationAdminPage({
                 </p>
               </div>
               <fieldset>
-                <legend>Application roles</legend>
+                <legend>Application Roles</legend>
                 {ROLES.map((r) => (
                   <label key={r} style={{ display: 'block', fontWeight: 400 }}>
-                    <input type="checkbox" name="roles" value={r} /> {r.replaceAll('_', ' ')}
+                    <input type="checkbox" name="roles" value={r} /> {roleLabel(r)}
                   </label>
                 ))}
               </fieldset>
               <div className="field">
-                <label htmlFor="map-reason">Reason (audited)</label>
+                <label htmlFor="map-reason">Reason (Audited)</label>
                 <input id="map-reason" name="reason" required maxLength={300} />
               </div>
               <button type="submit">Create account and grant roles (audited)</button>
@@ -282,22 +283,21 @@ export default async function OrganizationAdminPage({
         )}
       </section>
 
+      {/* IT/Finance application accounts are retired (they act by controlled
+          email), so their counts are no longer a coverage measure - the
+          retired-role figures remain on the access review for history. */}
       <section className="panel" aria-labelledby="cov-h">
-        <h2 id="cov-h">Application responder coverage</h2>
+        <h2 id="cov-h">Application Coverage</h2>
         <dl className="kv">
-          <dt>IT responders</dt>
-          <dd className="tabular-nums">{data.coverage.itResponders}</dd>
-          <dt>Finance responders</dt>
-          <dd className="tabular-nums">{data.coverage.financeResponders}</dd>
-          <dt>HR users</dt>
+          <dt>HR Users</dt>
           <dd className="tabular-nums">{data.coverage.hrResponders}</dd>
-          <dt>Directory departments</dt>
+          <dt>Directory Departments</dt>
           <dd>{data.coverage.departments.join(', ') || '-'}</dd>
         </dl>
       </section>
 
       <section className="panel" aria-labelledby="mgr-h">
-        <h2 id="mgr-h">Managers and direct reports</h2>
+        <h2 id="mgr-h">Managers and Direct Reports</h2>
         {data.managers.length === 0 ? (
           <div className="empty">
             <p>
@@ -338,7 +338,7 @@ export default async function OrganizationAdminPage({
       </section>
 
       <section className="panel" aria-labelledby="warn-h">
-        <h2 id="warn-h">Post-activation hierarchy changes</h2>
+        <h2 id="warn-h">Post-activation Hierarchy Changes</h2>
         {data.hierarchyWarnings.length === 0 ? (
           <p className="hint">
             No activated case has drifted from the directory hierarchy. When a sync detects a
@@ -349,7 +349,7 @@ export default async function OrganizationAdminPage({
           <ul>
             {data.hierarchyWarnings.map((w) => (
               <li key={w.caseId}>
-                <span className="badge badge--warning">REVIEW</span>{' '}
+                <span className="badge badge--warning">Review</span>{' '}
                 <Link href={`/cases/${w.caseId}/assignment`}>{w.caseNumber}</Link> -{' '}
                 {w.employeeDisplayName}: confirmed manager {w.managerName ?? '-'} vs directory{' '}
                 {w.directoryManagerName ?? '-'} (flagged {formatInstant(w.flaggedAt)})

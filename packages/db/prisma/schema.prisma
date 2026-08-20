@@ -169,20 +169,20 @@ model User {
 
   // Stage 4 identity lifecycle (Directive 4 section E).
   department            String?
-  managerUserId         String?             @db.Uuid
+  managerUserId         String?            @db.Uuid
   lastSignInAt          DateTime?
-  identitySource        String              @default("dev")
-  provisioningStatus    ProvisioningStatus  @default(ACTIVE)
+  identitySource        String             @default("dev")
+  provisioningStatus    ProvisioningStatus @default(ACTIVE)
   deactivatedAt         DateTime?
   /// Sessions issued before this instant are rejected (immediate revocation).
   sessionsInvalidatedAt DateTime?
 
-  roleAssignments    RoleAssignment[] @relation("assignee")
-  ownedCases         OffboardingCase[] @relation("caseOwner")
-  createdCases       OffboardingCase[] @relation("caseCreator")
-  officerCases       OffboardingCase[] @relation("caseOfficer")
-  managedCases       OffboardingCase[] @relation("caseManager")
-  participations     CaseParticipant[] @relation("participantUser")
+  roleAssignments RoleAssignment[]  @relation("assignee")
+  ownedCases      OffboardingCase[] @relation("caseOwner")
+  createdCases    OffboardingCase[] @relation("caseCreator")
+  officerCases    OffboardingCase[] @relation("caseOfficer")
+  managedCases    OffboardingCase[] @relation("caseManager")
+  participations  CaseParticipant[] @relation("participantUser")
 
   @@map("app_user")
 }
@@ -210,16 +210,16 @@ model RoleAssignment {
 /// Local cache of adapter lookups; provenance for the snapshot. Never the
 /// case truth after approval (Architecture.md domain rules).
 model EmployeeSourceRecord {
-  id           String   @id @default(uuid()) @db.Uuid
-  sourceSystem String
-  sourceId     String
-  displayName  String
-  workEmail    String?
-  jobTitle     String?
-  department   String?
-  location     String?
-  retrievedAt  DateTime
-  payload      Json
+  id              String    @id @default(uuid()) @db.Uuid
+  sourceSystem    String
+  sourceId        String
+  displayName     String
+  workEmail       String?
+  jobTitle        String?
+  department      String?
+  location        String?
+  retrievedAt     DateTime
+  payload         Json
   // Directive 6.1 (A/B): organization graph columns promoted from the payload
   // so hierarchy-driven routing and validation query real columns. Only the
   // approved minimum fields; the payload is retained for provenance.
@@ -238,10 +238,10 @@ model EmployeeSourceRecord {
 // --- Case --------------------------------------------------------------------
 
 model OffboardingCase {
-  id         String        @id @default(uuid()) @db.Uuid
-  caseNumber String        @unique
-  status     CaseStatus    @default(DRAFT)
-  departureType DepartureType
+  id             String             @id @default(uuid()) @db.Uuid
+  caseNumber     String             @unique
+  status         CaseStatus         @default(DRAFT)
+  departureType  DepartureType
   classification CaseClassification @default(CONFIDENTIAL)
 
   /// Two separate dimensions (REQ-CASE-013): cohort required iff OPERATIONAL.
@@ -256,8 +256,8 @@ model OffboardingCase {
   location             String
   jobTitle             String?
 
-  receivedAt    DateTime
-  receiptSource String
+  receivedAt            DateTime
+  receiptSource         String
   proposedLastDay       DateTime?
   confirmedLastDay      DateTime?
   effectiveSeparationAt DateTime?
@@ -273,6 +273,11 @@ model OffboardingCase {
   reasonCaptureStatus ReasonCaptureStatus @default(PENDING)
   /// RESTRICTED_HR free text (REQ-PRIV-024); masked outside HR participants.
   reasonNotes         String?
+
+  /// Home address, typed by HR from the resignation letter scan (DEC-054).
+  /// Personal data: HR participants only, never in logs, notifications or
+  /// audit metadata - it appears in the addressed letter and nowhere else.
+  employeeAddress String?
 
   /// RESTRICTED_HR (DEC-032): HR Manager only.
   rehireEligibility RehireEligibility?
@@ -323,30 +328,31 @@ model OffboardingCase {
   anonymizedById String?   @db.Uuid
 
   /// Optimistic concurrency (Architecture.md section 8).
-  version   Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  closedAt  DateTime?
+  version     Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  closedAt    DateTime?
   closeReason String?
 
-  snapshot       EmployeeSnapshot?
-  statusHistory  CaseStatusHistory[]
-  participants   CaseParticipant[]
-  notes          CaseNote[]
-  attachments    Attachment[]
-  baselineEvents BaselineEvent[]
-  documents      DocumentInstance[]
-  actionForms    ActionFormVersion[]
-  surveyInvitations SurveyInvitation[]
-  workflowInstances WorkflowInstance[]
-  workflowTasks     WorkflowTask[]
-  notifications     NotificationRecord[]
-  assetRecoveryItems AssetRecoveryItem[]
-  handover           HandoverRecord?
-  exceptions         CaseException[]
-  clearanceRecords   ClearanceRecord[]
-  retentionHolds     RetentionHold[]
-  requiredActions    CaseRequiredAction[]
+  snapshot             EmployeeSnapshot?
+  statusHistory        CaseStatusHistory[]
+  participants         CaseParticipant[]
+  notes                CaseNote[]
+  attachments          Attachment[]
+  baselineEvents       BaselineEvent[]
+  documents            DocumentInstance[]
+  actionForms          ActionFormVersion[]
+  surveyInvitations    SurveyInvitation[]
+  workflowInstances    WorkflowInstance[]
+  workflowTasks        WorkflowTask[]
+  notifications        NotificationRecord[]
+  assetRecoveryItems   AssetRecoveryItem[]
+  returnItemsChecklist ReturnItemsChecklist?
+  handover             HandoverRecord?
+  exceptions           CaseException[]
+  clearanceRecords     ClearanceRecord[]
+  retentionHolds       RetentionHold[]
+  requiredActions      CaseRequiredAction[]
 
   @@index([status])
   @@index([ownerId])
@@ -552,22 +558,22 @@ model ReasonCategory {
   isTestOnly      Boolean  @default(true)
   createdAt       DateTime @default(now())
 
-  description     String?
+  description    String?
   /// null = applicable to both voluntary and involuntary departures.
-  voluntary       Boolean?
-  departureTypes  DepartureType[]
-  reportingGroup  String?
-  effectiveFrom   DateTime?
-  effectiveTo     DateTime?
-  sortOrder       Int      @default(0)
-  sensitive       Boolean  @default(false)
-  createdById     String?  @db.Uuid
-  approvedById    String?  @db.Uuid
-  approvedAt      DateTime?
-  retiredAt       DateTime?
-  changeReason    String?
+  voluntary      Boolean?
+  departureTypes DepartureType[]
+  reportingGroup String?
+  effectiveFrom  DateTime?
+  effectiveTo    DateTime?
+  sortOrder      Int             @default(0)
+  sensitive      Boolean         @default(false)
+  createdById    String?         @db.Uuid
+  approvedById   String?         @db.Uuid
+  approvedAt     DateTime?
+  retiredAt      DateTime?
+  changeReason   String?
 
-  cases           OffboardingCase[]
+  cases OffboardingCase[]
 
   @@map("reason_category")
 }
@@ -621,6 +627,8 @@ enum DocumentStatus {
   RENDERING
   RENDERED
   MANUALLY_ISSUED
+  /// Sent to the employee by the platform, with the PDF attached.
+  ISSUED_BY_EMAIL
   SUPERSEDED
   VOIDED
   RENDER_FAILED
@@ -630,6 +638,8 @@ enum IssueMethod {
   HAND_DELIVERY
   REGISTERED_MAIL
   OTHER_APPROVED
+  /// Issued by the platform as an email carrying the rendered PDF.
+  EMAIL
 }
 
 enum RecipientClass {
@@ -705,20 +715,20 @@ enum ResponseChannel {
 
 /// Immutable-once-active controlled document templates (Directive 2 section B).
 model DocumentTemplate {
-  id                  String         @id @default(uuid()) @db.Uuid
+  id                  String             @id @default(uuid()) @db.Uuid
   documentType        DocumentType
   name                String
   version             Int
-  status              TemplateStatus @default(DRAFT)
+  status              TemplateStatus     @default(DRAFT)
   /// Plain-text structured content with [[PLACEHOLDER]] tokens.
   contentBody         String
   allowedPlaceholders String[]
   contentChecksum     String
   changeReason        String?
-  createdById         String         @db.Uuid
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
-  activatedById       String?        @db.Uuid
+  createdById         String             @db.Uuid
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  activatedById       String?            @db.Uuid
   activatedAt         DateTime?
   supersededAt        DateTime?
   retiredAt           DateTime?
@@ -731,46 +741,49 @@ model DocumentTemplate {
 
 /// Case document instances (Directive 2 section D lifecycle).
 model DocumentInstance {
-  id               String         @id @default(uuid()) @db.Uuid
-  caseId           String         @db.Uuid
-  case             OffboardingCase @relation(fields: [caseId], references: [id])
-  documentType     DocumentType
-  templateId       String?        @db.Uuid
-  template         DocumentTemplate? @relation(fields: [templateId], references: [id])
-  templateVersion  Int?
-  version          Int
-  status           DocumentStatus @default(DRAFT)
+  id                    String            @id @default(uuid()) @db.Uuid
+  caseId                String            @db.Uuid
+  case                  OffboardingCase   @relation(fields: [caseId], references: [id])
+  documentType          DocumentType
+  templateId            String?           @db.Uuid
+  template              DocumentTemplate? @relation(fields: [templateId], references: [id])
+  templateVersion       Int?
+  version               Int
+  status                DocumentStatus    @default(DRAFT)
   /// Exact field values captured for THIS version (never silently refreshed).
-  fieldSnapshot    Json
+  fieldSnapshot         Json
   /// Rendered body text (placeholders substituted) captured at submission.
-  contentSnapshot  String?
-  contentChecksum  String?
-  validationErrors Json?
-  outdatedReason   String?
-  returnReason     String?
-  voidReason       String?
+  contentSnapshot       String?
+  contentChecksum       String?
+  validationErrors      Json?
+  outdatedReason        String?
+  returnReason          String?
+  voidReason            String?
   /// Manual-exception documents reference an uploaded controlled attachment.
-  exceptionAttachmentId String?   @db.Uuid
-  exceptionReason  String?
-  pdfObjectKey     String?        @unique
-  pdfChecksum      String?
-  renderAttempts   Int            @default(0)
-  renderError      String?
-  issuedById       String?        @db.Uuid
-  issuedAt         DateTime?
-  issueMethod      IssueMethod?
-  recipientClass   RecipientClass?
-  issueNote        String?
-  createdById      String         @db.Uuid
+  exceptionAttachmentId String?           @db.Uuid
+  exceptionReason       String?
+  pdfObjectKey          String?           @unique
+  pdfChecksum           String?
+  renderAttempts        Int               @default(0)
+  renderError           String?
+  issuedById            String?           @db.Uuid
+  issuedAt              DateTime?
+  issueMethod           IssueMethod?
+  recipientClass        RecipientClass?
+  issueNote             String?
+  createdById           String            @db.Uuid
   /// Who validated and submitted this version for approval (maker-checker:
   /// the submitter can never be the approver). Null only on legacy rows.
-  submittedById    String?        @db.Uuid
-  submittedAt      DateTime?
-  approvedAt       DateTime?
-  renderedAt       DateTime?
-  rowVersion       Int            @default(0)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  submittedById         String?           @db.Uuid
+  submittedAt           DateTime?
+  approvedAt            DateTime?
+  renderedAt            DateTime?
+  rowVersion            Int               @default(0)
+
+  /// DEC-054: the email that carried this document to the employee.
+  emails    NotificationRecord[] @relation("documentEmail")
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
 
   @@unique([caseId, documentType, version])
   @@index([caseId, documentType])
@@ -781,21 +794,21 @@ model DocumentInstance {
 /// Authenticated approval/attestation records (DEC-025 Option B).
 /// Core columns are immutable (trigger); only invalidation fields may change.
 model Attestation {
-  id                 String             @id @default(uuid()) @db.Uuid
-  subjectType        AttestationSubject
-  subjectId          String             @db.Uuid
-  subjectVersion     Int
-  kind               AttestationKind
-  caseId             String             @db.Uuid
-  actorId            String             @db.Uuid
-  actorDisplayName   String
-  actorRole          String
-  meaning            String
-  contentChecksum    String
-  correlationId      String
-  createdAt          DateTime           @default(now())
-  invalidatedAt      DateTime?
-  invalidatedReason  String?
+  id                String             @id @default(uuid()) @db.Uuid
+  subjectType       AttestationSubject
+  subjectId         String             @db.Uuid
+  subjectVersion    Int
+  kind              AttestationKind
+  caseId            String             @db.Uuid
+  actorId           String             @db.Uuid
+  actorDisplayName  String
+  actorRole         String
+  meaning           String
+  contentChecksum   String
+  correlationId     String
+  createdAt         DateTime           @default(now())
+  invalidatedAt     DateTime?
+  invalidatedReason String?
 
   @@index([subjectType, subjectId])
   @@index([caseId])
@@ -804,41 +817,41 @@ model Attestation {
 
 /// One versioned offboarding action form per case (Directive 2 section F).
 model ActionFormVersion {
-  id                    String                @id @default(uuid()) @db.Uuid
-  caseId                String                @db.Uuid
-  case                  OffboardingCase       @relation(fields: [caseId], references: [id])
-  version               Int
-  status                ActionFormStatus      @default(DRAFT)
+  id                      String                @id @default(uuid()) @db.Uuid
+  caseId                  String                @db.Uuid
+  case                    OffboardingCase       @relation(fields: [caseId], references: [id])
+  version                 Int
+  status                  ActionFormStatus      @default(DRAFT)
   /// Frozen employee/case identification for this version.
-  fieldSnapshot         Json
-  priorStatus           String                @default("EMPLOYED")
-  newStatus             String                @default("SEPARATED")
-  hrChecklist           Json
-  financeChecklist      Json
-  financeNotes          String?
-  ackStatus             AcknowledgementStatus @default(PENDING)
-  ackDate               DateTime?
-  ackMethod             String?
-  ackReason             String?
-  ackEvidenceAttachmentId String?             @db.Uuid
-  hrRemarks             String?
-  returnReason          String?
-  voidReason            String?
-  outdatedReason        String?
-  pdfObjectKey          String?               @unique
-  pdfChecksum           String?
-  renderError           String?
-  createdById           String                @db.Uuid
+  fieldSnapshot           Json
+  priorStatus             String                @default("EMPLOYED")
+  newStatus               String                @default("SEPARATED")
+  hrChecklist             Json
+  financeChecklist        Json
+  financeNotes            String?
+  ackStatus               AcknowledgementStatus @default(PENDING)
+  ackDate                 DateTime?
+  ackMethod               String?
+  ackReason               String?
+  ackEvidenceAttachmentId String?               @db.Uuid
+  hrRemarks               String?
+  returnReason            String?
+  voidReason              String?
+  outdatedReason          String?
+  pdfObjectKey            String?               @unique
+  pdfChecksum             String?
+  renderError             String?
+  createdById             String                @db.Uuid
   /// Directive 6.3 F: HR-validated lifecycle actor evidence (house pattern).
-  submittedById         String?               @db.Uuid
-  submittedAt           DateTime?
-  hrReviewedById        String?               @db.Uuid
-  hrReviewedAt          DateTime?
-  completedById         String?               @db.Uuid
-  completedAt           DateTime?
-  rowVersion            Int                   @default(0)
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
+  submittedById           String?               @db.Uuid
+  submittedAt             DateTime?
+  hrReviewedById          String?               @db.Uuid
+  hrReviewedAt            DateTime?
+  completedById           String?               @db.Uuid
+  completedAt             DateTime?
+  rowVersion              Int                   @default(0)
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
 
   @@unique([caseId, version])
   @@index([status])
@@ -847,17 +860,17 @@ model ActionFormVersion {
 
 /// Versioned exit-survey templates (Directive 2 section G).
 model SurveyTemplate {
-  id            String           @id @default(uuid()) @db.Uuid
+  id            String             @id @default(uuid()) @db.Uuid
   code          String
   version       Int
-  status        TemplateStatus   @default(DRAFT)
+  status        TemplateStatus     @default(DRAFT)
   title         String
   introText     String
   privacyNotice String
-  createdById   String?          @db.Uuid
-  activatedById String?          @db.Uuid
+  createdById   String?            @db.Uuid
+  activatedById String?            @db.Uuid
   activatedAt   DateTime?
-  createdAt     DateTime         @default(now())
+  createdAt     DateTime           @default(now())
   questions     SurveyQuestion[]
   invitations   SurveyInvitation[]
 
@@ -883,33 +896,33 @@ model SurveyQuestion {
 
 /// Survey invitations: token HASH only, never the raw token (section H).
 model SurveyInvitation {
-  id               String           @id @default(uuid()) @db.Uuid
-  caseId           String           @db.Uuid
-  case             OffboardingCase  @relation(fields: [caseId], references: [id])
-  templateId       String           @db.Uuid
-  template         SurveyTemplate   @relation(fields: [templateId], references: [id])
-  status           InvitationStatus @default(PENDING)
-  eligibilityNote  String?
-  overrideReason   String?
-  tokenHash        String?          @unique
-  tokenGeneratedAt DateTime?
-  invitationDueAt  DateTime
-  manualSentById   String?          @db.Uuid
-  manualSentAt     DateTime?
-  reminder1DueAt   DateTime?
-  reminder1SentAt  DateTime?
-  reminder2DueAt   DateTime?
-  reminder2SentAt  DateTime?
-  expiresAt        DateTime?
-  responseChannel  ResponseChannel?
-  completedAt      DateTime?
+  id                 String           @id @default(uuid()) @db.Uuid
+  caseId             String           @db.Uuid
+  case               OffboardingCase  @relation(fields: [caseId], references: [id])
+  templateId         String           @db.Uuid
+  template           SurveyTemplate   @relation(fields: [templateId], references: [id])
+  status             InvitationStatus @default(PENDING)
+  eligibilityNote    String?
+  overrideReason     String?
+  tokenHash          String?          @unique
+  tokenGeneratedAt   DateTime?
+  invitationDueAt    DateTime
+  manualSentById     String?          @db.Uuid
+  manualSentAt       DateTime?
+  reminder1DueAt     DateTime?
+  reminder1SentAt    DateTime?
+  reminder2DueAt     DateTime?
+  reminder2SentAt    DateTime?
+  expiresAt          DateTime?
+  responseChannel    ResponseChannel?
+  completedAt        DateTime?
   invalidContactNote String?
-  cancelReason     String?
-  createdById      String           @db.Uuid
-  rowVersion       Int              @default(0)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  response         SurveyResponse?
+  cancelReason       String?
+  createdById        String           @db.Uuid
+  rowVersion         Int              @default(0)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  response           SurveyResponse?
 
   @@index([caseId])
   @@index([status])
@@ -1073,6 +1086,10 @@ enum NotificationType {
   /// Directive 6.3 K/N: configurable external purposes beyond Sagicor/NCB.
   PAYROLL_OR_BANK_NOTIFICATION
   OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION
+  /// Secure link to the Exit Checklist for Return Items.
+  RETURN_ITEMS_CHECKLIST
+  /// The rendered resignation acceptance letter, emailed to the employee.
+  RESIGNATION_ACCEPTANCE_LETTER
 }
 
 enum NotificationStatus {
@@ -1326,23 +1343,23 @@ model WorkflowTask {
   dueCalculatedAt    DateTime?
   dueRecalcReason    String?
 
-  startedAt     DateTime?
-  startedById   String?   @db.Uuid
-  blockedAt     DateTime?
-  blockedReason String?
-  blockerOwner  String?
-  waivedAt      DateTime?
-  waivedById    String?   @db.Uuid
-  waiverReason  String?
-  completedAt   DateTime?
-  completedById String?   @db.Uuid
-  completionNote String?
+  startedAt            DateTime?
+  startedById          String?          @db.Uuid
+  blockedAt            DateTime?
+  blockedReason        String?
+  blockerOwner         String?
+  waivedAt             DateTime?
+  waivedById           String?          @db.Uuid
+  waiverReason         String?
+  completedAt          DateTime?
+  completedById        String?          @db.Uuid
+  completionNote       String?
   /// I.5: exact stored delay when completed after the due instant.
-  lateMinutes   Int?
-  evidenceKind  TaskEvidenceKind @default(NOTE)
-  evidenceAttachmentId String?   @db.Uuid
-  cancelledAt   DateTime?
-  cancelReason  String?
+  lateMinutes          Int?
+  evidenceKind         TaskEvidenceKind @default(NOTE)
+  evidenceAttachmentId String?          @db.Uuid
+  cancelledAt          DateTime?
+  cancelReason         String?
 
   escalationLevel Int       @default(0)
   escalatedAt     DateTime?
@@ -1433,52 +1450,69 @@ model NotificationRecord {
   contentChecksum String?
   fieldSnapshot   Json
 
-  applicabilityNote        String?
-  applicabilityConfirmedById String?  @db.Uuid
-  applicabilityConfirmedAt DateTime?
+  applicabilityNote          String?
+  applicabilityConfirmedById String?   @db.Uuid
+  applicabilityConfirmedAt   DateTime?
 
   approvedById          String?   @db.Uuid
   approvedAt            DateTime?
   approvalInvalidatedAt DateTime?
   invalidationReason    String?
 
-  readyAt        DateTime?
-  manualSentById String?   @db.Uuid
-  manualSentAt   DateTime?
-  sentMethod     String?
+  readyAt          DateTime?
+  manualSentById   String?   @db.Uuid
+  manualSentAt     DateTime?
+  sentMethod       String?
   /// Approved destination REFERENCE (never a personal address in logs).
-  destinationRef String?
-  sentNote       String?
-  cancelReason   String?
-  failReason     String?
+  destinationRef   String?
+  sentNote         String?
+  cancelReason     String?
+  failReason       String?
   supersededReason String?
 
   /// Directive 6.3 K/R: email-action fields. origin distinguishes
   /// rules-engine-created records; controlLevel snapshots the applied send
   /// control so later configuration changes never rewrite history.
-  origin           NotificationOrigin @default(MANUAL)
-  derivedActionId  String?            @db.Uuid
-  derivedAction    CaseRequiredAction? @relation(fields: [derivedActionId], references: [id])
-  controlLevel     String?
-  scheduledSendAt  DateTime?
-  sentAt           DateTime?
+  origin          NotificationOrigin  @default(MANUAL)
+  derivedActionId String?             @db.Uuid
+  derivedAction   CaseRequiredAction? @relation(fields: [derivedActionId], references: [id])
+  controlLevel    String?
+  scheduledSendAt DateTime?
+  sentAt          DateTime?
 
   /// Directive 6.3 K/O/P: recipient display + per-case HR-entered recipient
   /// (encrypted + masked exactly like the directory; never logged raw).
   recipientName           String?
   recipientOrg            String?
   recipientKind           String?
-  recipientConfigId       String?  @db.Uuid
+  recipientConfigId       String? @db.Uuid
   caseRecipientCiphertext String?
   caseRecipientMask       String?
 
+  /// DEC-054: copied recipients chosen by HR from the directory. Addresses
+  /// are encrypted as one JSON array; only names and masks are readable.
+  ccCiphertext String?
+  ccNames      String[]
+  ccMasks      String[]
+
+  /// Email routing directive: blind copies, handled exactly like copies.
+  bccCiphertext String?
+  bccNames      String[]
+  bccMasks      String[]
+
+  /// DEC-054: the rendered document this email carries. The bytes are read
+  /// from object storage at dispatch and verified against the stored
+  /// checksum - never duplicated into the record or the outbox.
+  attachedDocumentId String?           @db.Uuid
+  attachedDocument   DocumentInstance? @relation("documentEmail", fields: [attachedDocumentId], references: [id])
+
   /// Directive 6.3 T/U: acknowledgement / completion evidence (token or
   /// HR-recorded). Delivery alone is never completion.
-  acknowledgedAt          DateTime?
-  acknowledgedVia         String?
-  completionConfirmedAt   DateTime?
-  completionEvidenceNote  String?
-  completionRecordedById  String?  @db.Uuid
+  acknowledgedAt         DateTime?
+  acknowledgedVia        String?
+  completionConfirmedAt  DateTime?
+  completionEvidenceNote String?
+  completionRecordedById String?   @db.Uuid
 
   createdById String   @db.Uuid
   rowVersion  Int      @default(0)
@@ -1499,37 +1533,37 @@ model NotificationRecord {
 /// full rule provenance. Live status is computed at read time from the linked
 /// record - never stored (OVERDUE-is-never-stored principle).
 model CaseRequiredAction {
-  id            String              @id @default(uuid()) @db.Uuid
-  caseId        String              @db.Uuid
-  case          OffboardingCase     @relation(fields: [caseId], references: [id])
-  workflowInstanceId String?        @db.Uuid
+  id                 String              @id @default(uuid()) @db.Uuid
+  caseId             String              @db.Uuid
+  case               OffboardingCase     @relation(fields: [caseId], references: [id])
+  workflowInstanceId String?             @db.Uuid
   /// Stable idempotency key within the case, e.g. 'EMAIL:IT_ACCESS_REMOVAL'.
-  actionKey     String
-  actionGroup   RequiredActionGroup
-  kind          RequiredActionKind
-  title         String
-  applicable    Boolean
-  determination DerivationResult
-  ruleKey       String
-  rulesVersion  String
+  actionKey          String
+  actionGroup        RequiredActionGroup
+  kind               RequiredActionKind
+  title              String
+  applicable         Boolean
+  determination      DerivationResult
+  ruleKey            String
+  rulesVersion       String
   /// The exact inputs the rule consumed (audit provenance - Directive C).
-  sourceFields  Json
+  sourceFields       Json
   /// The rule output snapshot.
-  result        Json
-  derivedAt     DateTime
-  overridden    Boolean             @default(false)
-  overrideReason String?
-  overriddenById String?            @db.Uuid
-  overriddenAt  DateTime?
+  result             Json
+  derivedAt          DateTime
+  overridden         Boolean             @default(false)
+  overrideReason     String?
+  overriddenById     String?             @db.Uuid
+  overriddenAt       DateTime?
   /// Link to what the action produced (NotificationRecord / AssetRecoveryItem
   /// / SurveyInvitation id) - evidence, not duplication.
-  refType       String?
-  refId         String?             @db.Uuid
-  supersededAt  DateTime?
-  supersededReason String?
-  rowVersion    Int                 @default(0)
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  refType            String?
+  refId              String?             @db.Uuid
+  supersededAt       DateTime?
+  supersededReason   String?
+  rowVersion         Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   notifications NotificationRecord[]
 
@@ -1604,6 +1638,8 @@ enum DerivationResult {
 enum TokenPurpose {
   ACKNOWLEDGE_RECEIPT
   CONFIRM_COMPLETION
+  /// Opens one employee's return-items checklist without an application login.
+  COMPLETE_RETURN_CHECKLIST
 }
 
 /// Development capture adapter output (K.12-K.14): records what WOULD be
@@ -1733,28 +1769,28 @@ model HandoverRecord {
 /// Exception and escalation records (section N). Open exceptions are
 /// deduplicated per (case, type, reference) by a partial unique index.
 model CaseException {
-  id             String            @id @default(uuid()) @db.Uuid
-  caseId         String            @db.Uuid
-  case           OffboardingCase   @relation(fields: [caseId], references: [id])
-  exceptionType  ExceptionType
-  severity       ExceptionSeverity
-  status         ExceptionStatus   @default(OPEN)
-  refType        String?
-  refId          String?
-  title          String
-  detail         String?
-  ownerDepartment TaskDepartment?
-  ownerId        String?           @db.Uuid
-  dueAt          DateTime?
+  id                        String            @id @default(uuid()) @db.Uuid
+  caseId                    String            @db.Uuid
+  case                      OffboardingCase   @relation(fields: [caseId], references: [id])
+  exceptionType             ExceptionType
+  severity                  ExceptionSeverity
+  status                    ExceptionStatus   @default(OPEN)
+  refType                   String?
+  refId                     String?
+  title                     String
+  detail                    String?
+  ownerDepartment           TaskDepartment?
+  ownerId                   String?           @db.Uuid
+  dueAt                     DateTime?
   /// I.10: HR_MANAGER-approved security exception for unresolved access.
-  securityExceptionApproved Boolean @default(false)
-  resolution     String?
-  resolvedById   String?           @db.Uuid
-  resolvedAt     DateTime?
-  correlationId  String
-  rowVersion     Int               @default(0)
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  securityExceptionApproved Boolean           @default(false)
+  resolution                String?
+  resolvedById              String?           @db.Uuid
+  resolvedAt                DateTime?
+  correlationId             String
+  rowVersion                Int               @default(0)
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
 
   @@index([caseId, status])
   @@index([exceptionType, status])
@@ -1793,6 +1829,12 @@ enum RecipientClassDir {
   /// Directive 6.3 N: independently configurable provider purposes.
   PAYROLL_BANK
   PENSION_PROVIDER
+  /// Email routing directive: the remaining departmental destinations, so no
+  /// workflow or component has to name a mailbox.
+  HR_OFFICERS
+  PAYROLL
+  SECURITY
+  ASSET_WAREHOUSE
 }
 
 enum RecipientApprovalStatus {
@@ -1856,6 +1898,28 @@ enum DsrType {
 
 /// Durable transactional outbox (Directive 4 section B). Created in the SAME
 /// transaction as the notification approval so nothing is lost on crash.
+/// Email routing directive: which destinations a notification type is
+/// addressed to. Editable by administrators, so moving a department to a new
+/// mailbox - or copying Security on access removals - is configuration, not a
+/// code change. Destinations are keys ("static:IT", "dynamic:EMPLOYEE_MANAGER"),
+/// never addresses; the address lives in the recipient directory.
+model NotificationRouting {
+  id               String           @id @default(uuid()) @db.Uuid
+  notificationType NotificationType @unique
+  /// Primary recipient destination key.
+  toDestination    String
+  ccDestinations   String[]
+  bccDestinations  String[]
+  /// Free-text note for administrators (why this route looks like this).
+  note             String?
+  updatedById      String?          @db.Uuid
+  rowVersion       Int              @default(0)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@map("notification_routing")
+}
+
 model NotificationOutbox {
   id                   String             @id @default(uuid()) @db.Uuid
   notificationRecordId String             @db.Uuid
@@ -1880,6 +1944,17 @@ model NotificationOutbox {
   /// SUBMITTED vs provider-evidenced DELIVERED vs BOUNCED/REJECTED/CAPTURED.
   deliveryStatus       String?
   lastErrorCode        String?
+  /// Safe provider message for the email log. Codes are stable; this is the
+  /// human sentence an administrator needs to act on a failure.
+  lastErrorDetail      String?
+  /// Email log (routing directive): what routing decided, what actually
+  /// happened, and whether the send was a test. Masks only - the addresses
+  /// themselves stay encrypted on the recipient configuration.
+  intendedToMask       String?
+  intendedCcMasks      String[]
+  intendedBccMasks     String[]
+  actualToMask         String?
+  wasTestMode          Boolean            @default(false)
   cancelReason         String?
   resolvedById         String?            @db.Uuid
   resolvedAt           DateTime?
@@ -2064,13 +2139,13 @@ model RetentionPolicy {
 
 /// Legal/administrative holds suspend all retention action (P.3/P.4).
 model RetentionHold {
-  id           String    @id @default(uuid()) @db.Uuid
-  caseId       String    @db.Uuid
+  id           String          @id @default(uuid()) @db.Uuid
+  caseId       String          @db.Uuid
   case         OffboardingCase @relation(fields: [caseId], references: [id])
   reason       String
-  placedById   String    @db.Uuid
-  placedAt     DateTime  @default(now())
-  releasedById String?   @db.Uuid
+  placedById   String          @db.Uuid
+  placedAt     DateTime        @default(now())
+  releasedById String?         @db.Uuid
   releasedAt   DateTime?
   releaseNote  String?
 
@@ -2094,14 +2169,14 @@ model RetentionRun {
 
 /// Disclosure log (P.9) - append-only evidence.
 model DisclosureLog {
-  id           String   @id @default(uuid()) @db.Uuid
-  caseId       String?  @db.Uuid
-  subjectRef   String
-  disclosedTo  String
-  description  String
-  lawfulBasis  String
-  disclosedById String  @db.Uuid
-  disclosedAt  DateTime @default(now())
+  id            String   @id @default(uuid()) @db.Uuid
+  caseId        String?  @db.Uuid
+  subjectRef    String
+  disclosedTo   String
+  description   String
+  lawfulBasis   String
+  disclosedById String   @db.Uuid
+  disclosedAt   DateTime @default(now())
   correlationId String
 
   @@map("disclosure_log")
@@ -2109,18 +2184,18 @@ model DisclosureLog {
 
 /// Data-subject requests (P.6-P.8).
 model DataSubjectRequest {
-  id               String   @id @default(uuid()) @db.Uuid
+  id               String    @id @default(uuid()) @db.Uuid
   type             DsrType
   subjectRef       String
-  status           String   @default("OPEN")
+  status           String    @default("OPEN")
   note             String?
   packageObjectKey String?
-  requestedAt      DateTime @default(now())
-  handledById      String?  @db.Uuid
+  requestedAt      DateTime  @default(now())
+  handledById      String?   @db.Uuid
   completedAt      DateTime?
   correlationId    String
-  rowVersion       Int      @default(0)
-  updatedAt        DateTime @updatedAt
+  rowVersion       Int       @default(0)
+  updatedAt        DateTime  @updatedAt
 
   @@map("data_subject_request")
 }
@@ -2162,20 +2237,20 @@ model Outage {
 
 /// Manual records captured during an outage; reconciled on restore (R.3-R.5).
 model FallbackEntry {
-  id             String    @id @default(uuid()) @db.Uuid
-  outageId       String    @db.Uuid
-  outage         Outage    @relation(fields: [outageId], references: [id])
-  refNumber      String    @unique
-  kind           String
-  summary        String
-  recordedById   String    @db.Uuid
-  recordedAt     DateTime  @default(now())
-  reconciledCaseId String? @db.Uuid
-  reconciledById String?   @db.Uuid
-  reconciledAt   DateTime?
-  reconcileNote  String?
-  rowVersion     Int       @default(0)
-  updatedAt      DateTime  @updatedAt
+  id               String    @id @default(uuid()) @db.Uuid
+  outageId         String    @db.Uuid
+  outage           Outage    @relation(fields: [outageId], references: [id])
+  refNumber        String    @unique
+  kind             String
+  summary          String
+  recordedById     String    @db.Uuid
+  recordedAt       DateTime  @default(now())
+  reconciledCaseId String?   @db.Uuid
+  reconciledById   String?   @db.Uuid
+  reconciledAt     DateTime?
+  reconcileNote    String?
+  rowVersion       Int       @default(0)
+  updatedAt        DateTime  @updatedAt
 
   @@index([outageId])
   @@map("fallback_entry")
@@ -2184,23 +2259,23 @@ model FallbackEntry {
 /// Support and incident records (section T). Linked case only where
 /// authorized; descriptions are safe operational text.
 model SupportTicket {
-  id                String          @id @default(uuid()) @db.Uuid
+  id                String            @id @default(uuid()) @db.Uuid
   category          SupportCategory
   severity          ExceptionSeverity
-  environment       String          @default("development")
+  environment       String            @default("development")
   title             String
   description       String
   affectedComponent String?
-  reporterId        String          @db.Uuid
-  ownerId           String?         @db.Uuid
-  status            SupportStatus   @default(OPEN)
+  reporterId        String            @db.Uuid
+  ownerId           String?           @db.Uuid
+  status            SupportStatus     @default(OPEN)
   resolution        String?
-  linkedExceptionId String?         @db.Uuid
-  linkedCaseId      String?         @db.Uuid
+  linkedExceptionId String?           @db.Uuid
+  linkedCaseId      String?           @db.Uuid
   correlationId     String
-  rowVersion        Int             @default(0)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  rowVersion        Int               @default(0)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
   resolvedAt        DateTime?
 
   @@index([status, severity])
@@ -2221,22 +2296,101 @@ model TrainingCompletion {
 
 /// Immutable final-clearance approval evidence (section O).
 model ClearanceRecord {
-  id                 String          @id @default(uuid()) @db.Uuid
-  caseId             String          @db.Uuid
-  case               OffboardingCase @relation(fields: [caseId], references: [id])
-  workflowInstanceId String          @db.Uuid
-  workflowVersion    Int
-  decision           String          @default("APPROVED")
-  actorId            String          @db.Uuid
-  actorDisplayName   String
-  actorRole          String
-  meaning            String
-  snapshot           Json
+  id                           String          @id @default(uuid()) @db.Uuid
+  caseId                       String          @db.Uuid
+  case                         OffboardingCase @relation(fields: [caseId], references: [id])
+  workflowInstanceId           String          @db.Uuid
+  workflowVersion              Int
+  decision                     String          @default("APPROVED")
+  actorId                      String          @db.Uuid
+  actorDisplayName             String
+  actorRole                    String
+  meaning                      String
+  snapshot                     Json
   unresolvedApprovedExceptions Json
-  checksum           String
-  correlationId      String
-  createdAt          DateTime        @default(now())
+  checksum                     String
+  correlationId                String
+  createdAt                    DateTime        @default(now())
 
   @@index([caseId])
   @@map("clearance_record")
+}
+
+/// Exit Checklist for Return Items - the digital form of the HR paper
+/// checklist (owner directive, 2026-08-19). One per case, ten fixed items,
+/// completed by whoever receives the property (typically IT) through a secure
+/// no-login link. Distinct from AssetRecoveryItem, which tracks what the
+/// company actually issued: submitting this checklist never clears an asset
+/// record by itself.
+model ReturnItemsChecklist {
+  id                     String                      @id @default(uuid()) @db.Uuid
+  caseId                 String                      @unique @db.Uuid
+  case                   OffboardingCase             @relation(fields: [caseId], references: [id])
+  status                 ReturnChecklistStatus       @default(NOT_STARTED)
+  /// When the secure link was emailed, and to whom (masked - never raw).
+  sentAt                 DateTime?
+  sentToName             String?
+  sentToMask             String?
+  /// Who completed the form and when.
+  submittedAt            DateTime?
+  submittedByName        String?
+  submittedByUserId      String?                     @db.Uuid
+  /// "Received By" / "Date Received" from the paper form.
+  receivedByName         String?
+  receivedAt             DateTime?
+  /// Digital stand-in for the employee signature block.
+  employeeAcknowledgedAt DateTime?
+  employeeAcknowledgedBy String?
+  rowVersion             Int                         @default(0)
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+  items                  ReturnItemsChecklistEntry[]
+
+  @@map("return_items_checklist")
+}
+
+/// One row of the checklist. Every item keeps its own status and remarks, so
+/// an outstanding item stays visible after submission (directive section 12).
+model ReturnItemsChecklistEntry {
+  id          String               @id @default(uuid()) @db.Uuid
+  checklistId String               @db.Uuid
+  checklist   ReturnItemsChecklist @relation(fields: [checklistId], references: [id])
+  itemKey     ReturnItemKey
+  label       String
+  sortOrder   Int
+  status      ReturnItemStatus     @default(OUTSTANDING)
+  remarks     String?
+  updatedAt   DateTime             @updatedAt
+
+  @@unique([checklistId, itemKey])
+  @@map("return_items_checklist_entry")
+}
+
+/// The ten items on the HR paper checklist, in the order they appear.
+enum ReturnItemKey {
+  IDENTIFICATION_CARD
+  HEALTH_CARDS
+  ACCESS_CARD_DOOR_PASS
+  UNIFORMS
+  LAPTOP
+  EPAY_CARD
+  EMPLOYEE_HANDBOOK
+  PHONE
+  KEYS_DESK
+  KEYS_DOOR
+}
+
+enum ReturnItemStatus {
+  OUTSTANDING
+  RETURNED
+  NOT_RETURNED
+  NOT_APPLICABLE
+  LOST_OR_DAMAGED
+}
+
+enum ReturnChecklistStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  COMPLETED_WITH_OUTSTANDING
 }

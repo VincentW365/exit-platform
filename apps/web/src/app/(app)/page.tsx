@@ -1,11 +1,11 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { can, formatInstant, formatScheduledFor, hasRole } from '@exit/domain';
+import { can, formatInstant, formatScheduledFor } from '@exit/domain';
 import {
-  assignedFormQueue,
   attentionFeed,
   attentionSummary,
   hrDashboard,
+  listFlags,
   stage2Dashboard,
   stage3Dashboard,
   timed,
@@ -13,8 +13,19 @@ import {
 } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { BaselineBanner, ClassificationBadge, StatusBadge } from '@/components/ui';
+import { countOf, humanize, plural } from '@/lib/text';
+import {
+  AlertIcon,
+  BoxIcon,
+  CasesIcon,
+  ChartIcon,
+  ClockIcon,
+  DocumentIcon,
+} from '@/components/icons';
 
-export const metadata: Metadata = { title: 'Dashboard' };
+// "Exit Center" (owner request 2026-08-17): the company's separate "HR
+// Dashboard" app makes a generic "Dashboard" label ambiguous.
+export const metadata: Metadata = { title: 'Exit Center' };
 export const dynamic = 'force-dynamic';
 
 const SEV_BADGE: Record<string, string> = {
@@ -24,56 +35,101 @@ const SEV_BADGE: Record<string, string> = {
   CRITICAL: 'badge--danger',
 };
 
+/**
+ * One process-health metric: uppercase label, tabular headline value, quiet
+ * detail line, optional single-hue meter for percentages (owner aesthetic
+ * pass, 2026-08-17). The meter is decorative - the value text carries it.
+ */
+function Metric({
+  label,
+  value,
+  detail,
+  pct,
+}: {
+  label: string;
+  value: React.ReactNode;
+  detail: string;
+  pct?: number | null;
+}) {
+  return (
+    <div className="metric">
+      <span className="metric__label">{label}</span>
+      <span className="metric__value">{value}</span>
+      {typeof pct === 'number' ? (
+        <div className="meter" aria-hidden="true">
+          <div className="meter__fill" style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+        </div>
+      ) : null}
+      <span className="metric__detail">{detail}</span>
+    </div>
+  );
+}
+
+/** Overdue-ageing distribution: four buckets of one hue, values in the legend. */
+function AgeingCard({
+  ageing,
+}: {
+  ageing: {
+    underOneDay: number;
+    oneToThreeDays: number;
+    threeToSevenDays: number;
+    overSevenDays: number;
+  };
+}) {
+  const buckets = [
+    ['Under 1 day', ageing.underOneDay, 'var(--seq-1)'],
+    ['1-3 days', ageing.oneToThreeDays, 'var(--seq-2)'],
+    ['3-7 days', ageing.threeToSevenDays, 'var(--seq-3)'],
+    ['Over 7 days', ageing.overSevenDays, 'var(--seq-4)'],
+  ] as const;
+  const total = buckets.reduce((sum, [, n]) => sum + n, 0);
+  return (
+    <div className="metric">
+      <span className="metric__label">Overdue ageing</span>
+      <span className="metric__value">
+        {total} <small>{plural(total, 'overdue task')}</small>
+      </span>
+      {total > 0 ? (
+        <div className="ageing-bar" aria-hidden="true">
+          {buckets
+            .filter(([, n]) => n > 0)
+            .map(([label, n, color]) => (
+              <span key={label} style={{ flexGrow: n, background: color }} />
+            ))}
+        </div>
+      ) : null}
+      <span className="ageing-legend">
+        {buckets.map(([label, n, color]) => (
+          <span key={label}>
+            <span className="swatch" style={{ background: color }} aria-hidden="true" />
+            {label} <b>{n}</b>
+          </span>
+        ))}
+      </span>
+    </div>
+  );
+}
+
 export default async function DashboardPage() {
   const { user, actor } = await requireAuth();
 
   if (!can(actor, 'baseline.viewDashboard')) {
-    // Directive 6.3 (Z): Finance form logins are retired - Finance is reached
-    // by controlled email actions, so only assigned managers keep a work list
-    // (handover pointers only; the action-form approval link is gone).
-    const assigned = hasRole(actor, 'LINE_MANAGER') ? await assignedFormQueue(actor) : [];
+    // Owner decision 2026-08-19: IT, Finance and the line manager all
+    // participate by controlled email now, so no one outside HR has an
+    // offboarding work list here.
     return (
       <>
         <h1>Welcome, {user.displayName}</h1>
         {can(actor, 'queue.view') ? (
           <section className="panel" aria-labelledby="queue-link-h">
             <h2 id="queue-link-h" style={{ marginTop: 0 }}>
-              Your department work queue
+              Your Department Work Queue
             </h2>
             <p>
               Offboarding tasks assigned to your department are in{' '}
-              <Link href="/queue">My queue</Link>. Tasks show only the minimum information needed to
+              <Link href="/queue">My work</Link>. Tasks show only the minimum information needed to
               complete the work.
             </p>
-          </section>
-        ) : null}
-        {assigned.length > 0 ? (
-          <section className="panel" aria-labelledby="assigned-h">
-            <h2 id="assigned-h" style={{ marginTop: 0 }}>
-              Your assigned offboarding work
-            </h2>
-            <div className="table-wrap" tabIndex={0}>
-              <table className="data">
-                <caption>Cases where you are the assigned manager</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Case</th>
-                    <th scope="col">Handover</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {assigned.map((a) => (
-                    <tr key={a.caseId}>
-                      <td>{a.caseNumber}</td>
-                      <td>
-                        <Link href={`/cases/${a.caseId}/handover`}>Open handover</Link> (
-                        {a.handoverStatus.replaceAll('_', ' ')})
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           </section>
         ) : null}
         <section className="panel">
@@ -81,7 +137,7 @@ export default async function DashboardPage() {
             <p>
               System administration does not include HR case access (least privilege). Go to{' '}
               <Link href="/admin">Administration</Link> or the technical{' '}
-              <Link href="/audit">Audit centre</Link>.
+              <Link href="/audit">Audit center</Link>.
             </p>
           ) : (
             <p>
@@ -96,14 +152,18 @@ export default async function DashboardPage() {
 
   // Directive 6.2 (AB): one parallel round trip instead of serial ones;
   // EXIT_TIMING=1 logs each service's duration in development.
-  const [dash, s2, s3, attention, feed, automations] = await Promise.all([
+  const [dash, s2, s3, attention, feed, automations, flags] = await Promise.all([
     timed('dashboard.hr', () => hrDashboard(actor)),
     timed('dashboard.stage2', () => stage2Dashboard(actor)),
     timed('dashboard.stage3', () => stage3Dashboard(actor)),
     timed('dashboard.attention', () => attentionSummary(actor)),
     timed('dashboard.attentionFeed', () => attentionFeed(actor)),
     timed('dashboard.automations', () => upcomingAutomations(actor)),
+    timed('dashboard.flags', () => listFlags(actor)),
   ]);
+  // The baseline-capture warning is only true while every automation flag is
+  // off; with automation enabled it would contradict what the platform does.
+  const automationOff = flags.every((f) => !f.enabled);
   const statusOrder = [
     'DRAFT',
     'PENDING_HR_REVIEW',
@@ -113,6 +173,10 @@ export default async function DashboardPage() {
   ] as const;
   const q = s2.queues;
   const m = s2.metrics;
+  // Empty-state display: a metric with no measurements yet shows a quiet
+  // em dash, never a dangling "-%" or "- days".
+  const pctText = (p: number | null | undefined) => (p == null ? '—' : `${p}%`);
+  const numText = (n: number | null | undefined) => (n == null ? '—' : `${n}`);
   const exceptions = [
     ...q.docsNeedingAttention
       .filter((d) => d.status !== 'DRAFT')
@@ -123,19 +187,19 @@ export default async function DashboardPage() {
         severity: 'warn' as const,
       })),
     ...q.renderFailures.map((d) => ({
-      label: 'PDF render failed (worker retries)',
+      label: 'PDF Render Failed (Worker Retries)',
       caseNumber: d.case.caseNumber,
       href: `/cases/${d.case.id}/documents`,
       severity: 'danger' as const,
     })),
     ...q.invitationsDue.map((i) => ({
-      label: 'Survey invitation due, not yet sent',
+      label: 'Survey Invitation Due, Not yet Sent',
       caseNumber: i.case.caseNumber,
       href: `/cases/${i.case.id}/survey`,
       severity: 'warn' as const,
     })),
     ...q.remindersDue.map((i) => ({
-      label: 'Survey reminder due',
+      label: 'Survey Reminder Due',
       caseNumber: i.case.caseNumber,
       href: `/cases/${i.case.id}/survey`,
       severity: 'warn' as const,
@@ -144,14 +208,17 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <h1>HR dashboard</h1>
-      <BaselineBanner />
+      <h1>Exit Center</h1>
+      {automationOff ? <BaselineBanner /> : null}
 
       {/* Directive 6.3 (Z, correction 8): exception-first - the dashboard
           leads with what needs a human decision, not with metrics. */}
       <section className="panel attention-row" aria-labelledby="attn-h">
         <h2 id="attn-h" style={{ marginTop: 0 }}>
-          Requires your attention
+          <span className="icon-tile section-icon icon-tile--attention">
+            <AlertIcon />
+          </span>
+          Requires Your Attention
         </h2>
         {feed.length === 0 ? (
           <p className="hint">Nothing needs your attention right now.</p>
@@ -160,7 +227,7 @@ export default async function DashboardPage() {
             {feed.map((f) => (
               <li key={f.id}>
                 <span className={`badge ${SEV_BADGE[f.severity] ?? 'badge--neutral'}`}>
-                  {f.severity}
+                  {humanize(f.severity)}
                 </span>{' '}
                 {f.title} - <Link href={f.href}>{f.caseNumber}</Link>
               </li>
@@ -169,11 +236,11 @@ export default async function DashboardPage() {
         )}
         {s3.queues.criticalAccessTasks.length > 0 ? (
           <>
-            <h3>Critical access-revocation tasks</h3>
+            <h3>Critical Access-revocation Tasks</h3>
             <ul>
               {s3.queues.criticalAccessTasks.map((t) => (
                 <li key={t.id}>
-                  <span className="badge badge--danger">CRITICAL</span>{' '}
+                  <span className="badge badge--danger">Critical</span>{' '}
                   <Link href={`/tasks/${t.id}`}>{t.title}</Link> -{' '}
                   <Link href={`/cases/${t.case.id}/workflow`}>{t.case.caseNumber}</Link> - due{' '}
                   {t.dueAt ? formatInstant(t.dueAt) : '-'} ({t.status}, escalation level{' '}
@@ -185,14 +252,14 @@ export default async function DashboardPage() {
         ) : null}
         {exceptions.length > 0 ? (
           <>
-            <h3>Also needs review</h3>
+            <h3>Also Needs Review</h3>
             <ul>
               {exceptions.map((e, i) => (
                 <li key={i}>
                   <span
                     className={`badge ${e.severity === 'danger' ? 'badge--danger' : 'badge--warning'}`}
                   >
-                    {e.severity === 'danger' ? 'FAILED' : 'ATTENTION'}
+                    {e.severity === 'danger' ? 'Failed' : 'Needs attention'}
                   </span>{' '}
                   {e.label} - <Link href={e.href}>{e.caseNumber}</Link>
                 </li>
@@ -200,7 +267,7 @@ export default async function DashboardPage() {
             </ul>
           </>
         ) : null}
-        <h3>Open work queues</h3>
+        <h3>Open Work Queues</h3>
         <div className="stat-grid">
           {(
             [
@@ -218,12 +285,11 @@ export default async function DashboardPage() {
                 'badge--warning',
               ],
               ['Due today', attention.dueToday, '/queue?view=dueToday', 'badge--warning'],
-              ['Missing manager', attention.missingManager, '/admin/organization', 'badge--danger'],
               [
-                'Hierarchy changes',
-                attention.hierarchyFlags,
-                '/admin/organization',
-                'badge--warning',
+                'Ready for clearance',
+                s3.queues.casesReadyForClearance,
+                '/cases?status=ACTIVE',
+                'badge--info',
               ],
             ] as const
           ).map(([label, count, href, cls]) => (
@@ -233,13 +299,16 @@ export default async function DashboardPage() {
             </Link>
           ))}
         </div>
-        <p className="hint">Operational records only; each item opens the surface that fixes it.</p>
+        <p className="hint">Select any item above to go straight to where it is handled.</p>
       </section>
 
       {/* Directive 6.3 (Z): what the platform will do without HR input. */}
       <section className="panel" aria-labelledby="auto-h">
         <h2 id="auto-h" style={{ marginTop: 0 }}>
-          In progress automatically
+          <span className="icon-tile section-icon icon-tile--progress">
+            <ClockIcon />
+          </span>
+          In Progress Automatically
         </h2>
         {automations.length === 0 ? (
           <p className="hint">
@@ -266,35 +335,12 @@ export default async function DashboardPage() {
         </p>
       </section>
 
-      <section className="panel" aria-labelledby="today-h">
-        <h2 id="today-h" style={{ marginTop: 0 }}>
-          Today
-        </h2>
-        <div className="stat-grid">
-          {(
-            [
-              ['Tasks due today', s3.queues.tasksDueToday, '/queue?view=dueToday'],
-              ['Email delivery status', s3.queues.notificationsReadyForManualSend, '/admin/outbox'],
-              [
-                'Cases ready for clearance',
-                s3.queues.casesReadyForClearance,
-                '/cases?status=ACTIVE',
-              ],
-            ] as const
-          ).map(([label, count, href]) => (
-            <Link key={label} href={href} className="stat stat--link">
-              <span className="stat__value tabular-nums">{count}</span>
-              <span className={`badge ${count > 0 ? 'badge--info' : 'badge--success'}`}>
-                {label}
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
-
       <section className="panel" aria-labelledby="counts-h">
         <h2 id="counts-h" style={{ marginTop: 0 }}>
-          Active cases
+          <span className="icon-tile section-icon">
+            <CasesIcon />
+          </span>
+          Active Cases
         </h2>
         <div className="stat-grid">
           {statusOrder.map((s) => (
@@ -303,14 +349,18 @@ export default async function DashboardPage() {
               <StatusBadge status={s} />
             </div>
           ))}
-          <div className="stat">
-            <span className="stat__value">{dash.baselineOpenCount}</span>
-            <span className="badge badge--warning">Baseline open</span>
-          </div>
-          <div className="stat">
-            <span className="stat__value">{dash.nonOperationalCount}</span>
-            <span className="badge badge--neutral">Training/test records</span>
-          </div>
+          {dash.baselineOpenCount > 0 ? (
+            <div className="stat">
+              <span className="stat__value">{dash.baselineOpenCount}</span>
+              <span className="badge badge--warning">Baseline open</span>
+            </div>
+          ) : null}
+          {dash.nonOperationalCount > 0 ? (
+            <div className="stat">
+              <span className="stat__value">{dash.nonOperationalCount}</span>
+              <span className="badge badge--neutral">Training/test records</span>
+            </div>
+          ) : null}
         </div>
         <p className="hint">
           Counts include only cases your access permits; restricted cases you are not assigned to
@@ -320,7 +370,10 @@ export default async function DashboardPage() {
 
       <section className="panel" aria-labelledby="upcoming-h">
         <h2 id="upcoming-h" style={{ marginTop: 0 }}>
-          Upcoming departures (next 30 days)
+          <span className="icon-tile section-icon">
+            <ClockIcon />
+          </span>
+          Upcoming Departures (Next 30 Days)
         </h2>
         {dash.upcomingDepartures.length === 0 ? (
           <p>No approved departures with an effective time in the next 30 days.</p>
@@ -334,7 +387,7 @@ export default async function DashboardPage() {
                   <th scope="col">Employee</th>
                   <th scope="col">Type</th>
                   <th scope="col">Status</th>
-                  <th scope="col">Effective separation (America/Jamaica)</th>
+                  <th scope="col">Effective Separation</th>
                   <th scope="col">Days</th>
                 </tr>
               </thead>
@@ -346,7 +399,7 @@ export default async function DashboardPage() {
                       <ClassificationBadge classification={c.classification} />
                     </td>
                     <td>{c.employeeDisplayName}</td>
-                    <td>{c.departureType.replaceAll('_', ' ').toLowerCase()}</td>
+                    <td>{humanize(c.departureType)}</td>
                     <td>
                       <StatusBadge status={c.status} />
                     </td>
@@ -364,12 +417,14 @@ export default async function DashboardPage() {
 
       <section className="panel" aria-labelledby="wf-h">
         <h2 id="wf-h" style={{ marginTop: 0 }}>
-          Process health - workflow operations
+          <span className="icon-tile section-icon">
+            <ChartIcon />
+          </span>
+          Workflow Health
         </h2>
         <div className="stat-grid">
           {(
             [
-              ['Active workflows', s3.queues.activeWorkflows, 'badge--info'],
               ['Tasks due this week', s3.queues.tasksDueThisWeek, 'badge--neutral'],
               ['Unassigned manager tasks', s3.queues.pendingDepartmentOwnership, 'badge--warning'],
               [
@@ -377,243 +432,226 @@ export default async function DashboardPage() {
                 s3.queues.notificationsAwaitingApproval,
                 'badge--warning',
               ],
-              ['Assets outstanding', s3.queues.assetsOutstanding, 'badge--warning'],
-              ['Asset exceptions', s3.queues.assetExceptions, 'badge--warning'],
-              ['Handovers outstanding', s3.queues.handoversOutstanding, 'badge--warning'],
               [
                 'Cases blocked from clearance',
                 s3.queues.casesBlockedFromClearance,
                 'badge--danger',
               ],
-              ['Completed cases', s3.queues.completedCases, 'badge--success'],
             ] as const
           ).map(([label, count, cls]) => (
             <div key={label} className="stat">
               <span className="stat__value">{count}</span>
-              <span className={`badge ${cls}`}>{label}</span>
+              <span className={`badge ${count > 0 ? cls : 'badge--success'}`}>{label}</span>
             </div>
           ))}
         </div>
-        <dl className="kv" style={{ marginTop: '0.75rem' }}>
-          <dt>Task SLA compliance</dt>
-          <dd>
-            {s3.reports.taskSlaCompliance.onTime}/{s3.reports.taskSlaCompliance.measured} on time (
-            {s3.reports.taskSlaCompliance.pct ?? '-'}%)
-          </dd>
-          <dt>Median completion hours by department</dt>
-          <dd>
-            {Object.entries(s3.reports.medianCompletionHoursByDepartment)
-              .map(([d, h]) => `${d}: ${h ?? '-'}h`)
-              .join('; ') || '-'}
-          </dd>
-          <dt>Access-revocation timeliness</dt>
-          <dd>
-            {s3.reports.accessRevocationTimeliness.completed} completed;{' '}
-            {s3.reports.accessRevocationTimeliness.late} late (on time{' '}
-            {s3.reports.accessRevocationTimeliness.onTimePct ?? '-'}%); max delay{' '}
-            {s3.reports.accessRevocationTimeliness.maxDelayMinutes} min
-          </dd>
-          <dt>Notification timeliness</dt>
-          <dd>
-            median prep-to-approval{' '}
-            {s3.reports.notificationTimeliness.medianPrepToApprovalHours ?? '-'}h; median
-            ready-to-manual-send{' '}
-            {s3.reports.notificationTimeliness.medianReadyToManualSendHours ?? '-'}h (manual-send
-            recording only - no provider delivery exists or is claimed); corrections: superseded{' '}
-            {s3.reports.notificationCorrections.superseded}, approvals invalidated{' '}
-            {s3.reports.notificationCorrections.approvalsInvalidated}
-          </dd>
-          <dt>Assets</dt>
-          <dd>
-            documentation rate {s3.reports.assets.documentationRatePct ?? '-'}% (
-            {s3.reports.assets.documentedCount}/{s3.reports.assets.requiredCount}); physical
-            recovery rate {s3.reports.assets.physicalRecoveryRatePct ?? '-'}% (
-            {s3.reports.assets.physicallyReturned}/{s3.reports.assets.physicalDenominator},
-            NOT_ISSUED excluded) - never a payroll effect
-          </dd>
-          <dt>Handover completion</dt>
-          <dd>
-            {s3.reports.handoverCompletion.satisfied}/{s3.reports.handoverCompletion.required} (
-            {s3.reports.handoverCompletion.pct ?? '-'}%)
-          </dd>
-          <dt>Cycle times</dt>
-          <dd>
-            clearance median {s3.reports.clearanceCycleDays.median ?? '-'} day(s) (
-            {s3.reports.clearanceCycleDays.count} case(s)); end-to-end median{' '}
-            {s3.reports.endToEndCycleDays.median ?? '-'} day(s)
-          </dd>
-          <dt>Overdue ageing</dt>
-          <dd>
-            &lt;1d: {s3.reports.overdueAgeing.underOneDay}; 1-3d:{' '}
-            {s3.reports.overdueAgeing.oneToThreeDays}; 3-7d:{' '}
-            {s3.reports.overdueAgeing.threeToSevenDays}; &gt;7d:{' '}
-            {s3.reports.overdueAgeing.overSevenDays}
-          </dd>
-          <dt>Waivers and overrides</dt>
-          <dd>
-            task waivers {s3.reports.waiversAndOverrides.taskWaivers}; task corrections{' '}
-            {s3.reports.waiversAndOverrides.taskCorrections}
-          </dd>
-        </dl>
+        <div className="metric-grid" style={{ marginTop: '0.9rem' }}>
+          <Metric
+            label="Task SLA compliance"
+            value={pctText(s3.reports.taskSlaCompliance.pct)}
+            detail={`${s3.reports.taskSlaCompliance.onTime} of ${s3.reports.taskSlaCompliance.measured} tasks on time`}
+            pct={s3.reports.taskSlaCompliance.pct}
+          />
+          <Metric
+            label="Access revocation on time"
+            value={pctText(s3.reports.accessRevocationTimeliness.onTimePct)}
+            detail={`${s3.reports.accessRevocationTimeliness.completed} completed · ${s3.reports.accessRevocationTimeliness.late} late · max delay ${s3.reports.accessRevocationTimeliness.maxDelayMinutes} min`}
+            pct={s3.reports.accessRevocationTimeliness.onTimePct}
+          />
+          <Metric
+            label="Cycle times (median)"
+            value={
+              <>
+                {numText(s3.reports.clearanceCycleDays.median)} <small>days to clearance</small>
+              </>
+            }
+            detail={`End to end ${s3.reports.endToEndCycleDays.median ?? '—'} days · ${countOf(s3.reports.clearanceCycleDays.count, 'case')} measured`}
+          />
+          <AgeingCard ageing={s3.reports.overdueAgeing} />
+        </div>
         <p className="hint">
-          Workflow reporting covers OPERATIONAL records only; TRAINING/TEST records are excluded.
-          Restricted-case data is filtered by your access. See <Link href="/queue">My queue</Link>{' '}
-          and the <Link href="/exceptions">exception feed</Link>.
+          Full analytics - timeliness, department breakdowns and corrections - live in{' '}
+          <Link href="/reports">Reports</Link>.
+        </p>
+      </section>
+
+      <section className="panel" aria-labelledby="assets-h">
+        <h2 id="assets-h" style={{ marginTop: 0 }}>
+          <span className="icon-tile section-icon">
+            <BoxIcon />
+          </span>
+          Asset Recovery
+        </h2>
+        <div className="stat-grid">
+          {(
+            [
+              ['Assets outstanding', s3.queues.assetsOutstanding, 'badge--warning'],
+              ['Asset exceptions', s3.queues.assetExceptions, 'badge--warning'],
+            ] as const
+          ).map(([label, count, cls]) => (
+            <div key={label} className="stat">
+              <span className="stat__value">{count}</span>
+              <span className={`badge ${count > 0 ? cls : 'badge--success'}`}>{label}</span>
+            </div>
+          ))}
+        </div>
+        <div className="metric-grid" style={{ marginTop: '0.9rem' }}>
+          <Metric
+            label="Asset documentation"
+            value={pctText(s3.reports.assets.documentationRatePct)}
+            detail={`${s3.reports.assets.documentedCount} of ${s3.reports.assets.requiredCount} required dispositions documented`}
+            pct={s3.reports.assets.documentationRatePct}
+          />
+          <Metric
+            label="Physical recovery"
+            value={pctText(s3.reports.assets.physicalRecoveryRatePct)}
+            detail={`${s3.reports.assets.physicallyReturned} of ${s3.reports.assets.physicalDenominator} physical items returned (not-issued excluded)`}
+            pct={s3.reports.assets.physicalRecoveryRatePct}
+          />
+        </div>
+        <p className="hint">
+          Asset outcomes never calculate or recommend any payroll effect; losses become audited
+          exceptions for HR review.
         </p>
       </section>
 
       <section className="panel" aria-labelledby="work-h">
         <h2 id="work-h" style={{ marginTop: 0 }}>
-          Process health - documents, forms and surveys
+          <span className="icon-tile section-icon">
+            <DocumentIcon />
+          </span>
+          Documents, Forms and Surveys
         </h2>
-        <div className="table-wrap" tabIndex={0}>
-          <table className="data">
-            <caption>Focused work queues (next action, owner, status)</caption>
-            <thead>
-              <tr>
-                <th scope="col">Queue</th>
-                <th scope="col">Count</th>
-                <th scope="col">Next action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Document drafts needing attention</td>
-                <td>{q.docsNeedingAttention.length}</td>
-                <td>
-                  {q.docsNeedingAttention[0] ? (
-                    <Link href={`/cases/${q.docsNeedingAttention[0].case.id}/documents`}>
-                      {q.docsNeedingAttention[0].case.caseNumber}
-                    </Link>
-                  ) : (
-                    '-'
-                  )}
-                </td>
-              </tr>
-              <tr>
-                <td>Documents pending HR Manager approval</td>
-                <td>{q.docsPendingApproval.length}</td>
-                <td>
-                  {q.docsPendingApproval[0] ? (
-                    <Link href={`/cases/${q.docsPendingApproval[0].case.id}/documents`}>
-                      {q.docsPendingApproval[0].case.caseNumber}
-                    </Link>
-                  ) : (
-                    '-'
-                  )}
-                </td>
-              </tr>
-              <tr>
-                <td>Render failures</td>
-                <td>{q.renderFailures.length}</td>
-                <td>
-                  {q.renderFailures[0] ? (
-                    <Link href={`/cases/${q.renderFailures[0].case.id}/documents`}>
-                      {q.renderFailures[0].case.caseNumber}
-                    </Link>
-                  ) : (
-                    '-'
-                  )}
-                </td>
-              </tr>
-              <tr>
-                <td>Action forms incomplete (draft/returned)</td>
-                <td>{q.formsIncomplete}</td>
-                <td>-</td>
-              </tr>
-              <tr>
-                <td>Action forms ready for review</td>
-                <td>{q.formsReadyForReview.length}</td>
-                <td>
-                  {q.formsReadyForReview.length === 0 ? (
-                    '-'
-                  ) : (
-                    <>
-                      {q.formsReadyForReview.slice(0, 6).map((f, i) => (
-                        <span key={f.id}>
-                          {i > 0 ? ', ' : ''}
-                          <Link href={`/cases/${f.case.id}/action-form`}>{f.case.caseNumber}</Link>
-                          {f.status === 'PENDING_MANAGER' || f.status === 'PENDING_HR'
-                            ? ' (legacy)'
-                            : ''}
-                        </span>
-                      ))}
-                      {q.formsReadyForReview.length > 6
-                        ? ` +${q.formsReadyForReview.length - 6} more`
-                        : ''}
-                    </>
-                  )}
-                </td>
-              </tr>
-              <tr>
-                <td>Survey invitations due</td>
-                <td>{q.invitationsDue.length}</td>
-                <td>
-                  {q.invitationsDue[0] ? (
-                    <Link href={`/cases/${q.invitationsDue[0].case.id}/survey`}>
-                      {q.invitationsDue[0].case.caseNumber}
-                    </Link>
-                  ) : (
-                    '-'
-                  )}
-                </td>
-              </tr>
-              <tr>
-                <td>Survey reminders due</td>
-                <td>{q.remindersDue.length}</td>
-                <td>
-                  {q.remindersDue[0] ? (
-                    <Link href={`/cases/${q.remindersDue[0].case.id}/survey`}>
-                      {q.remindersDue[0].case.caseNumber}
-                    </Link>
-                  ) : (
-                    '-'
-                  )}
-                </td>
-              </tr>
-              <tr>
-                <td>Completed surveys (operational)</td>
-                <td>{q.completedSurveys}</td>
-                <td>-</td>
-              </tr>
-            </tbody>
-          </table>
+        {(() => {
+          const queueRows: Array<{
+            label: string;
+            count: number;
+            next: React.ReactNode;
+          }> = [
+            {
+              label: 'Document Drafts Needing Attention',
+              count: q.docsNeedingAttention.length,
+              next: q.docsNeedingAttention[0] ? (
+                <Link href={`/cases/${q.docsNeedingAttention[0].case.id}/documents`}>
+                  {q.docsNeedingAttention[0].case.caseNumber}
+                </Link>
+              ) : null,
+            },
+            {
+              label: 'Documents Pending HR Manager Approval',
+              count: q.docsPendingApproval.length,
+              next: q.docsPendingApproval[0] ? (
+                <Link href={`/cases/${q.docsPendingApproval[0].case.id}/documents`}>
+                  {q.docsPendingApproval[0].case.caseNumber}
+                </Link>
+              ) : null,
+            },
+            {
+              label: 'PDF Render Failures',
+              count: q.renderFailures.length,
+              next: q.renderFailures[0] ? (
+                <Link href={`/cases/${q.renderFailures[0].case.id}/documents`}>
+                  {q.renderFailures[0].case.caseNumber}
+                </Link>
+              ) : null,
+            },
+            {
+              label: 'Action Forms Incomplete (Draft/returned)',
+              count: q.formsIncomplete,
+              next: null,
+            },
+            {
+              label: 'Action Forms Ready for Review',
+              count: q.formsReadyForReview.length,
+              next:
+                q.formsReadyForReview.length === 0 ? null : (
+                  <>
+                    {q.formsReadyForReview.slice(0, 6).map((f, i) => (
+                      <span key={f.id}>
+                        {i > 0 ? ', ' : ''}
+                        <Link href={`/cases/${f.case.id}/action-form`}>{f.case.caseNumber}</Link>
+                        {f.status === 'PENDING_MANAGER' || f.status === 'PENDING_HR'
+                          ? ' (legacy)'
+                          : ''}
+                      </span>
+                    ))}
+                    {q.formsReadyForReview.length > 6
+                      ? ` +${q.formsReadyForReview.length - 6} more`
+                      : ''}
+                  </>
+                ),
+            },
+            {
+              label: 'Survey Invitations Due',
+              count: q.invitationsDue.length,
+              next: q.invitationsDue[0] ? (
+                <Link href={`/cases/${q.invitationsDue[0].case.id}/survey`}>
+                  {q.invitationsDue[0].case.caseNumber}
+                </Link>
+              ) : null,
+            },
+            {
+              label: 'Survey Reminders Due',
+              count: q.remindersDue.length,
+              next: q.remindersDue[0] ? (
+                <Link href={`/cases/${q.remindersDue[0].case.id}/survey`}>
+                  {q.remindersDue[0].case.caseNumber}
+                </Link>
+              ) : null,
+            },
+          ].filter((row) => row.count > 0);
+          return queueRows.length === 0 ? (
+            <p className="hint">No document, form or survey work is waiting.</p>
+          ) : (
+            <div className="table-wrap" tabIndex={0}>
+              <table className="data">
+                <caption className="sr-only">Open document, form and survey queues</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Queue</th>
+                    <th scope="col">Count</th>
+                    <th scope="col">Next action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {queueRows.map((row) => (
+                    <tr key={row.label}>
+                      <td>{row.label}</td>
+                      <td>{row.count}</td>
+                      <td>{row.next ?? '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
+        <div className="metric-grid" style={{ marginTop: '0.9rem' }}>
+          <Metric
+            label="Document turnaround"
+            value={
+              <>
+                {numText(m.documentTurnaround.medianDays)} <small>days median</small>
+              </>
+            }
+            detail={`${countOf(m.documentTurnaround.count, 'document')} · ${pctText(m.documentTurnaround.withinTwoBusinessDaysPct)} within 2 business days`}
+            pct={m.documentTurnaround.withinTwoBusinessDaysPct}
+          />
+          <Metric
+            label="Survey completion"
+            value={pctText(m.surveyCompletion.rate.pct)}
+            detail={`${m.surveyCompletion.rate.numerator} of ${m.surveyCompletion.rate.denominator} sent invitations completed · online ${m.surveyCompletion.completedOnline} · verbal ${m.surveyCompletion.completedVerbal}`}
+            pct={m.surveyCompletion.rate.pct}
+          />
         </div>
-        <dl className="kv" style={{ marginTop: '0.75rem' }}>
-          <dt>Document turnaround</dt>
-          <dd>
-            {m.documentTurnaround.count} document(s); median{' '}
-            {m.documentTurnaround.medianDays ?? '-'} days;{' '}
-            {m.documentTurnaround.withinTwoBusinessDaysPct ?? '-'}% within 2 business days
-          </dd>
-          <dt>Document corrections</dt>
-          <dd>
-            returned {m.documentCorrections.returned}; outdated by case change{' '}
-            {m.documentCorrections.outdatedByCaseChange}; approvals invalidated{' '}
-            {m.documentCorrections.approvalsInvalidated}
-          </dd>
-          <dt>Survey completion</dt>
-          <dd>
-            {m.surveyCompletion.rate.numerator}/{m.surveyCompletion.rate.denominator} sent
-            invitations completed ({m.surveyCompletion.rate.pct ?? '-'}%): online{' '}
-            {m.surveyCompletion.completedOnline}, verbal {m.surveyCompletion.completedVerbal};
-            declined {m.surveyCompletion.declined}, expired {m.surveyCompletion.expired}, invalid
-            contact {m.surveyCompletion.invalidContact}, not eligible{' '}
-            {m.surveyCompletion.notEligible}, not sent {m.surveyCompletion.notSent}
-          </dd>
-        </dl>
         <p className="hint">
-          Metrics cover OPERATIONAL records only; TRAINING and TEST records are excluded. PDF
-          rendering success does not by itself prove field accuracy - HR review does.
+          Correction and non-completion breakdowns live in <Link href="/reports">Reports</Link>.
         </p>
       </section>
 
       <p>
         <Link className="button" href="/cases/new">
           Create offboarding case
-        </Link>{' '}
-        <Link className="button secondary" href="/baseline">
-          Baseline data completeness
         </Link>
       </p>
     </>

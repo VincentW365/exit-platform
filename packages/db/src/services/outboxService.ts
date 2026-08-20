@@ -8,22 +8,28 @@
  * pending automatic dispatch in the same transaction (B.8).
  */
 import {
+  applyTestModeRedirect,
   backoffDelayMs,
   can,
   isRetryableError,
+  maskDestination,
+  parseTestMode,
+  testModeErrors,
   ProviderError,
   OUTBOX_MAX_ATTEMPTS,
   type Actor,
   type RecipientClassName,
+  type TestModeConfig,
 } from '@exit/domain';
 import { getConfig } from '@exit/config';
 import { getPrisma } from '../client.ts';
 import type { PrismaClient } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
-import { getEmailProvider } from './emailProviders.ts';
+import { getEmailProvider, type OutboundAttachment } from './emailProviders.ts';
 import { decryptValue } from '../secretBox.ts';
 import { openException, autoResolveException } from './exceptionService.ts';
+import { getSystemConfigValue } from './systemConfigService.ts';
 
 type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
@@ -32,6 +38,8 @@ const TYPE_TO_RECIPIENT_CLASS: Record<string, RecipientClassName> = {
   IT_ACCESS_REMOVAL: 'IT_OFFBOARDING',
   FINANCE_OFFBOARDING: 'FINANCE_OFFBOARDING',
   LINE_MANAGER_HANDOVER: 'LINE_MANAGER',
+  RETURN_ITEMS_CHECKLIST: 'HR_OFFBOARDING',
+  RESIGNATION_ACCEPTANCE_LETTER: 'EMPLOYEE_PERSONAL',
   SAGICOR_GROUP_HEALTH_REMOVAL: 'SAGICOR_GROUP_HEALTH',
   NCB_GROUP_LIFE_REMOVAL: 'NCB_GROUP_LIFE',
   SURVEY_INVITATION_REFERENCE: 'EMPLOYEE_PERSONAL',
@@ -43,6 +51,37 @@ const TYPE_TO_RECIPIENT_CLASS: Record<string, RecipientClassName> = {
 
 export function recipientClassForType(notificationType: string): RecipientClassName {
   return TYPE_TO_RECIPIENT_CLASS[notificationType] ?? 'HR_OFFBOARDING';
+}
+
+/**
+ * Read the rendered PDF a notification carries (DEC-054). The bytes live in
+ * object storage; this verifies them against the checksum recorded when the
+ * document was rendered, so a tampered or missing object fails the send
+ * instead of quietly mailing nothing.
+ */
+async function loadDocumentAttachment(documentId: string): Promise<OutboundAttachment[]> {
+  const doc = await getPrisma().documentInstance.findUnique({
+    where: { id: documentId },
+    select: {
+      documentType: true,
+      version: true,
+      pdfObjectKey: true,
+      pdfChecksum: true,
+      case: { select: { caseNumber: true } },
+    },
+  });
+  if (!doc?.pdfObjectKey || !doc.pdfChecksum) {
+    throw new ProviderError('CONFIG_INVALID', 'The document has no rendered PDF to attach.');
+  }
+  const { readVerifiedPdf } = await import('./renderService.ts');
+  const bytes = await readVerifiedPdf(doc.pdfObjectKey, doc.pdfChecksum);
+  return [
+    {
+      fileName: `${doc.case.caseNumber}-${doc.documentType.toLowerCase()}-v${doc.version}.pdf`,
+      mimeType: 'application/pdf',
+      bytes,
+    },
+  ];
 }
 
 /**
@@ -158,6 +197,9 @@ export async function processOutbox(
   const prisma = getPrisma();
   const provider = getEmailProvider();
   const result = { submitted: 0, failed: 0, deadLettered: 0 };
+  // Read once per pass: a mid-pass change should not split a batch between
+  // rehearsal and real delivery.
+  const testMode = await currentTestMode();
 
   const due = await prisma.notificationOutbox.findMany({
     where: { status: { in: ['PENDING', 'FAILED_RETRYABLE'] }, nextAttemptAt: { lte: now } },
@@ -172,6 +214,11 @@ export async function processOutbox(
           status: true,
           notificationType: true,
           caseRecipientCiphertext: true,
+          recipientName: true,
+          caseRecipientMask: true,
+          ccCiphertext: true,
+          bccCiphertext: true,
+          attachedDocumentId: true,
         },
       },
     },
@@ -244,22 +291,63 @@ export async function processOutbox(
       );
       if (links.length > 0) {
         const linkBlock = links
-          .map((l) =>
-            l.purpose === 'ACKNOWLEDGE_RECEIPT'
-              ? `Acknowledge receipt: ${l.url}`
-              : `Confirm the action is completed: ${l.url}`,
-          )
+          .map((l) => {
+            if (l.purpose === 'ACKNOWLEDGE_RECEIPT') return `Acknowledge receipt: ${l.url}`;
+            if (l.purpose === 'COMPLETE_RETURN_CHECKLIST')
+              return `Complete the exit checklist: ${l.url}`;
+            return `Confirm the action is completed: ${l.url}`;
+          })
           .join('\n');
         outgoingBody = outgoingBody.includes('[link inserted at send time]')
           ? outgoingBody.replace('[link inserted at send time]', linkBlock)
           : `${outgoingBody}\n\n${linkBlock}`;
       }
 
+      // DEC-054: copied recipients and the rendered document this email
+      // carries. Both are decrypted / read here and held in memory only.
+      const cc: string[] = item.notificationRecord.ccCiphertext
+        ? (JSON.parse(decryptValue(item.notificationRecord.ccCiphertext)) as string[])
+        : [];
+      const bcc: string[] = item.notificationRecord.bccCiphertext
+        ? (JSON.parse(decryptValue(item.notificationRecord.bccCiphertext)) as string[])
+        : [];
+      const attachments = item.notificationRecord.attachedDocumentId
+        ? await loadDocumentAttachment(item.notificationRecord.attachedDocumentId)
+        : [];
+
+      // Rehearsal mode (directive section 8): every message is diverted to
+      // one nominated mailbox, marked, and told in its own body who it would
+      // have reached. Nothing else about the flow changes.
+      const outgoing = applyTestModeRedirect(
+        { subject: item.subjectSnapshot, body: outgoingBody, destination, cc, bcc },
+        testMode,
+      );
+      if (outgoing.redirected) {
+        await appendAudit(prisma, {
+          eventType: 'NOTIFICATION_REDIRECTED_TEST_MODE',
+          actorType: 'SYSTEM',
+          objectType: 'NotificationOutbox',
+          objectId: item.id,
+          caseId: item.notificationRecord.caseId,
+          result: 'SUCCESS',
+          correlationId: item.correlationId,
+          // Masks only, on both sides of the diversion.
+          metadata: {
+            intendedRecipients: outgoing.intendedMasks,
+            redirectedTo: maskDestination(outgoing.destination),
+          },
+        });
+      }
+
       const sendResult = await provider.send({
         outboxId: item.id,
-        subject: item.subjectSnapshot,
-        body: outgoingBody,
-        destination,
+        subject: outgoing.subject,
+        body: outgoing.body,
+        destination: outgoing.destination,
+        cc: outgoing.cc?.length ? outgoing.cc : undefined,
+        bcc: outgoing.bcc?.length ? outgoing.bcc : undefined,
+        // A rehearsal still carries the letter: HR is checking the real thing.
+        attachments: attachments.length ? attachments : undefined,
         correlationId: item.correlationId,
       });
 
@@ -269,6 +357,13 @@ export async function processOutbox(
           status: 'SUBMITTED',
           submittedAt: now,
           providerMessageRef: sendResult.providerMessageRef,
+          // Email log (routing directive): intended vs actual, in masks.
+          intendedToMask: maskDestination(outgoing.intendedTo),
+          intendedCcMasks: outgoing.intendedCc.map(maskDestination),
+          intendedBccMasks: outgoing.intendedBcc.map(maskDestination),
+          actualToMask: maskDestination(outgoing.destination),
+          wasTestMode: outgoing.redirected,
+          lastErrorDetail: null,
           // CAPTURED (dev) or SUBMITTED - never DELIVERED without provider
           // delivery evidence (B.5/B.6).
           deliveryStatus: sendResult.deliveryStatus,
@@ -295,6 +390,15 @@ export async function processOutbox(
           metadata: { deliveryStatus: sendResult.deliveryStatus },
         });
       }
+      // The checklist carries its own "sent" record so the case view and the
+      // metrics can report on it without reading the outbox.
+      if (item.notificationRecord.notificationType === 'RETURN_ITEMS_CHECKLIST') {
+        const { markChecklistSent } = await import('./returnItemsService.ts');
+        await markChecklistSent(prisma, item.notificationRecord.caseId, {
+          name: item.notificationRecord.recipientName,
+          mask: item.notificationRecord.caseRecipientMask,
+        });
+      }
       await appendAudit(prisma, {
         eventType: 'OUTBOX_SUBMITTED',
         actorType: 'SYSTEM',
@@ -318,6 +422,12 @@ export async function processOutbox(
       result.submitted += 1;
     } catch (e) {
       const code = e instanceof ProviderError ? e.code : 'NETWORK_ERROR';
+      // A short, safe sentence for the email log. Provider messages can carry
+      // an address, so only our own normalized text is stored.
+      const detail =
+        e instanceof ProviderError && e.message && e.message !== e.code
+          ? e.message.slice(0, 300)
+          : 'The provider did not accept the message.';
       const retryable = isRetryableError(code);
       const exhausted = attempt >= OUTBOX_MAX_ATTEMPTS;
       const nextStatus =
@@ -335,6 +445,7 @@ export async function processOutbox(
         data: {
           status: nextStatus,
           lastErrorCode: code,
+          lastErrorDetail: detail,
           nextAttemptAt: new Date(now.getTime() + retryAfter),
           rowVersion: { increment: 1 },
         },
@@ -456,6 +567,163 @@ export async function resolveDeadLetter(actor: Actor, outboxId: string, resoluti
 }
 
 /** Outbox monitor (masked destinations only). */
+/**
+ * Rehearsal mode: read the current setting (directive section 8).
+ * Visible to anyone who can see the outbox - a diversion that is on and
+ * invisible is worse than no diversion at all.
+ */
+export async function getTestMode(actor: Actor): Promise<TestModeConfig> {
+  if (!can(actor, 'outbox.view') && !can(actor, 'notifications.testMode'))
+    throw ServiceError.forbidden();
+  return parseTestMode(await getSystemConfigValue('notifications.testMode'));
+}
+
+/**
+ * Read for the dispatcher and for banners; no actor, no authorization.
+ *
+ * A test/UAT deployment is a redirected environment by definition: that is
+ * what distinguishes it from production. The stored setting can name the
+ * mailbox and the note, but it cannot turn the redirect OFF there - a UAT
+ * environment that quietly starts delivering to real people would be the
+ * worst possible failure of this feature. Configuration refuses to load
+ * without TEST_EMAIL in that environment, so a mailbox always exists.
+ */
+export async function currentTestMode(): Promise<TestModeConfig> {
+  const stored = parseTestMode(await getSystemConfigValue('notifications.testMode'));
+  const config = getConfig();
+  if (config.appEnvironment !== 'test') return stored;
+  return {
+    enabled: true,
+    redirectTo: stored.redirectTo || (config.TEST_EMAIL ?? ''),
+    note: stored.note ?? 'Test/UAT environment: every message is redirected.',
+  };
+}
+
+/** True when this deployment forces redirection regardless of the setting. */
+export function testModeIsForced(): boolean {
+  return getConfig().appEnvironment === 'test';
+}
+
+/**
+ * Turn rehearsal mode on or off. Turning it ON validates the mailbox against
+ * the environment's own destination rules, so a development rehearsal can
+ * never be pointed at a deliverable address. Turning it OFF is always allowed
+ * - nothing should stand between an administrator and resuming real delivery.
+ */
+export async function setTestMode(
+  actor: Actor,
+  input: { enabled: boolean; redirectTo: string; note?: string },
+): Promise<TestModeConfig> {
+  if (!can(actor, 'notifications.testMode')) throw ServiceError.forbidden();
+  if (!input.enabled && testModeIsForced())
+    throw ServiceError.validation([
+      'This is a test/UAT environment: redirection cannot be turned off here. Deploy with APP_ENVIRONMENT=production to deliver to real recipients.',
+    ]);
+  const cfg: TestModeConfig = {
+    enabled: input.enabled,
+    redirectTo: (input.redirectTo ?? '').trim(),
+    note: input.note?.trim() || undefined,
+  };
+  const errors = testModeErrors(cfg, getConfig().isProduction ? 'production' : 'development');
+  if (errors.length) throw ServiceError.validation(errors);
+
+  const prisma = getPrisma();
+  const correlationId = newCorrelationId();
+  await prisma.$transaction(async (tx) => {
+    await tx.systemConfig.upsert({
+      where: { key: 'notifications.testMode' },
+      create: {
+        key: 'notifications.testMode',
+        value: cfg as never,
+        reason: cfg.enabled ? 'Rehearsal mode enabled.' : 'Rehearsal mode disabled.',
+        updatedById: actor.userId,
+      },
+      update: {
+        value: cfg as never,
+        reason: cfg.enabled ? 'Rehearsal mode enabled.' : 'Rehearsal mode disabled.',
+        updatedById: actor.userId,
+      },
+    });
+    await appendAudit(tx, {
+      eventType: 'NOTIFICATION_TEST_MODE_CHANGED',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'SystemConfig',
+      objectId: 'notifications.testMode',
+      result: 'SUCCESS',
+      correlationId,
+      metadata: {
+        enabled: cfg.enabled,
+        redirectMask: cfg.redirectTo ? maskDestination(cfg.redirectTo) : null,
+      },
+    });
+  });
+  return cfg;
+}
+
+/**
+ * The email log (routing directive): one row per message the platform tried
+ * to send, with what routing intended, what actually happened, and whether it
+ * was a test. Addresses stay masked - the log answers "did this go to the
+ * right place" without becoming a directory of everyone's email.
+ */
+export async function listEmailLog(
+  actor: Actor,
+  filter: { status?: string; testOnly?: boolean; caseNumber?: string } = {},
+) {
+  if (!can(actor, 'outbox.view')) throw ServiceError.forbidden();
+  const rows = await getPrisma().notificationOutbox.findMany({
+    where: {
+      ...(filter.status ? { status: filter.status as never } : {}),
+      ...(filter.testOnly ? { wasTestMode: true } : {}),
+      ...(filter.caseNumber
+        ? {
+            notificationRecord: {
+              is: {
+                case: {
+                  is: { caseNumber: { contains: filter.caseNumber, mode: 'insensitive' } },
+                },
+              },
+            },
+          }
+        : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+    include: {
+      notificationRecord: {
+        select: {
+          notificationType: true,
+          subjectSnapshot: true,
+          case: { select: { caseNumber: true, employeeDisplayName: true } },
+        },
+      },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    generatedAt: r.createdAt,
+    submittedAt: r.submittedAt,
+    caseNumber: r.notificationRecord.case.caseNumber,
+    employee: r.notificationRecord.case.employeeDisplayName,
+    notificationType: r.notificationRecord.notificationType,
+    subject: r.subjectSnapshot || r.notificationRecord.subjectSnapshot || '',
+    // "Intended" is what routing decided. Before a send attempt the queue row
+    // still carries that intent, so fall back to it rather than show blank.
+    intendedToMask: r.intendedToMask ?? r.destinationMask,
+    intendedCcMasks: r.intendedCcMasks,
+    intendedBccMasks: r.intendedBccMasks,
+    actualToMask: r.actualToMask,
+    status: r.status,
+    deliveryStatus: r.deliveryStatus,
+    wasTestMode: r.wasTestMode,
+    attempts: r.attempts,
+    errorCode: r.lastErrorCode,
+    errorDetail: r.lastErrorDetail,
+  }));
+}
+
 export async function listOutbox(actor: Actor, filter: { status?: string } = {}) {
   if (!can(actor, 'outbox.view')) throw ServiceError.forbidden();
   return getPrisma().notificationOutbox.findMany({

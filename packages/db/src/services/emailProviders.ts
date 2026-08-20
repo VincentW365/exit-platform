@@ -16,12 +16,25 @@ import { getConfig } from '@exit/config';
 import { normalizeProviderError, ProviderError } from '@exit/domain';
 import { getPrisma } from '../client.ts';
 
+/** A rendered document travelling with the message (DEC-054). */
+export interface OutboundAttachment {
+  fileName: string;
+  mimeType: string;
+  /** Read from object storage and checksum-verified by the caller. */
+  bytes: Buffer;
+}
+
 export interface OutboundMessage {
   outboxId: string;
   subject: string;
   body: string;
   /** Decrypted destination - held in memory only, never logged. */
   destination: string;
+  /** Decrypted copied recipients - same handling as the destination. */
+  cc?: readonly string[];
+  /** Decrypted blind copies - never shown to the other recipients. */
+  bcc?: readonly string[];
+  attachments?: readonly OutboundAttachment[];
   correlationId: string;
 }
 
@@ -63,12 +76,22 @@ class DevCaptureProvider implements EmailProvider {
       where: { id: message.outboxId },
       select: { notificationRecordId: true },
     });
+    const attached = (message.attachments ?? [])
+      .map((a) => `${a.fileName} (${a.bytes.byteLength} bytes)`)
+      .join(', ');
     const capture = await prisma.notificationCapture.create({
       data: {
         recordId: outbox.notificationRecordId,
         subject: message.subject,
         body: message.body,
-        note: `Captured by the DEVELOPMENT mailbox (outbox ${message.outboxId}). NOT an external delivery.`,
+        note: [
+          `Captured by the DEVELOPMENT mailbox (outbox ${message.outboxId}). NOT an external delivery.`,
+          message.cc?.length ? `Copied recipients: ${message.cc.length}.` : null,
+          message.bcc?.length ? `Blind copies: ${message.bcc.length}.` : null,
+          attached ? `Attached: ${attached}.` : null,
+        ]
+          .filter(Boolean)
+          .join(' '),
       },
     });
     return { providerMessageRef: `capture:${capture.id}`, deliveryStatus: 'CAPTURED' };
@@ -81,17 +104,32 @@ export function buildGraphSendRequest(message: {
   body: string;
   destination: string;
   senderMailbox: string;
+  cc?: readonly string[];
+  bcc?: readonly string[];
+  attachments?: readonly OutboundAttachment[];
 }): { url: string; payload: Record<string, unknown> } {
+  const inner: Record<string, unknown> = {
+    subject: message.subject,
+    body: { contentType: 'Text', content: message.body },
+    toRecipients: [{ emailAddress: { address: message.destination } }],
+  };
+  if (message.cc?.length) {
+    inner.ccRecipients = message.cc.map((address) => ({ emailAddress: { address } }));
+  }
+  if (message.bcc?.length) {
+    inner.bccRecipients = message.bcc.map((address) => ({ emailAddress: { address } }));
+  }
+  if (message.attachments?.length) {
+    inner.attachments = message.attachments.map((a) => ({
+      '@odata.type': '#microsoft.graph.fileAttachment',
+      name: a.fileName,
+      contentType: a.mimeType,
+      contentBytes: a.bytes.toString('base64'),
+    }));
+  }
   return {
     url: `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(message.senderMailbox)}/sendMail`,
-    payload: {
-      message: {
-        subject: message.subject,
-        body: { contentType: 'Text', content: message.body },
-        toRecipients: [{ emailAddress: { address: message.destination } }],
-      },
-      saveToSentItems: true,
-    },
+    payload: { message: inner, saveToSentItems: true },
   };
 }
 
@@ -125,10 +163,13 @@ class GraphProvider implements EmailProvider {
     const c = getConfig();
     // Allowed-domain enforcement before any network activity.
     if (c.GRAPH_ALLOWED_DOMAINS) {
-      const domain = message.destination.split('@')[1]?.toLowerCase() ?? '';
       const allowed = c.GRAPH_ALLOWED_DOMAINS.split(',').map((d) => d.trim().toLowerCase());
-      if (!allowed.includes(domain)) {
-        throw new ProviderError('RECIPIENT_REJECTED', 'Recipient domain is not allow-listed.');
+      const everyRecipient = [message.destination, ...(message.cc ?? []), ...(message.bcc ?? [])];
+      for (const address of everyRecipient) {
+        const domain = address.split('@')[1]?.toLowerCase() ?? '';
+        if (!allowed.includes(domain)) {
+          throw new ProviderError('RECIPIENT_REJECTED', 'Recipient domain is not allow-listed.');
+        }
       }
     }
     // No live Azure application, tenant consent or credential exists in this

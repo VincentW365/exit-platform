@@ -16,7 +16,6 @@ import { activateCase } from '../src/services/workflowService.ts';
 import { runStage3Sweep } from '../src/services/workflowSweepService.ts';
 import { completeAccessTask, completeTask, reassignTask } from '../src/services/taskService.ts';
 import { listCaseAssets, setAssetDisposition } from '../src/services/assetService.ts';
-import { transitionHandover, updateHandover } from '../src/services/handoverService.ts';
 import {
   approveFinalClearance,
   getClearanceView,
@@ -31,8 +30,10 @@ import { activateTemplate, createDraftTemplate } from '../src/services/templateS
 import {
   approveDocument,
   createLetterDraft,
+  refreshDraftFields,
   submitDocument,
 } from '../src/services/documentService.ts';
+import { setEmployeeAddress } from '../src/services/letterDeliveryService.ts';
 import {
   completeActionForm,
   createActionForm,
@@ -219,6 +220,12 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
     });
 
     const doc = await createLetterDraft(officer.actor, caseId);
+    // The acceptance letter is addressed, so HR records the address from the
+    // resignation scan before it can be submitted (DEC-054).
+    await setEmployeeAddress(officer.actor, caseId, {
+      employeeAddress: '12 Synthetic Avenue, Kingston 5',
+    });
+    await refreshDraftFields(officer.actor, doc.id);
     await submitDocument(officer.actor, doc.id);
     await approveDocument(manager.actor, doc.id);
 
@@ -233,12 +240,6 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
     // Directive 6.3 F (AC invariant 1): the assigned HR Officer completes the
     // form - no manager approval exists.
     await completeActionForm(officer.actor, form.id);
-
-    await updateHandover(lineMgr.actor, caseId, {
-      dutiesToReassign: 'Open sales orders and till reconciliation.',
-      replacementOwner: 'Branch supervisor (interim).',
-    });
-    await transitionHandover(lineMgr.actor, caseId, 'complete');
 
     await completeAllRequired(caseId, officer);
     await finishCase(caseId);
@@ -263,6 +264,10 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
     });
 
     const doc = await createLetterDraft(officer.actor, caseId);
+    await setEmployeeAddress(officer.actor, caseId, {
+      employeeAddress: '12 Synthetic Avenue, Kingston 5',
+    });
+    await refreshDraftFields(officer.actor, doc.id);
     await submitDocument(officer.actor, doc.id);
     await approveDocument(manager.actor, doc.id);
 
@@ -276,12 +281,6 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
     // Directive 6.3 F (AC invariant 1): the assigned HR Officer completes the
     // form - no manager approval exists.
     await completeActionForm(officer.actor, form.id);
-
-    await updateHandover(lineMgr.actor, caseId, {
-      dutiesToReassign: 'Warehouse receiving duties reconstructed from records.',
-      replacementOwner: 'Warehouse shift lead (interim).',
-    });
-    await transitionHandover(lineMgr.actor, caseId, 'complete');
 
     await completeAllRequired(caseId, officer);
     await finishCase(caseId);

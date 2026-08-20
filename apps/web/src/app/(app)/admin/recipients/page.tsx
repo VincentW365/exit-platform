@@ -15,8 +15,11 @@ import {
   upsertRecipientAction,
   verifyRecipientAction,
 } from './actions';
+import { humanize } from '@/lib/text';
+import { EmptyState } from '@/components/EmptyState';
+import { MailIcon } from '@/components/icons';
 
-export const metadata: Metadata = { title: 'Recipient directory' };
+export const metadata: Metadata = { title: 'Recipient Directory' };
 export const dynamic = 'force-dynamic';
 
 export default async function RecipientsPage({
@@ -33,7 +36,7 @@ export default async function RecipientsPage({
     if (e instanceof ServiceError)
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">The recipient directory requires an authorized role.</p>
         </>
       );
@@ -43,7 +46,7 @@ export default async function RecipientsPage({
 
   return (
     <>
-      <h1>Notification recipient directory</h1>
+      <h1>Notification Recipient Directory</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
         Recipients are maintained by HR; external providers are configuration, never hard-coded.
@@ -52,7 +55,16 @@ export default async function RecipientsPage({
         HR Manager approval; no real address is ever seeded.
       </p>
 
-      {recipients.length === 0 ? <p className="panel">No recipients configured.</p> : null}
+      {recipients.length === 0 ? (
+        <div className="panel">
+          <EmptyState
+            icon={<MailIcon />}
+            tone="attention"
+            title="No recipients configured"
+            body="Automated notifications cannot be sent until a recipient exists for each purpose. Add one below."
+          />
+        </div>
+      ) : null}
       {recipients.map((r) => (
         <section className="panel" key={r.id} aria-label={`${r.recipientClass} recipient`}>
           <h2 style={{ marginTop: 0, fontSize: '1.05rem' }}>
@@ -82,7 +94,7 @@ export default async function RecipientsPage({
           <p className="hint">
             Destination (masked): <code>{r.destinationMask}</code> - environment {r.environment} -
             allowed types: {r.allowedTypes.join(', ')}
-            {r.purpose ? ` - purpose: ${r.purpose}` : ''}
+            {r.purpose ? ` - purpose: ${humanize(r.purpose)}` : ''}
             {r.organizationName ? ` - organization: ${r.organizationName}` : ''}
             {r.contactName ? ` - contact: ${r.contactName}` : ''}
             {r.verifiedAt ? ` - verified ${formatInstant(r.verifiedAt)}` : ''}
@@ -105,7 +117,7 @@ export default async function RecipientsPage({
               <summary>Suspend</summary>
               <form action={suspendRecipientAction}>
                 <input type="hidden" name="id" value={r.id} />
-                <label htmlFor={`sus-${r.id}`}>Reason (required, audited)</label>
+                <label htmlFor={`sus-${r.id}`}>Reason (Required, Audited)</label>
                 <input id={`sus-${r.id}`} name="reason" required maxLength={500} />
                 <button type="submit">Suspend recipient</button>
               </form>
@@ -118,7 +130,7 @@ export default async function RecipientsPage({
         <details className="action">
           <summary>Add or update a recipient configuration</summary>
           <form action={upsertRecipientAction}>
-            <label htmlFor="r-class">Recipient class</label>
+            <label htmlFor="r-class">Recipient Class</label>
             <select id="r-class" name="recipientClass" required>
               {RECIPIENT_CLASSES.map((c) => (
                 <option key={c} value={c}>
@@ -126,9 +138,9 @@ export default async function RecipientsPage({
                 </option>
               ))}
             </select>
-            <label htmlFor="r-name">Display name</label>
+            <label htmlFor="r-name">Display Name</label>
             <input id="r-name" name="displayName" required maxLength={200} />
-            <label htmlFor="r-purpose">Provider purpose (external providers)</label>
+            <label htmlFor="r-purpose">Provider Purpose (External Providers)</label>
             <select id="r-purpose" name="purpose" defaultValue="">
               <option value="">(none)</option>
               {PROVIDER_PURPOSES.map((p) => (
@@ -137,23 +149,23 @@ export default async function RecipientsPage({
                 </option>
               ))}
             </select>
-            <label htmlFor="r-org">Organization name</label>
+            <label htmlFor="r-org">Organization Name</label>
             <input id="r-org" name="organizationName" maxLength={200} />
-            <label htmlFor="r-contact">Contact name</label>
+            <label htmlFor="r-contact">Contact Name</label>
             <input id="r-contact" name="contactName" maxLength={200} />
             <label htmlFor="r-dest">
-              Destination (development: capture://name or name@example.invalid ONLY)
+              Destination (Development: Capture://name or Name@example.invalid ONLY)
             </label>
             <input id="r-dest" name="destination" required maxLength={320} />
             <fieldset>
-              <legend>Allowed notification types</legend>
+              <legend>Allowed Notification Types</legend>
               {NOTIFICATION_TYPES.map((t) => (
                 <label key={t} style={{ display: 'block' }}>
                   <input type="checkbox" name="allowedTypes" value={t} /> {t}
                 </label>
               ))}
             </fieldset>
-            <label htmlFor="r-reason">Change reason (required, audited)</label>
+            <label htmlFor="r-reason">Change Reason (Required, Audited)</label>
             <input id="r-reason" name="changeReason" required maxLength={500} />
             <button type="submit">Save recipient (resets approval + verification)</button>
           </form>

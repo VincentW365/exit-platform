@@ -22,6 +22,11 @@
  *               demo cases - clean schema, dev accounts, templates, workflows
  *               and reference data only. This is the "start fresh" state.
  *
+ * Flag: `--synthetic` (with `uat` or `fresh`) skips the live BambooHR
+ * reconnect and leaves the fixture directory in place. Use it before running
+ * the automated end-to-end suite, which searches for fixture employees by
+ * first name and cannot tell them apart from real colleagues.
+ *
  * Safety: refuses to run when NODE_ENV=production, when ALLOW_DEV_LOGIN is
  * not "true", or when the database host is not local. Destructive modes
  * require an explicit --yes. The append-only audit protections are never
@@ -167,10 +172,80 @@ async function rebuild(withUatDataset: boolean, migrateUrl: URL, devDbName: stri
     console.log('Fresh baseline ready: accounts, templates, workflows and reference data');
     console.log('only - zero cases. This is the production-readiness starting state.');
   }
+
+  // 5. Owner request (2026-08-16): the app should always carry the real
+  //    organization data. When the read-only BambooHR credential is
+  //    configured locally, a rebuild reconnects live mode, runs the initial
+  //    sync and leaves the scheduled sync on (worker refreshes it on the
+  //    configured interval). Without a credential this is skipped and the
+  //    synthetic fixture directory applies.
+  //    `--synthetic` opts out: the automated end-to-end suite searches for
+  //    fixture employees by first name, and 374 real colleagues would shadow
+  //    them, so verification runs rebuild without the live connection.
+  const synthetic = process.argv.includes('--synthetic');
+  if (synthetic) {
+    console.log('');
+    console.log('--synthetic: the live directory was NOT reconnected (fixture employees only).');
+    // The app should always HAVE a directory, live or synthetic: manager
+    // routing and the departure notice both read it. Without this sync the
+    // cache holds only employees a case happened to touch.
+    try {
+      const db = await import('../packages/db/src/index.ts');
+      const admin = await db.getPrisma().user.findFirst({
+        where: {
+          roleAssignments: { some: { role: 'SYSTEM_ADMIN', revokedAt: null } },
+          isActive: true,
+        },
+      });
+      if (admin) {
+        const sync = await db.syncEmployees({
+          userId: admin.id,
+          roles: ['SYSTEM_ADMIN'] as never,
+        });
+        console.log(
+          `Synthetic directory loaded: ${sync.created} created, ${sync.updated} updated.`,
+        );
+      }
+    } catch (e) {
+      console.log(
+        `WARNING: synthetic directory sync failed (${e instanceof Error ? e.message : 'unknown'}).`,
+      );
+    }
+  } else if (process.env.BAMBOOHR_API_KEY && process.env.BAMBOOHR_SUBDOMAIN) {
+    console.log('');
+    console.log('Reconnecting the live BambooHR directory...');
+    try {
+      const db = await import('../packages/db/src/index.ts');
+      const admin = await db.getPrisma().user.findFirst({
+        where: {
+          roleAssignments: { some: { role: 'SYSTEM_ADMIN', revokedAt: null } },
+          isActive: true,
+        },
+      });
+      if (!admin) throw new Error('no active SYSTEM_ADMIN account exists after seeding');
+      const actor = { userId: admin.id, roles: ['SYSTEM_ADMIN'] as never };
+      const reason = 'Environment rebuild: the live directory stays connected (owner request).';
+      await db.setSystemConfig(actor, 'bamboohr.mode', 'live', reason);
+      await db.setSystemConfig(actor, 'bamboohr.scheduledSync', true, reason);
+      const sync = await db.syncEmployees(actor);
+      console.log(
+        `Live directory connected: ${sync.created} created, ${sync.updated} updated ` +
+          '(read-only; case snapshots are never written).',
+      );
+    } catch (e) {
+      console.log(
+        `WARNING: live directory reconnect failed (${e instanceof Error ? e.message : 'unknown'}).`,
+      );
+      console.log('Live mode + scheduled sync remain configured; the worker retries, or run a');
+      console.log('sync manually from Administration > System.');
+    }
+  } else {
+    console.log('');
+    console.log('No BambooHR credential in .env.local - synthetic fixture directory applies.');
+  }
+
   console.log('');
   console.log('NOTE: restart the dev server and worker so they reconnect cleanly.');
-  console.log('Live directory data does not survive a rebuild. To use realistic data');
-  console.log('again, re-enable live mode and sync from Administration > System.');
 }
 
 async function main(): Promise<void> {

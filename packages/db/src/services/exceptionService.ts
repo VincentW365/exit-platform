@@ -226,6 +226,31 @@ export async function listCaseExceptions(actor: Actor, caseId: string) {
  * Global exception feed (section N / P). Record-level visibility is embedded
  * in the query: restricted cases never leak through the feed (H.3).
  */
+/**
+ * Which owning departments actually appear in the visible exception feed?
+ * IT/Finance can only appear on legacy (v1) instances now that those teams
+ * act by controlled email, so the filter is built from real data rather than
+ * offering choices that match nothing (owner request, 2026-08-18).
+ */
+export async function exceptionOwnerDepartments(actor: Actor): Promise<string[]> {
+  if (!can(actor, 'exceptions.viewFeed')) throw ServiceError.forbidden();
+  const isHr = hasRole(actor, 'HR_MANAGER', 'HR_OFFICER');
+  if (!isHr) return [];
+  const groups = await getPrisma().caseException.groupBy({
+    by: ['ownerDepartment'],
+    where: {
+      case: {
+        OR: [
+          { classification: 'CONFIDENTIAL' as const },
+          { participants: { some: { userId: actor.userId, removedAt: null } } },
+          { ownerId: actor.userId },
+        ],
+      },
+    },
+  });
+  return groups.map((g) => g.ownerDepartment).filter((d): d is NonNullable<typeof d> => !!d);
+}
+
 export async function listExceptionFeed(
   actor: Actor,
   filter: {

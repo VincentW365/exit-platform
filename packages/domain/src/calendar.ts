@@ -37,6 +37,55 @@ export function isBusinessDay(instant: Date, calendar: BusinessCalendar): boolea
   return !isHoliday(dt, calendar);
 }
 
+/** Close of business when nothing else is configured (company timezone). */
+export const DEFAULT_CLOSE_OF_BUSINESS = '17:00';
+
+/**
+ * The effective separation instant derived from the final working date
+ * (owner request, 2026-08-18): employment ends at close of business on the
+ * last day worked. HR only types an exact time when it genuinely differs -
+ * immediate resignations and terminations, where the instant is a decision
+ * rather than a consequence.
+ *
+ * Returns null for an unparseable time so the caller can fall back to asking
+ * rather than inventing a deadline that drives access removal.
+ */
+export function effectiveSeparationFromFinalDay(
+  finalDay: Date,
+  closeOfBusiness: string = DEFAULT_CLOSE_OF_BUSINESS,
+): Date | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(closeOfBusiness.trim());
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return null;
+  const dt = DateTime.fromJSDate(finalDay, { zone: APP_ZONE }).set({
+    hour,
+    minute,
+    second: 0,
+    millisecond: 0,
+  });
+  return dt.isValid ? dt.toJSDate() : null;
+}
+
+/**
+ * Notice given, in calendar days, from the day the resignation was received
+ * to the confirmed last working day (both taken as dates in the business
+ * timezone; "two weeks' notice" is a calendar concept). DERIVED, never
+ * typed (owner request, 2026-08-17) - and per the standing rule it is only
+ * ever recorded, never used to calculate pay or entitlements.
+ */
+export function noticeDaysProvided(
+  receivedAt: Date,
+  confirmedLastDay: Date | null | undefined,
+): number | null {
+  if (!confirmedLastDay) return null;
+  const received = toZone(receivedAt, APP_ZONE).startOf('day');
+  const lastDay = toZone(confirmedLastDay, APP_ZONE).startOf('day');
+  const days = Math.round(lastDay.diff(received, 'days').days);
+  return days > 0 ? days : 0;
+}
+
 /**
  * The end (23:59:59.999 local) of the Nth business day AFTER the anchor
  * instant, as a UTC instant. n=1 means "end of the next business day".
@@ -130,9 +179,32 @@ export function formatDateOnly(instant: Date, zone: string = APP_ZONE): string {
   return DateTime.fromJSDate(instant, { zone }).toFormat('d LLL yyyy');
 }
 
+/** `yyyy-MM-dd` for an `<input type="date">`, read in the app zone. */
+export function formatDateInput(instant: Date, zone: string = APP_ZONE): string {
+  return DateTime.fromJSDate(instant, { zone }).toFormat('yyyy-MM-dd');
+}
+
 /** Days (calendar) until an instant, in the app zone; negative when past. */
 export function daysUntil(instant: Date, now: Date, zone: string = APP_ZONE): number {
   const a = DateTime.fromJSDate(now, { zone }).startOf('day');
   const b = DateTime.fromJSDate(instant, { zone }).startOf('day');
   return Math.round(b.diff(a, 'days').days);
+}
+
+/**
+ * Parse a form-supplied instant in the company timezone.
+ *
+ * `<input type="date">` submits `2026-08-28` and `new Date('2026-08-28')`
+ * reads that as midnight UTC, which is 7pm the PREVIOUS day in Jamaica - so a
+ * final working date entered as the 28th was stored and displayed as the 27th,
+ * and every date derived from it (effective separation, due dates, letter
+ * text) inherited the error. `<input type="datetime-local">` has the mirror
+ * problem: without a zone it depends on wherever the server happens to run.
+ *
+ * Both are read here as company-zone wall-clock time. A value that carries its
+ * own offset or `Z` keeps the instant it already names.
+ */
+export function parseInstantInZone(value: string, zone: string = APP_ZONE): Date | null {
+  const dt = DateTime.fromISO(value.trim(), { zone });
+  return dt.isValid ? dt.toJSDate() : null;
 }

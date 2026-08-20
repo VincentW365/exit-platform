@@ -4,8 +4,9 @@ import { ServiceError, listWorkflowDefinitions } from '@exit/db';
 import { formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
+import { humanize } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'Workflow definitions' };
+export const metadata: Metadata = { title: 'Workflow Definitions' };
 export const dynamic = 'force-dynamic';
 
 const BADGE: Record<string, string> = {
@@ -30,7 +31,7 @@ export default async function WorkflowDefinitionsPage({
     if (e instanceof ServiceError && e.code === 'FORBIDDEN')
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">Workflow definitions require an HR role.</p>
         </>
       );
@@ -39,7 +40,7 @@ export default async function WorkflowDefinitionsPage({
 
   return (
     <>
-      <h1>Workflow definitions</h1>
+      <h1>Workflow Definitions</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint">
         Versioned and deterministic: exactly one ACTIVE version per workflow type; active versions
@@ -68,7 +69,9 @@ export default async function WorkflowDefinitionsPage({
                 </td>
                 <td>v{d.version}</td>
                 <td>
-                  <span className={`badge ${BADGE[d.status] ?? 'badge--neutral'}`}>{d.status}</span>
+                  <span className={`badge ${BADGE[d.status] ?? 'badge--neutral'}`}>
+                    {humanize(d.status)}
+                  </span>
                 </td>
                 <td>
                   <code>{d.configChecksum.slice(0, 12)}...</code>

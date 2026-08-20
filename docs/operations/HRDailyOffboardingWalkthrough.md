@@ -12,7 +12,7 @@ the day-to-day work) and the **HR Manager** (assigns the officer, approves
 letters and outside-company notifications where review is configured, and
 gives final clearance). IT and Finance do not sign in - they receive
 controlled emails and confirm through secure links. The employee's manager
-signs in only for the handover.
+no longer signs in at all.
 
 ## Step 1 - Select the employee from the directory
 
@@ -53,7 +53,7 @@ sits below it; completed items are collapsed.
 
 ## Step 6 - Confirm benefits once
 
-Under **Benefits & providers**, answer three questions once: group health
+Under **Benefits and providers**, answer three questions once: group health
 (YES / NO / UNKNOWN), group life (YES / NO / UNKNOWN), any other provider
 (YES / NO). YES prepares the provider notification automatically; NO records
 the decision and nothing is created; UNKNOWN keeps the item on your
@@ -99,11 +99,17 @@ receives each kind of notification; if no recipient is on file yet, the
 platform asks you: enter one for this case only, or save an approved
 recipient for future cases.
 
-## Step 11 - The manager completes the handover
+## Step 11 - The manager is told, and that is all
 
-The employee's manager receives the handover notice, signs in and completes
-the handover plan for their direct report - that is the manager's entire
-involvement. No form approvals.
+At activation the platform emails the employee's own line manager: who is
+leaving, the final working date, when employment ends, and what is expected of
+them (reassign open work, arrange any knowledge transfer, make sure company
+property comes back, tell HR anything that moves the date).
+
+The manager has no login, no queue and no task here. Handover happens in their
+team, not in this system, and the platform records none of it (DEC-051,
+DEC-052). If the directory holds no work email for the manager, the case
+raises a Recipient required exception so HR can fix it.
 
 ## Step 12 - Assets come from the issued list
 

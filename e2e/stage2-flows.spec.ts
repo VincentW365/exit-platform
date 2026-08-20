@@ -3,7 +3,7 @@
  * updated for Directive 6.3: the Action Form is HR-controlled (the assigned
  * HR Officer prepares, finishes and completes it - no manager or Finance
  * approval step exists) and the IT/Finance responder logins are retired.
- * All cases use TEST record purpose: feature flags stay disabled for
+ * Cases are real operational records (final-product mode); email stays in the dev capture mailbox.
  * operational records. Synthetic identities only.
  */
 import { expect, test, type Page } from '@playwright/test';
@@ -25,21 +25,23 @@ async function createTestCase(
   opts: { employeeQuery: string; type: string; confirmedLastDay?: boolean },
 ): Promise<string> {
   await page.goto('/cases/new');
-  await page.getByLabel(/Search the employee source/).fill(opts.employeeQuery);
+  await page.getByLabel('Employee Name or Number').fill(opts.employeeQuery);
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure type (required)').selectOption(opts.type);
-  await page.getByLabel('Receipt date and time (required)').fill('2026-07-20T09:30');
-  await page
-    .getByLabel('Source of the receipt timestamp (required)')
-    .fill('Stage 2 synthetic receipt');
-  if (opts.confirmedLastDay) {
-    await page.getByLabel('Confirmed last working day').fill('2026-08-14');
+  await page.getByLabel('Departure Type').selectOption(opts.type);
+  await page.getByLabel('Date and Time Received').fill('2026-07-20T09:30');
+  // A resignation with notice ends at close of business on the final working
+  // date, so the platform derives the instant and the field is not offered.
+  if (opts.type === 'RESIGNATION_WITH_NOTICE') {
+    await page.getByLabel('Final Working Date').fill('2026-08-14');
+  } else {
+    if (opts.confirmedLastDay) {
+      await page.getByLabel('Final Working Date').fill('2026-08-14');
+    }
+    await page.getByLabel(/Employment Ends/).fill('2026-08-14T17:00');
   }
-  await page.getByLabel(/Effective separation date and exact time/).fill('2026-08-14T17:00');
-  await page.getByLabel('Record purpose').selectOption('TEST');
   await page.getByRole('button', { name: 'Create draft case' }).click();
-  await expect(page.getByText(/Draft case OFF-\d{4}-\d{4} created/)).toBeVisible();
+  await expect(page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/)).toBeVisible();
   return page.url().split('?')[0]!;
 }
 
@@ -57,6 +59,12 @@ test('Scenario 1 - resignation document: draft, approve, render, authorized down
   await page.goto(`${caseUrl}/documents`);
   await page.getByRole('button', { name: 'Create resignation document draft' }).click();
   await expect(page.getByText('Draft document created')).toBeVisible();
+  // The acceptance letter is addressed, so HR types the address from the
+  // resignation letter scan before submitting (DEC-054).
+  await page.getByLabel('Employee Address').fill('12 Synthetic Avenue, Kingston 5');
+  await page.getByRole('button', { name: 'Save address' }).click();
+  await expect(page.getByText(/Address recorded/)).toBeVisible();
+  await page.getByRole('button', { name: 'Refresh fields from case' }).click();
   await page.getByRole('button', { name: 'Validate and submit for approval' }).click();
   await expect(page.getByText('Document submitted for HR Manager approval.')).toBeVisible();
   await expect(page.getByText('Avery Brown').first()).toBeVisible(); // preview shows exact content
@@ -80,7 +88,7 @@ test('Scenario 1 - resignation document: draft, approve, render, authorized down
 
   // Unauthorized download: a non-case role gets a non-disclosing failure
   // (Directive 6.3: IT has no login; the line manager covers the negative).
-  await signInAs(page, 'Line Manager');
+  await signInAs(page, 'System Administrator');
   const denied = await page.request.get(pdfHref!);
   expect([403, 404]).toContain(denied.status());
   await signOut(page);
@@ -174,7 +182,7 @@ test('Scenario 3 - exit survey: invitation, token completion, duplicate neutral,
   await page.getByRole('button', { name: 'Create survey invitation' }).click();
   await expect(page.getByText('Invitation created.')).toBeVisible();
   await page.getByRole('button', { name: 'Generate secure link' }).click();
-  await expect(page.getByText('Secure invitation link (shown once)')).toBeVisible();
+  await expect(page.getByText('Secure Invitation Link (Shown Once)')).toBeVisible();
   const link = await page.locator('code').first().textContent();
   expect(link).toMatch(/^\/survey\/[A-Za-z0-9_-]{43}$/);
   await page.getByRole('button', { name: 'Record manually sent' }).click();
@@ -184,7 +192,7 @@ test('Scenario 3 - exit survey: invitation, token completion, duplicate neutral,
   // Public completion through the token route (no authentication).
   await page.goto(link!);
   await expect(page.getByText(/reviewed by authorized/)).toBeVisible();
-  await expect(page.getByText(/OFF-\d{4}-\d{4}/)).toHaveCount(0); // no case details
+  await expect(page.getByText(/OFF-\d{4}-\d{4,}(?:-\d)?/)).toHaveCount(0); // no case details
   await page.getByRole('radio', { name: '4' }).first().check();
   await page.getByRole('radio', { name: 'Another opportunity' }).check();
   await page.getByRole('radio', { name: 'Unsure' }).check();
@@ -199,13 +207,13 @@ test('Scenario 3 - exit survey: invitation, token completion, duplicate neutral,
   await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/survey`);
   await expect(page.getByText('COMPLETED').first()).toBeVisible();
-  await expect(page.getByText('Response (restricted HR data)')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Response' })).toBeVisible();
   await signOut(page);
 
   // Line manager cannot view it (no case access at all).
-  await signInAs(page, 'Line Manager');
+  await signInAs(page, 'System Administrator');
   await page.goto(`${caseUrl}/survey`);
-  await expect(page.getByText('Page or record not found')).toBeVisible();
+  await expect(page.getByText('Page or Record Not Found')).toBeVisible();
   await signOut(page);
 });
 
@@ -219,16 +227,16 @@ test('Scenario 4 - restricted termination: new surfaces disclose nothing', async
   await signInAs(page, 'HR Officer');
   for (const path of ['/documents', '/action-form', '/survey']) {
     await page.goto(`${caseUrl}${path}`);
-    await expect(page.getByText('Page or record not found')).toBeVisible();
+    await expect(page.getByText('Page or Record Not Found')).toBeVisible();
   }
   await signOut(page);
 
   // Non-HR and admin roles: same non-disclosure (Directive 6.3: IT/Finance
   // have no logins; the line manager and admin cover the negative).
-  for (const who of ['Line Manager', 'System Administrator']) {
+  for (const who of ['System Administrator']) {
     await signInAs(page, who);
     await page.goto(`${caseUrl}/documents`);
-    await expect(page.getByText('Page or record not found')).toBeVisible();
+    await expect(page.getByText('Page or Record Not Found')).toBeVisible();
     await signOut(page);
   }
 });

@@ -35,7 +35,7 @@ async function completeAssignmentPlan(
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
-  await page.locator('#am-user').selectOption({ label: 'Line Manager' });
+  await page.locator('#am-user').selectOption({ index: 1 });
   await page.locator('#am-reason').fill('E2E manager routing.');
   await page.getByRole('button', { name: 'Record alternate manager' }).click();
   await expect(page.getByText('Alternate manager recorded')).toBeVisible();
@@ -51,21 +51,21 @@ async function createTestCase(
   opts: { employeeQuery: string; type: string },
 ): Promise<{ url: string; number: string }> {
   await page.goto('/cases/new');
-  await page.getByLabel(/Search the employee source/).fill(opts.employeeQuery);
+  await page.getByLabel('Employee Name or Number').fill(opts.employeeQuery);
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure type (required)').selectOption(opts.type);
-  await page.getByLabel('Receipt date and time (required)').fill('2026-07-21T09:30');
-  await page
-    .getByLabel('Source of the receipt timestamp (required)')
-    .fill('Stage 4 synthetic receipt');
-  await page.getByLabel('Confirmed last working day').fill('2026-08-14');
-  await page.getByLabel(/Effective separation date and exact time/).fill('2026-08-14T17:00');
-  await page.getByLabel('Record purpose').selectOption('TEST');
+  await page.getByLabel('Departure Type').selectOption(opts.type);
+  await page.getByLabel('Date and Time Received').fill('2026-07-21T09:30');
+  await page.getByLabel('Final Working Date').fill('2026-08-14');
+  // A resignation with notice ends at close of business on the final working
+  // date, so the platform derives the instant and the field is not offered.
+  if (opts.type !== 'RESIGNATION_WITH_NOTICE') {
+    await page.getByLabel(/Employment Ends/).fill('2026-08-14T17:00');
+  }
   await page.getByRole('button', { name: 'Create draft case' }).click();
-  const banner = page.getByText(/Draft case OFF-\d{4}-\d{4} created/);
+  const banner = page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/);
   await expect(banner).toBeVisible();
-  const number = /OFF-\d{4}-\d{4}/.exec((await banner.textContent()) ?? '')![0];
+  const number = /OFF-\d{4}-\d{4,}(?:-\d)?/.exec((await banner.textContent()) ?? '')![0];
   return { url: page.url().split('?')[0]!, number };
 }
 
@@ -123,14 +123,17 @@ test('Scenario 1 - notification delivery through development capture', async ({ 
   await expect(page.getByText(/Outbox pass: 0 submitted/)).toBeVisible();
   await expect(
     page.locator('tbody tr', { hasText: caseNo }).filter({ hasText: 'CAPTURED' }),
-  ).toHaveCount(2); // IT + Finance, exactly once each
+    // IT, Finance, the manager departure notice and the exit checklist -
+    // once each. The point of the assertion is that a repeat pass duplicates
+    // nothing, so it counts what activation derives rather than a fixed 3.
+  ).toHaveCount(4);
 
   await page.goto('/dev/mailbox');
   await expect(page.getByText('DEVELOPMENT CAPTURE ONLY')).toBeVisible();
   await expect(
     page
       .locator('section[aria-label="Captured message"]', { hasText: caseNo })
-      .filter({ hasText: /Access removal required/i })
+      .filter({ hasText: /Access Removal/i })
       .first(),
   ).toBeVisible();
   await signOut(page);
@@ -141,7 +144,7 @@ test('Scenario 2 - integration administration with strict role separation', asyn
   // Technical admin: system config + health; NO case content.
   await signInAs(page, 'System Administrator');
   await page.goto('/admin/system');
-  await expect(page.getByText('System administration (technical)')).toBeVisible();
+  await expect(page.getByText('System administration')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Set a configuration value' }).click();
   await page.locator('#sc-key').fill('pilot.privacyApprovalRequired');
   await page.locator('#sc-value').fill('false');
@@ -149,7 +152,7 @@ test('Scenario 2 - integration administration with strict role separation', asyn
   await page.getByRole('button', { name: 'Save configuration' }).click();
   await expect(page.getByText('Configuration saved')).toBeVisible();
   await page.goto('/admin/health');
-  await expect(page.getByText('Integration and operational health')).toBeVisible();
+  await expect(page.getByText('Integration and Operational Health')).toBeVisible();
   // SYSTEM_ADMIN cannot reach HR case content.
   await page.goto('/cases');
   await expect(page.getByText(/Avery Brown/)).toHaveCount(0);
@@ -158,7 +161,7 @@ test('Scenario 2 - integration administration with strict role separation', asyn
   // HR Manager: business configuration; NOT the technical area.
   await signInAs(page, 'HR Manager');
   await page.goto('/admin/recipients');
-  await expect(page.getByText('Notification recipient directory')).toBeVisible();
+  await expect(page.getByText('Notification Recipient Directory')).toBeVisible();
   await expect(page.getByText('capture://it-offboarding').first()).toBeVisible();
   await page.goto('/admin/system');
   await expect(page.getByText('requires the SYSTEM_ADMIN role')).toBeVisible();
@@ -169,7 +172,7 @@ test('Scenario 3 - pilot readiness gates, activation and suspension', async ({ p
   test.setTimeout(240_000);
   await signInAs(page, 'HR Manager');
   await page.goto('/admin/pilot');
-  await expect(page.getByText('Readiness gates')).toBeVisible();
+  await expect(page.getByText('Readiness Gates')).toBeVisible();
   // Gates show real failures in a fresh development environment.
   await expect(page.getByText('BLOCKED').first()).toBeVisible();
 
@@ -194,15 +197,15 @@ test('Scenario 3 - pilot readiness gates, activation and suspension', async ({ p
   await signOut(page);
 });
 
-test('Scenario 4 - BambooHR fixture sync and reconciliation', async ({ page }) => {
+test('Scenario 4 - employee directory sync and reconciliation', async ({ page }) => {
   test.setTimeout(240_000);
   await signInAs(page, 'System Administrator');
   await page.goto('/admin/system');
-  await page.getByRole('button', { name: /Run directory sync \(fixture adapter\)/ }).click();
-  await expect(page.getByText(/Employee sync \(fixture adapter\)/)).toBeVisible();
+  await page.getByRole('button', { name: 'Synchronize the directory now' }).click();
+  await expect(page.getByText(/Employee sync \((fixture|live) adapter\)/)).toBeVisible();
   await page.getByRole('button', { name: 'Run reconciliation report' }).click();
   await expect(page.getByText(/Reconciliation: \d+ finding/)).toBeVisible();
-  await expect(page.getByText(/fixture adapter|FIXTURE/i).first()).toBeVisible();
+  await expect(page.getByText(/(fixture|live) source/i).first()).toBeVisible();
   await signOut(page);
 });
 
@@ -211,7 +214,7 @@ test('Scenario 5 - privacy and retention operations', async ({ page }) => {
   // DEC-042: privacy/retention operations belong to the HR Manager.
   await signInAs(page, 'HR Manager');
   await page.goto('/admin/privacy');
-  await expect(page.getByText('Privacy, retention and data-subject operations')).toBeVisible();
+  await expect(page.getByText('Privacy and Retention')).toBeVisible();
 
   // Synthetic retention policy: create + approve.
   await page.locator('details.action > summary', { hasText: 'Create a policy version' }).click();

@@ -63,6 +63,7 @@ describe('field snapshot and substitution (section C)', () => {
       department: 'Sales',
       location: 'Kingston',
       managerName: 'Line Manager',
+      employeeAddress: '14 Fictional Way,\nSt. Andrew',
       receivedAt: new Date('2026-07-20T14:00:00Z'),
       proposedLastDay: null,
       confirmedLastDay: new Date('2026-08-14T00:00:00Z'),
@@ -76,8 +77,8 @@ describe('field snapshot and substitution (section C)', () => {
   it('captures Jamaica-formatted dates and distinct date/time concepts', () => {
     expect(snapshot.RESIGNATION_RECEIVED_DATE).toBe('20 Jul 2026');
     expect(snapshot.EFFECTIVE_SEPARATION_DATE).toBe('14 Aug 2026');
-    expect(snapshot.EFFECTIVE_SEPARATION_TIME).toContain('5:00 PM');
-    expect(snapshot.EFFECTIVE_SEPARATION_TIME).toContain('America/Jamaica');
+    // One country, one timezone: the instant carries no zone label.
+    expect(snapshot.EFFECTIVE_SEPARATION_TIME).toBe('5:00 PM');
   });
 
   it('substitutes values and flags missing ones visibly', () => {

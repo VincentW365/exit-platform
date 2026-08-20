@@ -138,9 +138,7 @@ async function main(): Promise<void> {
       receiptSource: NOTE,
       recordPurpose: 'TEST',
       measurementCohort: null,
-      ...(departureType === 'RESIGNATION_WITH_NOTICE'
-        ? { proposedLastDay: inDays(12), confirmedLastDay: inDays(12), noticeProvidedDays: 14 }
-        : {}),
+      ...(departureType === 'RESIGNATION_WITH_NOTICE' ? { confirmedLastDay: inDays(12) } : {}),
       effectiveSeparationAt: departureType === 'IMMEDIATE_RESIGNATION' ? inDays(1) : inDays(12),
     });
     console.log(`${label}: ${created.caseNumber} (${departureType}, TEST)`);

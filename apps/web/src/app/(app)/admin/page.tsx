@@ -1,12 +1,14 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { ROLES, can, formatInstant } from '@exit/domain';
+import { getConfig } from '@exit/config';
 import {
   listActiveUsers,
   listCalendars,
   listConfigItems,
   listFlags,
   listIntegrations,
+  liveDirectoryPresence,
 } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
@@ -19,6 +21,7 @@ import {
   revokeRoleAction,
   setFlagAction,
 } from './actions';
+import { humanize, roleLabel, roleList } from '@/lib/text';
 
 export const metadata: Metadata = { title: 'Administration' };
 export const dynamic = 'force-dynamic';
@@ -34,38 +37,66 @@ export default async function AdminPage({
   if (!isSysAdmin && !isHrConfig) redirect('/unauthorized');
   const sp = await searchParams;
 
-  const [users, flags, integrations] = await Promise.all([
+  const [users, flags, integrations, liveDirectory] = await Promise.all([
     isSysAdmin ? listActiveUsers() : Promise.resolve([]),
     listFlags(actor).catch(() => []),
     listIntegrations(),
+    liveDirectoryPresence().catch(() => ({ present: false, records: 0 })),
   ]);
   const calendars = isHrConfig ? await listCalendars(actor) : [];
   const departments = isHrConfig ? await listConfigItems('DEPARTMENT') : [];
   const locations = isHrConfig ? await listConfigItems('LOCATION') : [];
 
+  // The seeded placeholder rows describe the original Stage 1 posture, which
+  // is no longer true for every adapter: the BambooHR directory is a real
+  // read-only connection once staff records are synchronized, and email always
+  // runs through whichever provider EMAIL_MODE selects. Report what is in
+  // force rather than a stale record (owner request, 2026-08-18). The
+  // directory verdict uses the same signal as the live-data banner - cached
+  // BambooHR records - so the two surfaces can never disagree.
+  const cfg = getConfig();
+  const runtimeAdapter: Record<string, { mode: string; configured: boolean; notes: string }> = {
+    BAMBOOHR: {
+      mode: liveDirectory.present ? 'live (read-only)' : 'synthetic',
+      configured: liveDirectory.present,
+      notes: liveDirectory.present
+        ? `${liveDirectory.records} employee records synchronized from the company directory. Read-only: this application never writes to BambooHR.`
+        : 'No directory records synchronized yet; the synthetic source is in use.',
+    },
+    EMAIL: {
+      mode: cfg.EMAIL_MODE,
+      configured: cfg.EMAIL_MODE !== 'disabled',
+      notes:
+        cfg.EMAIL_MODE === 'graph'
+          ? 'Live mail provider.'
+          : 'Messages are captured in this environment; nothing leaves the network.',
+    },
+  };
+
   const hubLinks: Array<{ href: string; label: string; kind: 'business' | 'technical' }> = [
-    { href: '/admin/organization', label: 'Organization and assignment mapping', kind: 'business' },
-    { href: '/admin/workflows', label: 'Workflow definitions', kind: 'business' },
-    { href: '/admin/templates', label: 'Document templates', kind: 'business' },
-    { href: '/baseline', label: 'Baseline dashboard', kind: 'business' },
-    { href: '/admin/reasons', label: 'Reason taxonomy', kind: 'business' },
-    { href: '/admin/recipients', label: 'Recipient directory', kind: 'business' },
-    { href: '/admin/notification-templates', label: 'Notification templates', kind: 'business' },
-    { href: '/reports', label: 'Reporting centre', kind: 'business' },
-    { href: '/admin/pilot', label: 'Pilot readiness and activation', kind: 'business' },
-    { href: '/admin/privacy', label: 'Privacy and retention', kind: 'business' },
-    { href: '/continuity', label: 'Business continuity', kind: 'business' },
-    { href: '/admin/system', label: 'System configuration and identity', kind: 'technical' },
-    { href: '/admin/health', label: 'Integration health', kind: 'technical' },
-    // Rendered with the '(technical)' suffix below: "Email delivery status (technical)".
-    { href: '/admin/outbox', label: 'Email delivery status', kind: 'technical' },
-    { href: '/dev/mailbox', label: 'Development mailbox', kind: 'technical' },
-    { href: '/support', label: 'Support and incidents', kind: 'technical' },
+    { href: '/admin/organization', label: 'Organization and Assignment Mapping', kind: 'business' },
+    { href: '/admin/workflows', label: 'Workflow Definitions', kind: 'business' },
+    { href: '/admin/templates', label: 'Document Templates', kind: 'business' },
+    { href: '/baseline', label: 'Baseline Dashboard', kind: 'business' },
+    { href: '/admin/reasons', label: 'Reason Taxonomy', kind: 'business' },
+    { href: '/admin/recipients', label: 'Recipient Directory', kind: 'business' },
+    { href: '/admin/notification-templates', label: 'Notification Templates', kind: 'business' },
+    { href: '/reports', label: 'Reporting Center', kind: 'business' },
+    { href: '/admin/pilot', label: 'Pilot Readiness and Activation', kind: 'business' },
+    { href: '/admin/privacy', label: 'Privacy and Retention', kind: 'business' },
+    { href: '/continuity', label: 'Business Continuity', kind: 'business' },
+    { href: '/admin/system', label: 'System Configuration and Identity', kind: 'technical' },
+    { href: '/admin/health', label: 'Integration Health', kind: 'technical' },
+    { href: '/admin/email-routing', label: 'Email Routing', kind: 'business' },
+    { href: '/admin/email-log', label: 'Email Log', kind: 'technical' },
+    { href: '/admin/outbox', label: 'Email Delivery Status', kind: 'technical' },
+    { href: '/dev/mailbox', label: 'Captured Email', kind: 'technical' },
+    { href: '/support', label: 'Support and Incidents', kind: 'technical' },
   ];
 
   return (
     <>
-      <h1>Administration centre</h1>
+      <h1>Administration Center</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint">
         Technical administration and HR business configuration are separated by role; system
@@ -74,22 +105,36 @@ export default async function AdminPage({
 
       <section className="panel" aria-labelledby="hub-h">
         <h2 id="hub-h" style={{ marginTop: 0 }}>
-          Administration areas
+          Administration Areas
         </h2>
+        {/* Two labelled groups instead of a "(technical)" suffix repeated on
+            every second button (owner request, 2026-08-18). */}
+        <h3>HR Configuration</h3>
         <div className="actions-row">
-          {hubLinks.map((l) => (
-            <a key={l.href} className="button secondary" href={l.href}>
-              {l.label}
-              {l.kind === 'technical' ? ' (technical)' : ''}
-            </a>
-          ))}
+          {hubLinks
+            .filter((l) => l.kind === 'business')
+            .map((l) => (
+              <a key={l.href} className="button secondary" href={l.href}>
+                {l.label}
+              </a>
+            ))}
+        </div>
+        <h3>Technical Administration</h3>
+        <div className="actions-row">
+          {hubLinks
+            .filter((l) => l.kind === 'technical')
+            .map((l) => (
+              <a key={l.href} className="button secondary" href={l.href}>
+                {l.label}
+              </a>
+            ))}
         </div>
       </section>
 
       {isSysAdmin ? (
         <section className="panel" aria-labelledby="roles-h">
           <h2 id="roles-h" style={{ marginTop: 0 }}>
-            Users and roles (SYSTEM_ADMIN)
+            Users and Roles
           </h2>
           <div className="table-wrap" tabIndex={0}>
             <table className="data">
@@ -108,7 +153,7 @@ export default async function AdminPage({
                     <td>
                       {u.displayName} <span className="hint">{u.workEmail}</span>
                     </td>
-                    <td>{u.roles.join(', ') || '-'}</td>
+                    <td>{roleList(u.roles, '-')}</td>
                   </tr>
                 ))}
               </tbody>
@@ -139,20 +184,20 @@ export default async function AdminPage({
                     </option>
                     {ROLES.map((r) => (
                       <option key={r} value={r}>
-                        {r}
+                        {roleLabel(r)}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="field">
-                  <label htmlFor="g-reason">Reason (required, audited)</label>
+                  <label htmlFor="g-reason">Reason (Required, Audited)</label>
                   <input id="g-reason" name="reason" type="text" required maxLength={200} />
                 </div>
                 <button type="submit">Grant role</button>
               </form>
             </details>
             <details className="action">
-              <summary>Revoke a role</summary>
+              <summary className="summary--danger">Revoke a role</summary>
               <form action={revokeRoleAction} className="stack">
                 <div className="field">
                   <label htmlFor="r-user">User</label>
@@ -175,13 +220,13 @@ export default async function AdminPage({
                     </option>
                     {ROLES.map((r) => (
                       <option key={r} value={r}>
-                        {r}
+                        {roleLabel(r)}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="field">
-                  <label htmlFor="r-reason">Reason (required, audited)</label>
+                  <label htmlFor="r-reason">Reason (Required, Audited)</label>
                   <input id="r-reason" name="reason" type="text" required maxLength={200} />
                 </div>
                 <button type="submit" className="danger">
@@ -196,7 +241,7 @@ export default async function AdminPage({
       {isSysAdmin ? (
         <section className="panel" aria-labelledby="flags-h">
           <h2 id="flags-h" style={{ marginTop: 0 }}>
-            Feature flags (SYSTEM_ADMIN)
+            Feature Flags
           </h2>
           <p className="hint">
             Improvement automation stays disabled for Stage 1 baseline capture (DEC-007 /
@@ -222,9 +267,9 @@ export default async function AdminPage({
                     </td>
                     <td>
                       {f.enabled ? (
-                        <span className="badge badge--warning">ENABLED</span>
+                        <span className="badge badge--warning">Enabled</span>
                       ) : (
-                        <span className="badge badge--success">disabled (safe)</span>
+                        <span className="badge badge--success">Disabled (safe)</span>
                       )}
                     </td>
                     <td>
@@ -259,12 +304,12 @@ export default async function AdminPage({
       {isHrConfig ? (
         <section className="panel" aria-labelledby="cal-h">
           <h2 id="cal-h" style={{ marginTop: 0 }}>
-            Business calendar (HR Manager)
+            Business Calendar
           </h2>
           <p className="hint">
-            America/Jamaica. Publishing creates a new version and activates it; prior versions are
-            retained (REQ-ADMIN-013). The seeded holidays are synthetic - the production list
-            requires approval under DEC-027.
+            Publishing creates a new version and activates it; prior versions are retained
+            (REQ-ADMIN-013). The seeded holidays are synthetic - the production list requires
+            approval under DEC-027.
           </p>
           {calendars.length ? (
             <ul>
@@ -273,11 +318,11 @@ export default async function AdminPage({
                   <strong>
                     {cal.name} v{cal.version}
                   </strong>{' '}
-                  {cal.isActive ? <span className="badge badge--success">active</span> : null}{' '}
+                  {cal.isActive ? <span className="badge badge--success">Active</span> : null}{' '}
                   {cal.approvedAt ? (
                     <span className="badge badge--success">approved</span>
                   ) : (
-                    <span className="badge badge--warning">unapproved</span>
+                    <span className="badge badge--warning">Unapproved</span>
                   )}{' '}
                   - {cal.holidays.length} holidays ({formatInstant(cal.createdAt)})
                   {cal.isActive && !cal.approvedAt ? (
@@ -299,7 +344,7 @@ export default async function AdminPage({
             <form action={previewCalendarAction} className="stack">
               <div className="field">
                 <label htmlFor="cal-preview">
-                  Candidate holidays, one per line: YYYY-MM-DD,Label
+                  Candidate Holidays, One per Line: YYYY-MM-DD,Label
                 </label>
                 <textarea id="cal-preview" name="holidays" rows={4} required />
               </div>
@@ -315,7 +360,7 @@ export default async function AdminPage({
             <summary>Publish a new calendar version</summary>
             <form action={publishCalendarAction} className="stack">
               <div className="field">
-                <label htmlFor="cal-name">Calendar name</label>
+                <label htmlFor="cal-name">Calendar Name</label>
                 <input
                   id="cal-name"
                   name="name"
@@ -325,7 +370,7 @@ export default async function AdminPage({
                 />
               </div>
               <div className="field">
-                <label htmlFor="cal-holidays">Holidays, one per line: YYYY-MM-DD,Label</label>
+                <label htmlFor="cal-holidays">Holidays, One per Line: YYYY-MM-DD,Label</label>
                 <textarea
                   id="cal-holidays"
                   name="holidays"
@@ -335,7 +380,7 @@ export default async function AdminPage({
                 />
               </div>
               <div className="field">
-                <label htmlFor="cal-reason">Reason (required, audited)</label>
+                <label htmlFor="cal-reason">Reason (Required, Audited)</label>
                 <input id="cal-reason" name="reason" type="text" required maxLength={200} />
               </div>
               <button type="submit">Publish and activate</button>
@@ -347,7 +392,7 @@ export default async function AdminPage({
       {isHrConfig ? (
         <section className="panel" aria-labelledby="lists-h">
           <h2 id="lists-h" style={{ marginTop: 0 }}>
-            Departments and locations (HR Manager)
+            Departments and Locations
           </h2>
           <dl className="kv">
             <dt>Departments</dt>
@@ -377,13 +422,11 @@ export default async function AdminPage({
 
       <section className="panel" aria-labelledby="int-h">
         <h2 id="int-h" style={{ marginTop: 0 }}>
-          Integration status
+          Integration Status
         </h2>
         <div className="table-wrap" tabIndex={0}>
           <table className="data">
-            <caption>
-              All integrations are stubs; nothing is configured with live credentials
-            </caption>
+            <caption>Adapter in force for this environment.</caption>
             <thead>
               <tr>
                 <th scope="col">Integration</th>
@@ -392,16 +435,23 @@ export default async function AdminPage({
               </tr>
             </thead>
             <tbody>
-              {integrations.map((i) => (
-                <tr key={i.key}>
-                  <td>{i.displayName}</td>
-                  <td>
-                    <span className="badge badge--neutral">{i.mode}</span>{' '}
-                    {i.configured ? 'configured' : 'not configured'}
-                  </td>
-                  <td className="hint">{i.notes}</td>
-                </tr>
-              ))}
+              {integrations.map((i) => {
+                const live = runtimeAdapter[i.key];
+                const mode = live?.mode ?? i.mode;
+                const configured = live?.configured ?? i.configured;
+                return (
+                  <tr key={i.key}>
+                    <td>{i.displayName}</td>
+                    <td>
+                      <span className={`badge ${configured ? 'badge--success' : 'badge--neutral'}`}>
+                        {humanize(mode)}
+                      </span>{' '}
+                      {configured ? 'Configured' : 'Not configured'}
+                    </td>
+                    <td className="hint">{live?.notes ?? i.notes}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

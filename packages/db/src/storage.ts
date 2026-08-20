@@ -7,7 +7,7 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { getConfig } from '@exit/config';
+import { getConfig, resolveFromRoot } from '@exit/config';
 
 export interface StorageAdapter {
   readonly name: string;
@@ -39,7 +39,9 @@ export class LocalStorageAdapter implements StorageAdapter {
   private readonly root: string;
 
   constructor(rootDir?: string) {
-    this.root = path.resolve(rootDir ?? getConfig().STORAGE_DIR);
+    // Anchored at the repository root, not the process cwd: the web app and
+    // the worker run from different directories and must share one store.
+    this.root = rootDir ? path.resolve(rootDir) : resolveFromRoot(getConfig().STORAGE_DIR);
   }
 
   private resolveKey(objectKey: string): string {

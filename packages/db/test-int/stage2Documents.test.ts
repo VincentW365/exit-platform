@@ -17,6 +17,7 @@ import {
   submitDocument,
 } from '../src/services/documentService.ts';
 import { changeEffectiveTime, createDraft } from '../src/services/caseService.ts';
+import { setEmployeeAddress } from '../src/services/letterDeliveryService.ts';
 import { createUser, resetDb, VALID_DRAFT, FIXTURE_CONFIRMED_LAST_DAY } from './helpers.ts';
 
 const prisma = getPrisma();
@@ -60,6 +61,9 @@ beforeAll(async () => {
     confirmedLastDay: FIXTURE_CONFIRMED_LAST_DAY,
   });
   testCaseId = created.caseId;
+  await setEmployeeAddress(officer.actor, testCaseId, {
+    employeeAddress: '12 Synthetic Avenue, Kingston 5',
+  });
 });
 
 describe('template governance', () => {

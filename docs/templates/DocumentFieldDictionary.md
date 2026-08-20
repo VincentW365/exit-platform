@@ -8,7 +8,7 @@ Canonical definition of every field proposed for Stage 2 controlled documents (D
 ## Binding rules
 
 1. **No pay data as generated fields.** Salary, final-pay amount, notice-pay amount, vacation-pay amount, deductions, loan balances, commission and entitlement calculations are **not** document fields in Directive 2. Any final-pay or deduction wording must be approved **static template wording** (policy-owner approved), and **the application must not calculate entitlements** (CLAUDE.md rule 10).
-2. **Recipient postal address is restricted personal data** and is omitted unless the approved delivery method requires it (it does not in Stage 2, where issuance is manual).
+2. **Recipient postal address is restricted personal data.** Under DEC-054 the resignation acceptance letter (DOC-01) is addressed, because the approved HR sample letter is: HR types the address from the resignation letter scan and it prints in the letter. It is held on the case for HR participants only and never appears in logs, notification bodies, audit metadata or any other document.
 3. **Last working date and effective separation timestamp are not interchangeable** (BR-CASE-005/006). Templates must reference the specific concept.
 4. Every field has exactly one authoritative source and a verification rule; **an incorrect but technically valid source value must not pass silently** - fields marked "verify" below are displayed with their source and value on the review screen and require explicit preparer confirmation before approval can be requested.
 5. Fields marked "invalidates approval" are **material fields** (DEC-005): changing one after approval invalidates the approval and forces a new document version.

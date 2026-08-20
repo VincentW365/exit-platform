@@ -35,7 +35,7 @@ recorded completions feed the pilot readiness gate.
   COMPLETES ordinary forms; the suggested acknowledgement treatment per
   departure type; when the optional HR-Manager review step applies.
 
-### HR Benefits & providers (SOP-03a, Directive 6.3 - HR Officer and HR Manager)
+### HR Benefits and providers (SOP-03a, Directive 6.3 - HR Officer and HR Manager)
 
 - Confirming benefits applicability once (group health / group life / other
   provider, YES/NO/UNKNOWN); why UNKNOWN blocks clearance; what YES and NO

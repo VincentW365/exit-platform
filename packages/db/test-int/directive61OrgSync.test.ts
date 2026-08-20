@@ -201,11 +201,13 @@ describe('post-activation hierarchy change is flagged, never auto-applied (AM 19
     await transitionCase(manager.actor, created.caseId, 'approve');
     await readyAssignment(created.caseId, manager.actor, officer.userId, lineMgr.userId);
     await activateCase(manager.actor, created.caseId);
-    const before = await prisma.workflowTask.findMany({
-      where: { caseId: created.caseId, department: 'LINE_MANAGER' },
+    // The manager holds no tasks now; what matters is that a directory change
+    // is flagged for HR rather than applied silently.
+    const managerOnCase = await prisma.offboardingCase.findUniqueOrThrow({
+      where: { id: created.caseId },
+      select: { managerName: true },
     });
-    expect(before.length).toBeGreaterThan(0);
-    expect(before.every((t) => t.assigneeId === lineMgr.userId)).toBe(true);
+    expect(managerOnCase.managerName).not.toBeNull();
 
     // The directory now reports a different manager for EMP-TEST-004.
     setBambooFixtureForTests([
@@ -227,11 +229,12 @@ describe('post-activation hierarchy change is flagged, never auto-applied (AM 19
       where: { caseId: created.caseId, eventType: 'HIERARCHY_CHANGE_FLAGGED' },
     });
     expect(flags).toBe(1);
-    // Assignments did NOT move.
-    const after = await prisma.workflowTask.findMany({
-      where: { caseId: created.caseId, department: 'LINE_MANAGER' },
+    // The recorded manager did NOT move on its own.
+    const afterCase = await prisma.offboardingCase.findUniqueOrThrow({
+      where: { id: created.caseId },
+      select: { managerName: true },
     });
-    expect(after.every((t) => t.assigneeId === lineMgr.userId)).toBe(true);
+    expect(afterCase.managerName).toBe(managerOnCase.managerName);
     // A second sync does not double-flag.
     await syncEmployees(manager.actor);
     expect(

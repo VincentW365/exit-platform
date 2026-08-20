@@ -371,9 +371,8 @@ describe('queue access (J, R.8)', () => {
     // AC invariants 3-4: the retired roles grant no queue at all.
     expect(queueDepartmentsForActor({ userId: 'u', roles: ['IT_RESPONDER'] })).toEqual([]);
     expect(queueDepartmentsForActor({ userId: 'u', roles: ['FINANCE_RESPONDER'] })).toEqual([]);
-    expect(queueDepartmentsForActor({ userId: 'u', roles: ['LINE_MANAGER'] })).toEqual([
-      'LINE_MANAGER',
-    ]);
+    // Owner decision 2026-08-19: the line manager has no queue either.
+    expect(queueDepartmentsForActor({ userId: 'u', roles: ['LINE_MANAGER'] })).toEqual([]);
     expect(queueDepartmentsForActor({ userId: 'u', roles: ['SYSTEM_ADMIN'] })).toEqual([]);
   });
 
@@ -528,8 +527,6 @@ describe('clearance gate (O)', () => {
     actionFormStatus: 'APPROVED',
     assets: [{ id: 'a1', status: 'RETURNED', requiredForClearance: true }],
     approvedUnresolvedAssetIds: [],
-    handoverRequired: true,
-    handoverStatus: 'COMPLETED',
     openCriticalExceptionCount: 0,
     accessSecurityExceptionApproved: false,
     emailActions: [],
@@ -627,8 +624,6 @@ describe('clearance gate — v2 evidence mode (Directive 6.3 AA)', () => {
     actionFormStatus: 'COMPLETE',
     assets: [{ id: 'a1', status: 'RETURNED', requiredForClearance: true }],
     approvedUnresolvedAssetIds: [],
-    handoverRequired: true,
-    handoverStatus: 'COMPLETED',
     openCriticalExceptionCount: 0,
     accessSecurityExceptionApproved: false,
     emailActions: [

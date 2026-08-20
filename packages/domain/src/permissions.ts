@@ -69,7 +69,6 @@ export type CaseAccessLevel = 'FULL' | 'FINANCE_FORM' | 'MANAGER_FORM' | 'DISCOV
 
 export function caseAccessLevel(actor: Actor, c: CaseAccessContext): CaseAccessLevel {
   if (canViewCase(actor, c)) return 'FULL';
-  if (isParticipant(actor, c) && hasRole(actor, 'LINE_MANAGER')) return 'MANAGER_FORM';
   if (canDiscoverCase(actor, c)) return 'DISCOVER';
   return 'NONE';
 }
@@ -295,6 +294,8 @@ export type GlobalAction =
   | 'recipients.approveExternal'
   | 'reasons.manage'
   | 'outbox.view'
+  | 'notifications.testMode'
+  | 'notifications.routing'
   | 'outbox.resolve'
   | 'mailbox.dev'
   | 'identity.admin'
@@ -351,7 +352,7 @@ const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   // Directive 3 J / Directive 6.3 I-J: department queues serve HR and line
   // managers (handover). IT/Finance participate by controlled email, not
   // logins - their roles keep only historical read support.
-  'queue.view': ['HR_MANAGER', 'HR_OFFICER', 'LINE_MANAGER'],
+  'queue.view': ['HR_MANAGER', 'HR_OFFICER'],
   'exceptions.viewFeed': ['HR_MANAGER', 'HR_OFFICER'],
   // Directive 4: business administration is HR; technical administration is
   // SYSTEM_ADMIN (never HR case content - I.1-I.3).
@@ -363,6 +364,13 @@ const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   'recipients.approveExternal': ['HR_MANAGER'],
   'reasons.manage': ['HR_MANAGER'],
   'outbox.view': ['SYSTEM_ADMIN', 'HR_MANAGER'],
+  // Rehearsal mode diverts every outgoing message. HR runs the rehearsal and
+  // the administrator owns delivery, so both hold the switch - the same shape
+  // as pilot management.
+  'notifications.testMode': ['HR_MANAGER', 'SYSTEM_ADMIN'],
+  // Who receives which notification is a business decision with a technical
+  // consequence, so HR and the administrator hold it together.
+  'notifications.routing': ['HR_MANAGER', 'SYSTEM_ADMIN'],
   'outbox.resolve': ['SYSTEM_ADMIN'],
   'mailbox.dev': ['SYSTEM_ADMIN', 'HR_MANAGER', 'HR_OFFICER'],
   'identity.admin': ['SYSTEM_ADMIN'],
@@ -380,23 +388,9 @@ const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   'privacy.operate': ['HR_MANAGER'],
   'backup.operate': ['SYSTEM_ADMIN'],
   'continuity.operate': ['HR_MANAGER', 'SYSTEM_ADMIN'],
-  'support.use': [
-    'HR_MANAGER',
-    'HR_OFFICER',
-    'IT_RESPONDER',
-    'FINANCE_RESPONDER',
-    'LINE_MANAGER',
-    'SYSTEM_ADMIN',
-  ],
+  'support.use': ['HR_MANAGER', 'HR_OFFICER', 'IT_RESPONDER', 'FINANCE_RESPONDER', 'SYSTEM_ADMIN'],
   'support.manage': ['SYSTEM_ADMIN'],
-  'sop.view': [
-    'HR_MANAGER',
-    'HR_OFFICER',
-    'IT_RESPONDER',
-    'FINANCE_RESPONDER',
-    'LINE_MANAGER',
-    'SYSTEM_ADMIN',
-  ],
+  'sop.view': ['HR_MANAGER', 'HR_OFFICER', 'IT_RESPONDER', 'FINANCE_RESPONDER', 'SYSTEM_ADMIN'],
   'health.view': ['SYSTEM_ADMIN', 'HR_MANAGER'],
   // Directive 6.1 (K): SYSTEM_ADMIN sees technical events only (never HR case
   // content - enforced in the service as technical categories AND no caseId).

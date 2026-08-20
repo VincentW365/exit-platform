@@ -5,7 +5,7 @@ import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import { recordTrainingAction } from './actions';
 
-export const metadata: Metadata = { title: 'Operations and training centre' };
+export const metadata: Metadata = { title: 'Operations and Training Center' };
 export const dynamic = 'force-dynamic';
 
 /** Directive 4 section S: SOP centre with role guides and training mode. */
@@ -24,23 +24,23 @@ const SOPS: ReadonlyArray<{ module: string; title: string; audience: string; sum
     },
     {
       module: 'it-access-removal',
-      title: 'IT access-removal procedure',
-      audience: 'IT responder',
+      title: 'IT access removal',
+      audience: 'HR (IT acts by email)',
       summary: [
-        'Work from My queue; review systems early; the revocation task is due at the EXACT effective time.',
-        'Never enter passwords, access codes, private keys or credentials in any field.',
-        'Early completion needs a recorded authorized reason; partial completion opens a CRITICAL exception.',
-        'During an outage, remove access manually at the exact time and record it on the fallback log.',
+        'The access-removal email is prepared and sent automatically, stating the EXACT effective time.',
+        'IT confirms through the secure link in the email - no application account is needed.',
+        'Delivery is never proof of removal: clearance needs confirmed completion, recorded evidence, or an approved exception.',
+        'Unconfirmed at the effective time raises a CRITICAL exception; follow up and record what IT confirms.',
       ],
     },
     {
       module: 'finance-tasks',
-      title: 'Finance task procedure',
-      audience: 'Finance responder',
+      title: 'Finance notification',
+      audience: 'HR (Finance acts by email)',
       summary: [
-        'Acknowledge the case, then initiate and complete the final-pay workpaper OUTSIDE the application.',
+        'The Finance notification is prepared and sent automatically; Finance completes its process in its own systems.',
         'The platform records status only - it never calculates or changes pay.',
-        'Asset outcomes never create payroll instructions.',
+        'Record any acknowledgement or evidence Finance returns; asset outcomes never create payroll instructions.',
       ],
     },
     {
@@ -88,7 +88,7 @@ const SOPS: ReadonlyArray<{ module: string; title: string; audience: string; sum
       title: 'Outage / manual process',
       audience: 'All roles',
       summary: [
-        'HR Manager or System Administrator declares the outage in the continuity centre.',
+        'HR Manager or System Administrator declares the outage in the continuity center.',
         'Use sanitized blank forms with FB-references; reconcile every entry when service returns.',
         'Duplicates are prevented by one-time reconciliation of each reference.',
       ],
@@ -110,7 +110,7 @@ const SOPS: ReadonlyArray<{ module: string; title: string; audience: string; sum
       summary: [
         'Technical configuration only - no HR case content access.',
         'Secrets are stored as REFERENCES; production fails closed on any development provider.',
-        'Health, outbox, backups and access reviews live in the administration centre.',
+        'Health, outbox, backups and access reviews live in the administration center.',
       ],
     },
     {
@@ -142,7 +142,7 @@ export default async function OperationsPage({
 
   return (
     <>
-      <h1>Operations, SOPs and training</h1>
+      <h1>Operations and Training</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
         Repository-controlled procedures (full runbooks in docs/operations). TRAINING mode: create
@@ -151,7 +151,7 @@ export default async function OperationsPage({
       </p>
       <p>
         Quick links: <Link href="/queue">My queue</Link> -{' '}
-        <Link href="/continuity">Continuity centre</Link> - <Link href="/support">Support</Link> -{' '}
+        <Link href="/continuity">Continuity center</Link> - <Link href="/support">Support</Link> -{' '}
         <Link href="/cases/new">Start a TRAINING case</Link>
       </p>
 

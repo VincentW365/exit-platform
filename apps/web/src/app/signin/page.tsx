@@ -8,27 +8,12 @@ import { BrandMark } from '@/components/BrandMark';
 import { Feedback } from '@/components/ui';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { devLoginAction } from './actions';
+import { roleList } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'Sign in' };
+export const metadata: Metadata = { title: 'Sign In' };
 export const dynamic = 'force-dynamic';
 
 /** Human role names (correction 7); retired roles kept for safety. */
-const ROLE_LABELS: Record<string, string> = {
-  HR_MANAGER: 'HR Manager',
-  HR_OFFICER: 'HR Officer',
-  LINE_MANAGER: 'Line Manager',
-  SYSTEM_ADMIN: 'System Administrator',
-  IT_RESPONDER: 'IT Responder',
-  FINANCE_RESPONDER: 'Finance Responder',
-  AUDITOR: 'Auditor',
-  PRIVACY_OFFICER: 'Privacy Officer',
-};
-const roleLabel = (r: string): string =>
-  ROLE_LABELS[r] ??
-  r
-    .replaceAll('_', ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, (ch) => ch.toUpperCase());
 
 export default async function SignInPage({
   searchParams,
@@ -64,12 +49,12 @@ export default async function SignInPage({
           <ThemeToggle initial={theme} />
         </div>
         <div className="signin__card">
-          <h1>Sign in</h1>
+          <h1>Sign In</h1>
           <Feedback err={err} />
           {config.devLoginEnabled ? (
             <section aria-labelledby="dev-login-h">
               <h2 id="dev-login-h" className="signin__subhead">
-                UAT role switcher (no passwords)
+                UAT Role Switcher (No Passwords)
               </h2>
               <p className="hint">
                 Pick the function you are testing as. Accounts are synthetic and named by role; this
@@ -80,7 +65,7 @@ export default async function SignInPage({
             </section>
           ) : (
             <section className="panel">
-              <h2>Single sign-on is not configured</h2>
+              <h2>Single Sign-on Is Not Configured</h2>
               <p>
                 Production authentication uses the company identity provider once IT and Security
                 approve it (decision DEC-021). No local password login exists. Contact IT for
@@ -103,11 +88,11 @@ async function DevUserList() {
   const functions = users.filter((u) => !mapped.includes(u));
   return (
     <>
-      <h3 className="signin__group-title">Function accounts</h3>
+      <h3 className="signin__group-title">Function Accounts</h3>
       <UserButtons users={functions} />
       {mapped.length > 0 ? (
         <>
-          <h3 className="signin__group-title">Directory-mapped staff (live UAT)</h3>
+          <h3 className="signin__group-title">Directory-mapped Staff</h3>
           <p className="hint" style={{ marginTop: 0 }}>
             Real colleagues mapped to their application responsibilities for live-data UAT. These
             accounts exist only in this local environment.
@@ -143,7 +128,7 @@ function UserButtons({
             </span>
             <span className="signin__user-meta">
               <strong>{u.displayName}</strong>
-              <span className="hint">{u.roles.map(roleLabel).join(', ') || 'no roles'}</span>
+              <span className="hint">{roleList(u.roles)}</span>
             </span>
             <button type="submit" className="compact">
               Sign in as {u.displayName}

@@ -21,6 +21,7 @@ import {
 import { getPrisma } from '../client.ts';
 import type { PrismaClient } from '../client.ts';
 import { ServiceError } from '../errors.ts';
+import { ensureReturnItemsChecklist } from './returnItemsService.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
 import { getActiveCalendarInfo } from './adminService.ts';
 import { assertFeatureAllowed, loadCaseAccess } from './shared.ts';
@@ -138,9 +139,9 @@ export async function activateCase(actor: Actor, caseId: string) {
       'An HR Officer must be assigned before activation (Assignment tab; HR Manager assigns).',
     ]);
   }
-  if (!c.managerUserId) {
+  if (!c.managerSourceId && !c.managerName) {
     throw ServiceError.validation([
-      'MISSING MANAGER — ACTION REQUIRED: derive the manager from the directory or assign an audited alternate on the Assignment tab before activation.',
+      'No manager on record — action required: the departure notice has no one to go to. Derive the manager from the directory or record an audited alternate on the Assignment tab before activation.',
     ]);
   }
   const confirmationBlockers = activationConfirmationErrors(
@@ -240,51 +241,14 @@ export async function activateCase(actor: Actor, caseId: string) {
 
     // Handover record (section M): manager-owned; required when the workflow
     // carries a required handover completion obligation.
-    const handoverRequired = def.taskDefs.some(
-      (t) => t.department === 'LINE_MANAGER' && t.required && t.taskCode.includes('HANDOVER'),
-    );
-    // Directive 6.1 (F): the confirmed manager becomes the MANAGER participant
-    // automatically (assignment-scoped access to exactly this case).
-    const managerParticipant = c.participants.find((p) => p.participantRole === 'MANAGER');
-    if (c.managerUserId && !managerParticipant) {
-      const alreadyParticipating = c.participants.some((p) => p.userId === c.managerUserId);
-      if (!alreadyParticipating) {
-        await tx.caseParticipant.create({
-          data: {
-            caseId,
-            userId: c.managerUserId,
-            participantRole: 'MANAGER',
-            reason: 'Auto-added at activation: confirmed manager routing (Directive 6.1 F).',
-            addedById: actor.userId,
-          },
-        });
-        await appendAudit(tx, {
-          eventType: 'CASE_PARTICIPANT_ADDED',
-          actorType: 'USER',
-          actorId: actor.userId,
-          effectiveRoles: actor.roles,
-          objectType: 'CaseParticipant',
-          objectId: c.managerUserId,
-          caseId,
-          result: 'SUCCESS',
-          correlationId,
-          metadata: {
-            caseNumber: c.caseNumber,
-            participantRole: 'MANAGER',
-            reason: 'Auto-added at activation: confirmed manager routing.',
-          },
-        });
-      }
-    }
-    await tx.handoverRecord.upsert({
-      where: { caseId },
-      create: {
-        caseId,
-        requiredForClearance: handoverRequired,
-        managerId: c.managerUserId ?? managerParticipant?.userId ?? null,
-      },
-      update: {},
-    });
+    // The manager holds no login and no task, so activation adds no manager
+    // participant: the departure notice reaches them by email instead
+    // (owner decision, 2026-08-19).
+
+    // Exit checklist for return items (owner directive, 2026-08-19): created
+    // with the ten items from the HR paper form. Separate from the asset
+    // recovery list below, which tracks what the company actually issued.
+    await ensureReturnItemsChecklist(tx, caseId);
 
     // Asset recovery items sourced from employee-issued assets (L / T.12).
     const issued = await tx.issuedAsset.findMany({

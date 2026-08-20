@@ -1043,16 +1043,77 @@ const WORKFLOWS_V2 = [
   },
 ];
 
+const V3_REDESIGN_NOTE =
+  'HR-validated workflow v3 (owner decision, 2026-08-19): the line manager has no login and ' +
+  'no task in the platform. A single controlled email tells the manager who is leaving and ' +
+  'what is expected of them; the platform records no handover.';
+
+/** v3 = v2 minus everything the line manager used to be asked to do. */
+const withoutManagerTasks = (tasks: SeedTask[]): SeedTask[] =>
+  tasks.filter((task) => task.department !== 'LINE_MANAGER');
+
+const WORKFLOWS_V3 = [
+  {
+    workflowType: 'RESIGNATION_WITH_NOTICE' as const,
+    name: 'DEV Resignation with notice workflow',
+    tasks: withoutManagerTasks(RESIGNATION_TASKS_V2),
+  },
+  {
+    workflowType: 'IMMEDIATE_RESIGNATION' as const,
+    name: 'DEV Immediate resignation workflow',
+    tasks: withoutManagerTasks(IMMEDIATE_TASKS_V2),
+  },
+  {
+    workflowType: 'TERMINATION' as const,
+    name: 'DEV Restricted termination workflow',
+    tasks: withoutManagerTasks(TERMINATION_TASKS_V2),
+  },
+];
+
 /** Section K: deterministic development notification templates. */
 const NOTIFICATION_TEMPLATES = [
   {
     notificationType: 'IT_ACCESS_REMOVAL' as const,
     recipientClass: 'INTERNAL_DEPARTMENT' as const,
     name: 'DEV IT access removal notice',
-    subjectTemplate: 'Access removal required: [[EMPLOYEE_LEGAL_NAME]] ([[CASE_REFERENCE]])',
-    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nTo: IT Department\n\nPlease remove system access for [[EMPLOYEE_LEGAL_NAME]] effective [[EFFECTIVE_SEPARATION_DATE]] at [[EFFECTIVE_SEPARATION_TIME]].\n\nAccess categories on record: [[ACCESS_SYSTEMS_SUMMARY]]\n\nCase reference: [[CASE_REFERENCE]]. Record completion in the offboarding task.`,
+    subjectTemplate: 'Access Removal - [[EMPLOYEE_LEGAL_NAME]] ([[CASE_REFERENCE]])',
+    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nGood afternoon, IT Team,\n\nKindly assist in removing all accesses from the below past employee:\n\n  - [[EMPLOYEE_LEGAL_NAME]] | [[JOB_TITLE]] | [[DEPARTMENT]]\n\nAccess ends [[EFFECTIVE_SEPARATION_DATE]] at [[EFFECTIVE_SEPARATION_TIME]].\nAccess categories on record: [[ACCESS_SYSTEMS_SUMMARY]]\n\nThank you.\n\nRegards,\n[[HR_SENDER_NAME]]\n[[HR_SENDER_TITLE]]\n\nCase reference: [[CASE_REFERENCE]]. Please confirm once the accesses are removed.`,
     minimumDataNote:
-      'Name, case reference, exact effective time and access categories only. No departure reason, no personal contact data.',
+      'Name, job title, department, case reference, exact effective time and access categories only. No departure reason, no personal contact data.',
+  },
+  {
+    notificationType: 'RESIGNATION_ACCEPTANCE_LETTER' as const,
+    recipientClass: 'EMPLOYEE' as const,
+    name: 'DEV Resignation acceptance letter cover',
+    subjectTemplate: 'Acknowledgement of Resignation - [[EMPLOYEE_LEGAL_NAME]]',
+    bodyTemplate: `${DEV_TEMPLATE_MARK}
+
+Dear [[EMPLOYEE_FIRST_NAME]],
+
+Please find attached the Company's acknowledgement and acceptance of your resignation.
+
+Your last working day is recorded as [[CONFIRMED_LAST_WORKING_DATE]]. The attached letter sets out what is expected regarding the return of Company property.
+
+If anything in the letter does not match your understanding, please contact Human Resources.
+
+Regards,
+[[HR_SENDER_NAME]]
+[[HR_SENDER_TITLE]]
+Human Resources, Bert's Auto Parts Ltd.
+
+Case reference: [[CASE_REFERENCE]]`,
+    minimumDataNote:
+      'The employee, their last working date and the case reference only. The letter itself travels as the attached PDF; the covering email states no reason, no amount and no third-party data.',
+  },
+  {
+    notificationType: 'RETURN_ITEMS_CHECKLIST' as const,
+    recipientClass: 'INTERNAL_DEPARTMENT' as const,
+    name: 'DEV Exit checklist for return items',
+    subjectTemplate:
+      'Exit Checklist for Return Items - [[EMPLOYEE_LEGAL_NAME]] ([[CASE_REFERENCE]])',
+    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nGood afternoon,\n\nKindly complete the exit checklist for return items for the below past employee:\n\n  - [[EMPLOYEE_LEGAL_NAME]] | [[JOB_TITLE]] | [[DEPARTMENT]]\n\nLast working date: [[CONFIRMED_LAST_WORKING_DATE]]\n\nThe secure link below opens this employee's checklist directly - no sign-in is required. Record each item as returned, not returned, not applicable, or lost / damaged, with a remark where an item is not returned.\n\n[[ACKNOWLEDGEMENT_LINK]]\n\nThank you.\n\nRegards,\n[[HR_SENDER_NAME]]\n[[HR_SENDER_TITLE]]\nCase reference: [[CASE_REFERENCE]]`,
+    minimumDataNote:
+      'Name, job title, department, last working date, case reference and the secure form link only. No departure reason, no personal contact data.',
   },
   {
     notificationType: 'FINANCE_OFFBOARDING' as const,
@@ -1066,17 +1127,18 @@ const NOTIFICATION_TEMPLATES = [
   {
     notificationType: 'LINE_MANAGER_HANDOVER' as const,
     recipientClass: 'INTERNAL_DEPARTMENT' as const,
-    name: 'DEV Line manager handover notice',
-    subjectTemplate: 'Handover required: [[EMPLOYEE_LEGAL_NAME]] ([[CASE_REFERENCE]])',
-    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nTo: Line Manager\n\nPlease prepare the knowledge-transfer and handover record for [[EMPLOYEE_LEGAL_NAME]] by [[HANDOVER_DUE_DATE]] (final working date [[CONFIRMED_LAST_WORKING_DATE]]).\n\nDo not enter passwords, access codes, private keys or authentication credentials.\n\nCase reference: [[CASE_REFERENCE]].`,
-    minimumDataNote: 'Name, dates and case reference only. No reason and no HR-restricted content.',
+    name: 'DEV Line manager departure notice',
+    subjectTemplate: 'Departure notice: [[EMPLOYEE_LEGAL_NAME]] ([[CASE_REFERENCE]])',
+    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nTo: Line Manager\n\n[[EMPLOYEE_LEGAL_NAME]] ([[DEPARTMENT]]) is leaving the company. Their final working date is [[CONFIRMED_LAST_WORKING_DATE]] and their employment ends [[EFFECTIVE_SEPARATION_DATE]].\n\nWhat is expected of you before that date:\n  - reassign their open work and deadlines within your team;\n  - arrange any knowledge transfer your team needs;\n  - make sure company property they hold is returned to HR;\n  - tell HR about anything that affects the departure date.\n\nIT access removal, final pay and benefits are handled centrally - you do not need to raise them.\n\nReply to HR with any questions. Case reference: [[CASE_REFERENCE]].`,
+    minimumDataNote:
+      'Name, department, dates and case reference only. No reason for leaving and no HR-restricted content.',
   },
   {
     notificationType: 'SAGICOR_GROUP_HEALTH_REMOVAL' as const,
     recipientClass: 'EXTERNAL_PROVIDER' as const,
     name: 'DEV Sagicor group-health removal notice',
-    subjectTemplate: 'Group health plan removal request - [[EMPLOYEE_REFERENCE]]',
-    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nTo: Sagicor Group Administrator on file\n\nPlease remove [[EMPLOYEE_LEGAL_NAME]] (employee reference [[EMPLOYEE_REFERENCE]]) from the group health plan effective [[EFFECTIVE_SEPARATION_DATE]].\n\nThis notice is prepared for MANUAL sending by authorized HR staff only.`,
+    subjectTemplate: 'Group Health Removal - [[EMPLOYEE_REFERENCE]]',
+    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nGood afternoon,\n\nI trust you are well.\n\nKindly assist in Group Health removal for the below past employee:\n\n1. [[EMPLOYEE_LEGAL_NAME]] | Last workday is [[CONFIRMED_LAST_WORKING_DATE]]\n\nThank you.\n\nBest Regards,\n[[HR_SENDER_NAME]]`,
     minimumDataNote:
       'Name, employee reference and effective date ONLY. External providers never receive departure details (K.16).',
   },
@@ -1084,8 +1146,8 @@ const NOTIFICATION_TEMPLATES = [
     notificationType: 'NCB_GROUP_LIFE_REMOVAL' as const,
     recipientClass: 'EXTERNAL_PROVIDER' as const,
     name: 'DEV NCB group-life removal notice',
-    subjectTemplate: 'Group life plan removal request - [[EMPLOYEE_REFERENCE]]',
-    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nTo: NCB Group Administrator on file\n\nPlease remove [[EMPLOYEE_LEGAL_NAME]] (employee reference [[EMPLOYEE_REFERENCE]]) from the group life plan effective [[EFFECTIVE_SEPARATION_DATE]].\n\nThis notice is prepared for MANUAL sending by authorized HR staff only.`,
+    subjectTemplate: 'Group Life Removal - [[EMPLOYEE_REFERENCE]]',
+    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nGood afternoon, NCB Team,\n\nI trust you are well.\n\nKindly assist in Group Life removal for the below past employee:\n\n1. [[EMPLOYEE_LEGAL_NAME]] | Last workday is [[CONFIRMED_LAST_WORKING_DATE]]\n\nThank you.\n\nBest Regards,\n[[HR_SENDER_NAME]]`,
     minimumDataNote:
       'Name, employee reference and effective date ONLY. External providers never receive departure details (K.16).',
   },
@@ -1140,11 +1202,10 @@ const NOTIFICATION_TEMPLATES_V2 = [
     notificationType: 'IT_ACCESS_REMOVAL' as const,
     recipientClass: 'INTERNAL_DEPARTMENT' as const,
     name: 'DEV IT access removal notice',
-    subjectTemplate:
-      'Offboarding - Access Removal Required - [[EMPLOYEE_LEGAL_NAME]] - [[EFFECTIVE_SEPARATION_TIME]]',
-    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nTo: IT Department\n\nEmployee: [[EMPLOYEE_LEGAL_NAME]]\nEmployee reference: [[EMPLOYEE_REFERENCE]]\nCase reference: [[CASE_REFERENCE]]\nEffective separation date: [[EFFECTIVE_SEPARATION_DATE]]\nEffective separation time: [[EFFECTIVE_SEPARATION_TIME]]\n\nSystems and access on record: [[ACCESS_SYSTEMS_SUMMARY]]\n\nRemove all listed access at exactly the stated effective separation time. Completion is confirmed through the secure link below; no application sign-in is required.\n\n[[ACKNOWLEDGEMENT_LINK]]\n\nHuman Resources, Bert's Auto Parts Ltd. (synthetic development template)`,
+    subjectTemplate: 'Access Removal - [[EMPLOYEE_LEGAL_NAME]] ([[CASE_REFERENCE]])',
+    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nGood afternoon, IT Team,\n\nKindly assist in removing all accesses from the below past employee:\n\n  - [[EMPLOYEE_LEGAL_NAME]] | [[JOB_TITLE]] | [[DEPARTMENT]]\n\nAccess should be removed effective [[EFFECTIVE_SEPARATION_TIME]].\nSystems and access on record: [[ACCESS_SYSTEMS_SUMMARY]]\n\nPlease confirm once this is done using the secure link below - no sign-in is required.\n\n[[ACKNOWLEDGEMENT_LINK]]\n\nThank you.\n\nRegards,\n[[HR_SENDER_NAME]]\n[[HR_SENDER_TITLE]]\nCase reference: [[CASE_REFERENCE]]`,
     minimumDataNote:
-      'Name, employee reference, case reference, exact effective date and time, access categories and the secure confirmation link only. No departure reason, no survey or rehire information, no personal contact data.',
+      'Name, job title, department, case reference, exact effective date and time, access categories and the secure confirmation link only. No departure reason, no survey or rehire information, no personal contact data.',
   },
   {
     notificationType: 'FINANCE_OFFBOARDING' as const,
@@ -1369,16 +1430,18 @@ export async function seedStage3(db: Db): Promise<void> {
     where: { identitySubject: 'dev|hr-manager' },
   });
 
-  // Stage 3 automation flag - disabled like every other automation flag.
+  // Stage 3 automation flag - enabled by default like the other automation
+  // flags (final-product operating mode, owner request 2026-08-17); a re-run
+  // never overrides a later audited operator choice.
   await db.featureFlag.upsert({
     where: { key: 'automation.workflowEngine' },
     create: {
       key: 'automation.workflowEngine',
       description:
         'Stage 3: workflow instantiation for OPERATIONAL records (TRAINING/TEST always permitted).',
-      enabled: false,
+      enabled: true,
     },
-    update: {}, // never silently enable
+    update: {}, // never silently flip a choice
   });
 
   // Development workflow definitions (B.7/B.8): create v1 as DRAFT with its
@@ -1454,6 +1517,50 @@ export async function seedStage3(db: Db): Promise<void> {
     });
     await db.workflowDefinition.updateMany({
       where: { workflowType: wf.workflowType, version: 1, status: 'ACTIVE' },
+      data: { status: 'SUPERSEDED', supersededAt: new Date() },
+    });
+    await db.workflowDefinition.update({
+      where: { id: def.id },
+      data: { status: 'ACTIVE', activatedById: hrManager.id, activatedAt: new Date() },
+    });
+  }
+
+  // Owner decision 2026-08-19: v3 removes the line-manager tasks. Same
+  // non-destructive lifecycle as v2 - create the new version, supersede the
+  // previous ACTIVE one, then activate. Instances already running stay pinned
+  // to the version they started on, so live cases keep their own history.
+  for (const wf of WORKFLOWS_V3) {
+    const existing = await db.workflowDefinition.findFirst({
+      where: { workflowType: wf.workflowType, version: 3 },
+    });
+    if (existing) continue;
+    const tasks = taskDefCreateInputs(wf.tasks);
+    const checksum = workflowConfigChecksum({
+      workflowType: wf.workflowType,
+      name: wf.name,
+      version: 3,
+      description: '',
+      activationConditions: '',
+      tasks: tasks.map((t) => ({ ...t })),
+    });
+    const def = await db.workflowDefinition.create({
+      data: {
+        workflowType: wf.workflowType,
+        name: wf.name,
+        version: 3,
+        status: 'DRAFT',
+        description: `${DEV_WORKFLOW_MARK}. ${V3_REDESIGN_NOTE}`,
+        activationConditions:
+          'Case APPROVED with an exact effective separation time; TRAINING/TEST records always; ' +
+          `OPERATIONAL records only with the automation.workflowEngine flag. ${V3_REDESIGN_NOTE}`,
+        changeReason: 'Owner decision: the line manager is notified by email and holds no tasks.',
+        configChecksum: checksum,
+        createdById: hrManager.id,
+        taskDefs: { create: tasks },
+      },
+    });
+    await db.workflowDefinition.updateMany({
+      where: { workflowType: wf.workflowType, version: 2, status: 'ACTIVE' },
       data: { status: 'SUPERSEDED', supersededAt: new Date() },
     });
     await db.workflowDefinition.update({

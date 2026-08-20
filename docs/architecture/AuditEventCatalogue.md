@@ -92,6 +92,15 @@ Audit events provide evidence of who did what, to which object, when, under whic
 | ASSET_DUE_DATE_CHANGED | Asset | Expected return changed | item, old/new, actor, reason |
 | ASSET_DISPOSITION_RECORDED | Asset | Disposition recorded | item, old/new, actor, receiver/condition refs |
 | ASSET_WAIVER_APPROVED | Asset | Waiver approved | item, approver, reason, evidence |
+| DOC_ISSUED_BY_EMAIL | Document | Rendered letter emailed to the employee | document, version, notification record, destination MASK, copied names and MASKS |
+| NOTIFICATION_TEST_MODE_CHANGED | Communication | Rehearsal mode turned on or off | enabled, redirect MASK, actor - never the mailbox itself |
+| NOTIFICATION_ROUTING_CHANGED | Communication | A notification type was re-addressed | notification type, previous and new destination KEYS, cc/bcc keys, actor - never addresses |
+| NOTIFICATION_REDIRECTED_TEST_MODE | Communication | Message diverted by rehearsal mode | intended recipient MASKS, redirect MASK, outbox record |
+| CASE_EMPLOYEE_ADDRESS_RECORDED | Case | Letter address recorded or cleared | case, actor, whether an address is now on record - never the address itself |
+| RETURN_CHECKLIST_SENT | Asset | Exit checklist link sent | case, checklist, recipient name and MASK only |
+| RETURN_CHECKLIST_SAVED | Asset | Incomplete checklist kept after a rejected submission | checklist, submitted via, item count |
+| RETURN_CHECKLIST_SUBMITTED | Asset | Checklist completed | checklist, derived status, submitted via, unresolved item labels |
+| RETURN_CHECKLIST_CORRECTED | Asset | Completed checklist corrected | checklist, derived status, actor, unresolved item labels |
 | HANDOVER_PLAN_CREATED | Handover | Handover plan created | case, manager, workflow version |
 | HANDOVER_ITEM_CHANGED | Handover | Handover item status/owner changed | item, old/new safe metadata, actor |
 | HANDOVER_COMPLETED | Handover | Manager attested completion | plan, actor, residual risk count |

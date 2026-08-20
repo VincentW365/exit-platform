@@ -8,6 +8,7 @@ import {
   processOutbox,
   resolveDeadLetter,
   retryOutbox,
+  setTestMode,
 } from '@exit/db';
 import { can } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
@@ -66,13 +67,51 @@ export async function resolveDeadLetterAction(formData: FormData): Promise<void>
   }
 }
 
+/**
+ * One pass moves a bounded batch, so an administrator pressing this once on a
+ * deep queue would otherwise leave most of it untouched and have to press
+ * again. Drain until nothing more is due, bounded so a persistently failing
+ * queue can never spin.
+ */
+const MAX_PASSES = 10;
+
+/** Turn rehearsal mode on or off (HR samples directive section 8). */
+export async function setTestModeAction(formData: FormData): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  const enabled = str(formData, 'enabled') === 'on';
+  try {
+    const cfg = await setTestMode(actor, {
+      enabled,
+      redirectTo: str(formData, 'redirectTo'),
+      note: str(formData, 'note') || undefined,
+    });
+    revalidatePath('/admin/outbox');
+    back({
+      ok: cfg.enabled
+        ? 'Rehearsal mode is ON. Every outgoing message is diverted and marked as a test.'
+        : 'Rehearsal mode is off. Messages go to their real recipients again.',
+    });
+  } catch (e) {
+    if (e instanceof ServiceError) back({ err: errText(e) });
+    throw e;
+  }
+}
+
 export async function runOutboxNowAction(): Promise<void> {
   const { actor } = await requireAuth();
   await touchSession();
   if (!can(actor, 'outbox.view')) back({ err: 'Not authorized.' });
-  const result = await processOutbox(new Date());
+  const total = { submitted: 0, failed: 0, deadLettered: 0 };
+  for (let pass = 0; pass < MAX_PASSES; pass += 1) {
+    const result = await processOutbox(new Date());
+    total.submitted += result.submitted;
+    total.failed += result.failed;
+    total.deadLettered += result.deadLettered;
+    if (result.submitted + result.failed + result.deadLettered === 0) break;
+  }
   revalidatePath('/admin/outbox');
   back({
-    ok: `Outbox pass: ${result.submitted} submitted, ${result.failed} retryable failure(s), ${result.deadLettered} dead-lettered.`,
+    ok: `Outbox pass: ${total.submitted} submitted, ${total.failed} retryable failure(s), ${total.deadLettered} dead-lettered.`,
   });
 }

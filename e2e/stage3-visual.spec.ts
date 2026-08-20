@@ -41,6 +41,19 @@ async function snap(page: Page, name: string, mobileToo = false): Promise<void> 
 }
 
 async function axeCheck(page: Page, name: string): Promise<void> {
+  // The root layout streams its metadata. A scan fired while that stream is
+  // still open can catch the document between head writes and report a
+  // document-title violation that is not real - the title is present before
+  // and after. Wait for the stream to finish AND for the element to exist in
+  // the DOM (page.title() alone can read a stale value).
+  await page.waitForLoadState('networkidle');
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => document.querySelector('title')?.textContent?.trim().length ?? 0),
+      { timeout: 15_000 },
+    )
+    .toBeGreaterThan(0);
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
   const serious = results.violations.filter(
     (v) => v.impact === 'critical' || v.impact === 'serious',
@@ -74,19 +87,18 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
 
   // Build one case for the case-scoped surfaces.
   await page.goto('/cases/new');
-  await page.getByLabel(/Search the employee source/).fill('taylor');
+  await page.getByLabel('Employee Name or Number').fill('taylor');
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure type (required)').selectOption('RESIGNATION_WITH_NOTICE');
-  await page.getByLabel('Receipt date and time (required)').fill('2026-07-21T10:00');
-  await page.getByLabel('Source of the receipt timestamp (required)').fill('Visual QA synthetic');
-  await page.getByLabel('Confirmed last working day').fill('2026-08-14');
-  await page.getByLabel(/Effective separation date and exact time/).fill('2026-08-14T17:00');
-  await page.getByLabel('Record purpose').selectOption('TEST');
+  await page.getByLabel('Departure Type').selectOption('RESIGNATION_WITH_NOTICE');
+  await page.getByLabel('Date and Time Received').fill('2026-07-21T10:00');
+  // A resignation with notice ends at close of business on the final working
+  // date, so the platform derives the instant and the field is not offered.
+  await page.getByLabel('Final Working Date').fill('2026-08-14');
   await page.getByRole('button', { name: 'Create draft case' }).click();
-  const banner = page.getByText(/Draft case OFF-\d{4}-\d{4} created/);
+  const banner = page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/);
   await expect(banner).toBeVisible();
-  const caseNo = /OFF-\d{4}-\d{4}/.exec((await banner.textContent()) ?? '')![0];
+  const caseNo = /OFF-\d{4}-\d{4,}(?:-\d)?/.exec((await banner.textContent()) ?? '')![0];
   const caseUrl = page.url().split('?')[0]!;
 
   await page.goto(caseUrl);
@@ -110,7 +122,7 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
   await page.getByRole('button', { name: 'Assign officer' }).click();
   await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
-  await page.locator('#am-user').selectOption({ label: 'Line Manager' });
+  await page.locator('#am-user').selectOption({ index: 1 });
   await page.locator('#am-reason').fill('Visual QA manager routing.');
   await page.getByRole('button', { name: 'Record alternate manager' }).click();
   await expect(page.getByText('Alternate manager recorded')).toBeVisible();
@@ -122,7 +134,7 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
 
   // Read-only workflow preview before activation (B.8).
   await page.goto(`${caseUrl}/workflow`);
-  await expect(page.getByText('Workflow preview (read-only, before activation)')).toBeVisible();
+  await expect(page.getByText('Workflow Preview (Read-only, Before Activation)')).toBeVisible();
   await snap(page, '04-workflow-preview', true);
   await axeCheck(page, 'workflow-preview');
 
@@ -140,7 +152,7 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
   await snap(page, '07-task-detail');
   await axeCheck(page, 'task-detail');
 
-  // Email actions (Directive 6.3), assets, handover, clearance, exceptions.
+  // Email actions (Directive 6.3), assets, clearance, exceptions.
   await page.goto(`${caseUrl}/notifications`);
   await snap(page, '08-email-actions', true);
   await axeCheck(page, 'email-actions');
@@ -153,10 +165,6 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
   await page.goto(`${caseUrl}/assets`);
   await snap(page, '10-assets', true);
   await axeCheck(page, 'assets');
-
-  await page.goto(`${caseUrl}/handover`);
-  await snap(page, '11-handover', true);
-  await axeCheck(page, 'handover');
 
   await page.goto(`${caseUrl}/clearance`);
   await snap(page, '12-clearance-review', true);

@@ -766,7 +766,8 @@ export async function attentionFeed(actor: Actor) {
 const NOTIFICATION_ACTION_LABELS: Record<string, string> = {
   IT_ACCESS_REMOVAL: 'IT access-removal email',
   FINANCE_OFFBOARDING: 'Finance notification',
-  LINE_MANAGER_HANDOVER: 'Manager handover email',
+  LINE_MANAGER_HANDOVER: 'Line manager departure notice',
+  RETURN_ITEMS_CHECKLIST: 'Exit checklist for return items',
   SAGICOR_GROUP_HEALTH_REMOVAL: 'Group health removal notice (Sagicor)',
   NCB_GROUP_LIFE_REMOVAL: 'Group life removal notice (NCB)',
   SURVEY_INVITATION_REFERENCE: 'Exit survey reference email',

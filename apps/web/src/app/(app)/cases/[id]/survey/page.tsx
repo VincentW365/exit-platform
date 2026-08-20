@@ -15,8 +15,9 @@ import {
   notEligibleAction,
   reminderAction,
 } from './actions';
+import { humanize } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'Exit survey' };
+export const metadata: Metadata = { title: 'Exit Survey' };
 export const dynamic = 'force-dynamic';
 
 const INV_BADGE: Record<string, string> = {
@@ -49,7 +50,7 @@ export default async function CaseSurveyPage({
     if (e instanceof ServiceError && e.code === 'FORBIDDEN')
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">This area requires explicit case assignment.</p>
         </>
       );
@@ -64,12 +65,12 @@ export default async function CaseSurveyPage({
 
   return (
     <>
-      <h1>Exit survey</h1>
+      <h1>Exit Survey</h1>
       <CaseNav caseId={id} active="survey" />
       <Feedback err={sp.err} ok={sp.ok} />
       {sp.link ? (
         <section className="panel" aria-label="Generated invitation link">
-          <h2 style={{ marginTop: 0 }}>Secure invitation link (shown once)</h2>
+          <h2 style={{ marginTop: 0 }}>Secure Invitation Link (Shown Once)</h2>
           <p>
             Copy this link and send it manually through an approved channel. The application does
             not send email.
@@ -100,7 +101,7 @@ export default async function CaseSurveyPage({
             <input type="hidden" name="caseId" value={id} />
             {!data.eligibility.eligibleByDefault ? (
               <div className="field">
-                <label htmlFor="ov-reason">HR Manager override reason (required, audited)</label>
+                <label htmlFor="ov-reason">HR Manager Override Reason (Required, Audited)</label>
                 <textarea id="ov-reason" name="overrideReason" rows={2} maxLength={300} />
               </div>
             ) : null}
@@ -113,23 +114,21 @@ export default async function CaseSurveyPage({
         <section key={inv.id} className="panel" aria-label={`Invitation ${inv.id.slice(0, 8)}`}>
           <h2 style={{ marginTop: 0 }}>
             {inv.template.title} v{inv.template.version}{' '}
-            <span className={`badge ${INV_BADGE[inv.status]}`}>
-              {inv.status.replaceAll('_', ' ')}
-            </span>
+            <span className={`badge ${INV_BADGE[inv.status]}`}>{humanize(inv.status)}</span>
             {inv.responseChannel ? (
               <span className="badge badge--info" style={{ marginLeft: '0.4rem' }}>
-                {inv.responseChannel.replaceAll('_', ' ').toLowerCase()}
+                {humanize(inv.responseChannel)}
               </span>
             ) : null}
           </h2>
           <dl className="kv">
-            <dt>Invitation due</dt>
+            <dt>Invitation Due</dt>
             <dd>{formatInstant(inv.invitationDueAt)} (3 days after effective separation)</dd>
-            <dt>Manually sent</dt>
+            <dt>Manually Sent</dt>
             <dd>
               {inv.manualSentAt
                 ? formatInstant(inv.manualSentAt)
-                : 'not yet - no email is ever sent automatically'}
+                : 'Not yet - no email is ever sent automatically'}
             </dd>
             {inv.reminder1DueAt ? (
               <>
@@ -158,7 +157,7 @@ export default async function CaseSurveyPage({
               </>
             ) : null}
             <dt>Link</dt>
-            <dd>{inv.tokenHash ? 'active link exists (hash stored only)' : 'no active link'}</dd>
+            <dd>{inv.tokenHash ? 'Active link exists (hash stored only)' : 'No active link'}</dd>
           </dl>
 
           {data.capabilities.canManage && ['PENDING', 'MANUALLY_SENT'].includes(inv.status) ? (
@@ -211,7 +210,7 @@ export default async function CaseSurveyPage({
                     <input type="hidden" name="caseId" value={id} />
                     <input type="hidden" name="invitationId" value={inv.id} />
                     <div className="field">
-                      <label htmlFor={`${key}-${inv.id}`}>Reason/note (required)</label>
+                      <label htmlFor={`${key}-${inv.id}`}>Reason/note (Required)</label>
                       <input
                         id={`${key}-${inv.id}`}
                         name="note"
@@ -242,7 +241,7 @@ export default async function CaseSurveyPage({
       {response && response.response && !response.masked ? (
         <section className="panel" aria-labelledby="resp-h">
           <h2 id="resp-h" style={{ marginTop: 0 }}>
-            Response (restricted HR data)
+            Response
           </h2>
           <p className="banner-restricted">
             Identifiable survey responses are restricted to authorized HR personnel. Access is

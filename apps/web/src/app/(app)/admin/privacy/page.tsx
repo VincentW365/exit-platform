@@ -13,8 +13,9 @@ import {
   releaseHoldAction,
   upsertPolicyAction,
 } from './actions';
+import { humanize } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'Privacy and retention' };
+export const metadata: Metadata = { title: 'Privacy and Retention' };
 export const dynamic = 'force-dynamic';
 
 export default async function PrivacyPage({
@@ -31,7 +32,7 @@ export default async function PrivacyPage({
     if (e instanceof ServiceError)
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">Privacy operations require an authorized role.</p>
         </>
       );
@@ -41,7 +42,7 @@ export default async function PrivacyPage({
 
   return (
     <>
-      <h1>Privacy, retention and data-subject operations</h1>
+      <h1>Privacy and Retention</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
         Development uses SYNTHETIC retention schedules; nothing deletes automatically; holds always
@@ -51,16 +52,16 @@ export default async function PrivacyPage({
 
       <section className="panel" aria-labelledby="pol-h">
         <h2 id="pol-h" style={{ marginTop: 0 }}>
-          Retention policies (versioned, synthetic)
+          Retention Policies
         </h2>
         <ul>
           {data.policies.map((p) => (
             <li key={p.id}>
               {p.recordType} v{p.version}: retain {p.retainYears} year(s) - {p.basis}{' '}
               {p.active ? (
-                <span className="badge badge--success">ACTIVE</span>
+                <span className="badge badge--success">Active</span>
               ) : (
-                <span className="badge badge--neutral">inactive</span>
+                <span className="badge badge--neutral">Inactive</span>
               )}
               {p.approvedById ? (
                 <span className="hint"> approved</span>
@@ -82,18 +83,18 @@ export default async function PrivacyPage({
           <details className="action">
             <summary>Create a policy version</summary>
             <form action={upsertPolicyAction}>
-              <label htmlFor="rp-type">Record type</label>
+              <label htmlFor="rp-type">Record Type</label>
               <select id="rp-type" name="recordType" required>
-                <option value="OFFBOARDING_CASE">OFFBOARDING_CASE</option>
-                <option value="SURVEY_RESPONSE">SURVEY_RESPONSE</option>
-                <option value="AUDIT_EVENT">AUDIT_EVENT</option>
-                <option value="ATTACHMENT">ATTACHMENT</option>
+                <option value="OFFBOARDING_CASE">Offboarding case</option>
+                <option value="SURVEY_RESPONSE">Survey response</option>
+                <option value="AUDIT_EVENT">Audit event</option>
+                <option value="ATTACHMENT">Attachment</option>
               </select>
-              <label htmlFor="rp-years">Retain (years)</label>
+              <label htmlFor="rp-years">Retain (Years)</label>
               <input id="rp-years" name="retainYears" type="number" min={1} max={50} required />
-              <label htmlFor="rp-basis">Basis (synthetic development value)</label>
+              <label htmlFor="rp-basis">Basis (Synthetic Development Value)</label>
               <input id="rp-basis" name="basis" required maxLength={500} />
-              <label htmlFor="rp-reason">Reason (audited)</label>
+              <label htmlFor="rp-reason">Reason (Audited)</label>
               <input id="rp-reason" name="reason" required maxLength={500} />
               <button type="submit">Create version (approval required)</button>
             </form>
@@ -103,23 +104,23 @@ export default async function PrivacyPage({
 
       <section className="panel" aria-labelledby="hold-h">
         <h2 id="hold-h" style={{ marginTop: 0 }}>
-          Legal / administrative holds
+          Legal / Administrative Holds
         </h2>
         <ul>
           {data.holds.map((h) => (
             <li key={h.id}>
               {h.case.caseNumber}: {h.reason} - placed {formatInstant(h.placedAt)}{' '}
               {h.releasedAt ? (
-                <span className="badge badge--neutral">released</span>
+                <span className="badge badge--neutral">Released</span>
               ) : (
                 <>
-                  <span className="badge badge--warning">ACTIVE</span>{' '}
+                  <span className="badge badge--warning">Active</span>{' '}
                   {canOperate ? (
                     <details className="action" style={{ display: 'inline-block' }}>
                       <summary>Release</summary>
                       <form action={releaseHoldAction}>
                         <input type="hidden" name="holdId" value={h.id} />
-                        <label htmlFor={`rh-${h.id}`}>Release note (audited)</label>
+                        <label htmlFor={`rh-${h.id}`}>Release Note (Audited)</label>
                         <input id={`rh-${h.id}`} name="note" required maxLength={500} />
                         <button type="submit">Release hold</button>
                       </form>
@@ -136,7 +137,7 @@ export default async function PrivacyPage({
             <form action={placeHoldAction}>
               <label htmlFor="ph-case">Case ID</label>
               <input id="ph-case" name="caseId" required maxLength={40} />
-              <label htmlFor="ph-reason">Reason (audited)</label>
+              <label htmlFor="ph-reason">Reason (Audited)</label>
               <input id="ph-reason" name="reason" required maxLength={500} />
               <button type="submit">Place hold</button>
             </form>
@@ -146,7 +147,7 @@ export default async function PrivacyPage({
 
       <section className="panel" aria-labelledby="run-h">
         <h2 id="run-h" style={{ marginTop: 0 }}>
-          Retention runs and controlled anonymization
+          Retention Runs and Controlled Anonymization
         </h2>
         {canOperate ? (
           <form action={dryRunAction} style={{ display: 'inline-block' }}>
@@ -156,7 +157,7 @@ export default async function PrivacyPage({
         <ul>
           {data.runs.map((r) => (
             <li key={r.id}>
-              {r.mode} under policy v{r.policyVersion} at {formatInstant(r.startedAt)} -{' '}
+              {humanize(r.mode)} under policy v{r.policyVersion} at {formatInstant(r.startedAt)} -{' '}
               {Array.isArray(r.findings)
                 ? `${(r.findings as unknown[]).length} record(s) evaluated`
                 : 'recorded'}
@@ -174,7 +175,7 @@ export default async function PrivacyPage({
               </p>
               <label htmlFor="an-case">Case ID</label>
               <input id="an-case" name="caseId" required maxLength={40} />
-              <label htmlFor="an-reason">Reason (required, audited)</label>
+              <label htmlFor="an-reason">Reason (Required, Audited)</label>
               <input id="an-reason" name="reason" required maxLength={500} />
               <button type="submit">Anonymize case</button>
             </form>
@@ -184,12 +185,13 @@ export default async function PrivacyPage({
 
       <section className="panel" aria-labelledby="dsr-h">
         <h2 id="dsr-h" style={{ marginTop: 0 }}>
-          Data-subject requests and disclosures
+          Data-subject Requests and Disclosures
         </h2>
         <ul>
           {data.dsrs.map((d) => (
             <li key={d.id}>
-              {d.type} for <code>{d.subjectRef}</code> - {d.status} ({formatInstant(d.requestedAt)})
+              {humanize(d.type)} for <code>{d.subjectRef}</code> - {humanize(d.status)} (
+              {formatInstant(d.requestedAt)})
             </li>
           ))}
           {data.disclosures.map((d) => (
@@ -204,7 +206,7 @@ export default async function PrivacyPage({
             <details className="action">
               <summary>Prepare a data-subject export package</summary>
               <form action={dsrPackageAction}>
-                <label htmlFor="dsr-ref">Subject reference (employee source ID)</label>
+                <label htmlFor="dsr-ref">Subject Reference (Employee Source ID)</label>
                 <input id="dsr-ref" name="subjectRef" required maxLength={40} />
                 <p className="hint">
                   Excludes other employees personal data, restricted notes, secrets and internal
@@ -216,13 +218,13 @@ export default async function PrivacyPage({
             <details className="action">
               <summary>Record a disclosure</summary>
               <form action={disclosureAction}>
-                <label htmlFor="dl-ref">Subject reference</label>
+                <label htmlFor="dl-ref">Subject Reference</label>
                 <input id="dl-ref" name="subjectRef" required maxLength={40} />
-                <label htmlFor="dl-to">Disclosed to</label>
+                <label htmlFor="dl-to">Disclosed To</label>
                 <input id="dl-to" name="disclosedTo" required maxLength={200} />
-                <label htmlFor="dl-desc">Description (safe)</label>
+                <label htmlFor="dl-desc">Description (Safe)</label>
                 <input id="dl-desc" name="description" required maxLength={500} />
-                <label htmlFor="dl-basis">Lawful basis</label>
+                <label htmlFor="dl-basis">Lawful Basis</label>
                 <input id="dl-basis" name="lawfulBasis" required maxLength={200} />
                 <button type="submit">Record disclosure</button>
               </form>
@@ -231,11 +233,11 @@ export default async function PrivacyPage({
         ) : null}
         {data.incidents.length > 0 ? (
           <>
-            <h3>Privacy incidents (support records)</h3>
+            <h3>Privacy Incidents</h3>
             <ul>
               {data.incidents.map((i) => (
                 <li key={i.id}>
-                  {i.title} - {i.severity} - {i.status}
+                  {i.title} - {humanize(i.severity)} - {humanize(i.status)}
                 </li>
               ))}
             </ul>

@@ -16,7 +16,6 @@
  */
 import { createHash } from 'node:crypto';
 import { assetsSatisfyClearance, type AssetItemLike } from './assets.ts';
-import { HANDOVER_SATISFIED_STATUSES, type HandoverStatus } from './handover.ts';
 import { FORM_DONE_STATUSES } from './actionForm.ts';
 import type { TaskKind, TaskStatus } from './workflow.ts';
 
@@ -51,14 +50,18 @@ export interface ClearanceFacts {
   assets: readonly AssetItemLike[];
   /** Item ids covered by a resolved ASSET_UNRESOLVED exception (per item). */
   approvedUnresolvedAssetIds: readonly string[];
-  handoverRequired: boolean;
-  handoverStatus: HandoverStatus | null;
   openCriticalExceptionCount: number;
   accessSecurityExceptionApproved: boolean;
   /** Directive 6.3: email-action evidence per applicable action. */
   emailActions: readonly ClearanceEmailActionFact[];
   /** Any benefits applicability still UNKNOWN? (blocks: uncertainty is work.) */
   benefitsUnresolvedCount: number;
+  /**
+   * Exit Checklist for Return Items. Null when the case has none (legacy
+   * instances). Submitting it never clears an item, so property recorded as
+   * still owed keeps blocking until HR resolves it.
+   */
+  returnChecklist?: { submitted: boolean; unresolvedLabels: readonly string[] } | null;
 }
 
 /** Directive 6.2 (Z): the decision-screen grouping for readiness items. */
@@ -71,7 +74,6 @@ export type ClearanceGroup =
   | 'Benefits'
   | 'Assets'
   | 'Documents'
-  | 'Handover'
   | 'Security';
 
 export interface ClearanceItem {
@@ -96,7 +98,17 @@ const DEPT_GROUP: Record<string, { group: ClearanceGroup; label: string }> = {
   LINE_MANAGER: { group: 'Manager', label: 'Manager tasks' },
 };
 
-const INTERNAL_EMAIL_TYPES = ['IT_ACCESS_REMOVAL', 'FINANCE_OFFBOARDING'];
+/**
+ * Emails that stay inside the company. The manager departure notice and the
+ * return-items checklist belong here: counting them as external provider
+ * notifications would report the wrong blocker on the clearance screen.
+ */
+const INTERNAL_EMAIL_TYPES = [
+  'IT_ACCESS_REMOVAL',
+  'FINANCE_OFFBOARDING',
+  'LINE_MANAGER_HANDOVER',
+  'RETURN_ITEMS_CHECKLIST',
+];
 
 export function evaluateClearance(f: ClearanceFacts): ClearanceReadiness {
   const items: ClearanceItem[] = [];
@@ -201,6 +213,18 @@ export function evaluateClearance(f: ClearanceFacts): ClearanceReadiness {
             : 'Notification not sent yet.',
     });
   }
+  // The checklist blocks only on what it actually reports: property still
+  // owed. An unreturned form is covered by the asset items above, so it never
+  // double-gates the case.
+  if (f.returnChecklist?.submitted && f.returnChecklist.unresolvedLabels.length > 0) {
+    items.push({
+      key: 'returnChecklist',
+      label: 'Exit checklist for return items',
+      group: 'Assets',
+      ok: false,
+      detail: `Still outstanding: ${f.returnChecklist.unresolvedLabels.join(', ')}.`,
+    });
+  }
   const providerActions = f.emailActions.filter(
     (a) => !INTERNAL_EMAIL_TYPES.includes(a.notificationType) && a.applicable,
   );
@@ -268,18 +292,9 @@ export function evaluateClearance(f: ClearanceFacts): ClearanceReadiness {
     detail: assets.detail,
   });
 
-  // O.6: required handover completed / not applicable / validly waived.
-  items.push({
-    key: 'handover',
-    label: 'Knowledge transfer / handover',
-    group: 'Handover',
-    ok:
-      !f.handoverRequired ||
-      (f.handoverStatus !== null && HANDOVER_SATISFIED_STATUSES.includes(f.handoverStatus)),
-    detail: !f.handoverRequired
-      ? 'Handover is not required for this workflow.'
-      : `Handover status: ${f.handoverStatus ?? 'none'}.`,
-  });
+  // Owner decision 2026-08-19: the platform no longer records a handover, so
+  // clearance no longer gates on one. Cases that ran on an earlier workflow
+  // keep their handover record as history; it is simply not a condition.
 
   // O.9: no unresolved CRITICAL exception. (O.7/O.8 - Finance workpaper and
   // the HRIS record - are required tasks and covered by the task check.)

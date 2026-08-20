@@ -16,7 +16,8 @@ import {
   type SendControlLevel,
 } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
-import { Feedback } from '@/components/ui';
+import { humanize } from '@/lib/text';
+import { CaseTitle, Feedback } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
 import {
   approveEmailAction,
@@ -27,14 +28,16 @@ import {
   setCaseRecipientAction,
 } from './actions';
 
-export const metadata: Metadata = { title: 'Email actions' };
+export const metadata: Metadata = { title: 'Email Actions' };
 export const dynamic = 'force-dynamic';
 
 /** Business-language type labels (Directive 6.3 correction 7): never enum names. */
 const TYPE_LABELS: Readonly<Record<NotificationType, string>> = {
   IT_ACCESS_REMOVAL: 'IT access removal',
   FINANCE_OFFBOARDING: 'Finance offboarding',
-  LINE_MANAGER_HANDOVER: 'Line manager handover',
+  LINE_MANAGER_HANDOVER: 'Line manager departure notice',
+  RETURN_ITEMS_CHECKLIST: 'Exit checklist for return items',
+  RESIGNATION_ACCEPTANCE_LETTER: 'Resignation acceptance letter',
   SAGICOR_GROUP_HEALTH_REMOVAL: 'Sagicor group health removal',
   NCB_GROUP_LIFE_REMOVAL: 'NCB group life removal',
   SURVEY_INVITATION_REFERENCE: 'Exit survey invitation',
@@ -96,7 +99,7 @@ export default async function CaseNotificationsPage({
     if (e instanceof ServiceError && e.code === 'FORBIDDEN')
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">This area requires full case access.</p>
         </>
       );
@@ -110,7 +113,7 @@ export default async function CaseNotificationsPage({
 
   return (
     <>
-      <h1>Email actions - {data.caseNumber}</h1>
+      <CaseTitle title="Email Actions" caseNumber={data.caseNumber} />
       <CaseNav caseId={id} active="notifications" />
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
@@ -159,6 +162,25 @@ export default async function CaseNotificationsPage({
               <p className="hint">{CONTROL_HINT[r.controlLevel]}</p>
             ) : null}
             {recipientDisplay ? <p className="hint">Recipient: {recipientDisplay}</p> : null}
+            {r.ccNames.length > 0 ? (
+              <p className="hint">
+                Copied:{' '}
+                {r.ccNames
+                  .map(
+                    (name, i) =>
+                      `${name || 'Recipient'}${r.ccMasks[i] ? ` (${r.ccMasks[i]})` : ''}`,
+                  )
+                  .join('; ')}
+              </p>
+            ) : null}
+            {r.attachedDocument ? (
+              <p className="hint">
+                Attached: {humanize(r.attachedDocument.documentType)} v{r.attachedDocument.version}{' '}
+                <span className="meta">
+                  checksum {r.attachedDocument.pdfChecksum?.slice(0, 12) ?? '-'}
+                </span>
+              </p>
+            ) : null}
             <p className="hint">
               Prepared {formatInstant(r.createdAt)}
               {r.scheduledSendAt && !r.sentAt
@@ -189,19 +211,20 @@ export default async function CaseNotificationsPage({
                 style={{ borderLeft: '4px solid var(--danger, #b00020)', marginTop: '0.75rem' }}
               >
                 <h3 style={{ marginTop: 0, fontSize: '1rem' }}>
-                  <span className="badge badge--danger">Recipient required</span>
+                  <span className="badge badge--danger">Recipient Required</span>
                 </h3>
                 <p className="hint">
                   No approved recipient is configured for this email. Enter one for this case;
                   optionally save it as an approved recipient for future cases (approval and
-                  verification still apply). Development recipients must use{' '}
-                  <code>@example.invalid</code> or <code>capture://</code> addresses.
+                  verification still apply). Development recipients must use a reserved{' '}
+                  <code>.test</code> or <code>.invalid</code> domain, <code>@localhost</code>, or a{' '}
+                  <code>capture://</code> channel.
                 </p>
                 <form action={setCaseRecipientAction} className="stack">
                   <input type="hidden" name="caseId" value={id} />
                   <input type="hidden" name="recordId" value={r.id} />
                   <div className="field">
-                    <label htmlFor={`rn-${r.id}`}>Recipient name</label>
+                    <label htmlFor={`rn-${r.id}`}>Recipient Name</label>
                     <input id={`rn-${r.id}`} name="recipientName" required maxLength={200} />
                   </div>
                   <div className="field">
@@ -209,12 +232,12 @@ export default async function CaseNotificationsPage({
                     <input id={`ro-${r.id}`} name="organization" required maxLength={200} />
                   </div>
                   <div className="field">
-                    <label htmlFor={`re-${r.id}`}>Email address</label>
+                    <label htmlFor={`re-${r.id}`}>Email Address</label>
                     <input id={`re-${r.id}`} name="email" type="email" required maxLength={320} />
                   </div>
                   <label>
-                    <input type="checkbox" name="saveForFuture" /> Save as approved recipient for
-                    future cases
+                    <input type="checkbox" name="saveForFuture" /> Save as Approved Recipient for
+                    Future Cases
                   </label>
                   <button type="submit">Save recipient</button>
                 </form>
@@ -238,7 +261,7 @@ export default async function CaseNotificationsPage({
                   <input type="hidden" name="caseId" value={id} />
                   <input type="hidden" name="recordId" value={r.id} />
                   <div className="field">
-                    <label htmlFor={`ek-${r.id}`}>What is being recorded?</label>
+                    <label htmlFor={`ek-${r.id}`}>What Is Being Recorded?</label>
                     <select
                       id={`ek-${r.id}`}
                       name="kind"
@@ -255,7 +278,7 @@ export default async function CaseNotificationsPage({
                     </select>
                   </div>
                   <div className="field">
-                    <label htmlFor={`ec-${r.id}`}>How was it confirmed?</label>
+                    <label htmlFor={`ec-${r.id}`}>How Was It Confirmed?</label>
                     <select id={`ec-${r.id}`} name="channel" required defaultValue="EMAIL">
                       {EVIDENCE_CHANNELS.map((c) => (
                         <option key={c} value={c}>
@@ -265,7 +288,7 @@ export default async function CaseNotificationsPage({
                     </select>
                   </div>
                   <div className="field">
-                    <label htmlFor={`en-${r.id}`}>Evidence note (required)</label>
+                    <label htmlFor={`en-${r.id}`}>Evidence Note (Required)</label>
                     <textarea id={`en-${r.id}`} name="note" required rows={3} maxLength={1000} />
                   </div>
                   <button type="submit">Record evidence</button>
@@ -297,7 +320,7 @@ export default async function CaseNotificationsPage({
                       <input type="hidden" name="caseId" value={id} />
                       <input type="hidden" name="recordId" value={r.id} />
                       <input type="hidden" name="action" value="return" />
-                      <label htmlFor={`ret-${r.id}`}>Reason (required)</label>
+                      <label htmlFor={`ret-${r.id}`}>Reason (Required)</label>
                       <textarea
                         id={`ret-${r.id}`}
                         name="reason"
@@ -333,10 +356,10 @@ export default async function CaseNotificationsPage({
                         ))}
                       </select>
                       <label htmlFor={`d-${r.id}`}>
-                        Approved destination reference (NEVER a personal address)
+                        Approved Destination Reference (NEVER a Personal Address)
                       </label>
                       <input id={`d-${r.id}`} name="destinationRef" required maxLength={200} />
-                      <label htmlFor={`sn-${r.id}`}>Safe note (optional)</label>
+                      <label htmlFor={`sn-${r.id}`}>Safe Note (Optional)</label>
                       <input id={`sn-${r.id}`} name="sentNote" maxLength={500} />
                       <button type="submit">Record manual send</button>
                     </form>
@@ -360,7 +383,7 @@ export default async function CaseNotificationsPage({
                       <input type="hidden" name="caseId" value={id} />
                       <input type="hidden" name="recordId" value={r.id} />
                       <input type="hidden" name="action" value="cancel" />
-                      <label htmlFor={`c-${r.id}`}>Reason (required)</label>
+                      <label htmlFor={`c-${r.id}`}>Reason (Required)</label>
                       <textarea id={`c-${r.id}`} name="reason" required rows={2} maxLength={500} />
                       <button type="submit">Cancel notification</button>
                     </form>
@@ -396,13 +419,13 @@ export default async function CaseNotificationsPage({
             </div>
             <div className="field">
               <label htmlFor="n-applic">
-                Applicability confirmation (required for external provider notices)
+                Applicability Confirmation (Required for External Provider Notices)
               </label>
               <textarea id="n-applic" name="applicabilityNote" rows={2} maxLength={500} />
             </div>
             <div className="field">
               <label htmlFor="n-manual">
-                Manual note (used only by the manual exception notice)
+                Manual Note (Used Only by the Manual Exception Notice)
               </label>
               <textarea id="n-manual" name="manualNote" rows={2} maxLength={1000} />
             </div>

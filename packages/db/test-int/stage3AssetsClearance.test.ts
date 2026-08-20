@@ -1,5 +1,5 @@
 /**
- * Stage 3 integration: assets, handover, clearance gate and full completion
+ * Stage 3 integration: assets, clearance gate and full completion
  * (Directive 3 T.12-T.22, T.24).
  */
 import { mkdtempSync } from 'node:fs';
@@ -17,11 +17,6 @@ import {
   setAssetDisposition,
 } from '../src/services/assetService.ts';
 import {
-  getHandover,
-  transitionHandover,
-  updateHandover,
-} from '../src/services/handoverService.ts';
-import {
   approveFinalClearance,
   getClearanceView,
   requestClearance,
@@ -34,8 +29,10 @@ import { activateTemplate, createDraftTemplate } from '../src/services/templateS
 import {
   approveDocument,
   createLetterDraft,
+  refreshDraftFields,
   submitDocument,
 } from '../src/services/documentService.ts';
+import { setEmployeeAddress } from '../src/services/letterDeliveryService.ts';
 import {
   completeActionForm,
   createActionForm,
@@ -173,62 +170,6 @@ describe('asset recovery (T.12, T.13, T.14, L)', () => {
   });
 });
 
-describe('handover (T.15, T.16, T.17, M)', () => {
-  let caseId: string;
-  beforeAll(async () => {
-    caseId = await makeActiveCase({ employeeSourceId: 'EMP-TEST-004' });
-    // Directive 6.1 (F): activation auto-adds the confirmed manager as the
-    // MANAGER participant, so no manual addParticipant is needed here.
-  });
-
-  it('credential-like content is rejected (T.17, M.2/M.3)', async () => {
-    await expect(
-      updateHandover(lineMgr.actor, caseId, {
-        keyDocumentLocations: 'Shared drive. Admin password: hunter2',
-      }),
-    ).rejects.toMatchObject({ code: 'VALIDATION' });
-  });
-
-  it('the manager records and completes the handover with attestation (T.15)', async () => {
-    await updateHandover(lineMgr.actor, caseId, {
-      dutiesToReassign: 'Daily service scheduling; parts counter escalations.',
-      openWorkDeadlines: 'August stock count preparation (due 20 Aug).',
-      replacementOwner: 'Line Manager (interim).',
-      keyDocumentLocations: 'Service records in the branch office cabinet B.',
-    });
-    await transitionHandover(lineMgr.actor, caseId, 'complete');
-    const view = await getHandover(officer.actor, caseId);
-    expect(view.record.status).toBe('COMPLETED');
-    expect(view.record.managerAttestedById).toBe(lineMgr.userId);
-    const attestation = await prisma.attestation.findFirstOrThrow({
-      where: { caseId, kind: 'MANAGER_HANDOVER_ATTESTATION' },
-    });
-    expect(attestation.actorId).toBe(lineMgr.userId);
-    // The workflow handover tasks completed with it (M.9).
-    const tasks = await tasksOf(caseId);
-    expect(tasks.find((t) => t.taskCode === 'MGR_HANDOVER_PLAN')!.status).toBe('COMPLETED');
-    expect(tasks.find((t) => t.taskCode === 'MGR_HANDOVER_COMPLETE')!.status).toBe('COMPLETED');
-  });
-
-  it('HR_MANAGER may waive a handover with a reason (T.16, M.6)', async () => {
-    const otherCase = await makeActiveCase({ employeeSourceId: 'EMP-TEST-003' });
-    await expect(transitionHandover(manager.actor, otherCase, 'waive')).rejects.toMatchObject({
-      code: 'VALIDATION',
-    }); // reason required
-    await expect(
-      transitionHandover(officer.actor, otherCase, 'waive', 'officer tries'),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN' }); // HR_MANAGER only
-    await transitionHandover(
-      manager.actor,
-      otherCase,
-      'waive',
-      'Role has no open duties; approved by HR Manager.',
-    );
-    const view = await getHandover(officer.actor, otherCase);
-    expect(view.record.status).toBe('WAIVED');
-  });
-});
-
 describe('clearance gate and completion (T.18-T.22, T.24, O)', () => {
   let caseId: string;
 
@@ -254,13 +195,17 @@ describe('clearance gate and completion (T.18-T.22, T.24, O)', () => {
     });
   });
 
-  it('full flow: documents, form, tasks, assets, handover, access - then HR_MANAGER completes (T.21, T.22)', async () => {
+  it('full flow: documents, form, tasks, assets - then HR_MANAGER completes (T.21, T.22)', async () => {
     // Letter: draft -> submit -> approve (renders inline).
     const doc = await createLetterDraft(officer.actor, caseId);
+    await setEmployeeAddress(officer.actor, caseId, {
+      employeeAddress: '12 Synthetic Avenue, Kingston 5',
+    });
+    await refreshDraftFields(officer.actor, doc.id);
     await submitDocument(officer.actor, doc.id);
     await approveDocument(manager.actor, doc.id);
     const letter = await prisma.documentInstance.findUniqueOrThrow({ where: { id: doc.id } });
-    expect(['RENDERED', 'MANUALLY_ISSUED']).toContain(letter.status);
+    expect(['RENDERED', 'MANUALLY_ISSUED', 'ISSUED_BY_EMAIL']).toContain(letter.status);
 
     // Action form: HR section -> manager approval -> HR final approval.
     const form = await createActionForm(officer.actor, caseId);
@@ -286,13 +231,6 @@ describe('clearance gate and completion (T.18-T.22, T.24, O)', () => {
     for (const item of (await listCaseAssets(officer.actor, caseId)).items) {
       await setAssetDisposition(officer.actor, item.id, { status: 'RETURNED', condition: 'Good' });
     }
-
-    // Handover: manager records and completes.
-    await updateHandover(lineMgr.actor, caseId, {
-      dutiesToReassign: 'IT support tickets and warehouse device maintenance.',
-      replacementOwner: 'IT service desk (interim).',
-    });
-    await transitionHandover(lineMgr.actor, caseId, 'complete');
 
     // Benefits: HR confirms applicability once; the rules engine handles the
     // rest (Directive 6.3 V).
@@ -383,7 +321,6 @@ describe('clearance gate and completion (T.18-T.22, T.24, O)', () => {
     expect(dash.reports.taskSlaCompliance.measured).toBe(0);
     expect(dash.reports.accessRevocationTimeliness.completed).toBe(0);
     expect(dash.reports.assets.requiredCount).toBe(0);
-    expect(dash.reports.handoverCompletion.required).toBe(0);
     expect(dash.queues.completedCases).toBe(0);
   });
 });

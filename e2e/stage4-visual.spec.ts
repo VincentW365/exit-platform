@@ -41,6 +41,19 @@ async function snap(page: Page, name: string, mobileToo = false): Promise<void> 
 }
 
 async function axeCheck(page: Page, name: string): Promise<void> {
+  // The root layout streams its metadata. A scan fired while that stream is
+  // still open can catch the document between head writes and report a
+  // document-title violation that is not real - the title is present before
+  // and after. Wait for the stream to finish AND for the element to exist in
+  // the DOM (page.title() alone can read a stale value).
+  await page.waitForLoadState('networkidle');
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => document.querySelector('title')?.textContent?.trim().length ?? 0),
+      { timeout: 15_000 },
+    )
+    .toBeGreaterThan(0);
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
   const serious = results.violations.filter(
     (v) => v.impact === 'critical' || v.impact === 'serious',

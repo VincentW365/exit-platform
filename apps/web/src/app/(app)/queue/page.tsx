@@ -5,8 +5,11 @@ import { formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import { claimTaskAction, returnTaskAction } from './actions';
+import { humanize } from '@/lib/text';
+import { EmptyState } from '@/components/EmptyState';
+import { CheckCircleIcon } from '@/components/icons';
 
-export const metadata: Metadata = { title: 'My work' };
+export const metadata: Metadata = { title: 'My Work' };
 export const dynamic = 'force-dynamic';
 
 // Directive 6.2 (V/W): ONE consolidated filter row. Additional service views
@@ -52,14 +55,14 @@ export default async function QueuePage({
     if (e instanceof ServiceError && e.code === 'FORBIDDEN')
       return (
         <>
-          <h1>My work</h1>
+          <h1>My Work</h1>
           <p className="panel">Your role does not have a work queue.</p>
         </>
       );
     if (e instanceof ServiceError) {
       return (
         <>
-          <h1>My work</h1>
+          <h1>My Work</h1>
           <p className="panel">Invalid filter; showing nothing. Adjust the filters and retry.</p>
         </>
       );
@@ -68,6 +71,10 @@ export default async function QueuePage({
   }
 
   const activeView = sp.view ?? 'all';
+  // Department chrome only earns its place when work actually spans
+  // departments (a filtered view keeps it visible so the filter can be
+  // cleared).
+  const showDepartments = data.departmentsWithWork.length > 1 || !!sp.department;
   const mkHref = (view: string) => {
     const p = new URLSearchParams();
     p.set('view', view);
@@ -88,16 +95,8 @@ export default async function QueuePage({
 
   return (
     <>
-      <h1>My work</h1>
+      <h1>My Work</h1>
       <Feedback err={sp.err} ok={sp.ok} />
-      <p className="hint">
-        IT and Finance receive automated email notifications — the queues below cover HR work and
-        any older cases still running the previous workflow.
-      </p>
-      <p className="hint">
-        Queues visible to you: {data.departments.join(', ') || 'none'}. Tasks show only the minimum
-        information needed to do the work; a task never grants wider case access.
-      </p>
 
       <nav aria-label="Queue views" className="panel" style={{ padding: '0.4rem 0.75rem' }}>
         <ul
@@ -131,13 +130,17 @@ export default async function QueuePage({
 
       <form method="get" action="/queue" className="panel" aria-label="Queue filters">
         <input type="hidden" name="view" value={activeView} />
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          {data.departments.length > 1 ? (
-            <div className="field" style={{ maxWidth: '13rem' }}>
+        <div className="filter-toolbar">
+          {/* The department filter appears only when live work genuinely
+              spans more than one department (owner request, 2026-08-18):
+              the current workflow puts everything in HR plus manager
+              handover, so it stays hidden in normal operation. */}
+          {showDepartments ? (
+            <div className="field field--md">
               <label htmlFor="qf-dept">Department</label>
               <select id="qf-dept" name="department" defaultValue={sp.department ?? ''}>
                 <option value="">All my departments</option>
-                {data.departments.map((d) => (
+                {data.departmentsWithWork.map((d) => (
                   <option key={d} value={d}>
                     {d}
                   </option>
@@ -145,16 +148,32 @@ export default async function QueuePage({
               </select>
             </div>
           ) : null}
-          <div className="field" style={{ maxWidth: '18rem' }}>
-            <label htmlFor="qf-q">Search (task title or case number)</label>
-            <input id="qf-q" name="q" defaultValue={sp.q ?? ''} maxLength={100} />
+          <div className="field field--lg">
+            <label htmlFor="qf-q">Task Title or Case Number</label>
+            <input
+              id="qf-q"
+              type="search"
+              name="q"
+              defaultValue={sp.q ?? ''}
+              maxLength={100}
+              placeholder="Search tasks…"
+            />
           </div>
-          <button type="submit">Apply filters</button>
+          <button type="submit" className="secondary">
+            Apply Filters
+          </button>
         </div>
       </form>
 
       {data.rows.length === 0 ? (
-        <p className="panel">No tasks match this view.</p>
+        <div className="panel">
+          <EmptyState
+            icon={<CheckCircleIcon />}
+            tone="done"
+            title="Nothing in this view"
+            body="No task matches the filters you have applied. Try another view above, or clear the search."
+          />
+        </div>
       ) : (
         <div className="panel" style={{ overflowX: 'auto' }} tabIndex={0}>
           <table>
@@ -163,7 +182,7 @@ export default async function QueuePage({
               <tr>
                 <th scope="col">Task</th>
                 <th scope="col">Case / employee</th>
-                <th scope="col">Department</th>
+                {showDepartments ? <th scope="col">Department</th> : null}
                 <th scope="col">Status</th>
                 <th scope="col">Assignee</th>
                 <th scope="col">Priority</th>
@@ -200,10 +219,10 @@ export default async function QueuePage({
                     <span className="hint">{r.employeeDisplayName}</span>
                     {r.departureType ? <span className="hint"> - {r.departureType}</span> : null}
                   </td>
-                  <td>{r.department}</td>
+                  {showDepartments ? <td>{r.department}</td> : null}
                   <td>
                     <span className={`badge ${TASK_BADGE[r.status] ?? 'badge--neutral'}`}>
-                      {r.status}
+                      {humanize(r.status)}
                     </span>
                     {r.blockedReason ? <p className="hint">Blocker: {r.blockedReason}</p> : null}
                   </td>
@@ -211,7 +230,7 @@ export default async function QueuePage({
                     {r.assigneeName ?? <span className="hint">Unassigned</span>}
                     {r.assignedToMe ? <span className="hint"> (you)</span> : null}
                   </td>
-                  <td>{r.priority}</td>
+                  <td>{humanize(r.priority)}</td>
                   <td className="tabular-nums">{r.dueAt ? formatInstant(r.dueAt) : '-'}</td>
                   <td className="tabular-nums">
                     {r.overdueMinutes > 0 ? (
@@ -242,7 +261,7 @@ export default async function QueuePage({
                         <form action={returnTaskAction} className="stack">
                           <input type="hidden" name="taskId" value={r.id} />
                           <input type="hidden" name="query" value={queryString} />
-                          <label htmlFor={`rtq-${r.id}`}>Reason (required, audited)</label>
+                          <label htmlFor={`rtq-${r.id}`}>Reason (Required, Audited)</label>
                           <input id={`rtq-${r.id}`} name="reason" required maxLength={500} />
                           <button type="submit" className="secondary compact">
                             Return task

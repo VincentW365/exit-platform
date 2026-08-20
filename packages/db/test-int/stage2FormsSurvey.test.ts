@@ -161,13 +161,14 @@ describe('action form (section F, HR-validated per Directive 6.3)', () => {
     await submitActionForm(officer.actor, formId);
     let f = await prisma.actionFormVersion.findUniqueOrThrow({ where: { id: formId } });
     expect(f.status).toBe('READY_FOR_HR_REVIEW');
-    // Outsiders cannot complete it; the manager participant has no form
-    // authority at all (their scoped access covers only the handover).
+    // Outsiders cannot complete it. Since the owner decision of 2026-08-19 the
+    // line manager has no login and no case access whatsoever, so the form is
+    // not even discoverable to them.
     await expect(completeActionForm(sysadmin.actor, formId)).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
     await expect(completeActionForm(lineManager.actor, formId)).rejects.toMatchObject({
-      code: 'FORBIDDEN',
+      code: 'NOT_FOUND',
     });
     // The preparing officer completes their own ordinary form (correction 1).
     await completeActionForm(officer.actor, formId);

@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   daysUntil,
   endOfNthBusinessDayAfter,
+  formatDateOnly,
   formatInstant,
   isBusinessDay,
+  parseInstantInZone,
   withinCaseCaptureSla,
   type BusinessCalendar,
 } from '../src/calendar.ts';
@@ -113,5 +115,30 @@ describe('display helpers', () => {
     const now = new Date('2026-07-28T15:00:00Z');
     expect(daysUntil(new Date('2026-08-04T13:00:00Z'), now)).toBe(7);
     expect(daysUntil(new Date('2026-07-27T13:00:00Z'), now)).toBe(-1);
+  });
+});
+
+// A final working date typed as the 28th must stay the 28th. A bare date
+// string parses as midnight UTC, which is 7pm on the 27th in Jamaica - the
+// shift that made intake store and display the wrong day (owner report,
+// 2026-08-19).
+describe('form date parsing in the company zone', () => {
+  it('keeps a bare calendar date on the day it was entered', () => {
+    const parsed = parseInstantInZone('2026-08-28');
+    expect(parsed).not.toBeNull();
+    expect(formatDateOnly(parsed!)).toBe('28 Aug 2026');
+    expect(formatDateOnly(new Date('2026-08-28'))).toBe('27 Aug 2026'); // the old behaviour
+  });
+
+  it('reads a local datetime as company wall-clock time', () => {
+    expect(formatInstant(parseInstantInZone('2026-08-10T09:30')!)).toBe('10 Aug 2026, 9:30 AM');
+  });
+
+  it('respects an instant that already carries an offset', () => {
+    expect(formatInstant(parseInstantInZone('2026-08-14T22:00:00Z')!)).toBe('14 Aug 2026, 5:00 PM');
+  });
+
+  it('returns null for values that are not dates', () => {
+    expect(parseInstantInZone('not-a-date')).toBeNull();
   });
 });

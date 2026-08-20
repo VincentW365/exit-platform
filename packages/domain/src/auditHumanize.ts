@@ -7,6 +7,7 @@
  * caller decides which rows the viewer may see at all.
  */
 import type { AuditEventType, AuditResult, SafeMetadata } from './audit.ts';
+import { formatInstant } from './calendar.ts';
 
 export interface HumanizableEvent {
   readonly eventType: AuditEventType | string;
@@ -15,6 +16,25 @@ export interface HumanizableEvent {
   readonly actorType?: 'USER' | 'SYSTEM' | string;
   readonly metadata?: SafeMetadata | Record<string, unknown> | null;
 }
+
+/** Enum-shaped metadata read as words: AUTO_SEND -> "automatic sending". */
+const words = (value: string | null): string | null => {
+  if (!value) return null;
+  const lower = value.replaceAll('_', ' ').trim().toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+};
+
+/** A stored instant rendered the way the rest of the product renders time. */
+const when = (value: string | null): string | null => {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : formatInstant(d);
+};
+
+const plural = (count: string | null, noun: string): string => {
+  const n = Number(count ?? '0');
+  return `${Number.isNaN(n) ? (count ?? '0') : n} ${n === 1 ? noun : `${noun}s`}`;
+};
 
 const str = (m: Record<string, unknown> | null | undefined, key: string): string | null => {
   const v = m?.[key];
@@ -104,15 +124,15 @@ function sentence(e: HumanizableEvent): string {
       return `${who} approved the notification and bound it to its content checksum`;
     // Directive 6.3 AB/correction 11: automated actions read as sentences.
     case 'DERIVED_ACTIONS_COMPUTED':
-      return `The system determined the required actions for this case — rule set ${str(m, 'rulesVersion') ?? '-'} (${str(m, 'derivedCount') ?? '?'} action(s), ${str(m, 'notApplicableCount') ?? '0'} not applicable)`;
+      return `The system determined the required actions for this case — ${plural(str(m, 'derivedCount'), 'action')}, ${str(m, 'notApplicableCount') ?? '0'} not applicable (rule set ${str(m, 'rulesVersion') ?? '-'})`;
     case 'DERIVED_ACTION_OVERRIDDEN':
       return `${who} overrode the automatic determination for "${str(m, 'title') ?? str(m, 'actionKey') ?? 'an action'}"${withReason}`;
     case 'BENEFITS_APPLICABILITY_SET':
-      return `${who} confirmed benefits applicability (group health: ${str(m, 'groupHealth') ?? '-'}, group life: ${str(m, 'groupLife') ?? '-'}, other provider: ${str(m, 'otherProvider') ?? '-'})`;
+      return `${who} confirmed benefits applicability (group health: ${str(m, 'groupHealth') ?? '-'}, group life: ${str(m, 'groupLife') ?? '-'})`;
     case 'NOTIFICATION_AUTO_PREPARED':
       return `The system prepared the ${str(m, 'notificationType')?.replaceAll('_', ' ').toLowerCase() ?? ''} notification — rule: ${str(m, 'ruleKey') ?? 'derived requirement'}`;
     case 'NOTIFICATION_AUTO_APPROVED':
-      return `The system released the notification for automatic sending (control level ${str(m, 'controlLevel') ?? 'AUTO_SEND'})${str(m, 'scheduledSendAt') ? ` — scheduled for ${str(m, 'scheduledSendAt')}` : ''}`;
+      return `The system released the notification for sending${str(m, 'scheduledSendAt') ? ` — scheduled for ${when(str(m, 'scheduledSendAt'))}` : ''}`;
     case 'NOTIFICATION_SENT':
       return `The notification was submitted through the configured provider`;
     case 'NOTIFICATION_ACKNOWLEDGED':
@@ -139,14 +159,58 @@ function sentence(e: HumanizableEvent): string {
       return `${who} reviewed the action form (management oversight)`;
     case 'FORM_COMPLETED':
       return `${who} completed the action form (attested)`;
+    // Centralized routing (email routing directive).
+    case 'NOTIFICATION_ROUTING_CHANGED':
+      return `${who} changed where "${words(str(m, 'notificationType')) ?? 'a notification'}" is sent (${str(m, 'previousTo') ?? '-'} to ${str(m, 'newTo') ?? '-'})`;
+    // Rehearsal mode (directive section 8).
+    case 'NOTIFICATION_TEST_MODE_CHANGED':
+      return m.enabled === true
+        ? `${who} turned rehearsal mode ON - outgoing messages are diverted to one mailbox and marked as tests`
+        : `${who} turned rehearsal mode off - messages go to their real recipients again`;
+    case 'NOTIFICATION_REDIRECTED_TEST_MODE': {
+      const intended = Array.isArray(m.intendedRecipients)
+        ? (m.intendedRecipients as unknown[]).length
+        : 0;
+      return `Rehearsal mode intercepted the message before it reached ${plural(String(intended), 'recipient')}`;
+    }
+    // The exit checklist for return items (DEC-053).
+    case 'RETURN_CHECKLIST_SENT':
+      return `The exit checklist was sent to ${str(m, 'recipientName') ?? 'the recipient'} with a secure link`;
+    case 'RETURN_CHECKLIST_SAVED':
+      return `An incomplete exit checklist was saved — the entries were kept so nothing was lost`;
+    case 'RETURN_CHECKLIST_SUBMITTED':
+    case 'RETURN_CHECKLIST_CORRECTED': {
+      const corrected = e.eventType === 'RETURN_CHECKLIST_CORRECTED';
+      const outstanding = Number(str(m, 'unresolvedCount') ?? '0');
+      const items = str(m, 'unresolvedItems');
+      const tail = outstanding
+        ? ` — still outstanding: ${items || plural(String(outstanding), 'item')}`
+        : ' — everything accounted for';
+      const opener = corrected
+        ? `${who} corrected the exit checklist`
+        : str(m, 'submittedVia') === 'TOKEN'
+          ? 'The exit checklist was completed through the secure link'
+          : `${who} recorded the exit checklist`;
+      return `${opener}${tail}`;
+    }
+    // The resignation acceptance letter (DEC-054).
+    case 'CASE_EMPLOYEE_ADDRESS_RECORDED':
+      return str(m, 'nowRecorded') === 'true' || m.nowRecorded === true
+        ? `${who} recorded the address the letter is written to`
+        : `${who} cleared the address the letter is written to`;
+    case 'DOC_ISSUED_BY_EMAIL': {
+      const copies = Array.isArray(m.copiedTo) ? (m.copiedTo as unknown[]).length : 0;
+      const copied = copies ? `, copying ${plural(String(copies), 'colleague')}` : '';
+      return `${who} issued the letter to the employee by email (${str(m, 'destinationMask') ?? 'recorded address'})${copied}`;
+    }
     case 'CLEARANCE_APPROVED':
       return `${who} approved final clearance`;
     case 'ACCESS_REVOCATION_COMPLETED':
       return `${who} recorded completed access revocation`;
     case 'EXCEPTION_OPENED':
-      return `An exception was opened (${str(m, 'exceptionType') ?? 'unspecified'}, ${str(m, 'severity') ?? '-'})`;
+      return `An exception was opened: ${words(str(m, 'exceptionType')) ?? 'unspecified'} (${(words(str(m, 'severity')) ?? '-').toLowerCase()})`;
     case 'EXCEPTION_RESOLVED':
-      return `The exception was resolved (${str(m, 'exceptionType') ?? 'unspecified'})`;
+      return `The exception was resolved: ${words(str(m, 'exceptionType')) ?? 'unspecified'}`;
     case 'SYNC_RUN_COMPLETED':
       return `${who} completed a directory synchronization (${str(m, 'created') ?? '0'} created, ${str(m, 'updated') ?? '0'} updated)`;
     case 'AUDIT_EXPORTED':

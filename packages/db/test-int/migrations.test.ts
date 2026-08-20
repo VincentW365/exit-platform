@@ -4,9 +4,10 @@
  * (REQ-CASE-013/015, REQ-SEC-024). Requires the migrated test database.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
+import { parseCaseNumber } from '@exit/domain';
 import { getPrisma } from '../src/client.ts';
 import { createUser, resetDb, VALID_DRAFT } from './helpers.ts';
-import { createDraft } from '../src/services/caseService.ts';
+import { createDraft, listCases } from '../src/services/caseService.ts';
 
 const prisma = getPrisma();
 
@@ -89,8 +90,8 @@ describe('cases cannot be hard-deleted (REQ-CASE-015)', () => {
   });
 });
 
-describe('case number uniqueness (REQ-CASE-001)', () => {
-  it('allocates sequential unique numbers under concurrency', async () => {
+describe('case number allocation (REQ-CASE-001 + owner quality request)', () => {
+  it('allocates gapless unique numbers with valid check digits under concurrency', async () => {
     const { actor } = await createUser('Numbering HR', 'HR_OFFICER');
     const results = await Promise.all([
       createDraft(actor, VALID_DRAFT),
@@ -99,6 +100,31 @@ describe('case number uniqueness (REQ-CASE-001)', () => {
     ]);
     const numbers = results.map((r) => r.caseNumber);
     expect(new Set(numbers).size).toBe(3);
-    for (const n of numbers) expect(n).toMatch(/^OFF-\d{4}-\d{4}$/);
+    const parsed = numbers.map((n) => parseCaseNumber(n));
+    for (const p of parsed) {
+      expect(p.ok).toBe(true);
+      if (p.ok) expect(p.kind).toBe('modern'); // verified Damm check digit
+    }
+    // Gapless: the three sequences are consecutive within the year.
+    const seqs = parsed.map((p) => (p.ok ? p.seq : -1)).sort((a, b) => a - b);
+    expect(seqs[2]! - seqs[0]!).toBe(2);
+  });
+
+  it('search finds a case by every reasonable typed form of its number', async () => {
+    const { actor } = await createUser('Numbering Search HR', 'HR_OFFICER');
+    const created = await createDraft(actor, {
+      ...VALID_DRAFT,
+      employeeSourceId: 'EMP-TEST-005',
+    });
+    const n = created.caseNumber; // OFF-YYYY-NNNN-C
+    const withoutCheck = n.slice(0, n.lastIndexOf('-')); // legacy-shaped
+    const dashless = n.replaceAll('-', '').toLowerCase();
+    for (const q of [n, n.toLowerCase(), ` ${n} `, withoutCheck, dashless]) {
+      const rows = await listCases(actor, { q });
+      expect(
+        rows.some((r) => r.caseNumber === n),
+        `query "${q}" did not find ${n}`,
+      ).toBe(true);
+    }
   });
 });

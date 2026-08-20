@@ -1,21 +1,66 @@
 import type { Metadata } from 'next';
 import { formatInstant } from '@exit/domain';
-import { ServiceError, directoryOverview } from '@exit/db';
+import { ServiceError, directoryOverview, organizationTree, type OrgTreeNode } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
+import { countOf, humanize } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'Organization directory' };
+export const metadata: Metadata = { title: 'Organization Directory' };
 export const dynamic = 'force-dynamic';
+
+/**
+ * One person in the reporting tree. Managers are expandable branches
+ * (nested <details> - native keyboard support, no JavaScript); individual
+ * contributors are leaves. The top two levels open by default so the shape
+ * of the organization is visible immediately.
+ */
+function OrgNode({ node, depth }: { node: OrgTreeNode; depth: number }) {
+  const meta = [node.jobTitle, node.department].filter(Boolean).join(' · ');
+  const person = (
+    <>
+      <span className="org-node__name">{node.displayName}</span>
+      {meta ? <span className="org-node__meta">{meta}</span> : null}
+      {!node.active ? <span className="badge badge--neutral">Inactive</span> : null}
+    </>
+  );
+  if (node.reports.length === 0) {
+    return (
+      <li className="org-node org-node--leaf">
+        <span className="org-node__row">{person}</span>
+      </li>
+    );
+  }
+  return (
+    <li className="org-node">
+      <details open={depth < 2}>
+        <summary className="org-node__row">
+          {person}
+          <span className="org-node__count">
+            {node.reports.length} direct
+            {node.totalBelow > node.reports.length ? ` · ${node.totalBelow} total` : ''}
+          </span>
+        </summary>
+        <ul className="org-branch">
+          {node.reports.map((child) => (
+            <OrgNode key={child.sourceId} node={child} depth={depth + 1} />
+          ))}
+        </ul>
+      </details>
+    </li>
+  );
+}
 
 export default async function DirectoryPage() {
   const { actor } = await requireAuth();
   let data: Awaited<ReturnType<typeof directoryOverview>>;
+  let tree: Awaited<ReturnType<typeof organizationTree>> | null = null;
   try {
     data = await directoryOverview(actor);
+    tree = await organizationTree(actor);
   } catch (e) {
     if (e instanceof ServiceError)
       return (
         <>
-          <h1>Access restricted</h1>
+          <h1>Access Restricted</h1>
           <p className="panel">The organization directory is limited to authorized HR roles.</p>
         </>
       );
@@ -24,11 +69,11 @@ export default async function DirectoryPage() {
 
   return (
     <>
-      <h1>Organization directory (case preparation)</h1>
+      <h1>Organization Directory</h1>
       <p className="hint" role="note">
-        Reference view over the LOCAL employee-source cache for HR case preparation only - not an
-        employee self-service directory. Employee emails are deliberately not shown here. Use
-        &quot;New case&quot; to search and select an individual employee.
+        Reference view of the company directory for HR case preparation. This is not an employee
+        self-service directory, and email addresses are deliberately not shown. Use &quot;New
+        case&quot; to start an offboarding for someone.
       </p>
 
       <section className="panel" aria-labelledby="dir-totals-h">
@@ -37,22 +82,54 @@ export default async function DirectoryPage() {
         </h2>
         <ul>
           <li>
-            {data.totals.records} directory record(s): {data.totals.active} active,{' '}
+            {countOf(data.totals.records, 'directory record')}: {data.totals.active} active,{' '}
             {data.totals.inactive} inactive
             {data.totals.purged > 0 ? `, ${data.totals.purged} purged` : ''}.
           </li>
-          <li>{data.positions} distinct position(s).</li>
-          <li>{data.withManager} record(s) with manager data.</li>
+          <li>{countOf(data.positions, 'distinct position')}.</li>
+          <li>{countOf(data.withManager, 'record')} with manager data.</li>
           <li>
             Sources:{' '}
-            {data.bySource.map((s) => `${s.sourceSystem} (${s.records})`).join(', ') || 'none yet'}.
+            {data.bySource.map((s) => `${humanize(s.sourceSystem)} (${s.records})`).join(', ') ||
+              'none yet'}
+            .
           </li>
         </ul>
       </section>
 
+      {tree && (tree.roots.length > 0 || tree.unattached.length > 0) ? (
+        <section className="panel" aria-labelledby="dir-tree-h">
+          <h2 id="dir-tree-h" style={{ marginTop: 0 }}>
+            Reporting Structure
+          </h2>
+          <p className="hint">
+            {tree.totalPeople} people, {tree.maxDepth} level(s) deep. Select a manager to expand or
+            collapse their team.
+          </p>
+          <ul className="org-tree">
+            {tree.roots.map((root) => (
+              <OrgNode key={root.sourceId} node={root} depth={0} />
+            ))}
+          </ul>
+          {tree.unattached.length > 0 ? (
+            <details className="action" style={{ marginTop: '0.75rem' }}>
+              <summary>
+                {countOf(tree.unattached.length, 'person', 'people')} whose manager is not in the
+                directory
+              </summary>
+              <ul className="org-tree">
+                {tree.unattached.map((node) => (
+                  <OrgNode key={node.sourceId} node={node} depth={1} />
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </section>
+      ) : null}
+
       <section className="panel" aria-labelledby="dir-dept-h">
         <h2 id="dir-dept-h" style={{ marginTop: 0 }}>
-          Departments and locations
+          Departments and Locations
         </h2>
         <div className="table-wrap" tabIndex={0}>
           <table className="data">
@@ -75,20 +152,20 @@ export default async function DirectoryPage() {
         </div>
         <p className="hint">
           Locations:{' '}
-          {data.byLocation.map((l) => `${l.location} (${l.records})`).join(', ') || 'none recorded'}
+          {data.byLocation.map((l) => `${l.location} (${l.records})`).join(', ') || 'None recorded'}
           .
         </p>
       </section>
 
-      <section className="panel" aria-labelledby="dir-gaps-h">
-        <h2 id="dir-gaps-h" style={{ marginTop: 0 }}>
-          Data gaps to resolve before case work
-        </h2>
-        {data.gaps.missingDepartment.length === 0 &&
-        data.gaps.missingManager.length === 0 &&
-        data.gaps.missingPosition.length === 0 ? (
-          <p>No missing organizational data in the cached directory.</p>
-        ) : (
+      {/* Exception-first (owner request, 2026-08-18): the panel exists only
+          when there is actually something to resolve. */}
+      {data.gaps.missingDepartment.length > 0 ||
+      data.gaps.missingManager.length > 0 ||
+      data.gaps.missingPosition.length > 0 ? (
+        <section className="panel" aria-labelledby="dir-gaps-h">
+          <h2 id="dir-gaps-h" style={{ marginTop: 0 }}>
+            Data Gaps to Resolve Before Case Work
+          </h2>
           <ul>
             {data.gaps.missingDepartment.map((e) => (
               <li key={`d-${e.sourceId}`}>
@@ -106,12 +183,12 @@ export default async function DirectoryPage() {
               </li>
             ))}
           </ul>
-        )}
-      </section>
+        </section>
+      ) : null}
 
       <section className="panel" aria-labelledby="dir-sync-h">
         <h2 id="dir-sync-h" style={{ marginTop: 0 }}>
-          Synchronization history
+          Synchronization History
         </h2>
         {data.lastSyncs.length === 0 ? (
           <p>No synchronization has run yet.</p>
@@ -119,7 +196,7 @@ export default async function DirectoryPage() {
           <ul>
             {data.lastSyncs.map((s, i) => (
               <li key={i}>
-                {s.mode} - started {formatInstant(s.startedAt)}
+                {humanize(s.mode)} - started {formatInstant(s.startedAt)}
                 {s.finishedAt ? `, finished ${formatInstant(s.finishedAt)}` : ''} - {s.created}{' '}
                 created, {s.updated} updated.
               </li>

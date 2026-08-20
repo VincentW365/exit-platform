@@ -16,8 +16,9 @@ import {
   type AuditCategory,
 } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
+import { humanize } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'Audit centre' };
+export const metadata: Metadata = { title: 'Audit Center' };
 export const dynamic = 'force-dynamic';
 
 const CATEGORY_BADGE: Record<string, string> = {
@@ -76,7 +77,7 @@ export default async function AuditCentrePage({
 
   return (
     <>
-      <h1>Audit centre</h1>
+      <h1>Audit Center</h1>
       <p className="hint" role="note">
         The complete, append-only business audit trail
         {technicalOnly
@@ -109,11 +110,11 @@ export default async function AuditCentrePage({
 
       <form method="get" className="panel filter-toolbar" aria-label="Audit filters">
         <div className="field" style={{ maxWidth: '10rem' }}>
-          <label htmlFor="af-from">From (date)</label>
+          <label htmlFor="af-from">From (Date)</label>
           <input id="af-from" type="date" name="from" defaultValue={sp.from ?? ''} />
         </div>
         <div className="field" style={{ maxWidth: '10rem' }}>
-          <label htmlFor="af-to">To (date)</label>
+          <label htmlFor="af-to">To (Date)</label>
           <input id="af-to" type="date" name="to" defaultValue={sp.to ?? ''} />
         </div>
         <div className="field" style={{ maxWidth: '12rem' }}>
@@ -142,7 +143,7 @@ export default async function AuditCentrePage({
         ) : null}
         {!technicalOnly ? (
           <div className="field" style={{ maxWidth: '11rem' }}>
-            <label htmlFor="af-case">Case number</label>
+            <label htmlFor="af-case">Case Number</label>
             <input
               id="af-case"
               name="caseNumber"
@@ -155,22 +156,22 @@ export default async function AuditCentrePage({
           <label htmlFor="af-result">Outcome</label>
           <select id="af-result" name="result" defaultValue={sp.result ?? ''}>
             <option value="">Any</option>
-            <option value="SUCCESS">SUCCESS</option>
-            <option value="DENIED">DENIED</option>
-            <option value="FAILURE">FAILURE</option>
+            <option value="SUCCESS">Success</option>
+            <option value="DENIED">Denied</option>
+            <option value="FAILURE">Failure</option>
           </select>
         </div>
         <div className="field" style={{ maxWidth: '11rem' }}>
-          <label htmlFor="af-purpose">Record purpose</label>
+          <label htmlFor="af-purpose">Record Purpose</label>
           <select id="af-purpose" name="purpose" defaultValue={sp.purpose ?? ''}>
             <option value="">Any</option>
-            <option value="OPERATIONAL">OPERATIONAL</option>
-            <option value="TRAINING">TRAINING</option>
-            <option value="TEST">TEST</option>
+            <option value="OPERATIONAL">Operational</option>
+            <option value="TRAINING">Training</option>
+            <option value="TEST">Test</option>
           </select>
         </div>
         <div className="field" style={{ maxWidth: '14rem' }}>
-          <label htmlFor="a-type">Event type (exact)</label>
+          <label htmlFor="a-type">Event Type (Exact)</label>
           <input id="a-type" name="eventType" defaultValue={sp.eventType ?? ''} maxLength={60} />
         </div>
         <div style={{ alignSelf: 'flex-end', display: 'flex', gap: '0.5rem' }}>
@@ -196,7 +197,7 @@ export default async function AuditCentrePage({
             <caption className="visually-hidden">Audit events</caption>
             <thead>
               <tr>
-                <th scope="col">When (America/Jamaica)</th>
+                <th scope="col">When</th>
                 <th scope="col">Category</th>
                 <th scope="col">What happened</th>
                 <th scope="col">Case</th>
@@ -209,7 +210,7 @@ export default async function AuditCentrePage({
                   <td className="tabular-nums">{formatInstant(e.occurredAt)}</td>
                   <td>
                     <span className={`badge ${CATEGORY_BADGE[e.category] ?? 'badge--neutral'}`}>
-                      {e.category}
+                      {humanize(e.category)}
                     </span>
                   </td>
                   <td>
@@ -271,7 +272,7 @@ export default async function AuditCentrePage({
                             : 'badge--danger'
                       }`}
                     >
-                      {e.result}
+                      {humanize(e.result)}
                     </span>
                   </td>
                 </tr>
