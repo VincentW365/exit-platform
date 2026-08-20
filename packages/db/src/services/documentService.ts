@@ -39,6 +39,7 @@ async function snapshotForCase(caseId: string, documentVersion: number, template
       employeeDisplayName: c.employeeDisplayName,
       employeeLegalName: c.employeeDisplayName,
       employeeSourceId: c.employeeSourceId,
+      employeeNumber: c.employeeNumber,
       jobTitle: c.jobTitle,
       department: c.department,
       location: c.location,

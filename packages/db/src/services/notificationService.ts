@@ -120,6 +120,7 @@ function buildFieldValues(
     caseNumber: string;
     employeeDisplayName: string;
     employeeSourceId: string;
+    employeeNumber?: string | null;
     department: string;
     jobTitle?: string | null;
     effectiveSeparationAt: Date | null;
@@ -135,7 +136,9 @@ function buildFieldValues(
   return {
     EMPLOYEE_LEGAL_NAME: c.employeeDisplayName,
     EMPLOYEE_FIRST_NAME: c.employeeDisplayName.split(/\s+/)[0] ?? c.employeeDisplayName,
-    EMPLOYEE_REFERENCE: c.employeeSourceId,
+    // The employer's own Employee #. Falls back to nothing rather than to
+    // BambooHR's internal record id, which is not an employee number.
+    EMPLOYEE_REFERENCE: c.employeeNumber ?? 'Not recorded in BambooHR',
     CASE_REFERENCE: c.caseNumber,
     DEPARTMENT: c.department,
     JOB_TITLE: c.jobTitle ?? '',

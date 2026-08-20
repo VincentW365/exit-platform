@@ -225,4 +225,44 @@ export async function seedStage3Fixtures(): Promise<void> {
   await seedStage3(prisma);
   const { seedStage4 } = await import('../src/seedStage4.ts');
   await seedStage4(prisma);
+
+  // Load the fixture organization into the directory, the way a real
+  // deployment syncs BambooHR. Without it the directory holds only employees
+  // a case happened to touch, and anything that reads the ORGANIZATION -
+  // manager routing, the HR colleagues who can be copied on a letter - sees
+  // an empty company.
+  const { SYNTHETIC_EMPLOYEES } = await import('@exit/domain');
+  for (const e of SYNTHETIC_EMPLOYEES) {
+    await prisma.employeeSourceRecord.upsert({
+      where: { sourceSystem_sourceId: { sourceSystem: e.sourceSystem, sourceId: e.sourceId } },
+      create: {
+        sourceSystem: e.sourceSystem,
+        sourceId: e.sourceId,
+        displayName: e.displayName,
+        workEmail: e.workEmail,
+        jobTitle: e.jobTitle,
+        department: e.department,
+        location: e.location,
+        employeeNumber: e.employeeNumber ?? null,
+        managerName: e.managerName ?? null,
+        managerSourceId: e.managerSourceId ?? null,
+        active: e.active ?? true,
+        retrievedAt: new Date(),
+        // The raw source record, exactly as a real sync stores it: the payload
+        // is directory provenance, not a placeholder.
+        payload: e as unknown as object,
+      },
+      update: {
+        displayName: e.displayName,
+        workEmail: e.workEmail,
+        jobTitle: e.jobTitle,
+        department: e.department,
+        location: e.location,
+        employeeNumber: e.employeeNumber ?? null,
+        managerName: e.managerName ?? null,
+        managerSourceId: e.managerSourceId ?? null,
+        active: e.active ?? true,
+      },
+    });
+  }
 }

@@ -212,9 +212,11 @@ export default async function CaseDetailPage({
           {/* Employee identity, department and departure type live in the
               case header (AE) - the summary keeps only what the header
               doesn't show. */}
-          <dt>Employee Source</dt>
-          <dd>
-            {c.employeeSourceId} (source: {humanize(c.employeeSourceSystem)})
+          <dt>Employee #</dt>
+          <dd>{c.employeeNumber ?? 'Not recorded in BambooHR'}</dd>
+          <dt>Directory Record</dt>
+          <dd className="meta">
+            {humanize(c.employeeSourceSystem)} id {c.employeeSourceId}
           </dd>
           <dt>Received</dt>
           <dd>

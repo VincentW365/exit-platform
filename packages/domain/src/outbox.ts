@@ -216,12 +216,24 @@ export function parseTestMode(value: unknown): TestModeConfig {
   };
 }
 
-/** Validation for turning test mode on. Turning it OFF is always allowed. */
-export function testModeErrors(cfg: TestModeConfig, environment: string): string[] {
+/**
+ * Validation for turning test mode on. Turning it OFF is always allowed.
+ *
+ * The interception address is deliberately NOT held to the recipient rules.
+ * It is the address that receives instead of the recipients, so requiring it
+ * to be undeliverable in development would defeat its whole purpose - a
+ * tester could never point it at their own inbox, which is the one thing it
+ * exists for. What keeps development safe is the provider: development can
+ * only run a capture provider, so nothing leaves the network whatever this
+ * says. Any environment therefore accepts a real address here.
+ */
+export function testModeErrors(cfg: TestModeConfig, _environment: string): string[] {
   if (!cfg.enabled) return [];
   const errors: string[] = [];
-  if (!cfg.redirectTo) errors.push('A redirect mailbox is required to turn test mode on.');
-  else errors.push(...destinationErrors(cfg.redirectTo, environment));
+  const to = cfg.redirectTo.trim();
+  if (!to) errors.push('An address is required to send everything to one mailbox.');
+  else if (!PLAUSIBLE_EMAIL.test(to) && !to.startsWith('capture://'))
+    errors.push('Enter a valid email address.');
   if (cfg.note && cfg.note.length > 200) errors.push('The note is limited to 200 characters.');
   return errors;
 }

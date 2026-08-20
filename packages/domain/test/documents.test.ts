@@ -59,6 +59,7 @@ describe('field snapshot and substitution (section C)', () => {
       employeeDisplayName: 'Avery Brown',
       employeeLegalName: 'Avery Brown',
       employeeSourceId: 'EMP-TEST-001',
+      employeeNumber: '4021',
       jobTitle: 'Parts Sales Associate',
       department: 'Sales',
       location: 'Kingston',

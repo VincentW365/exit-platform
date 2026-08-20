@@ -28,6 +28,27 @@ beforeAll(async () => {
   manager = await createUser('Dana Manager', 'HR_MANAGER');
 });
 
+describe("the employee number is the employer's own", () => {
+  it("snapshots BambooHR's Employee #, not its internal record id", async () => {
+    const created = await createDraft(officer.actor, {
+      ...VALID_DRAFT,
+      employeeSourceId: 'EMP-TEST-001',
+      recordPurpose: 'TEST',
+      measurementCohort: null,
+    });
+    const row = await prisma.offboardingCase.findUniqueOrThrow({
+      where: { id: created.caseId },
+    });
+    const directory = await prisma.employeeSourceRecord.findFirstOrThrow({
+      where: { sourceId: 'EMP-TEST-001' },
+    });
+    expect(row.employeeNumber).toBe(directory.employeeNumber);
+    // The two are genuinely different values: one is HR's number, the other
+    // is the directory's internal key, and they must never be confused.
+    expect(row.employeeNumber).not.toBe(row.employeeSourceId);
+  });
+});
+
 describe('effective separation derives from the final working date (owner request 2026-08-18)', () => {
   it('a resignation with notice ends at close of business on the final working date', async () => {
     const finalDay = new Date(Date.now() + 6 * 86_400_000);

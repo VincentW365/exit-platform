@@ -46,68 +46,62 @@ export interface LetterCcContact {
 }
 
 /**
- * The HR colleagues who may be copied on an employee letter.
+ * Departments that are Human Resources. The directory names the department in
+ * the employer's own words, so this matches on it rather than guessing from
+ * job titles - and it is the ONLY thing that makes someone eligible. Nobody
+ * outside HR can be copied on an employee's acceptance letter.
+ */
+const HR_DEPARTMENT_PATTERNS = ['human resource', 'hr'];
+
+function isHrDepartment(department: string | null): boolean {
+  const d = (department ?? '').trim().toLowerCase();
+  if (!d) return false;
+  return HR_DEPARTMENT_PATTERNS.some((p) => d === p || d.includes(p));
+}
+
+/**
+ * Everyone in Human Resources who can actually receive an email.
  *
- * "The Human Resources in the directory" is read two ways, because neither
- * alone is complete: directory records whose department reads as Human
- * Resources, plus the people who actually hold HR roles in this application.
- * This is a display filter for a dropdown, not an authorization rule - the
- * authority to send is checked separately.
+ * Read from the employee directory, so the list is whoever HR is today - no
+ * application account required, and no one outside HR ever appears. People in
+ * HR with no work email on record are counted but not listed: they cannot be
+ * copied on anything, and saying how many there are is more honest than
+ * silently showing a shorter list.
  */
 export async function listHrCcContacts(actor: Actor, caseId: string): Promise<LetterCcContact[]> {
   const { ctx } = await loadCaseAccess(actor, caseId);
   if (!canActOnCase(actor, 'doc.markIssued', ctx)) throw ServiceError.forbidden();
   const prisma = getPrisma();
 
-  const [byDepartment, hrUsers] = await Promise.all([
-    prisma.employeeSourceRecord.findMany({
-      where: {
-        active: true,
-        NOT: [{ workEmail: null }, { workEmail: '' }],
-        OR: [
-          { department: { contains: 'human resource', mode: 'insensitive' } },
-          { department: { equals: 'HR', mode: 'insensitive' } },
-        ],
-      },
-      select: { sourceId: true, displayName: true, jobTitle: true, workEmail: true },
-      orderBy: { displayName: 'asc' },
-    }),
-    prisma.user.findMany({
-      where: {
-        deactivatedAt: null,
-        workEmail: { notIn: [''] },
-        roleAssignments: {
-          some: { revokedAt: null, role: { in: ['HR_OFFICER', 'HR_MANAGER'] } },
-        },
-      },
-      select: { displayName: true, workEmail: true },
-      orderBy: { displayName: 'asc' },
-    }),
-  ]);
+  const rows = await prisma.employeeSourceRecord.findMany({
+    where: { active: true },
+    select: {
+      sourceId: true,
+      displayName: true,
+      jobTitle: true,
+      department: true,
+      workEmail: true,
+    },
+    orderBy: { displayName: 'asc' },
+  });
 
-  const byEmail = new Map<string, LetterCcContact>();
-  for (const row of byDepartment) {
-    const email = row.workEmail!.trim().toLowerCase();
-    byEmail.set(email, {
+  const contacts: LetterCcContact[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!isHrDepartment(row.department)) continue;
+    const email = row.workEmail?.trim();
+    if (!email) continue;
+    const key = email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    contacts.push({
       sourceId: row.sourceId,
       displayName: row.displayName,
       jobTitle: row.jobTitle,
       emailMask: maskDestination(email),
     });
   }
-  // An HR account without a directory record still needs to be selectable, so
-  // it is keyed by its own work email.
-  for (const user of hrUsers) {
-    const email = user.workEmail.trim().toLowerCase();
-    if (byEmail.has(email)) continue;
-    byEmail.set(email, {
-      sourceId: `user:${email}`,
-      displayName: user.displayName,
-      jobTitle: 'Human Resources',
-      emailMask: maskDestination(email),
-    });
-  }
-  return [...byEmail.values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
+  return contacts;
 }
 
 /** Resolve the selected ids back to addresses, refusing anything unknown. */
@@ -121,18 +115,17 @@ async function resolveCc(
   for (const id of ids) {
     let email: string | null = null;
     let name = '';
-    if (id.startsWith('user:')) {
-      const user = await prisma.user.findFirst({
-        where: { workEmail: { equals: id.slice(5), mode: 'insensitive' }, deactivatedAt: null },
-        select: { displayName: true, workEmail: true },
-      });
-      email = user?.workEmail ?? null;
-      name = user?.displayName ?? '';
-    } else {
+    {
       const row = await prisma.employeeSourceRecord.findFirst({
         where: { sourceId: id, active: true },
-        select: { displayName: true, workEmail: true },
+        select: { displayName: true, workEmail: true, department: true },
       });
+      // Enforced again here, not just in the dropdown: the selection arrives
+      // from a form, and only Human Resources may be copied on this letter.
+      if (row && !isHrDepartment(row.department))
+        throw ServiceError.validation([
+          'Only Human Resources colleagues can be copied on an acceptance letter.',
+        ]);
       email = row?.workEmail ?? null;
       name = row?.displayName ?? '';
     }

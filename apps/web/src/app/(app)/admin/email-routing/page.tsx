@@ -1,46 +1,13 @@
 import type { Metadata } from 'next';
-import { ServiceError, getTestMode, listRoutes } from '@exit/db';
-import {
-  DESTINATION_LABELS,
-  DYNAMIC_DESTINATIONS,
-  STATIC_DESTINATIONS,
-  type DestinationKey,
-} from '@exit/domain';
+import { ServiceError, getTestMode, listDepartmentMailboxes, listRoutes } from '@exit/db';
+import { destinationLabel } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import { humanize } from '@/lib/text';
-import { setRouteAction } from './actions';
+import { setMailboxAction, setTestAddressAction } from './actions';
 
 export const metadata: Metadata = { title: 'Email Routing' };
 export const dynamic = 'force-dynamic';
-
-const STATIC_OPTIONS = STATIC_DESTINATIONS.map(
-  (d) => [`static:${d}` as DestinationKey, DESTINATION_LABELS[d]] as const,
-);
-const DYNAMIC_OPTIONS = DYNAMIC_DESTINATIONS.map(
-  (d) => [`dynamic:${d}` as DestinationKey, DESTINATION_LABELS[d]] as const,
-);
-
-function DestinationOptions() {
-  return (
-    <>
-      <optgroup label="Shared mailboxes (from the recipient directory)">
-        {STATIC_OPTIONS.map(([key, label]) => (
-          <option key={key} value={key}>
-            {label}
-          </option>
-        ))}
-      </optgroup>
-      <optgroup label="People on this case (resolved per employee)">
-        {DYNAMIC_OPTIONS.map(([key, label]) => (
-          <option key={key} value={key}>
-            {label}
-          </option>
-        ))}
-      </optgroup>
-    </>
-  );
-}
 
 export default async function EmailRoutingPage({
   searchParams,
@@ -50,8 +17,10 @@ export default async function EmailRoutingPage({
   const { actor } = await requireAuth();
   const sp = await searchParams;
 
+  let mailboxes: Awaited<ReturnType<typeof listDepartmentMailboxes>>;
   let routes: Awaited<ReturnType<typeof listRoutes>>;
   try {
+    mailboxes = await listDepartmentMailboxes(actor);
     routes = await listRoutes(actor);
   } catch (e) {
     if (e instanceof ServiceError)
@@ -64,112 +33,166 @@ export default async function EmailRoutingPage({
     throw e;
   }
   const testMode = await getTestMode(actor);
+  // Development and UAT can only run the capture provider, so nothing leaves
+  // the network here whatever address is configured. Saying so plainly beats
+  // letting someone wait for an email that was never going to arrive.
+  const capturesOnly = process.env.EMAIL_MODE !== 'graph';
 
   return (
     <>
       <h1>Email Routing</h1>
       <Feedback err={sp.err} ok={sp.ok} />
-      <p className="hint" role="note">
-        Who receives each notification, in one place. Nothing in the platform names a mailbox: a
-        notification is addressed to a <strong>destination</strong>, and this page says what each
-        destination means. Moving a department to a new address, or copying Security on access
-        removals, is a change here - never a change to the workflow.
-      </p>
-      <p className="hint">
-        Shared mailboxes come from the <a href="/admin/recipients">recipient directory</a>, where
-        the address itself is held encrypted and approved. Destinations resolved per employee (a
-        manager, the assigned officer) are read from the case at send time.
-      </p>
 
-      {testMode.enabled ? (
-        <p className="banner-restricted" role="status">
-          Rehearsal mode is ON: these routes are still calculated in full, but every message is
-          redirected to the test mailbox and states its intended recipients.
+      {/* The thing an owner needs first: prove mail works, to one address. */}
+      <section className="panel" aria-labelledby="test-h">
+        <h2 id="test-h" style={{ marginTop: 0 }}>
+          Send Every Message to One Address
+        </h2>
+        {testMode.enabled ? (
+          <p className="banner-restricted" role="status">
+            ON — every message goes to <strong>{testMode.redirectTo}</strong>. Nothing is reaching
+            its real recipients.
+          </p>
+        ) : (
+          <p className="hint">Off — messages go to the mailboxes set below.</p>
+        )}
+        <p className="hint">
+          Put your own address here to watch the whole offboarding workflow arrive in one inbox. The
+          real recipients are still worked out normally and written at the top of every message, so
+          you can check the routing is right before any of it goes to a real mailbox.
         </p>
-      ) : null}
+        {capturesOnly ? (
+          <p className="hint" role="note">
+            <strong>This environment does not send email.</strong> It runs the capture provider, so
+            every message — including these — is written to the{' '}
+            <a href="/dev/mailbox">captured email</a> screen instead of leaving the network. The
+            address above is what will be used once a real mail provider is configured; read the
+            messages in the mailbox to check the routing now.
+          </p>
+        ) : null}
+        <form action={setTestAddressAction} className="stack">
+          <div className="field">
+            <label htmlFor="tm-to">Send Everything To</label>
+            <input
+              id="tm-to"
+              name="redirectTo"
+              type="email"
+              maxLength={200}
+              placeholder="you@bertsautoparts.com"
+              defaultValue={testMode.redirectTo}
+            />
+          </div>
+          <div className="actions-row">
+            <button type="submit" name="enabled" value="on">
+              {testMode.enabled ? 'Update the address' : 'Send everything here'}
+            </button>
+            {testMode.enabled ? (
+              <button type="submit" name="enabled" value="off" className="secondary">
+                Stop — use the real mailboxes
+              </button>
+            ) : null}
+          </div>
+        </form>
+      </section>
 
-      {routes.map((r) => (
-        <section
-          key={r.notificationType}
-          className="panel"
-          aria-label={`${r.notificationType} routing`}
-        >
-          <h2 style={{ marginTop: 0 }}>
-            {humanize(r.notificationType)}{' '}
-            {r.isDefault ? <span className="badge badge--neutral">Default</span> : null}
-          </h2>
-          <dl className="kv">
-            <dt>To</dt>
-            <dd>{DESTINATION_LABELS[r.to.split(':')[1] as never] ?? r.to}</dd>
-            <dt>Copied</dt>
-            <dd>
-              {r.cc.length
-                ? r.cc.map((k) => DESTINATION_LABELS[k.split(':')[1] as never]).join('; ')
-                : 'Nobody'}
-            </dd>
-            <dt>Blind copied</dt>
-            <dd>
-              {r.bcc.length
-                ? r.bcc.map((k) => DESTINATION_LABELS[k.split(':')[1] as never]).join('; ')
-                : 'Nobody'}
-            </dd>
-          </dl>
-          {r.note ? <p className="hint">{r.note}</p> : null}
-
-          <details className="action">
-            <summary>Change who receives this</summary>
-            <form action={setRouteAction} className="stack">
-              <input type="hidden" name="notificationType" value={r.notificationType} />
+      {/* Then: what each department's mailbox actually is. */}
+      <section className="panel" aria-labelledby="mailboxes-h">
+        <h2 id="mailboxes-h" style={{ marginTop: 0 }}>
+          Department Mailboxes
+        </h2>
+        <p className="hint">
+          One address per department. Nothing in the platform has a mailbox written into it — change
+          an address here and every notification addressed to that department follows, with no
+          change to the workflow.
+        </p>
+        {mailboxes.map((m) => (
+          <details
+            key={m.destination}
+            className="action"
+            aria-label={`${m.destination} mailbox`}
+            open={!m.usable}
+          >
+            <summary>
+              {m.label} — {m.mask ?? 'no mailbox set'}{' '}
+              {m.usable ? (
+                <span className="badge badge--success">Ready</span>
+              ) : (
+                <span className="badge badge--warning">Needs an address</span>
+              )}
+            </summary>
+            <form action={setMailboxAction} className="stack">
+              <input type="hidden" name="destination" value={m.destination} />
+              <p className="hint">{m.statusNote}</p>
+              {m.usedFor.length ? (
+                <p className="hint">Receives: {m.usedFor.map((t) => humanize(t)).join('; ')}.</p>
+              ) : (
+                <p className="hint">No notification is addressed here yet.</p>
+              )}
               <div className="field">
-                <label htmlFor={`to-${r.notificationType}`}>Primary Recipient (To)</label>
-                <select id={`to-${r.notificationType}`} name="to" defaultValue={r.to} required>
-                  <DestinationOptions />
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor={`cc-${r.notificationType}`}>Copied (Cc)</label>
-                <select
-                  id={`cc-${r.notificationType}`}
-                  name="cc"
-                  multiple
-                  size={6}
-                  defaultValue={[...r.cc]}
-                >
-                  <DestinationOptions />
-                </select>
-                <span className="hint">Hold Ctrl (or Cmd) to select several, or none at all.</span>
-              </div>
-              <div className="field">
-                <label htmlFor={`bcc-${r.notificationType}`}>Blind Copied (Bcc)</label>
-                <select
-                  id={`bcc-${r.notificationType}`}
-                  name="bcc"
-                  multiple
-                  size={6}
-                  defaultValue={[...r.bcc]}
-                >
-                  <DestinationOptions />
-                </select>
+                <label htmlFor={`mb-${m.destination}`}>Mailbox</label>
+                <input
+                  id={`mb-${m.destination}`}
+                  name="email"
+                  type="email"
+                  maxLength={200}
+                  required
+                  placeholder="department@bertsautoparts.com"
+                />
                 <span className="hint">
-                  Blind copies are not shown to the other recipients. Use sparingly - a person who
-                  cannot see who else received a message cannot correct a mistake.
+                  The current address is shown masked above; type the full address to replace it.
                 </span>
               </div>
               <div className="field">
-                <label htmlFor={`note-${r.notificationType}`}>Why This Route</label>
-                <input
-                  id={`note-${r.notificationType}`}
-                  name="note"
-                  type="text"
-                  maxLength={300}
-                  defaultValue={r.note ?? ''}
-                />
+                <label htmlFor={`rs-${m.destination}`}>Reason for the Change</label>
+                <input id={`rs-${m.destination}`} name="reason" type="text" maxLength={300} />
               </div>
-              <button type="submit">Save routing</button>
+              <button type="submit">Save mailbox</button>
             </form>
           </details>
-        </section>
-      ))}
+        ))}
+      </section>
+
+      {/* Reference, not a control: each notification has one natural home. */}
+      <section className="panel" aria-labelledby="where-h">
+        <h2 id="where-h" style={{ marginTop: 0 }}>
+          Where Each Notification Goes
+        </h2>
+        <p className="hint">
+          Each notification has one department it belongs to. Set that department&apos;s mailbox
+          above and it arrives in the right place.
+        </p>
+        <div className="table-wrap" tabIndex={0}>
+          <table className="data">
+            <caption className="sr-only">Notification types and their destinations</caption>
+            <thead>
+              <tr>
+                <th scope="col">Notification</th>
+                <th scope="col">Goes to</th>
+                <th scope="col">Copied</th>
+              </tr>
+            </thead>
+            <tbody>
+              {routes.map((r) => (
+                <tr key={r.notificationType}>
+                  <td>{humanize(r.notificationType)}</td>
+                  <td>{destinationLabel(r.to)}</td>
+                  <td>
+                    {r.cc.length ? r.cc.map((k) => destinationLabel(k)).join('; ') : '-'}
+                    {r.bcc.length
+                      ? ` (blind: ${r.bcc.map((k) => destinationLabel(k)).join('; ')})`
+                      : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="hint">
+          External providers (group health, group life, payroll bank, pension) are maintained in the{' '}
+          <a href="/admin/recipients">recipient directory</a>, where an external address is approved
+          by a second authority before it can be used.
+        </p>
+      </section>
     </>
   );
 }

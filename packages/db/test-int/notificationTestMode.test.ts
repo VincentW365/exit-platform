@@ -74,9 +74,20 @@ describe('who can change it', () => {
     ).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
-  it('refuses a mailbox that could actually deliver in development', async () => {
+  it('accepts a real address - the tester has to point it at their own inbox', async () => {
+    // Development stays safe because it can only run a capture provider, not
+    // because of the shape of this address.
+    await setTestMode(manager.actor, {
+      enabled: true,
+      redirectTo: 'someone@bertsautoparts.com',
+    });
+    expect((await currentTestMode()).redirectTo).toBe('someone@bertsautoparts.com');
+    await setTestMode(manager.actor, { enabled: false, redirectTo: '' });
+  });
+
+  it('still refuses something that is not an address', async () => {
     await expect(
-      setTestMode(manager.actor, { enabled: true, redirectTo: 'someone@bertsautoparts.com' }),
+      setTestMode(manager.actor, { enabled: true, redirectTo: 'not-an-address' }),
     ).rejects.toMatchObject({ code: 'VALIDATION' });
     expect((await currentTestMode()).enabled).toBe(false);
   });
@@ -115,8 +126,10 @@ describe('what a rehearsal actually sends', () => {
       expect(capture.subject.startsWith('[TEST MODE] ')).toBe(true);
       expect(capture.body).toContain('WAS INTERCEPTED AND NOT DELIVERED');
       expect(capture.body).toContain('Note: August rehearsal.');
-      // The real recipients survive as masks only.
-      expect(capture.body).not.toContain('@example.test\n');
+      // The intended recipients are spelled out IN FULL, so the tester can
+      // check them against the routing table. Masking is for the audit trail
+      // and the email log, not for the person running the test.
+      expect(capture.body).toContain('Intended recipients');
     }
 
     // The diversion is on the record, in masks on both sides.

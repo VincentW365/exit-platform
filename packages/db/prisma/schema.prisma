@@ -250,6 +250,11 @@ model OffboardingCase {
 
   employeeSourceSystem String
   employeeSourceId     String
+  /// The employer's own Employee # from BambooHR, snapshotted with the rest
+  /// of the source data. Distinct from employeeSourceId, which is BambooHR's
+  /// internal record id and means nothing to HR. Null where BambooHR holds
+  /// no number for this person - the platform never invents one.
+  employeeNumber       String?
   employeeDisplayName  String
   employeeWorkEmail    String?
   department           String

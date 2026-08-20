@@ -75,7 +75,9 @@ export default async function AssignmentPage({
           <dt>Name</dt>
           <dd>{plan.employee.displayName}</dd>
           <dt>Employee #</dt>
-          <dd>{plan.employee.employeeNumber ?? plan.employee.sourceId}</dd>
+          {/* The employer's own number, or nothing. BambooHR's internal record
+              id is not an employee number and is never shown as one. */}
+          <dd>{plan.employee.employeeNumber ?? 'Not recorded in BambooHR'}</dd>
           <dt>Position</dt>
           <dd>{plan.employee.jobTitle ?? '-'}</dd>
           <dt>Department / Location</dt>

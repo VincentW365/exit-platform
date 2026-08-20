@@ -189,6 +189,40 @@ describe('issuing the letter by email', () => {
     expect(capture.body).not.toContain('Fictional');
   });
 
+  it('offers every HR colleague with an email, and nobody outside HR', async () => {
+    const caseId = await activeCase();
+    const contacts = await listHrCcContacts(manager.actor, caseId);
+    expect(contacts.length).toBeGreaterThan(0);
+
+    const hr = await prisma.employeeSourceRecord.findMany({
+      where: { department: 'Human Resources', active: true },
+      select: { sourceId: true, workEmail: true },
+    });
+    const reachable = hr.filter((r) => r.workEmail?.trim());
+    // Everyone in HR who can receive an email is offered - no more, no fewer.
+    expect(contacts.map((c) => c.sourceId).sort()).toEqual(reachable.map((r) => r.sourceId).sort());
+
+    // And nobody outside HR is on the list.
+    const outside = await prisma.employeeSourceRecord.findMany({
+      where: { NOT: { department: 'Human Resources' } },
+      select: { sourceId: true },
+    });
+    const offered = new Set(contacts.map((c) => c.sourceId));
+    for (const o of outside) expect(offered.has(o.sourceId)).toBe(false);
+  });
+
+  it('refuses a copied recipient who is not in Human Resources', async () => {
+    const caseId = await activeCase();
+    const docId = await renderedLetter(caseId);
+    const outsider = await prisma.employeeSourceRecord.findFirstOrThrow({
+      where: { NOT: { department: 'Human Resources' }, workEmail: { not: null } },
+      select: { sourceId: true },
+    });
+    await expect(
+      issueDocumentByEmail(manager.actor, docId, { ccIds: [outsider.sourceId] }),
+    ).rejects.toMatchObject({ code: 'VALIDATION' });
+  });
+
   it('refuses to send twice, and the audit records masks rather than addresses', async () => {
     const caseId = await activeCase();
     const docId = await renderedLetter(caseId);

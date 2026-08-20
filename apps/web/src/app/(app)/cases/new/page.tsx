@@ -210,7 +210,7 @@ export default async function NewCasePage({
               <dt>Employee</dt>
               <dd>{selected.displayName}</dd>
               <dt>Employee #</dt>
-              <dd>{selected.employeeNumber ?? 'Not recorded in the directory'}</dd>
+              <dd>{selected.employeeNumber ?? 'Not recorded in BambooHR'}</dd>
               <dt>Position</dt>
               <dd>{selected.jobTitle ?? '-'}</dd>
               <dt>Department / Location</dt>

@@ -39,18 +39,25 @@ describe('reading the stored setting', () => {
 describe('turning it on', () => {
   it('needs a mailbox', () => {
     expect(testModeErrors({ enabled: true, redirectTo: '' }, 'development')).toEqual([
-      'A redirect mailbox is required to turn test mode on.',
+      'An address is required to send everything to one mailbox.',
     ]);
   });
 
-  it('holds the environment to its own destination rules', () => {
-    // A development rehearsal can never be pointed at a deliverable address.
-    expect(
-      testModeErrors({ enabled: true, redirectTo: 'someone@bertsautoparts.com' }, 'development'),
-    ).not.toEqual([]);
-    expect(
-      testModeErrors({ enabled: true, redirectTo: 'someone@bertsautoparts.com' }, 'production'),
-    ).toEqual([]);
+  it('accepts a real address in any environment - that is the point of it', () => {
+    // The tester has to be able to point it at their own inbox. Development
+    // stays safe because it can only run a capture provider, not because of
+    // the shape of this address.
+    for (const env of ['development', 'test', 'production']) {
+      expect(
+        testModeErrors({ enabled: true, redirectTo: 'someone@bertsautoparts.com' }, env),
+      ).toEqual([]);
+    }
+  });
+
+  it('still refuses something that is not an address', () => {
+    expect(testModeErrors({ enabled: true, redirectTo: 'not-an-address' }, 'development')).toEqual([
+      'Enter a valid email address.',
+    ]);
   });
 
   it('never blocks turning it OFF', () => {

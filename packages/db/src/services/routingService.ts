@@ -19,6 +19,8 @@ import {
   isDestinationKey,
   maskDestination,
   routeErrors,
+  destinationErrors,
+  DESTINATION_LABELS,
   STATIC_DESTINATION_CLASS,
   NOTIFICATION_TYPES,
   type DestinationKey,
@@ -175,6 +177,115 @@ export async function setRoute(
       },
     });
   });
+}
+
+/** Internal departmental destinations an administrator sets directly. */
+export const DEPARTMENT_DESTINATIONS: readonly StaticDestination[] = [
+  'HR',
+  'HR_OFFICERS',
+  'PAYROLL',
+  'FINANCE',
+  'IT',
+  'SECURITY',
+  'ASSET_WAREHOUSE',
+];
+
+export interface DepartmentMailbox {
+  destination: StaticDestination;
+  label: string;
+  /** Masked; the address itself stays encrypted on the configuration row. */
+  mask: string | null;
+  configured: boolean;
+  /** True when the row is approved, verified and actually usable. */
+  usable: boolean;
+  statusNote: string;
+  /** The notification types currently addressed here. */
+  usedFor: string[];
+}
+
+/** Every departmental mailbox with what it is used for. */
+export async function listDepartmentMailboxes(actor: Actor): Promise<DepartmentMailbox[]> {
+  if (!can(actor, 'notifications.routing')) throw ServiceError.forbidden();
+  const prisma = getPrisma();
+  const env = getConfig().appEnvironment === 'production' ? 'production' : 'development';
+  const routes = await listRoutes(actor);
+
+  const out: DepartmentMailbox[] = [];
+  for (const destination of DEPARTMENT_DESTINATIONS) {
+    const key = `static:${destination}`;
+    const row = await prisma.recipientConfig.findFirst({
+      where: { recipientClass: STATIC_DESTINATION_CLASS[destination], environment: env },
+      orderBy: { updatedAt: 'desc' },
+    });
+    const usable =
+      !!row && row.active && row.approvalStatus === 'APPROVED' && row.verifiedAt !== null;
+    out.push({
+      destination,
+      label: DESTINATION_LABELS[destination],
+      mask: row?.destinationMask ?? null,
+      configured: !!row,
+      usable,
+      statusNote: !row
+        ? 'No mailbox set yet - notifications addressed here cannot be sent.'
+        : usable
+          ? 'Ready to receive.'
+          : `Set but not usable yet (${row.approvalStatus.toLowerCase().replaceAll('_', ' ')}${row.verifiedAt ? '' : ', not verified'}).`,
+      usedFor: routes
+        .filter((r) => r.to === key || r.cc.includes(key as never) || r.bcc.includes(key as never))
+        .map((r) => r.notificationType),
+    });
+  }
+  return out;
+}
+
+/**
+ * Point a department at a mailbox.
+ *
+ * Internal shared mailboxes carry no separation-of-duties requirement - the
+ * same authority already sets, approves and verifies them - so this does all
+ * three in one audited action rather than making an administrator walk three
+ * screens to change one address. External providers keep the full recipient
+ * lifecycle on the recipient directory page, where the checker is a different
+ * authority.
+ */
+export async function setDepartmentMailbox(
+  actor: Actor,
+  input: { destination: string; email: string; reason?: string },
+): Promise<void> {
+  if (!can(actor, 'notifications.routing')) throw ServiceError.forbidden();
+  const destination = input.destination as StaticDestination;
+  if (!DEPARTMENT_DESTINATIONS.includes(destination))
+    throw ServiceError.validation(['That destination is not a departmental mailbox.']);
+  const email = input.email.trim();
+  const errors = destinationErrors(email, routingEnvironment());
+  if (errors.length) throw ServiceError.validation(errors);
+
+  const recipientClass = STATIC_DESTINATION_CLASS[destination];
+  const prisma = getPrisma();
+  const env = getConfig().appEnvironment === 'production' ? 'production' : 'development';
+  const existing = await prisma.recipientConfig.findFirst({
+    where: { recipientClass, environment: env },
+    orderBy: { updatedAt: 'desc' },
+  });
+
+  const { upsertRecipient, approveRecipient, verifyRecipient } =
+    await import('./recipientService.ts');
+  const saved = await upsertRecipient(
+    actor,
+    {
+      recipientClass,
+      displayName: DESTINATION_LABELS[destination],
+      destination: email,
+      allowedTypes: [...NOTIFICATION_TYPES],
+      changeReason: input.reason?.trim() || `Mailbox set from Email Routing.`,
+    },
+    existing?.id,
+  );
+  const id = (saved as { id?: string } | undefined)?.id ?? existing?.id;
+  if (id) {
+    await approveRecipient(actor, id);
+    await verifyRecipient(actor, id);
+  }
 }
 
 /** One resolved address plus how it was arrived at. */

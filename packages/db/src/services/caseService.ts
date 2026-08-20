@@ -469,6 +469,7 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
         recordPurpose: input.recordPurpose,
         employeeSourceSystem: employee.sourceSystem,
         employeeSourceId: employee.sourceId,
+        employeeNumber: employee.employeeNumber ?? null,
         employeeDisplayName: employee.displayName,
         employeeWorkEmail: employee.workEmail,
         department: input.department?.trim() || employee.department,

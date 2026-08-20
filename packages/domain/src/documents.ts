@@ -166,7 +166,10 @@ export interface CaseFieldsForDocument {
   departureType: string;
   employeeDisplayName: string;
   employeeLegalName: string;
+  /** BambooHR's internal record id - provenance only, never shown as a number. */
   employeeSourceId: string;
+  /** The employer's Employee #, where BambooHR holds one. */
+  employeeNumber: string | null;
   jobTitle: string | null;
   department: string;
   location: string;
@@ -218,7 +221,10 @@ export function buildFieldSnapshot(
     EMPLOYEE_DISPLAY_NAME: c.employeeDisplayName,
     EMPLOYEE_FIRST_NAME: firstNameOf(c.employeeLegalName || c.employeeDisplayName),
     EMPLOYEE_ADDRESS: c.employeeAddress ?? '',
-    EMPLOYEE_ID: c.employeeSourceId,
+    // The Employee # HR recognizes. Empty rather than wrong where BambooHR
+    // holds no number: a letter must never quote an id the employer does not
+    // use as an employee number.
+    EMPLOYEE_ID: c.employeeNumber ?? 'Not recorded in BambooHR',
     POSITION: c.jobTitle ?? '',
     DEPARTMENT: c.department,
     LOCATION: c.location,

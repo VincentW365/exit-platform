@@ -2,7 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { ServiceError, setRoute } from '@exit/db';
+import { ServiceError, setDepartmentMailbox, setTestMode } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { touchSession } from '@/lib/session';
 
@@ -20,21 +20,42 @@ function errText(e: unknown): string {
 
 const str = (fd: FormData, k: string): string => String(fd.get(k) ?? '').trim();
 
-/** Change where one notification type is addressed. */
-export async function setRouteAction(formData: FormData): Promise<void> {
+/** Point a department at a mailbox. */
+export async function setMailboxAction(formData: FormData): Promise<void> {
   const { actor } = await requireAuth();
   await touchSession();
-  const notificationType = str(formData, 'notificationType');
   try {
-    await setRoute(actor, {
-      notificationType,
-      to: str(formData, 'to'),
-      cc: formData.getAll('cc').map((v) => String(v)),
-      bcc: formData.getAll('bcc').map((v) => String(v)),
-      note: str(formData, 'note') || undefined,
+    await setDepartmentMailbox(actor, {
+      destination: str(formData, 'destination'),
+      email: str(formData, 'email'),
+      reason: str(formData, 'reason') || undefined,
     });
     revalidatePath('/admin/email-routing');
-    back({ ok: 'Routing updated. New notifications of this type use it immediately.' });
+    back({ ok: 'Mailbox saved. Notifications addressed to that department go there from now on.' });
+  } catch (e) {
+    if (e instanceof ServiceError) back({ err: errText(e) });
+    throw e;
+  }
+}
+
+/** Send everything to one address, or stop doing so. */
+export async function setTestAddressAction(formData: FormData): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  const enabled = str(formData, 'enabled') === 'on';
+  try {
+    const cfg = await setTestMode(actor, {
+      enabled,
+      redirectTo: str(formData, 'redirectTo'),
+      note: 'Set from Email Routing.',
+    });
+    revalidatePath('/admin/email-routing');
+    revalidatePath('/admin/outbox');
+    back({
+      ok: cfg.enabled
+        ? `Every message now goes to ${cfg.redirectTo}, marked as a test and naming its real recipients.`
+        : 'Messages go to their configured mailboxes again.',
+    });
   } catch (e) {
     if (e instanceof ServiceError) back({ err: errText(e) });
     throw e;

@@ -184,6 +184,47 @@ export const SYNTHETIC_EMPLOYEES: readonly EmployeeSourceEmployee[] = [
     managerSourceId: 'EMP-TEST-007',
     active: false,
   },
+  // Human Resources. A directory without HR cannot exercise anything HR
+  // receives - the exit checklist, or the colleagues copied on an employee's
+  // acceptance letter - so the fixture organization has an HR department like
+  // the real one does.
+  {
+    sourceSystem: 'SYNTHETIC',
+    sourceId: 'EMP-TEST-012',
+    displayName: 'Rowan Ellis',
+    workEmail: 'rowan.ellis@example.test',
+    jobTitle: 'Human Resources Manager',
+    department: 'Human Resources',
+    location: 'Camp Road',
+    employeeNumber: '1012',
+    active: true,
+  },
+  {
+    sourceSystem: 'SYNTHETIC',
+    sourceId: 'EMP-TEST-013',
+    displayName: 'Devon Marsh',
+    workEmail: 'devon.marsh@example.test',
+    jobTitle: 'Human Resources Officer',
+    department: 'Human Resources',
+    location: 'Camp Road',
+    employeeNumber: '1013',
+    managerName: 'Rowan Ellis',
+    managerSourceId: 'EMP-TEST-012',
+    active: true,
+  },
+  {
+    sourceSystem: 'SYNTHETIC',
+    sourceId: 'EMP-TEST-014',
+    displayName: 'Imani Blake',
+    workEmail: 'imani.blake@example.test',
+    jobTitle: 'Human Resources Officer',
+    department: 'Human Resources',
+    location: 'Molynes Road',
+    employeeNumber: '1014',
+    managerName: 'Rowan Ellis',
+    managerSourceId: 'EMP-TEST-012',
+    active: true,
+  },
 ] as const;
 
 export class SyntheticEmployeeSourceAdapter implements EmployeeSourceAdapter {
