@@ -7,6 +7,7 @@ import {
   getCaseWorkflow,
   previewWorkflowForCase,
   previewEffectiveChangeImpact,
+  listCaseNotifications,
 } from '@exit/db';
 import { formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
@@ -21,6 +22,8 @@ import {
   supersedeWorkflowAction,
 } from './actions';
 import { countOf, humanize } from '@/lib/text';
+import { Chip, Row, Rows, SectionHead, type Tone } from '@/components/patterns';
+import { CoinsIcon, FlowIcon, MailIcon, ServerIcon, UserIcon } from '@/components/icons';
 
 export const metadata: Metadata = { title: 'Workflow' };
 export const dynamic = 'force-dynamic';
@@ -34,6 +37,65 @@ const TASK_BADGE: Record<string, string> = {
   WAIVED: 'badge--warning',
   CANCELLED: 'badge--neutral',
 };
+
+/**
+ * Section 7: the four owners of offboarding work, each described in its own
+ * terms. IT and Finance hold no login in this operating model - their work
+ * leaves as a controlled email and returns as evidence - so their sections
+ * say that rather than implying someone will tick a box in here.
+ */
+/** Which email types carry each department's work when it holds no tasks. */
+const DEPARTMENT_EMAILS: Readonly<Record<string, readonly string[]>> = {
+  HR: [],
+  LINE_MANAGER: ['LINE_MANAGER_HANDOVER'],
+  IT: ['IT_ACCESS_REMOVAL'],
+  FINANCE: ['FINANCE_OFFBOARDING'],
+};
+
+/** Plain words for where one department's request has got to. */
+const EMAIL_STATE: Readonly<Record<string, { label: string; tone: Tone }>> = {
+  DRAFT: { label: 'Being prepared', tone: 'progress' },
+  PENDING_APPROVAL: { label: 'Waiting for approval', tone: 'attention' },
+  APPROVED: { label: 'Approved, waiting to send', tone: 'progress' },
+  READY_FOR_MANUAL_SEND: { label: 'Ready to send by hand', tone: 'attention' },
+  MANUALLY_SENT: { label: 'Sent by hand', tone: 'progress' },
+  SENT: { label: 'Sent - waiting to hear back', tone: 'progress' },
+  ACKNOWLEDGED: { label: 'Acknowledged', tone: 'progress' },
+  CONFIRMED_COMPLETE: { label: 'Confirmed complete', tone: 'done' },
+  FAILED: { label: 'Could not send', tone: 'critical' },
+  CANCELLED: { label: 'Cancelled', tone: 'neutral' },
+  SUPERSEDED: { label: 'Replaced by a newer request', tone: 'neutral' },
+};
+
+const DEPARTMENT_SECTIONS = [
+  {
+    key: 'HR' as const,
+    title: 'HR actions',
+    description: 'Work the assigned HR Officer performs and records on this case.',
+    icon: <UserIcon />,
+  },
+  {
+    key: 'LINE_MANAGER' as const,
+    title: 'Manager actions',
+    description:
+      "What the employee's manager is expected to do. The manager holds no login - they are told by email and HR records the outcome.",
+    icon: <FlowIcon />,
+  },
+  {
+    key: 'IT' as const,
+    title: 'IT access removal',
+    description:
+      "Requested by controlled email and completed in IT's own systems. Delivery is never treated as completion - confirmation or recorded evidence is.",
+    icon: <ServerIcon />,
+  },
+  {
+    key: 'FINANCE' as const,
+    title: 'Finance and payroll clearance',
+    description:
+      'Finance is notified automatically and works in its own systems. The platform records status only - it never calculates or changes pay.',
+    icon: <CoinsIcon />,
+  },
+];
 
 export default async function CaseWorkflowPage({
   params,
@@ -61,6 +123,14 @@ export default async function CaseWorkflowPage({
     throw e;
   }
 
+  // Section 7: IT, Finance and the manager hold no login - their work leaves
+  // as a controlled email and comes back as evidence. Their sections read from
+  // the email trail so each department has a real presence here, not a gap.
+  const emails = await listCaseNotifications(actor, id)
+    .then((n) => n.records)
+    .catch(() => []);
+
+  const assignment = <AssignmentSection actor={actor} caseId={id} />;
   const preview = data.canActivate ? await previewWorkflowForCase(actor, id) : null;
   // Directive 6.1 (J): surface assignment-plan blockers next to activation.
   const assignmentBlockers = data.canActivate
@@ -79,7 +149,245 @@ export default async function CaseWorkflowPage({
       <CaseTitle title="Workflow" caseNumber={data.caseNumber} status={data.caseStatus} />
       <CaseNav caseId={id} active="workflow" />
       <Feedback err={sp.err} ok={sp.ok} />
-      <AssignmentSection actor={actor} caseId={id} />
+      {/* Before activation the responsibility plan IS the work, so it leads.
+          Once the workflow is running the department sections lead and the
+          plan becomes reference, kept below them. */}
+      {data.instances.length === 0 ? assignment : null}
+
+      {data.instances.length === 0 && !preview ? (
+        <p className="panel">
+          No workflow exists yet. The workflow is created when an approved case is activated.
+        </p>
+      ) : null}
+
+      {data.instances.map((inst) => (
+        <section className="panel" key={inst.id} aria-label={`Workflow ${inst.status}`}>
+          <h2 style={{ marginTop: 0 }}>
+            {inst.definition.name} V{inst.definitionVersion}{' '}
+            <span
+              className={`badge ${
+                inst.status === 'COMPLETED'
+                  ? 'badge--success'
+                  : inst.status === 'CANCELLED' || inst.status === 'SUPERSEDED'
+                    ? 'badge--neutral'
+                    : 'badge--info'
+              }`}
+            >
+              {inst.status}
+            </span>
+          </h2>
+          <div className="wf-progress">
+            <div className="wf-progress__head">
+              <span className="wf-progress__pct">{inst.completionPct}%</span>
+              <span className="hint">
+                {inst.completedTaskCount} of {inst.requiredTaskCount} required tasks complete
+                {inst.waivedTaskCount > 0 ? ` (${inst.waivedTaskCount} waived)` : ''}
+              </span>
+              <span
+                className={`badge ${inst.clearanceReady ? 'badge--success' : 'badge--neutral'}`}
+              >
+                {inst.clearanceReady ? 'Ready for clearance' : 'Not yet ready for clearance'}
+              </span>
+            </div>
+            <div
+              className="meter"
+              role="img"
+              aria-label={`${inst.completionPct}% of required tasks complete`}
+            >
+              <span className="meter__fill" style={{ width: `${inst.completionPct}%` }} />
+            </div>
+            <p className="wf-progress__facts">
+              {inst.overdueTaskCount > 0 ? (
+                <span className="badge badge--danger">
+                  {countOf(inst.overdueTaskCount, 'task')} overdue
+                </span>
+              ) : null}
+              {inst.blockedTaskCount > 0 ? (
+                <span className="badge badge--warning">
+                  {countOf(inst.blockedTaskCount, 'task')} blocked
+                </span>
+              ) : null}
+              {inst.overdueTaskCount === 0 && inst.blockedTaskCount === 0 ? (
+                <span className="badge badge--success">Nothing overdue or blocked</span>
+              ) : null}
+              <span className="hint">
+                Activated {formatInstant(inst.activatedAt)} · checksum{' '}
+                <code>{inst.configChecksum.slice(0, 12)}...</code>
+              </span>
+            </p>
+          </div>
+          {/* Section 7: responsibilities are grouped by who owns them, and
+              each group gets the treatment its work deserves. IT and Finance
+              hold no login in this model - their work leaves as email and
+              comes back as evidence, so their sections say so. */}
+          {DEPARTMENT_SECTIONS.map((group) => {
+            const groupTasks = inst.tasks.filter((t) => t.department === group.key);
+            const groupEmails = emails.filter(
+              (e) =>
+                (DEPARTMENT_EMAILS[group.key] ?? []).includes(e.notificationType) &&
+                e.status !== 'SUPERSEDED',
+            );
+            // A department with neither tasks nor email has nothing to say yet.
+            if (groupTasks.length === 0 && groupEmails.length === 0) return null;
+            const outstanding = groupTasks.filter((t) =>
+              ['NOT_READY', 'READY', 'IN_PROGRESS', 'BLOCKED'].includes(t.status),
+            ).length;
+            const overdueHere = groupTasks.filter(
+              (t) =>
+                t.dueAt &&
+                t.dueAt.getTime() < now &&
+                ['READY', 'IN_PROGRESS', 'BLOCKED'].includes(t.status),
+            ).length;
+            const emailsOpen = groupEmails.filter(
+              (e) => !['CONFIRMED_COMPLETE', 'CANCELLED'].includes(e.status),
+            ).length;
+            const emailsFailed = groupEmails.some((e) => e.status === 'FAILED');
+            const open = outstanding + emailsOpen;
+            return (
+              <div key={group.key} style={{ marginTop: 'var(--space-5)' }}>
+                <SectionHead
+                  icon={group.icon}
+                  tone={
+                    overdueHere > 0 || emailsFailed ? 'critical' : open > 0 ? 'pending' : 'done'
+                  }
+                  title={group.title}
+                  description={group.description}
+                  aside={
+                    open > 0 ? (
+                      <Chip tone={overdueHere > 0 || emailsFailed ? 'critical' : 'pending'}>
+                        {open} outstanding
+                      </Chip>
+                    ) : (
+                      <Chip tone="done">All done</Chip>
+                    )
+                  }
+                />
+                {groupTasks.length > 0 ? (
+                  <Rows label={`${group.title} tasks`}>
+                    {groupTasks.map((t) => {
+                      const overdue =
+                        t.dueAt &&
+                        t.dueAt.getTime() < now &&
+                        ['READY', 'IN_PROGRESS', 'BLOCKED'].includes(t.status);
+                      return (
+                        <Row
+                          key={t.id}
+                          tone={
+                            overdue
+                              ? 'critical'
+                              : t.status === 'BLOCKED'
+                                ? 'attention'
+                                : ['COMPLETED', 'WAIVED'].includes(t.status)
+                                  ? 'done'
+                                  : 'progress'
+                          }
+                          muted={['COMPLETED', 'WAIVED', 'CANCELLED'].includes(t.status)}
+                          mark={group.icon}
+                          title={
+                            <>
+                              <Link href={`/tasks/${t.id}`}>{t.title}</Link>
+                              {t.taskKind === 'ACCESS_REVOCATION' ? (
+                                <>
+                                  {' '}
+                                  <Chip tone="critical">Exact time</Chip>
+                                </>
+                              ) : null}
+                              {!t.required ? <span className="meta"> · optional</span> : null}
+                            </>
+                          }
+                          sub={
+                            t.status === 'COMPLETED' && t.completedAt
+                              ? `Completed ${formatInstant(t.completedAt)}${
+                                  (t.lateMinutes ?? 0) > 0 ? ` - ${t.lateMinutes} min late` : ''
+                                }`
+                              : t.status === 'WAIVED'
+                                ? `Waived: ${t.waiverReason ?? ''}`
+                                : t.status === 'BLOCKED'
+                                  ? `Blocked: ${t.blockedReason ?? ''}`
+                                  : t.dueRecalcReason
+                                    ? `Due recalculated: ${t.dueRecalcReason}`
+                                    : undefined
+                          }
+                          facts={
+                            <>
+                              <span>
+                                <span className="label">Due</span>
+                                <span className="value numeric">
+                                  {t.dueAt ? formatInstant(t.dueAt) : 'No date'}
+                                </span>
+                              </span>
+                              <span className={`badge ${TASK_BADGE[t.status] ?? 'badge--neutral'}`}>
+                                {humanize(t.status)}
+                              </span>
+                              {overdue ? <Chip tone="critical">Overdue</Chip> : null}
+                              {t.priority && t.priority !== 'NORMAL' ? (
+                                <Chip tone="attention">{humanize(t.priority)}</Chip>
+                              ) : null}
+                            </>
+                          }
+                        />
+                      );
+                    })}
+                  </Rows>
+                ) : null}
+
+                {groupEmails.length > 0 ? (
+                  <Rows label={`${group.title} email requests`}>
+                    {groupEmails.map((e) => {
+                      const state = EMAIL_STATE[e.status] ?? {
+                        label: humanize(e.status),
+                        tone: 'neutral' as Tone,
+                      };
+                      return (
+                        <Row
+                          key={e.id}
+                          tone={state.tone}
+                          muted={state.tone === 'done' || state.tone === 'neutral'}
+                          mark={<MailIcon />}
+                          title={
+                            <Link href={`/cases/${id}/notifications`}>
+                              {humanize(e.notificationType)}
+                            </Link>
+                          }
+                          sub={
+                            e.sentAt
+                              ? `Sent ${formatInstant(e.sentAt)}`
+                              : e.scheduledSendAt
+                                ? `Scheduled for ${formatInstant(e.scheduledSendAt)}`
+                                : 'Not sent yet'
+                          }
+                          facts={
+                            <>
+                              <span>
+                                <span className="label">Recipient</span>
+                                <span className="value">
+                                  {e.recipientName ??
+                                    e.recipientOrg ??
+                                    e.caseRecipientMask ??
+                                    'Not set'}
+                                </span>
+                              </span>
+                              <Chip tone={state.tone}>{state.label}</Chip>
+                              {e.acknowledgedAt ? (
+                                <span>
+                                  <span className="label">Acknowledged</span>
+                                  <span className="value numeric">
+                                    {formatInstant(e.acknowledgedAt)}
+                                  </span>
+                                </span>
+                              ) : null}
+                            </>
+                          }
+                        />
+                      );
+                    })}
+                  </Rows>
+                ) : null}
+              </div>
+            );
+          })}
+        </section>
+      ))}
 
       {preview && assignmentBlockers.length > 0 ? (
         <div className="banner-baseline" role="status">
@@ -260,144 +568,7 @@ export default async function CaseWorkflowPage({
         </section>
       ) : null}
 
-      {data.instances.length === 0 && !preview ? (
-        <p className="panel">
-          No workflow exists yet. The workflow is created when an approved case is activated.
-        </p>
-      ) : null}
-
-      {data.instances.map((inst) => (
-        <section className="panel" key={inst.id} aria-label={`Workflow ${inst.status}`}>
-          <h2 style={{ marginTop: 0 }}>
-            {inst.definition.name} V{inst.definitionVersion}{' '}
-            <span
-              className={`badge ${
-                inst.status === 'COMPLETED'
-                  ? 'badge--success'
-                  : inst.status === 'CANCELLED' || inst.status === 'SUPERSEDED'
-                    ? 'badge--neutral'
-                    : 'badge--info'
-              }`}
-            >
-              {inst.status}
-            </span>
-          </h2>
-          <div className="wf-progress">
-            <div className="wf-progress__head">
-              <span className="wf-progress__pct">{inst.completionPct}%</span>
-              <span className="hint">
-                {inst.completedTaskCount} of {inst.requiredTaskCount} required tasks complete
-                {inst.waivedTaskCount > 0 ? ` (${inst.waivedTaskCount} waived)` : ''}
-              </span>
-              <span
-                className={`badge ${inst.clearanceReady ? 'badge--success' : 'badge--neutral'}`}
-              >
-                {inst.clearanceReady ? 'Ready for clearance' : 'Not yet ready for clearance'}
-              </span>
-            </div>
-            <div
-              className="meter"
-              role="img"
-              aria-label={`${inst.completionPct}% of required tasks complete`}
-            >
-              <span className="meter__fill" style={{ width: `${inst.completionPct}%` }} />
-            </div>
-            <p className="wf-progress__facts">
-              {inst.overdueTaskCount > 0 ? (
-                <span className="badge badge--danger">
-                  {countOf(inst.overdueTaskCount, 'task')} overdue
-                </span>
-              ) : null}
-              {inst.blockedTaskCount > 0 ? (
-                <span className="badge badge--warning">
-                  {countOf(inst.blockedTaskCount, 'task')} blocked
-                </span>
-              ) : null}
-              {inst.overdueTaskCount === 0 && inst.blockedTaskCount === 0 ? (
-                <span className="badge badge--success">Nothing overdue or blocked</span>
-              ) : null}
-              <span className="hint">
-                Activated {formatInstant(inst.activatedAt)} · checksum{' '}
-                <code>{inst.configChecksum.slice(0, 12)}...</code>
-              </span>
-            </p>
-          </div>
-          <div style={{ overflowX: 'auto' }} tabIndex={0}>
-            <table>
-              <caption className="visually-hidden">Workflow tasks</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Task</th>
-                  <th scope="col">Department</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Priority</th>
-                  <th scope="col">Due</th>
-                  <th scope="col">Outcome</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inst.tasks.map((t) => {
-                  const overdue =
-                    t.dueAt &&
-                    t.dueAt.getTime() < now &&
-                    ['READY', 'IN_PROGRESS', 'BLOCKED'].includes(t.status);
-                  return (
-                    <tr key={t.id} className={overdue ? 'row--critical' : undefined}>
-                      <td>
-                        <Link href={`/tasks/${t.id}`}>{t.title}</Link>
-                        {t.taskKind === 'ACCESS_REVOCATION' ? (
-                          <>
-                            {' '}
-                            <span className="badge badge--danger">EXACT TIME</span>
-                          </>
-                        ) : null}
-                        {!t.required ? <span className="hint"> (optional)</span> : null}
-                      </td>
-                      <td>{t.department}</td>
-                      <td>
-                        <span className={`badge ${TASK_BADGE[t.status] ?? 'badge--neutral'}`}>
-                          {humanize(t.status)}
-                        </span>
-                        {overdue ? (
-                          <>
-                            {' '}
-                            <span className="badge badge--danger">Overdue</span>
-                          </>
-                        ) : null}
-                      </td>
-                      <td>
-                        <span className={`priority priority--${t.priority.toLowerCase()}`}>
-                          {humanize(t.priority)}
-                        </span>
-                      </td>
-                      <td>
-                        {t.dueAt ? formatInstant(t.dueAt) : '-'}
-                        {t.dueRecalcReason ? (
-                          <>
-                            <br />
-                            <span className="hint">recalculated: {t.dueRecalcReason}</span>
-                          </>
-                        ) : null}
-                      </td>
-                      <td>
-                        {t.status === 'COMPLETED' && t.completedAt
-                          ? `Completed ${formatInstant(t.completedAt)}${
-                              (t.lateMinutes ?? 0) > 0 ? ` (${t.lateMinutes} min late)` : ''
-                            }`
-                          : t.status === 'WAIVED'
-                            ? `Waived: ${t.waiverReason ?? ''}`
-                            : t.status === 'BLOCKED'
-                              ? `Blocked: ${t.blockedReason ?? ''}`
-                              : '-'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ))}
+      {data.instances.length > 0 ? assignment : null}
     </>
   );
 }

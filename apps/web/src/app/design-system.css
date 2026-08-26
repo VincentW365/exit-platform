@@ -379,9 +379,11 @@ td.numeric,
   background: var(--brand-yellow);
   transition: width var(--dur-base, 180ms) var(--ease, ease);
 }
-/* On light surfaces the same bar uses the accent. */
+/* On light surfaces the same bar uses the accent. The track is a tint of the
+   ink rather than a named surface, so it stays visible when the bar sits on a
+   well - which is the same colour as --surface-well and would swallow it. */
 .progress-bar--light {
-  background: var(--surface-well);
+  background: color-mix(in srgb, var(--text) 14%, transparent);
 }
 .progress-bar--light .progress-bar__fill {
   background: var(--accent);

@@ -796,7 +796,9 @@ export default async function CaseDetailPage({
           {cap.canUpload ? (
             <details className="action">
               <summary>Upload a file (pdf, png, jpg; max size per configuration)</summary>
-              <form action={uploadAttachmentAction} className="stack" encType="multipart/form-data">
+              {/* React sets the encoding for a server-action form itself - stating it here
+              only produced a console warning. */}
+              <form action={uploadAttachmentAction} className="stack">
                 <input type="hidden" name="caseId" value={c.id} />
                 <div className="field">
                   <label htmlFor="up-file">File</label>

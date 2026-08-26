@@ -337,3 +337,13 @@ export function FlowIcon(p: IconProps) {
     </Icon>
   );
 }
+
+export function ClipboardIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="5" y="4" width="14" height="17" rx="2" />
+      <path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
+      <path d="m9 12 2 2 4-4" />
+    </Icon>
+  );
+}

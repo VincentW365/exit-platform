@@ -210,14 +210,16 @@ export async function AssignmentSection({ actor, caseId }: { actor: Actor; caseI
         </p>
       </section>
 
-      {/* The workflow summary itself lives below on this tab - the plan
-          panels stop at responsibility and confirmation. */}
+      {/* The plan panels stop at responsibility and confirmation - the running
+          workflow is the subject of this tab and sits above them. */}
 
       <section className="panel" aria-labelledby="conf-h">
         <h2 id="conf-h">HR Confirmation</h2>
         {plan.confirmations.complete ? (
           <p className="ok-summary" role="status">
-            Assignment plan confirmed. Activation is available on the Workflow tab.
+            {preActivation
+              ? 'Assignment plan confirmed. The workflow can now be activated above.'
+              : 'Assignment plan confirmed before activation.'}
           </p>
         ) : null}
         {plan.canConfirm && preActivation ? (

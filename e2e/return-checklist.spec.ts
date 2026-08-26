@@ -102,8 +102,16 @@ test('HR sees the checklist on the case and can record it directly', async ({ pa
   await expect(panel).not.toContainText('NOT_STARTED');
   await expect(panel).not.toContainText('LOST_OR_DAMAGED');
 
+  // Completion leads: the reader sees how far the checklist has run before
+  // they see the ten rows, and the sheet itself sits behind a disclosure.
+  await expect(panel.getByRole('progressbar', { name: 'Checklist completion' })).toBeVisible();
+  await expect(panel.getByText(/items decided/)).toBeVisible();
+  await expect(
+    panel.locator('summary').filter({ hasText: /The (completed )?checklist/ }),
+  ).toHaveCount(1);
+
   // The HR-side record form is available and pre-filled from what exists.
-  const record = panel.locator('details.action > summary');
+  const record = panel.locator('summary').filter({ hasText: 'Record the checklist for HR' });
   await expect(record).toBeVisible();
   await record.click();
   await expect(page.getByRole('button', { name: 'Save Checklist' })).toBeVisible();
