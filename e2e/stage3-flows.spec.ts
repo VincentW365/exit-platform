@@ -395,7 +395,11 @@ test('Scenario 2 - immediate resignation: urgent tasks, automated IT email, bloc
   await expect(page.getByText('Not ready')).toBeVisible();
   await expect(page.getByText('BLOCKED').first()).toBeVisible();
   await page.getByRole('button', { name: 'Request clearance review' }).click();
-  await expect(page.getByText('There Is a Problem')).toBeVisible();
+  // The summary counts the problems it is about to list (owner design
+  // directive, section 18), so the heading is singular or plural.
+  const problems = page.getByRole('alert');
+  await expect(problems).toBeVisible();
+  await expect(problems.getByRole('heading')).toHaveText(/There (Is a Problem|Are \d+ Problems)/);
   await signOut(page);
 });
 

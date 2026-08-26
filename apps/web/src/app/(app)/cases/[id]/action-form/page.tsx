@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { Field } from '@/components/forms';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { notFound } from 'next/navigation';
 import { ServiceError, getActionForm } from '@exit/db';
 import {
@@ -621,20 +623,31 @@ export default async function ActionFormPage({
             ) : null}
 
             {cap.canVoid && !closed ? (
-              <details className="action">
-                <summary className="summary--danger">Void form</summary>
+              <ConfirmDialog
+                trigger="Void form"
+                title="Void this action form?"
+                consequence={[
+                  'This version stops being the live form for the case.',
+                  'Anything already recorded on it stays readable in the version history.',
+                  'A fresh form has to be prepared and completed before clearance can pass.',
+                ]}
+              >
                 <form action={voidFormAction} className="stack">
                   <input type="hidden" name="caseId" value={id} />
                   <input type="hidden" name="formId" value={f.id} />
-                  <div className="field">
-                    <label htmlFor="void-reason">Reason (Required)</label>
+                  <Field
+                    id="void-reason"
+                    label="Why is this form being voided?"
+                    required
+                    hint="Recorded against the form and readable in the audit trail."
+                  >
                     <textarea id="void-reason" name="reason" rows={2} required />
-                  </div>
+                  </Field>
                   <button type="submit" className="danger">
                     Void form
                   </button>
                 </form>
-              </details>
+              </ConfirmDialog>
             ) : null}
 
             {data.history.length ? (

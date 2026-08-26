@@ -14,6 +14,7 @@ import {
   canViewCase,
   type CaseAccessContext,
   caseNumberSearchTerm,
+  TERMINAL_STATUSES,
   caseNumberYearFor,
   type CaseTransitionAction,
   checkTransition,
@@ -31,6 +32,7 @@ import {
   SyntheticEmployeeSourceAdapter,
 } from '@exit/domain';
 import { getPrisma } from '../client.ts';
+import type { Prisma } from '../generated/client.ts';
 import { resolveDirectoryManager } from './managerResolution.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
@@ -664,6 +666,26 @@ export async function getCase(actor: Actor, caseId: string) {
 
 // --- list --------------------------------------------------------------------
 
+const isHrActor = (actor: Actor) =>
+  actor.roles.includes('HR_MANAGER') || actor.roles.includes('HR_OFFICER');
+
+/**
+ * Record-level visibility encoded in the query itself so counts, rows and
+ * the filter values offered above them can never leak (REQ-SEC-008).
+ * DEC-042: with the oversight roles removed, restricted rows are
+ * discoverable only through participation.
+ */
+function caseVisibilityWhere(actor: Actor): Prisma.OffboardingCaseWhereInput {
+  if (!isHrActor(actor)) return { id: { in: [] as string[] } };
+  return {
+    OR: [
+      { classification: 'CONFIDENTIAL' as const },
+      { participants: { some: { userId: actor.userId, removedAt: null } } },
+      { ownerId: actor.userId },
+    ],
+  };
+}
+
 export const listFilterSchema = z.object({
   status: z
     .enum([
@@ -685,8 +707,56 @@ export const listFilterSchema = z.object({
   measurementCohort: z.enum(['BASELINE', 'PILOT', 'POST_ROLLOUT']).optional(),
   recordPurpose: z.enum(['OPERATIONAL', 'TRAINING', 'TEST']).optional(),
   q: z.string().trim().max(100).optional(),
+  /// Section 15: the questions HR actually asks a case list. Department and
+  /// officer come straight off the case; the rest are derived at query time
+  /// so a filter can never disagree with the row it produced.
+  department: z.string().trim().max(120).optional(),
+  officer: z.string().uuid().optional(),
+  manager: z.string().trim().max(120).optional(),
+  /// How close the departure is - or how far past it the case has run.
+  leaving: z.enum(['overdue', 'week', 'month']).optional(),
+  /// Whether the case needs somebody today: an overdue task or an open
+  /// exception. Deliberately one filter, not two - "does this need me" is
+  /// one question however the platform arrived at the answer.
+  attention: z.enum(['yes']).optional(),
+  /// Where the workflow has got to, as a plain band rather than a number.
+  progress: z.enum(['not-started', 'underway', 'nearly-done', 'done']).optional(),
 });
 export type ListFilter = z.infer<typeof listFilterSchema>;
+
+/**
+ * Section 15: the values that exist to filter by, read from the cases the
+ * actor may actually see. A filter offering a department with no cases in
+ * it is a dead end, so the list is derived rather than enumerated.
+ */
+export async function listCaseFilterOptions(actor: Actor) {
+  if (!can(actor, 'case.list')) throw ServiceError.forbidden();
+  const prisma = getPrisma();
+  const visible = caseVisibilityWhere(actor);
+  const [departments, officers] = await Promise.all([
+    prisma.offboardingCase.findMany({
+      // department is not nullable on a case - every case carries one.
+      where: visible,
+      distinct: ['department'],
+      select: { department: true },
+      orderBy: { department: 'asc' },
+      take: 100,
+    }),
+    prisma.offboardingCase.findMany({
+      where: { AND: [visible, { assignedOfficerId: { not: null } }] },
+      distinct: ['assignedOfficerId'],
+      select: { assignedOfficer: { select: { id: true, displayName: true } } },
+      take: 100,
+    }),
+  ]);
+  return {
+    departments: departments.map((d) => d.department).filter(Boolean),
+    officers: officers
+      .map((o) => o.assignedOfficer)
+      .filter((o): o is { id: string; displayName: string } => o !== null)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName)),
+  };
+}
 
 export async function listCases(actor: Actor, rawFilter: unknown = {}) {
   if (!can(actor, 'case.list')) throw ServiceError.forbidden();
@@ -694,23 +764,39 @@ export async function listCases(actor: Actor, rawFilter: unknown = {}) {
   if (!parsed.success) throw ServiceError.validation(['Invalid filter.']);
   const f = parsed.data;
 
-  const isHr = actor.roles.includes('HR_MANAGER') || actor.roles.includes('HR_OFFICER');
+  const isHr = isHrActor(actor);
+  const visibility = caseVisibilityWhere(actor);
 
-  // Record-level visibility encoded in the query itself so counts and rows
-  // can never leak (REQ-SEC-008). DEC-042: with the oversight roles removed,
-  // restricted rows are discoverable only through participation.
-  const visibility = isHr
-    ? {
-        OR: [
-          { classification: 'CONFIDENTIAL' as const },
-          { participants: { some: { userId: actor.userId, removedAt: null } } },
-          { ownerId: actor.userId },
-        ],
-      }
-    : { id: { in: [] as string[] } };
+  // One instant drives every time-based filter below and every derived row
+  // value, so a case cannot be listed as overdue and then rendered as due.
+  const asOf = new Date();
+  const endOfWindow = (days: number) => new Date(asOf.getTime() + days * 86_400_000);
+  const OPEN_TASK = ['READY', 'IN_PROGRESS', 'BLOCKED', 'NOT_READY'] as const;
 
   const filters = [
     f.status ? { status: f.status } : null,
+    f.department ? { department: f.department } : null,
+    f.officer ? { assignedOfficerId: f.officer } : null,
+    f.manager ? { managerName: { contains: f.manager, mode: 'insensitive' as const } } : null,
+    f.leaving === 'overdue'
+      ? { effectiveSeparationAt: { lt: asOf }, status: { notIn: [...TERMINAL_STATUSES] } }
+      : f.leaving === 'week'
+        ? { effectiveSeparationAt: { gte: asOf, lte: endOfWindow(7) } }
+        : f.leaving === 'month'
+          ? { effectiveSeparationAt: { gte: asOf, lte: endOfWindow(30) } }
+          : null,
+    f.attention === 'yes'
+      ? {
+          OR: [
+            {
+              workflowTasks: {
+                some: { dueAt: { lt: asOf }, status: { in: [...OPEN_TASK] } },
+              },
+            },
+            { exceptions: { some: { resolvedAt: null } } },
+          ],
+        }
+      : null,
     f.departureType ? { departureType: f.departureType } : null,
     f.measurementCohort ? { measurementCohort: f.measurementCohort } : null,
     f.recordPurpose ? { recordPurpose: f.recordPurpose } : null,
@@ -751,13 +837,29 @@ export async function listCases(actor: Actor, rawFilter: unknown = {}) {
     where: { AND: [visibility, ...filters] },
     orderBy: [{ createdAt: 'desc' }],
     take: 100,
-    include: { participants: { where: { removedAt: null }, select: { userId: true } } },
+    include: {
+      participants: { where: { removedAt: null }, select: { userId: true } },
+      assignedOfficer: { select: { displayName: true } },
+      // Section 15: how far the case has run and whether anything is late.
+      // Counted rather than loaded - the list needs three numbers per case,
+      // not every task on it.
+      _count: {
+        select: {
+          workflowTasks: { where: { required: true } },
+          exceptions: { where: { resolvedAt: null } },
+        },
+      },
+      workflowTasks: {
+        where: { required: true },
+        select: { status: true, dueAt: true },
+      },
+    },
   });
 
-  // One instant for the whole page, so every row is measured against the
-  // same clock and the list cannot disagree with itself.
-  const now = new Date();
-  return rows.map((c) => {
+  // asOf drove the filters above; the same instant measures the rows, so
+  // the list cannot disagree with itself.
+  const now = asOf;
+  const mapped = rows.map((c) => {
     const ctx: CaseAccessContext = {
       ownerId: c.ownerId,
       classification: c.classification,
@@ -781,7 +883,38 @@ export async function listCases(actor: Actor, rawFilter: unknown = {}) {
       receivedAt: c.receivedAt,
       createdAt: c.createdAt,
       minimized: !full,
+      /// Section 15: what the list needs to answer "where is this, and does
+      /// it need me today". Restricted rows expose none of it.
+      officerName: full ? (c.assignedOfficer?.displayName ?? null) : null,
+      managerName: full ? c.managerName : null,
+      tasksTotal: full ? c.workflowTasks.length : 0,
+      tasksDone: full
+        ? c.workflowTasks.filter((w) => w.status === 'COMPLETED' || w.status === 'WAIVED').length
+        : 0,
+      tasksOverdue: full
+        ? c.workflowTasks.filter(
+            (w) =>
+              w.dueAt !== null &&
+              w.dueAt < now &&
+              (OPEN_TASK as readonly string[]).includes(w.status),
+          ).length
+        : 0,
+      openExceptions: full ? c._count.exceptions : 0,
     };
+  });
+
+  // Progress bands are derived from the task rows, so unlike the other
+  // filters they cannot be pushed into the query. They therefore narrow the
+  // page that came back rather than the whole table - accurate for the rows
+  // shown, and honest about it: the list is capped at 100 either way.
+  if (!f.progress) return mapped;
+  return mapped.filter((r) => {
+    if (r.tasksTotal === 0) return f.progress === 'not-started';
+    const pct = (r.tasksDone / r.tasksTotal) * 100;
+    if (f.progress === 'not-started') return pct === 0;
+    if (f.progress === 'done') return pct === 100;
+    if (f.progress === 'nearly-done') return pct >= 75 && pct < 100;
+    return pct > 0 && pct < 75;
   });
 }
 

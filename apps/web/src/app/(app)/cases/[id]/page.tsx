@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { Field } from '@/components/forms';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
@@ -643,36 +645,58 @@ export default async function CaseDetailPage({
               </details>
             ) : null}
             {cap.canCancel ? (
-              <details className="action">
-                <summary className="summary--danger">Cancel case (non-event)</summary>
+              <ConfirmDialog
+                trigger="Cancel case (non-event)"
+                title="Cancel this case?"
+                consequence={[
+                  'The offboarding stops here: open tasks are closed and no further email goes out.',
+                  'Use this when the departure did not happen - the employee withdrew, or stayed.',
+                  'Nothing is deleted. The case, its history and this reason stay on the record.',
+                ]}
+              >
                 <form action={transitionAction} className="stack">
                   <input type="hidden" name="caseId" value={c.id} />
                   <input type="hidden" name="action" value="cancel" />
-                  <div className="field">
-                    <label htmlFor="cancel-reason">Reason (Required)</label>
+                  <Field
+                    id="cancel-reason"
+                    label="Why is this case being cancelled?"
+                    required
+                    hint="Recorded against the case and readable in the audit trail."
+                  >
                     <textarea id="cancel-reason" name="reason" rows={2} required />
-                  </div>
+                  </Field>
                   <button type="submit" className="danger">
                     Cancel case
                   </button>
                 </form>
-              </details>
+              </ConfirmDialog>
             ) : null}
             {cap.canVoid ? (
-              <details className="action">
-                <summary className="summary--danger">Void case (entered in error)</summary>
+              <ConfirmDialog
+                trigger="Void case (entered in error)"
+                title="Void this case?"
+                consequence={[
+                  'This says the case should never have existed - it was raised in error.',
+                  'It is not the same as cancelling: cancel means the departure did not happen.',
+                  'Nothing is deleted. The case stays readable, marked void, with this reason.',
+                ]}
+              >
                 <form action={transitionAction} className="stack">
                   <input type="hidden" name="caseId" value={c.id} />
                   <input type="hidden" name="action" value="void" />
-                  <div className="field">
-                    <label htmlFor="void-reason">Reason (Required)</label>
+                  <Field
+                    id="void-reason"
+                    label="Why was this case raised in error?"
+                    required
+                    hint="Recorded against the case and readable in the audit trail."
+                  >
                     <textarea id="void-reason" name="reason" rows={2} required />
-                  </div>
+                  </Field>
                   <button type="submit" className="danger">
                     Void case
                   </button>
                 </form>
-              </details>
+              </ConfirmDialog>
             ) : null}
           </div>
           <p className="hint">Cases are never deleted; cancel or void preserves full history.</p>

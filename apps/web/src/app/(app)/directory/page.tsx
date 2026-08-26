@@ -1,6 +1,9 @@
 import type { Metadata } from 'next';
 import { formatInstant } from '@exit/domain';
+import { Suspense } from 'react';
 import { ServiceError, directoryOverview, organizationTree, type OrgTreeNode } from '@exit/db';
+import type { Actor } from '@exit/domain';
+import { SkeletonPanel } from '@/components/Skeleton';
 import { requireAuth } from '@/lib/auth';
 import { countOf, humanize } from '@/lib/text';
 
@@ -49,13 +52,46 @@ function OrgNode({ node, depth }: { node: OrgTreeNode; depth: number }) {
   );
 }
 
+/** The reporting tree, streamed in after the rest of the page. */
+async function ReportingStructure({ actor }: { actor: Actor }) {
+  const tree = await organizationTree(actor);
+  if (tree.roots.length === 0 && tree.unattached.length === 0) return null;
+  return (
+    <section className="panel" aria-labelledby="dir-tree-h">
+      <h2 id="dir-tree-h" style={{ marginTop: 0 }}>
+        Reporting Structure
+      </h2>
+      <p className="hint">
+        {tree.totalPeople} people, {tree.maxDepth} level(s) deep. Select a manager to expand or
+        collapse their team.
+      </p>
+      <ul className="org-tree">
+        {tree.roots.map((root) => (
+          <OrgNode key={root.sourceId} node={root} depth={0} />
+        ))}
+      </ul>
+      {tree.unattached.length > 0 ? (
+        <details className="action" style={{ marginTop: '0.75rem' }}>
+          <summary>
+            {countOf(tree.unattached.length, 'person', 'people')} whose manager is not in the
+            directory
+          </summary>
+          <ul className="org-tree">
+            {tree.unattached.map((node) => (
+              <OrgNode key={node.sourceId} node={node} depth={1} />
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
 export default async function DirectoryPage() {
   const { actor } = await requireAuth();
   let data: Awaited<ReturnType<typeof directoryOverview>>;
-  let tree: Awaited<ReturnType<typeof organizationTree>> | null = null;
   try {
     data = await directoryOverview(actor);
-    tree = await organizationTree(actor);
   } catch (e) {
     if (e instanceof ServiceError)
       return (
@@ -97,35 +133,14 @@ export default async function DirectoryPage() {
         </ul>
       </section>
 
-      {tree && (tree.roots.length > 0 || tree.unattached.length > 0) ? (
-        <section className="panel" aria-labelledby="dir-tree-h">
-          <h2 id="dir-tree-h" style={{ marginTop: 0 }}>
-            Reporting Structure
-          </h2>
-          <p className="hint">
-            {tree.totalPeople} people, {tree.maxDepth} level(s) deep. Select a manager to expand or
-            collapse their team.
-          </p>
-          <ul className="org-tree">
-            {tree.roots.map((root) => (
-              <OrgNode key={root.sourceId} node={root} depth={0} />
-            ))}
-          </ul>
-          {tree.unattached.length > 0 ? (
-            <details className="action" style={{ marginTop: '0.75rem' }}>
-              <summary>
-                {countOf(tree.unattached.length, 'person', 'people')} whose manager is not in the
-                directory
-              </summary>
-              <ul className="org-tree">
-                {tree.unattached.map((node) => (
-                  <OrgNode key={node.sourceId} node={node} depth={1} />
-                ))}
-              </ul>
-            </details>
-          ) : null}
-        </section>
-      ) : null}
+      {/* Section 21: the reporting structure walks every directory record
+          and is the slow half of this page. It streams in behind a
+          placeholder so the coverage figures are readable immediately. The
+          boundary sits below the authorization check by construction - this
+          branch is only reached once the actor has been admitted. */}
+      <Suspense fallback={<SkeletonPanel rows={8} />}>
+        <ReportingStructure actor={actor} />
+      </Suspense>
 
       <section className="panel" aria-labelledby="dir-dept-h">
         <h2 id="dir-dept-h" style={{ marginTop: 0 }}>

@@ -79,12 +79,15 @@ test('J.4 void requires a reason; history and audit remain visible', async ({ pa
     employeeQuery: 'taylor',
     type: 'RESIGNATION_WITH_NOTICE',
   });
-  await page.getByText('Void case (entered in error)').click();
-  await page
-    .getByLabel('Reason (required)')
-    .last()
+  // Voiding now opens a confirmation that states what it means before it
+  // asks why (owner design directive, section 19).
+  await page.getByRole('button', { name: 'Void case (entered in error)' }).click();
+  const confirm = page.getByRole('dialog');
+  await expect(confirm).toBeVisible();
+  await confirm
+    .getByLabel('Why was this case raised in error?')
     .fill('Synthetic duplicate for acceptance test.');
-  await page.getByRole('button', { name: 'Void case' }).click();
+  await confirm.getByRole('button', { name: 'Void case' }).click();
   await expect(page.getByText('Case voided.')).toBeVisible();
   await expect(page.getByText('Voided').first()).toBeVisible();
   await expect(page.getByText('Synthetic duplicate for acceptance test.')).toBeVisible();

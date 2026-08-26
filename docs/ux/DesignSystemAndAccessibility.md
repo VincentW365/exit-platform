@@ -203,3 +203,48 @@ Each major stage should include:
 - form error tests;
 - chart alternative verification;
 - documented exceptions and remediation.
+
+## 12. Implementation record
+
+Where the required components above actually live, so a change to one can be
+traced back to the rule it satisfies. The design system is a single
+stylesheet layered over the base one: `apps/web/src/app/globals.css` holds
+the foundation (tokens, reset, base controls) and
+`apps/web/src/app/design-system.css` loads after it and holds the numbered
+sections of the owner design directive.
+
+| Component (section 5) | Implementation |
+| --- | --- |
+| Section headers, entity rows, KPI blocks, activity timeline | `components/patterns.tsx` — `SectionHead`, `Rows`/`Row`, `Kpi`, `Activity` |
+| Filter bar and active filter chips | `app/(app)/cases/page.tsx`; values from `listCaseFilterOptions`; styles under design-system §15 |
+| Form fields, grouping, required/optional, error state | `components/forms.tsx` — `FormSection`, `Field`, `FieldRow`, `FormActions`; styles §18 |
+| Persistent error summary | `components/ErrorSummary.tsx` — takes focus when it appears |
+| Modal/dialog for short high-risk confirmations | `components/ConfirmDialog.tsx` — native `<dialog>` + `showModal()`; styles §19 |
+| Chart with table alternative | `components/ReportAnalytics.tsx` — CSS-drawn bars, `role="img"`, table beneath; styles §16 |
+| Loading/skeleton states | `components/Skeleton.tsx` plus `loading.tsx` per route segment; styles §21 |
+| Motion | design-system §22 — feedback only; the global `prefers-reduced-motion` rule in `globals.css` overrides all of it |
+
+### Rules the implementation is held to
+
+- A modal is used only for a short, high-risk confirmation, and it states the
+  consequence before it asks for a reason. Selection forms (granting or
+  revoking a role, choosing a recipient) stay on the page.
+- A chart is drawn only where one measure varies across named groups. Summing
+  a column whose name reads as a percentage, rate or duration is refused —
+  those are averaged and labelled as averages.
+- Filter values are read through the same record-level visibility clause as
+  the rows, so a dropdown cannot disclose that a restricted case exists.
+  Covered by `caseListFilters.test.ts`.
+- Nothing animates on page load except a message that has just told the
+  reader something.
+
+### Responsive and accessibility evidence
+
+- `e2e/responsive-sweep.spec.ts` — every rebuilt surface at 390px, 768px and
+  1280px, asserting the document never scrolls sideways and that the
+  navigation stays reachable at each width.
+- `e2e/uat-visual.spec.ts` — tablet screenshots and axe sweeps of the
+  role-representative surfaces.
+- `e2e/confirm-dialog.spec.ts` — the destructive-action dialog states its
+  consequence, can be dismissed by Escape or by an explicit way out, and
+  still requires a reason.

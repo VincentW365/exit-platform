@@ -8,18 +8,10 @@ import { Feedback } from '@/components/ui';
 import { createCaseAction, createManualEmployeeAction } from '../actions';
 import { EmptyState } from '@/components/EmptyState';
 import { SearchIcon } from '@/components/icons';
+import { Field, FieldRow, FormActions, FormSection } from '@/components/forms';
 
 export const metadata: Metadata = { title: 'New Case' };
 export const dynamic = 'force-dynamic';
-
-/** Quiet required marker; the input's own `required` does the enforcing. */
-function Req() {
-  return (
-    <span className="req" aria-hidden="true">
-      required
-    </span>
-  );
-}
 
 export default async function NewCasePage({
   searchParams,
@@ -176,24 +168,33 @@ export default async function NewCasePage({
 
         <details className="action">
           <summary>Directory unavailable? Enter the employee manually</summary>
-          <form action={createManualEmployeeAction}>
+          <form action={createManualEmployeeAction} className="stack">
             <p className="hint">
               Enter only the minimum work details - never personal addresses or identifiers. The
               entry is flagged for review until it is matched to the directory.
             </p>
-            <label htmlFor="man-name">
-              Employee Name <Req />
-            </label>
-            <input id="man-name" name="displayName" required maxLength={120} />
-            <label htmlFor="man-email">Work Email</label>
-            <input id="man-email" name="workEmail" type="email" maxLength={200} />
-            <label htmlFor="man-title">Job Title</label>
-            <input id="man-title" name="jobTitle" maxLength={120} />
-            <label htmlFor="man-dept">Department</label>
-            <input id="man-dept" name="department" maxLength={100} />
-            <label htmlFor="man-loc">Location</label>
-            <input id="man-loc" name="location" maxLength={100} />
-            <button type="submit">Create manual employee entry</button>
+            <Field id="man-name" label="Employee Name" required>
+              <input id="man-name" name="displayName" required maxLength={120} />
+            </Field>
+            <FieldRow>
+              <Field id="man-email" label="Work Email" optional>
+                <input id="man-email" name="workEmail" type="email" maxLength={200} />
+              </Field>
+              <Field id="man-title" label="Job Title" optional>
+                <input id="man-title" name="jobTitle" maxLength={120} />
+              </Field>
+            </FieldRow>
+            <FieldRow>
+              <Field id="man-dept" label="Department" optional>
+                <input id="man-dept" name="department" maxLength={100} />
+              </Field>
+              <Field id="man-loc" label="Location" optional>
+                <input id="man-loc" name="location" maxLength={100} />
+              </Field>
+            </FieldRow>
+            <FormActions note="The entry is reviewable and is replaced the moment the directory catches up.">
+              <button type="submit">Create manual employee entry</button>
+            </FormActions>
           </form>
         </details>
       </section>
@@ -223,78 +224,91 @@ export default async function NewCasePage({
               <dd>{selected.active ? 'Active' : 'Inactive'}</dd>
             </dl>
           </div>
+          {/* Section 18: the intake is three decisions, not seven fields in a
+              row - what kind of departure, when it takes effect, and what the
+              employee said about it. The conditional fields stay adjacent
+              siblings so the :has() rules that reveal them still apply. */}
           <form action={createCaseAction} className="stack">
             <input type="hidden" name="employeeSourceId" value={selected.sourceId} />
 
-            <div className="field">
-              <label htmlFor="departureType">
-                Departure Type <Req />
-              </label>
-              <select id="departureType" name="departureType" required defaultValue="">
-                <option value="" disabled>
-                  Choose...
-                </option>
-                <option value="RESIGNATION_WITH_NOTICE">Resignation with notice</option>
-                <option value="IMMEDIATE_RESIGNATION">Immediate resignation</option>
-                <option value="TERMINATION">Termination</option>
-              </select>
-            </div>
+            <FormSection step={1} title="The departure" note="What arrived, and how it reached HR.">
+              <Field id="departureType" label="Departure Type" required>
+                <select id="departureType" name="departureType" required defaultValue="">
+                  <option value="" disabled>
+                    Choose...
+                  </option>
+                  <option value="RESIGNATION_WITH_NOTICE">Resignation with notice</option>
+                  <option value="IMMEDIATE_RESIGNATION">Immediate resignation</option>
+                  <option value="TERMINATION">Termination</option>
+                </select>
+              </Field>
 
-            <div className="field">
-              <label htmlFor="receivedAt">
-                Date and Time Received <Req />
-              </label>
-              <input id="receivedAt" name="receivedAt" type="datetime-local" required />
-            </div>
+              <Field
+                id="receivedAt"
+                label="Date and Time Received"
+                required
+                hint="When HR received it - not when the employee wrote it."
+              >
+                <input id="receivedAt" name="receivedAt" type="datetime-local" required />
+              </Field>
 
-            {/* One-click provenance for the dispute-sensitive receipt fact
-                (owner request, 2026-08-17): pick the channel; detail only
-                when it adds evidence. */}
-            <div className="field">
-              <label htmlFor="receiptSourceKind">How It Was Received</label>
-              <select id="receiptSourceKind" name="receiptSourceKind" defaultValue="Signed letter">
-                <option value="Signed letter">Signed letter</option>
-                <option value="Email">Email</option>
-                <option value="Verbal (in person)">Verbal (in person)</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="receiptSourceDetail">
-                Describe How It Was Received <Req />
-              </label>
-              <input
-                id="receiptSourceDetail"
-                name="receiptSourceDetail"
-                type="text"
-                maxLength={150}
-                placeholder="e.g. note left with the store manager"
-              />
-            </div>
+              {/* One-click provenance for the dispute-sensitive receipt fact
+                  (owner request, 2026-08-17): pick the channel; detail only
+                  when it adds evidence. These two fields must remain adjacent
+                  siblings - the reveal rule is an adjacent-sibling selector. */}
+              <Field id="receiptSourceKind" label="How It Was Received">
+                <select
+                  id="receiptSourceKind"
+                  name="receiptSourceKind"
+                  defaultValue="Signed letter"
+                >
+                  <option value="Signed letter">Signed letter</option>
+                  <option value="Email">Email</option>
+                  <option value="Verbal (in person)">Verbal (in person)</option>
+                  <option value="Other">Other</option>
+                </select>
+              </Field>
+              <Field id="receiptSourceDetail" label="Describe How It Was Received" required>
+                <input
+                  id="receiptSourceDetail"
+                  name="receiptSourceDetail"
+                  type="text"
+                  maxLength={150}
+                  placeholder="e.g. note left with the store manager"
+                />
+              </Field>
+            </FormSection>
 
-            {/* One working-date field (owner request, 2026-08-18): the
-                proposed/confirmed pair collapsed into the date that actually
-                drives the process. */}
-            <div className="field">
-              <label htmlFor="confirmedLastDay">Final Working Date</label>
-              <input id="confirmedLastDay" name="confirmedLastDay" type="date" />
-            </div>
-            {/* Resignations with notice end at close of business on the final
-                working date, so the platform sets the instant itself (owner
-                request, 2026-08-18). Immediate resignations and terminations
-                keep the field: there the exact moment is a decision, and it
-                is what access removal is timed to. */}
-            <div className="field field--effective-time">
-              <label htmlFor="effectiveSeparationAt">Employment Ends (Date and Exact Time)</label>
-              <input
-                id="effectiveSeparationAt"
-                name="effectiveSeparationAt"
-                type="datetime-local"
-              />
-              <p className="hint">
-                Access removal is timed to this exact moment, not to end of day.
-              </p>
-            </div>
+            <FormSection
+              step={2}
+              title="When employment ends"
+              note="The final working date drives every due date on the case."
+            >
+              {/* One working-date field (owner request, 2026-08-18): the
+                  proposed/confirmed pair collapsed into the date that actually
+                  drives the process. */}
+              <Field id="confirmedLastDay" label="Final Working Date" optional>
+                <input id="confirmedLastDay" name="confirmedLastDay" type="date" />
+              </Field>
+              {/* Resignations with notice end at close of business on the final
+                  working date, so the platform sets the instant itself (owner
+                  request, 2026-08-18). Immediate resignations and terminations
+                  keep the field: there the exact moment is a decision, and it
+                  is what access removal is timed to. */}
+              <div className="field field--effective-time">
+                <label htmlFor="effectiveSeparationAt">
+                  <span>Employment Ends (Date and Exact Time)</span>
+                </label>
+                <input
+                  id="effectiveSeparationAt"
+                  name="effectiveSeparationAt"
+                  type="datetime-local"
+                />
+                <p className="hint">
+                  Access removal is timed to this exact moment, not to end of day.
+                </p>
+              </div>
+            </FormSection>
 
             {/* Department and location come straight from the selected
                 employee's directory record (owner request, 2026-08-17) - no
@@ -306,26 +320,26 @@ export default async function NewCasePage({
                 real operational record in the active rollout; the server
                 action fixes the values. */}
 
-            <fieldset>
-              <legend>Reason for Leaving</legend>
+            <FormSection step={3} title="Reason for Leaving">
               {/* "Provided" was missing entirely, so a reason that HAD been
                   given could not be recorded (owner, 2026-08-18). The notes
                   box now appears only for that answer. */}
-              <div className="field">
-                <label htmlFor="reasonCaptureStatus">Did the Employee Give a Reason?</label>
+              <Field id="reasonCaptureStatus" label="Did the Employee Give a Reason?">
                 <select id="reasonCaptureStatus" name="reasonCaptureStatus" defaultValue="PENDING">
                   <option value="PENDING">Not provided yet</option>
                   <option value="PROVIDED">Yes</option>
                   <option value="NOT_PROVIDED">No, they preferred not to say</option>
                   <option value="NOT_APPLICABLE">Not applicable</option>
                 </select>
-              </div>
+              </Field>
               <div className="field field--reason-notes">
-                <label htmlFor="reasonNotes">What Did They Say?</label>
+                <label htmlFor="reasonNotes">
+                  <span>What Did They Say?</span>
+                </label>
                 <textarea id="reasonNotes" name="reasonNotes" rows={3} maxLength={2000} />
                 <p className="hint">Restricted HR information - visible only to HR on this case.</p>
               </div>
-            </fieldset>
+            </FormSection>
 
             {/* Notice tracking left the product surface entirely (owner,
                 2026-08-17). The days-given figure still derives silently

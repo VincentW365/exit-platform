@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
   breakGlassStatus,
   directoryTechnicalCounts,
@@ -188,11 +189,22 @@ export default async function SystemAdminPage({
         <form action={reconciliationAction} style={{ display: 'inline-block' }}>
           <button type="submit">Run reconciliation report</button>
         </form>{' '}
-        <form action={purgeDirectoryAction} style={{ display: 'inline-block' }}>
-          <button type="submit" className="danger">
-            Purge live directory cache
-          </button>
-        </form>
+        <ConfirmDialog
+          trigger="Purge live directory cache"
+          title="Purge the live directory cache?"
+          consequence={[
+            'Every employee record read from BambooHR is dropped from this database.',
+            'Employee search and manager routing stop working until the next sync completes.',
+            'BambooHR itself is untouched - this platform never writes to it.',
+            'Cases keep their own snapshots, so open cases stay readable.',
+          ]}
+        >
+          <form action={purgeDirectoryAction}>
+            <button type="submit" className="danger">
+              Purge the cache
+            </button>
+          </form>
+        </ConfirmDialog>
         {directory && directory.recentRuns.length > 0 ? (
           <>
             <h3>Synchronization History</h3>

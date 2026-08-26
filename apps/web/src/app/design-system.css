@@ -1369,3 +1369,476 @@ td.numeric,
   width: 1.9rem;
   height: 1.9rem;
 }
+
+/* ---------------------------------------------------------------------------
+   18. FORMS - grouping, state and the messages a field owes the reader
+
+   A form here is a record of a decision somebody is accountable for, so the
+   states have to be unambiguous: what is required, what is wrong, what is
+   still being checked. Validity styling leans on :user-invalid rather than
+   :invalid so a field only turns red once the person has actually engaged
+   with it - an empty required field on first paint is not yet an error.
+   ------------------------------------------------------------------------ */
+
+/* A named part of a long form. Sections carry the reader through a form the
+   way the section headers carry them through a page. */
+.form-section {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-4);
+  margin-top: var(--space-5);
+}
+.form-section:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 0;
+}
+.form-section__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+.form-section__step {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface-well);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.form-section__title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-bold);
+  color: var(--text);
+}
+.form-section__note {
+  margin: 0 0 var(--space-3);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  max-width: 60ch;
+}
+.form-section > .stack,
+.form-section > .field {
+  margin-top: var(--space-3);
+}
+
+/* Two fields that belong together read better side by side than stacked,
+   and collapse to one column when there is no room for two. */
+.field-row {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  align-items: start;
+  max-width: 46rem;
+}
+.field-row > .field {
+  max-width: none;
+}
+
+/* The label line: name on the left, required/optional marker on the right. */
+.field > label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.field .opt {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-normal);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+/* Invalid: border, ring and a message that names the problem in words. */
+input:user-invalid,
+select:user-invalid,
+textarea:user-invalid,
+[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+input:user-invalid:focus-visible,
+select:user-invalid:focus-visible,
+textarea:user-invalid:focus-visible,
+[aria-invalid='true']:focus-visible {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 22%, transparent);
+}
+.field__error {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  color: var(--danger);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+}
+.field__error::before {
+  content: '!';
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: var(--radius-pill);
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+/* The count under a length-limited field: quiet until it matters. */
+.field__count {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The error summary is the first thing a keyboard or screen-reader user
+   should land on after a rejected submit, so it takes focus and says how
+   many problems there are before listing them. */
+.error-summary:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
+.error-summary ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+.error-summary a {
+  color: var(--danger);
+  font-weight: var(--weight-semi);
+}
+
+/* A submit row reads as one decision: the action, then the way out of it. */
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.form-actions__note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  flex: 1 1 16rem;
+}
+
+/* ---------------------------------------------------------------------------
+   19. DIALOGS - short, high-risk confirmations only
+
+   Native <dialog> + showModal(), so focus containment, Escape and the inert
+   background are the platform's job. The consequence list is the point of
+   the pattern: the reader is told what this will do before they are asked
+   to justify it.
+   ------------------------------------------------------------------------ */
+
+.dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: min(40rem, calc(100vh - 4rem));
+  overflow: auto;
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--danger);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 24px 60px rgba(6, 20, 40, 0.28);
+}
+.dialog::backdrop {
+  background: rgba(9, 24, 46, 0.55);
+}
+.dialog__head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.dialog__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  line-height: var(--lh-snug);
+}
+.dialog__close {
+  flex: none;
+  padding: 0 0.4rem;
+  font-size: 1.3rem;
+  line-height: 1.4;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-2);
+  box-shadow: none;
+}
+.dialog__close:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+/* What this will do. Stated before the reader is asked to justify it. */
+.dialog__consequence {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) var(--space-4) var(--space-3) 2.1rem;
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: var(--lh-normal);
+}
+.dialog__consequence li + li {
+  margin-top: 0.3rem;
+}
+.dialog__body {
+  margin-top: var(--space-4);
+}
+.dialog__foot {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+/* The dialog animates in only for readers who have not asked us not to. */
+@media (prefers-reduced-motion: no-preference) {
+  .dialog[open] {
+    animation: dialog-in var(--dur-base, 180ms) var(--ease, ease);
+  }
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: translateY(-0.4rem) scale(0.99);
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   15. FILTERING - what is on, and how to turn it off
+   ------------------------------------------------------------------------ */
+
+/* A checkbox is a label with a control in it, not a stacked field. */
+.field--check {
+  display: flex;
+  align-items: center;
+  align-self: end;
+  padding-bottom: 0.4rem;
+}
+.field--check label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  justify-content: flex-start;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.field--check input[type='checkbox'] {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* A filtered list that looks like the whole list is how people conclude
+   cases have gone missing, so the active filters are stated above the rows
+   with one way to clear them. */
+.filter-applied {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.filter-applied .label {
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   16. CHARTS - a report read as a finding
+
+   Deliberately CSS-drawn rather than library-drawn: the artifact CSP blocks
+   external scripts, and a horizontal bar per row needs nothing more than a
+   width. The chart is aria-hidden behind a single role="img" label because
+   the same numbers sit in a real table directly beneath it.
+   ------------------------------------------------------------------------ */
+
+.chart {
+  display: grid;
+  gap: 0.35rem;
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-well);
+}
+.chart__row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 15rem) 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+.chart__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+.chart__track {
+  display: block;
+  height: 1.1rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  overflow: hidden;
+}
+.chart__bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    var(--accent) 0%,
+    color-mix(in srgb, var(--accent) 78%, var(--brand-yellow)) 100%
+  );
+  transition: width var(--dur-base, 180ms) var(--ease, ease);
+}
+.chart__value {
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  min-width: 3ch;
+  text-align: right;
+}
+
+@media (max-width: 40rem) {
+  .chart__row {
+    grid-template-columns: 1fr auto;
+  }
+  .chart__label {
+    grid-column: 1 / -1;
+    white-space: normal;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   21. LOADING - the shape of what is coming
+
+   A placeholder that matches the layout it precedes stops the page jumping
+   when the real content lands. The shimmer is a courtesy, not information,
+   so it is the first thing dropped under prefers-reduced-motion.
+   ------------------------------------------------------------------------ */
+
+.skeleton {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+  position: relative;
+  overflow: hidden;
+}
+.skeleton--line {
+  height: 0.85rem;
+}
+.skeleton--title {
+  height: 2.1rem;
+  width: min(22rem, 60%);
+  margin: var(--space-5) 0 var(--space-4);
+  border-radius: var(--radius);
+}
+.skeleton--mark {
+  flex: none;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: var(--radius-pill);
+}
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.skeleton-row__text {
+  flex: 1;
+  display: grid;
+  gap: 0.4rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--panel) 70%, transparent),
+      transparent
+    );
+    animation: skeleton-sweep 1.4s ease-in-out infinite;
+  }
+  @keyframes skeleton-sweep {
+    to {
+      transform: translateX(100%);
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   22. MOTION - feedback, never decoration
+
+   Three jobs only: confirm that a press registered, show where focus went,
+   and stop a state change from happening instantly enough to be missed.
+   Nothing here moves on its own, nothing animates on page load, and the
+   global prefers-reduced-motion rule in globals.css overrides all of it.
+   ------------------------------------------------------------------------ */
+
+/* A press should look pressed. The transform is 1px so it reads as feedback
+   rather than as the button moving somewhere. */
+.row-item,
+.chip,
+.case-tabs a,
+.side-nav a,
+.stat--link {
+  transition:
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+a.button:active:not([aria-disabled='true']),
+.row-item:active {
+  transform: translateY(1px);
+}
+
+/* A status change on a re-rendered page is easy to miss when it appears
+   fully formed. This is the only motion that plays without an interaction,
+   and only on the element that just told the reader something. */
+@media (prefers-reduced-motion: no-preference) {
+  .ok-summary,
+  .error-summary {
+    animation: feedback-in var(--dur-base) var(--ease);
+  }
+  @keyframes feedback-in {
+    from {
+      opacity: 0;
+      transform: translateY(-0.25rem);
+    }
+  }
+}
+
+/* Anchor jumps - the error summary's field links, the audit deep links -
+   should carry the eye rather than teleport it. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}

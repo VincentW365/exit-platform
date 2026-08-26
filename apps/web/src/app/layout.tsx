@@ -19,7 +19,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const themeCookie = (await cookies()).get('exit_theme')?.value;
   const theme = themeCookie === 'dark' || themeCookie === 'light' ? themeCookie : undefined;
   return (
-    <html lang="en" data-theme={theme}>
+    <html lang="en" data-theme={theme} data-scroll-behavior="smooth">
       <body>
         <a className="skip-link" href="#main">
           Skip to main content

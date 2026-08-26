@@ -1,16 +1,114 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import Link from 'next/link';
 import { ServiceError, listSchedules, runReport, REPORT_CATALOG } from '@exit/db';
-import { can, formatInstant, RECIPIENT_CLASSES } from '@exit/domain';
+import { can, formatInstant, RECIPIENT_CLASSES, type Actor } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import { Chip, Row, Rows, SectionHead } from '@/components/patterns';
 import { ChartIcon, ReportsIcon } from '@/components/icons';
-import { countOf } from '@/lib/text';
+import { ReportAnalytics } from '@/components/ReportAnalytics';
+import { SkeletonPanel } from '@/components/Skeleton';
+import { countOf, humanize } from '@/lib/text';
 import { createScheduleAction, toggleScheduleAction } from './actions';
 
 export const metadata: Metadata = { title: 'Reporting Center' };
 export const dynamic = 'force-dynamic';
+
+/**
+ * Section 16: reports return the values the database holds, which is right -
+ * the CSV export depends on it. On screen, an unambiguous enum token is
+ * shown in words. Anything else is printed exactly as it came back, so a
+ * genuine identifier or a free-text value is never quietly rewritten.
+ */
+const ENUM_TOKEN = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/;
+function reportCell(v: string | number | null) {
+  if (v === null) return '-';
+  if (typeof v === 'number') return String(v);
+  return ENUM_TOKEN.test(v) ? humanize(v) : v;
+}
+
+/**
+ * One report, run and rendered. Split out so it can stream: everything above
+ * it on the page is static, and a report over every case is not.
+ */
+async function ReportResult({
+  actor,
+  selected,
+  sp,
+  canExport,
+}: {
+  actor: Actor;
+  selected: string;
+  sp: Record<string, string | undefined>;
+  canExport: boolean;
+}) {
+  let output: Awaited<ReturnType<typeof runReport>>;
+  try {
+    output = await runReport(actor, selected, {
+      recordPurpose: sp.purpose ?? 'OPERATIONAL',
+      departureType: sp.departureType || undefined,
+      department: sp.department || undefined,
+    });
+  } catch (e) {
+    if (!(e instanceof ServiceError)) throw e;
+    return <p className="panel">Report unavailable: {e.details.join('; ') || e.message}</p>;
+  }
+  return (
+    <section className="panel" aria-labelledby="out-h">
+      <SectionHead
+        id="out-h"
+        icon={<ChartIcon />}
+        title={output.title}
+        description={output.note ?? undefined}
+        aside={<Chip tone="info">{countOf(output.rows.length, 'row')}</Chip>}
+      />
+      {/* Section 16: the finding first - headline figures and, where one
+              measure varies across named groups, the shape of it. The table
+              below stays the record and the accessible copy of the numbers. */}
+      <ReportAnalytics columns={output.columns} rows={output.rows} />
+      <div style={{ overflowX: 'auto' }} tabIndex={0}>
+        <table>
+          <caption className="visually-hidden">{output.title}</caption>
+          <thead>
+            <tr>
+              {output.columns.map((c) => (
+                <th key={c} scope="col">
+                  {c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {output.rows.length === 0 ? (
+              <tr>
+                <td colSpan={output.columns.length} className="meta">
+                  Nothing matches these filters. Widen the date range, or this measure genuinely has
+                  no activity in the period.
+                </td>
+              </tr>
+            ) : (
+              output.rows.map((row, i) => (
+                <tr key={i}>
+                  {row.map((v, j) => (
+                    <td key={j}>{reportCell(v)}</td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      {canExport ? (
+        <p>
+          <a className="button secondary" href={`/api/reports/${output.key}/csv`}>
+            Export CSV (audited)
+          </a>
+        </p>
+      ) : null}
+    </section>
+  );
+}
 
 export default async function ReportsPage({
   searchParams,
@@ -28,20 +126,6 @@ export default async function ReportsPage({
     );
 
   const selected = sp.report && REPORT_CATALOG.some((r) => r.key === sp.report) ? sp.report : null;
-  let output: Awaited<ReturnType<typeof runReport>> | null = null;
-  let reportError: string | null = null;
-  if (selected) {
-    try {
-      output = await runReport(actor, selected, {
-        recordPurpose: sp.purpose ?? 'OPERATIONAL',
-        departureType: sp.departureType || undefined,
-        department: sp.department || undefined,
-      });
-    } catch (e) {
-      if (e instanceof ServiceError) reportError = e.details.join('; ') || e.message;
-      else throw e;
-    }
-  }
   const schedules = can(actor, 'reports.view') ? await listSchedules(actor) : [];
   const canExport = can(actor, 'reports.export');
   const canSchedule = can(actor, 'reports.schedule');
@@ -62,6 +146,19 @@ export default async function ReportsPage({
         groups are suppressed; every export is audited.
       </p>
 
+      {/* Section 21: a report aggregates across every case, which is the one
+          genuinely slow read on this page. It streams in behind a placeholder
+          so the page shell and the catalogue are usable immediately. The
+          boundary is below the reports.view check by construction. */}
+      {selected ? (
+        <Suspense fallback={<SkeletonPanel rows={5} />}>
+          <ReportResult actor={actor} selected={selected} sp={sp} canExport={canExport} />
+        </Suspense>
+      ) : null}
+
+      {/* Section 16: once a question has been asked the answer leads. The
+          catalogue is how you ask the next one, so it follows rather than
+          making the reader scroll past two dozen links to see the result. */}
       {/* The catalogue is a set of questions you can ask, grouped by subject -
           not a bulleted list of links. */}
       {families.map((family) => (
@@ -80,58 +177,6 @@ export default async function ReportsPage({
           </Rows>
         </section>
       ))}
-
-      {reportError ? <p className="panel">Report unavailable: {reportError}</p> : null}
-      {output ? (
-        <section className="panel" aria-labelledby="out-h">
-          <SectionHead
-            id="out-h"
-            icon={<ChartIcon />}
-            title={output.title}
-            description={output.note ?? undefined}
-            aside={<Chip tone="info">{countOf(output.rows.length, 'row')}</Chip>}
-          />
-          <div style={{ overflowX: 'auto' }} tabIndex={0}>
-            <table>
-              <caption className="visually-hidden">{output.title}</caption>
-              <thead>
-                <tr>
-                  {output.columns.map((c) => (
-                    <th key={c} scope="col">
-                      {c}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {output.rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={output.columns.length} className="meta">
-                      Nothing matches these filters. Widen the date range, or this measure genuinely
-                      has no activity in the period.
-                    </td>
-                  </tr>
-                ) : (
-                  output.rows.map((row, i) => (
-                    <tr key={i}>
-                      {row.map((v, j) => (
-                        <td key={j}>{v === null ? '-' : String(v)}</td>
-                      ))}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          {canExport ? (
-            <p>
-              <a className="button secondary" href={`/api/reports/${output.key}/csv`}>
-                Export CSV (audited)
-              </a>
-            </p>
-          ) : null}
-        </section>
-      ) : null}
 
       <section className="panel" aria-labelledby="sch-h">
         <h2 id="sch-h" style={{ marginTop: 0 }}>

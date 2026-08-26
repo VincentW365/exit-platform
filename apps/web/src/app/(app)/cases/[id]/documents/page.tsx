@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { Field } from '@/components/forms';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { notFound } from 'next/navigation';
 import {
   formatInstant,
@@ -441,20 +443,32 @@ export default async function CaseDocumentsPage({
                 {!['MANUALLY_ISSUED', 'ISSUED_BY_EMAIL', 'SUPERSEDED', 'VOIDED'].includes(
                   d.status,
                 ) && docsData.capabilities.canApprove ? (
-                  <details className="action">
-                    <summary>Void</summary>
+                  <ConfirmDialog
+                    trigger="Void"
+                    triggerClassName="danger compact"
+                    title="Void this document?"
+                    consequence={[
+                      'The document stops counting as issued and can no longer be sent.',
+                      'If it has already gone to the employee, voiding it here does not recall it - tell them separately.',
+                      'The PDF and its checksum are kept. Nothing is deleted.',
+                    ]}
+                  >
                     <form action={voidDocAction} className="stack">
                       <input type="hidden" name="caseId" value={id} />
                       <input type="hidden" name="docId" value={d.id} />
-                      <div className="field">
-                        <label htmlFor={`v-${d.id}`}>Reason (Required)</label>
+                      <Field
+                        id={`v-${d.id}`}
+                        label="Why is this document being voided?"
+                        required
+                        hint="Recorded against the document and readable in the audit trail."
+                      >
                         <textarea id={`v-${d.id}`} name="reason" rows={2} required />
-                      </div>
+                      </Field>
                       <button type="submit" className="danger">
                         Void document
                       </button>
                     </form>
-                  </details>
+                  </ConfirmDialog>
                 ) : null}
               </div>
             </section>

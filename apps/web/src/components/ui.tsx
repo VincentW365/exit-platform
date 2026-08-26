@@ -1,5 +1,6 @@
 /** Small shared server components: status badges, banners, error summaries. */
 import type { ReactNode } from 'react';
+import { ErrorSummary } from './ErrorSummary';
 import type { CaseStatus } from '@exit/domain';
 import { humanize } from '@/lib/text';
 
@@ -68,16 +69,7 @@ export function Feedback({ err, ok }: { err?: string | string[]; ok?: string | s
   const okText = Array.isArray(ok) ? ok[0] : ok;
   return (
     <>
-      {errText ? (
-        <div className="error-summary" role="alert" aria-labelledby="err-heading">
-          <h2 id="err-heading">There Is a Problem</h2>
-          <ul>
-            {errText.split('|').map((m, i) => (
-              <li key={i}>{m}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      {errText ? <ErrorSummary messages={errText.split('|')} /> : null}
       {okText ? (
         <p className="ok-summary" role="status">
           {okText}
