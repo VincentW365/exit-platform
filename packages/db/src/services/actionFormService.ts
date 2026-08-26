@@ -33,6 +33,9 @@ const LIVE_FORM_STATUSES = FORM_LIVE_STATUSES;
 function formFieldSnapshot(c: {
   caseNumber: string;
   employeeSourceId: string;
+  /// The employer's own Employee # from BambooHR - what the printed form means.
+  employeeNumber?: string | null;
+  managerName?: string | null;
   employeeDisplayName: string;
   jobTitle: string | null;
   department: string;
@@ -47,6 +50,8 @@ function formFieldSnapshot(c: {
   return {
     caseReference: c.caseNumber,
     employeeId: c.employeeSourceId,
+    employeeNumber: c.employeeNumber ?? null,
+    managerName: c.managerName ?? null,
     employeeName: c.employeeDisplayName,
     position: c.jobTitle ?? '',
     department: c.department,

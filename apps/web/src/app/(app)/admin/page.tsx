@@ -73,23 +73,80 @@ export default async function AdminPage({
     },
   };
 
+  // Each entry mirrors the target page's OWN permission gate, so the hub
+  // never offers a door the signed-in role cannot open (owner, 2026-08-25:
+  // a link that lands on "Access Restricted" is a dead end, not a feature).
   const hubLinks: Array<{ href: string; label: string; kind: 'business' | 'technical' }> = [
-    { href: '/admin/organization', label: 'Organization and Assignment Mapping', kind: 'business' },
-    { href: '/admin/workflows', label: 'Workflow Definitions', kind: 'business' },
-    { href: '/admin/templates', label: 'Document Templates', kind: 'business' },
-    { href: '/baseline', label: 'Baseline Dashboard', kind: 'business' },
-    { href: '/admin/reasons', label: 'Reason Taxonomy', kind: 'business' },
-    { href: '/admin/recipients', label: 'Recipient Directory', kind: 'business' },
-    { href: '/admin/notification-templates', label: 'Notification Templates', kind: 'business' },
-    { href: '/reports', label: 'Reporting Center', kind: 'business' },
-    { href: '/admin/pilot', label: 'Pilot Readiness and Activation', kind: 'business' },
-    { href: '/admin/privacy', label: 'Privacy and Retention', kind: 'business' },
+    ...(can(actor, 'admin.organization') || can(actor, 'org.view')
+      ? [
+          {
+            href: '/admin/organization',
+            label: 'Organization and Assignment Mapping',
+            kind: 'business' as const,
+          },
+        ]
+      : []),
+    ...(can(actor, 'workflowDef.view')
+      ? [{ href: '/admin/workflows', label: 'Workflow Definitions', kind: 'business' as const }]
+      : []),
+    ...(can(actor, 'template.view')
+      ? [{ href: '/admin/templates', label: 'Document Templates', kind: 'business' as const }]
+      : []),
+    ...(can(actor, 'baseline.viewDashboard')
+      ? [{ href: '/baseline', label: 'Baseline Dashboard', kind: 'business' as const }]
+      : []),
+    ...(can(actor, 'reasons.manage')
+      ? [{ href: '/admin/reasons', label: 'Reason Taxonomy', kind: 'business' as const }]
+      : []),
+    ...(can(actor, 'recipients.viewBusiness')
+      ? [{ href: '/admin/recipients', label: 'Recipient Directory', kind: 'business' as const }]
+      : []),
+    ...(can(actor, 'notifTemplate.view')
+      ? [
+          {
+            href: '/admin/notification-templates',
+            label: 'Notification Templates',
+            kind: 'business' as const,
+          },
+        ]
+      : []),
+    ...(can(actor, 'reports.view')
+      ? [{ href: '/reports', label: 'Reporting Center', kind: 'business' as const }]
+      : []),
+    ...(can(actor, 'pilot.view')
+      ? [
+          {
+            href: '/admin/pilot',
+            label: 'Pilot Readiness and Activation',
+            kind: 'business' as const,
+          },
+        ]
+      : []),
+    ...(can(actor, 'privacy.operate')
+      ? [{ href: '/admin/privacy', label: 'Privacy and Retention', kind: 'business' as const }]
+      : []),
     { href: '/continuity', label: 'Business Continuity', kind: 'business' },
-    { href: '/admin/system', label: 'System Configuration and Identity', kind: 'technical' },
-    { href: '/admin/health', label: 'Integration Health', kind: 'technical' },
-    { href: '/admin/email-routing', label: 'Email Routing', kind: 'business' },
-    { href: '/admin/email-log', label: 'Email Log', kind: 'technical' },
-    { href: '/admin/outbox', label: 'Email Delivery Status', kind: 'technical' },
+    ...(can(actor, 'admin.system')
+      ? [
+          {
+            href: '/admin/system',
+            label: 'System Configuration and Identity',
+            kind: 'technical' as const,
+          },
+        ]
+      : []),
+    ...(can(actor, 'health.view')
+      ? [{ href: '/admin/health', label: 'Integration Health', kind: 'technical' as const }]
+      : []),
+    ...(can(actor, 'notifications.routing')
+      ? [{ href: '/admin/email-routing', label: 'Email Routing', kind: 'business' as const }]
+      : []),
+    ...(can(actor, 'outbox.view')
+      ? [
+          { href: '/admin/email-log', label: 'Email Log', kind: 'technical' as const },
+          { href: '/admin/outbox', label: 'Email Delivery Status', kind: 'technical' as const },
+        ]
+      : []),
     { href: '/dev/mailbox', label: 'Captured Email', kind: 'technical' },
     { href: '/support', label: 'Support and Incidents', kind: 'technical' },
   ];
@@ -337,7 +394,9 @@ export default async function AdminPage({
               ))}
             </ul>
           ) : (
-            <p>No calendar configured.</p>
+            <p className="meta">
+              No working calendar yet. Add the company holidays so due dates skip non-working days.
+            </p>
           )}
           <details className="action">
             <summary>Preview SLA impact of a candidate holiday list (nothing is applied)</summary>

@@ -70,9 +70,19 @@ export default async function OrganizationAdminPage({
       <p className="hint" role="note">
         Validation of the synchronized directory before hierarchy-driven routing is trusted
         (Directive 6.1 C). Aggregate view - employee detail stays on the case surfaces. Sync and
-        reconciliation run from <Link href="/directory">Directory</Link> and{' '}
-        <Link href="/admin/system">System administration</Link>; role assignments are managed in{' '}
-        <Link href="/admin">Administration</Link>.
+        reconciliation run from{' '}
+        {can(actor, 'employeeSource.search') ? (
+          <Link href="/directory">Directory</Link>
+        ) : (
+          'Directory'
+        )}{' '}
+        and{' '}
+        {can(actor, 'admin.system') ? (
+          <Link href="/admin/system">System administration</Link>
+        ) : (
+          'System administration'
+        )}
+        ; role assignments are managed in <Link href="/admin">Administration</Link>.
       </p>
 
       <section className="panel" aria-labelledby="stats-h">
@@ -350,7 +360,7 @@ export default async function OrganizationAdminPage({
             {data.hierarchyWarnings.map((w) => (
               <li key={w.caseId}>
                 <span className="badge badge--warning">Review</span>{' '}
-                <Link href={`/cases/${w.caseId}/assignment`}>{w.caseNumber}</Link> -{' '}
+                <Link href={`/cases/${w.caseId}/workflow`}>{w.caseNumber}</Link> -{' '}
                 {w.employeeDisplayName}: confirmed manager {w.managerName ?? '-'} vs directory{' '}
                 {w.directoryManagerName ?? '-'} (flagged {formatInstant(w.flaggedAt)})
               </li>

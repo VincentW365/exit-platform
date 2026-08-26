@@ -7,7 +7,8 @@ import { Feedback } from '@/components/ui';
 import { claimTaskAction, returnTaskAction } from './actions';
 import { humanize } from '@/lib/text';
 import { EmptyState } from '@/components/EmptyState';
-import { CheckCircleIcon } from '@/components/icons';
+import { Chip, Row, Rows } from '@/components/patterns';
+import { AlertIcon, CheckCircleIcon, QueueIcon } from '@/components/icons';
 
 export const metadata: Metadata = { title: 'My Work' };
 export const dynamic = 'force-dynamic';
@@ -175,106 +176,112 @@ export default async function QueuePage({
           />
         </div>
       ) : (
-        <div className="panel" style={{ overflowX: 'auto' }} tabIndex={0}>
-          <table>
-            <caption className="visually-hidden">Work queue tasks</caption>
-            <thead>
-              <tr>
-                <th scope="col">Task</th>
-                <th scope="col">Case / employee</th>
-                {showDepartments ? <th scope="col">Department</th> : null}
-                <th scope="col">Status</th>
-                <th scope="col">Assignee</th>
-                <th scope="col">Priority</th>
-                <th scope="col">Due</th>
-                <th scope="col">Overdue</th>
-                <th scope="col">Next action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.rows.map((r) => (
-                <tr key={r.id}>
-                  <td>
-                    <Link href={`/tasks/${r.id}`}>{r.title}</Link>
-                    {r.taskKind === 'ACCESS_REVOCATION' ? (
-                      <>
-                        {' '}
-                        <span className="badge badge--danger">EXACT TIME</span>
-                      </>
-                    ) : null}
-                    {r.confidential ? (
-                      <>
-                        {' '}
-                        <span className="badge badge--warning">Restricted</span>
-                      </>
-                    ) : null}
-                  </td>
-                  <td>
-                    {r.caseId ? (
-                      <Link href={`/cases/${r.caseId}`}>{r.caseNumber}</Link>
-                    ) : (
-                      r.caseNumber
-                    )}
-                    <br />
-                    <span className="hint">{r.employeeDisplayName}</span>
-                    {r.departureType ? <span className="hint"> - {r.departureType}</span> : null}
-                  </td>
-                  {showDepartments ? <td>{r.department}</td> : null}
-                  <td>
-                    <span className={`badge ${TASK_BADGE[r.status] ?? 'badge--neutral'}`}>
-                      {humanize(r.status)}
+        <Rows label="Work queue tasks">
+          {data.rows.map((r) => (
+            <Row
+              key={r.id}
+              tone={
+                r.overdueMinutes > 0
+                  ? 'critical'
+                  : r.status === 'BLOCKED'
+                    ? 'attention'
+                    : r.status === 'COMPLETED'
+                      ? 'done'
+                      : 'progress'
+              }
+              muted={r.status === 'COMPLETED'}
+              mark={r.overdueMinutes > 0 ? <AlertIcon /> : <QueueIcon />}
+              title={
+                <>
+                  <Link href={`/tasks/${r.id}`}>{r.title}</Link>
+                  {r.taskKind === 'ACCESS_REVOCATION' ? (
+                    <>
+                      {' '}
+                      <Chip tone="critical">Exact time</Chip>
+                    </>
+                  ) : null}
+                  {r.confidential ? (
+                    <>
+                      {' '}
+                      <Chip tone="attention">Restricted</Chip>
+                    </>
+                  ) : null}
+                </>
+              }
+              sub={
+                <>
+                  {r.caseId ? (
+                    <Link href={`/cases/${r.caseId}`}>{r.caseNumber}</Link>
+                  ) : (
+                    r.caseNumber
+                  )}
+                  {' · '}
+                  {r.employeeDisplayName}
+                  {showDepartments ? ` · ${r.department}` : ''}
+                  {r.blockedReason ? ` · blocker: ${r.blockedReason}` : ''}
+                </>
+              }
+              facts={
+                <>
+                  <span>
+                    <span className="label">Due</span>
+                    <span className="value numeric">
+                      {r.dueAt ? formatInstant(r.dueAt) : 'No date'}
                     </span>
-                    {r.blockedReason ? <p className="hint">Blocker: {r.blockedReason}</p> : null}
-                  </td>
-                  <td>
-                    {r.assigneeName ?? <span className="hint">Unassigned</span>}
-                    {r.assignedToMe ? <span className="hint"> (you)</span> : null}
-                  </td>
-                  <td>{humanize(r.priority)}</td>
-                  <td className="tabular-nums">{r.dueAt ? formatInstant(r.dueAt) : '-'}</td>
-                  <td className="tabular-nums">
-                    {r.overdueMinutes > 0 ? (
-                      <span className="badge badge--danger">
-                        {r.overdueMinutes >= 1440
-                          ? `${Math.floor(r.overdueMinutes / 1440)}d`
-                          : `${r.overdueMinutes}m`}
-                      </span>
-                    ) : (
-                      <span className="hint">-</span>
-                    )}
-                  </td>
-                  <td>
-                    {r.nextAction}
-                    {r.assignedToMe ? <span className="hint"> (assigned to you)</span> : null}
-                    {r.canClaimHere ? (
-                      <form action={claimTaskAction} style={{ marginTop: '0.35rem' }}>
+                  </span>
+                  <span>
+                    <span className="label">Owner</span>
+                    <span className="value">
+                      {r.assignedToMe ? 'You' : (r.assigneeName ?? 'Unassigned')}
+                    </span>
+                  </span>
+                  <span className={`badge ${TASK_BADGE[r.status] ?? 'badge--neutral'}`}>
+                    {humanize(r.status)}
+                  </span>
+                  {r.overdueMinutes > 0 ? (
+                    <Chip tone="critical">
+                      {r.overdueMinutes >= 1440
+                        ? `${Math.floor(r.overdueMinutes / 1440)}d overdue`
+                        : `${r.overdueMinutes}m overdue`}
+                    </Chip>
+                  ) : null}
+                  {r.priority && r.priority !== 'NORMAL' ? (
+                    <Chip tone="attention">{humanize(r.priority)}</Chip>
+                  ) : null}
+                </>
+              }
+              action={
+                <>
+                  {r.canClaimHere ? (
+                    <form action={claimTaskAction}>
+                      <input type="hidden" name="taskId" value={r.id} />
+                      <input type="hidden" name="query" value={queryString} />
+                      <button type="submit" className="secondary compact">
+                        Claim
+                      </button>
+                    </form>
+                  ) : null}
+                  {r.assignedToMe && ['READY', 'IN_PROGRESS', 'BLOCKED'].includes(r.status) ? (
+                    <details className="action">
+                      <summary>Return to queue</summary>
+                      <form action={returnTaskAction} className="stack">
                         <input type="hidden" name="taskId" value={r.id} />
                         <input type="hidden" name="query" value={queryString} />
-                        <button type="submit" className="secondary compact">
-                          Claim
-                        </button>
-                      </form>
-                    ) : null}
-                    {r.assignedToMe && ['READY', 'IN_PROGRESS', 'BLOCKED'].includes(r.status) ? (
-                      <details className="action" style={{ marginTop: '0.35rem' }}>
-                        <summary>Return to queue</summary>
-                        <form action={returnTaskAction} className="stack">
-                          <input type="hidden" name="taskId" value={r.id} />
-                          <input type="hidden" name="query" value={queryString} />
+                        <div className="field">
                           <label htmlFor={`rtq-${r.id}`}>Reason (Required, Audited)</label>
                           <input id={`rtq-${r.id}`} name="reason" required maxLength={500} />
-                          <button type="submit" className="secondary compact">
-                            Return task
-                          </button>
-                        </form>
-                      </details>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                        </div>
+                        <button type="submit" className="secondary">
+                          Return task
+                        </button>
+                      </form>
+                    </details>
+                  ) : null}
+                </>
+              }
+            />
+          ))}
+        </Rows>
       )}
     </>
   );

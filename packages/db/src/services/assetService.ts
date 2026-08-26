@@ -37,6 +37,9 @@ export async function listCaseAssets(actor: Actor, caseId: string) {
   return {
     caseNumber: c.caseNumber,
     caseStatus: c.status,
+    // Lets the page show what the directory says this employee holds, even
+    // before activation turns those records into recovery items.
+    employeeSourceId: c.employeeSourceId,
     items: items.map((i) => ({
       id: i.id,
       assetType: i.assetType,

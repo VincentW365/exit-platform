@@ -6,6 +6,7 @@ import {
   RETURN_ITEM_STATUSES,
   RETURN_ITEM_STATUS_LABEL,
 } from '@exit/domain';
+import { humanize } from '@/lib/text';
 import { submitChecklistAction } from './actions';
 
 export const metadata: Metadata = {
@@ -17,20 +18,28 @@ export const dynamic = 'force-dynamic';
 /**
  * Public no-login Exit Checklist for Return Items (owner directive, 2026-08-19).
  *
- * The secure link opens THIS employee's checklist directly - the recipient
- * never searches the HR platform for the right person. Same shape as
- * /ack/[token]: outside the authenticated (app) group, neutral failures, and
- * nothing beyond what the email already carried plus the items being returned.
+ * The page replicates the company's printed checklist - letterhead, the
+ * Employee / Reason / Date header, the ruled item table with its KEYS
+ * sub-heading, and the Received By line - as an interactive document. The
+ * paper form's single tick column becomes a tick per outcome, because "not
+ * returned" and "lost / damaged" are answers HR needs, not blank cells.
+ *
+ * Same trust shape as /ack/[token]: outside the authenticated (app) group,
+ * neutral failures, and nothing beyond what the email already carried plus
+ * the items being returned.
  */
 
-/** The two key rows print under a "KEYS" sub-heading on the paper form. */
-function itemName(itemKey: string, label: string): string {
-  return itemKey.startsWith('KEYS_') ? `Keys - ${label}` : label;
+/** Items above the KEYS sub-heading, exactly as the sheet numbers them. */
+function splitItems<T extends { itemKey: string }>(items: readonly T[]) {
+  return {
+    main: items.filter((i) => !i.itemKey.startsWith('KEYS_')),
+    keys: items.filter((i) => i.itemKey.startsWith('KEYS_')),
+  };
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main id="main" style={{ maxWidth: '48rem', margin: '2rem auto', padding: '0 1rem 3rem' }}>
+    <main id="main" style={{ maxWidth: '56rem', margin: '2rem auto', padding: '0 1rem 3rem' }}>
       {children}
     </main>
   );
@@ -43,6 +52,54 @@ function NeutralPage() {
       <h1>Link Not Available</h1>
       <p className="panel">This link is not valid. It may have expired or already been used.</p>
     </Shell>
+  );
+}
+
+/** One ruled table row: number, item, the tick options, remarks. */
+function ItemRow({
+  item,
+  index,
+  number,
+}: {
+  item: { id: string; itemKey: string; label: string; status: string; remarks: string | null };
+  index: number;
+  number: number;
+}) {
+  return (
+    <tr>
+      <td className="form-table__num">{number}.</td>
+      <th scope="row" id={`item-name-${index}`}>
+        {item.label}
+      </th>
+      <td>
+        <input type="hidden" name={`item.${index}.key`} value={item.itemKey} />
+        <div className="tickset" role="radiogroup" aria-labelledby={`item-name-${index}`}>
+          {RETURN_ITEM_STATUSES.filter((s) => s !== 'OUTSTANDING').map((s) => (
+            <label key={s} className="tick">
+              <input
+                type="radio"
+                name={`item.${index}.status`}
+                value={s}
+                defaultChecked={item.status === s}
+              />
+              {RETURN_ITEM_STATUS_LABEL[s]}
+            </label>
+          ))}
+        </div>
+        {/* An unticked row stays OUTSTANDING: the fallback posts only when no
+            tick above it is selected (FormData.get takes the first entry). */}
+        <input type="hidden" name={`item.${index}.status`} value="OUTSTANDING" />
+      </td>
+      <td>
+        <input
+          type="text"
+          name={`item.${index}.remarks`}
+          aria-label={`Remarks for ${item.label}`}
+          maxLength={500}
+          defaultValue={item.remarks ?? ''}
+        />
+      </td>
+    </tr>
   );
 }
 
@@ -78,27 +135,11 @@ export default async function PublicChecklistPage({
   const { checklist, case: c } = data;
   const errors = (sp.err ?? '').split('|').filter(Boolean).slice(0, 12);
   const lastDay = c.confirmedLastDay ?? c.effectiveSeparationAt;
+  const { main, keys } = splitItems(checklist.items);
 
   return (
     <Shell>
-      <h1>Exit Checklist for Return Items</h1>
-      <div className="panel stack">
-        <p>
-          <strong>{c.employeeDisplayName}</strong>
-          <br />
-          Case reference: {c.caseNumber}
-          {lastDay ? (
-            <>
-              <br />
-              Last working day: {formatDateOnly(lastDay)}
-            </>
-          ) : null}
-        </p>
-        <p className="hint">
-          Record each item below. Add a remark for anything not returned. Items that were never
-          issued should be marked <em>Not applicable</em>.
-        </p>
-      </div>
+      <h1 className="sr-only">Exit Checklist for Return Items</h1>
 
       {errors.length ? (
         <div className="error-summary" role="alert">
@@ -119,107 +160,128 @@ export default async function PublicChecklistPage({
         </p>
       ) : null}
 
-      <form action={submitChecklistAction} className="stack">
+      <form action={submitChecklistAction}>
         <input type="hidden" name="token" value={token} />
 
-        <div className="table-wrap">
-          <table className="table-checklist">
+        <div className="paper">
+          <header className="paper__letterhead">
+            <div className="paper__org">Bert&apos;s Auto Parts Limited</div>
+            <p className="paper__title">Exit Checklist for Return Items</p>
+            <p className="paper__ref">Case reference: {c.caseNumber}</p>
+          </header>
+
+          {/* The sheet's header facts come from the case and stay fixed - the
+              link is already bound to this one employee. */}
+          <div className="sigline">
+            <span className="sigline__label">Employee:</span>
+            <span className="sigline__value">{c.employeeDisplayName}</span>
+          </div>
+          <div className="sigline">
+            <span className="sigline__label">Reason for Exit:</span>
+            <span className="sigline__value">{humanize(c.departureType)}</span>
+          </div>
+          <div className="sigline">
+            <span className="sigline__label">Date of Exit:</span>
+            <span className="sigline__value">{lastDay ? formatDateOnly(lastDay) : '-'}</span>
+          </div>
+
+          <p className="hint" style={{ margin: 'var(--space-3) 0' }}>
+            Tick the outcome for each item. Add a remark for anything not returned; items that were
+            never issued should be ticked <em>Not applicable</em>. Anything left blank stays
+            outstanding.
+          </p>
+
+          <table className="form-table">
             <caption className="sr-only">Items to be returned</caption>
             <thead>
               <tr>
-                <th scope="col">Item</th>
-                <th scope="col">Status</th>
+                <th scope="col" aria-label="Number" className="form-table__num" />
+                <th scope="col">Items</th>
+                <th scope="col">Check (&#10003;)</th>
                 <th scope="col">Remarks</th>
               </tr>
             </thead>
             <tbody>
-              {checklist.items.map((item, index) => {
-                const name = itemName(item.itemKey, item.label);
-                return (
-                  <tr key={item.id}>
-                    <th scope="row">
-                      <label htmlFor={`status-${index}`}>{name}</label>
-                    </th>
-                    <td>
-                      <input type="hidden" name={`item.${index}.key`} value={item.itemKey} />
-                      <select
-                        id={`status-${index}`}
-                        name={`item.${index}.status`}
-                        defaultValue={item.status}
-                      >
-                        {RETURN_ITEM_STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {RETURN_ITEM_STATUS_LABEL[s]}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        name={`item.${index}.remarks`}
-                        aria-label={`Remarks for ${name}`}
-                        maxLength={500}
-                        defaultValue={item.remarks ?? ''}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
+              {main.map((item, i) => (
+                <ItemRow key={item.id} item={item} index={i} number={i + 1} />
+              ))}
+              <tr className="form-table__group">
+                <td className="form-table__num" />
+                <th scope="rowgroup" colSpan={3}>
+                  Keys
+                </th>
+              </tr>
+              {keys.map((item, i) => (
+                <ItemRow
+                  key={item.id}
+                  item={item}
+                  index={main.length + i}
+                  number={main.length + i + 1}
+                />
+              ))}
             </tbody>
           </table>
-        </div>
 
-        <fieldset className="stack">
-          <legend>Who Completed This Checklist</legend>
-          <div className="field">
-            <label htmlFor="receivedByName">Items Received By</label>
+          <div className="paper__bar">Received By</div>
+          <div className="sigline">
+            <label className="sigline__label" htmlFor="receivedByName">
+              Items Received By:
+            </label>
             <input
               id="receivedByName"
               name="receivedByName"
               maxLength={120}
               required
+              autoComplete="name"
               defaultValue={checklist.receivedByName ?? ''}
             />
-          </div>
-          <div className="field">
-            <label htmlFor="receivedAt">Date Received</label>
+            <label className="sigline__label" htmlFor="receivedAt">
+              Date:
+            </label>
             <input
               id="receivedAt"
               name="receivedAt"
               type="date"
+              style={{ flex: '0 1 11rem' }}
               defaultValue={checklist.receivedAt ? formatDateInput(checklist.receivedAt) : ''}
             />
           </div>
-          <div className="field">
-            <label htmlFor="submittedByName">Your Name</label>
+          <div className="sigline">
+            <label className="sigline__label" htmlFor="submittedByName">
+              Your Name:
+            </label>
             <input
               id="submittedByName"
               name="submittedByName"
               maxLength={120}
               required
+              autoComplete="name"
               defaultValue={checklist.submittedByName ?? ''}
             />
           </div>
-          <div className="field">
-            <label htmlFor="employeeAcknowledgedBy">Employee Acknowledgement</label>
+          <div className="sigline">
+            <label className="sigline__label" htmlFor="employeeAcknowledgedBy">
+              Employee Acknowledgement:
+            </label>
             <input
               id="employeeAcknowledgedBy"
               name="employeeAcknowledgedBy"
               maxLength={120}
               defaultValue={checklist.employeeAcknowledgedBy ?? ''}
             />
-            <span className="hint">
+            <span className="meta">
               Optional. Enter the employee&apos;s name if they signed for the handover.
             </span>
           </div>
-        </fieldset>
 
-        <p className="hint">
-          This secure link can be used once. Human Resources will follow up on anything still
-          outstanding.
-        </p>
-        <button type="submit">Submit Checklist</button>
+          <p className="hint">
+            This secure link can be used once. Human Resources will follow up on anything still
+            outstanding.
+          </p>
+          <button type="submit" className="button--primary">
+            Submit Checklist
+          </button>
+        </div>
       </form>
     </Shell>
   );

@@ -44,8 +44,8 @@ test('J.3 return with reason -> correction -> resubmit; history preserved', asyn
     employeeQuery: 'jordan',
     type: 'IMMEDIATE_RESIGNATION',
   });
-  await page.getByRole('button', { name: 'Submit for HR review' }).click();
-  await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit for review' }).click();
+  await expect(page.getByText('Case submitted for review.')).toBeVisible();
   await signOut(page);
 
   await signInAs(page, 'HR Manager');
@@ -63,11 +63,11 @@ test('J.3 return with reason -> correction -> resubmit; history preserved', asyn
   await page.getByLabel(/Employment Ends/).fill('2026-08-14T18:00');
   await page.getByRole('button', { name: 'Save draft changes' }).click();
   await expect(page.getByText('Draft updated.')).toBeVisible();
-  await page.getByRole('button', { name: 'Submit for HR review' }).click();
-  await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit for review' }).click();
+  await expect(page.getByText('Case submitted for review.')).toBeVisible();
 
   // Original history remains: two submissions and one return in the timeline.
-  const timeline = page.locator('ul.timeline').last();
+  const timeline = page.locator('ol.activity').last();
   await expect(timeline.getByText('submitted the case', { exact: false })).toHaveCount(2);
   await expect(timeline.getByText('returned the case to draft', { exact: false })).toHaveCount(1);
   await signOut(page);
@@ -88,7 +88,7 @@ test('J.4 void requires a reason; history and audit remain visible', async ({ pa
   await expect(page.getByText('Case voided.')).toBeVisible();
   await expect(page.getByText('Voided').first()).toBeVisible();
   await expect(page.getByText('Synthetic duplicate for acceptance test.')).toBeVisible();
-  const timeline = page.locator('ul.timeline').last();
+  const timeline = page.locator('ol.activity').last();
   await expect(timeline.getByText('case voided', { exact: false })).toHaveCount(1);
   await page.goto(caseUrl); // still reachable read-only, never deleted
   await expect(page.getByRole('heading', { name: /OFF-\d{4}-\d{4,}(?:-\d)?/ })).toBeVisible();

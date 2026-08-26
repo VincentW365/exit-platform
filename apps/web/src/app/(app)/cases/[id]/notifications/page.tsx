@@ -17,6 +17,8 @@ import {
 } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { humanize } from '@/lib/text';
+import { Activity, Event, SectionHead } from '@/components/patterns';
+import { MailIcon } from '@/components/icons';
 import { CaseTitle, Feedback } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
 import {
@@ -152,16 +154,33 @@ export default async function CaseNotificationsPage({
 
         return (
           <section className="panel" key={r.id} aria-label={`${typeLabel} email action`}>
-            <h2 style={{ marginTop: 0 }}>
-              {typeLabel}{' '}
-              <span className={`badge ${BADGE[r.status] ?? 'badge--neutral'}`}>
-                {NOTIFICATION_STATUS_LABELS[r.status] ?? r.status}
-              </span>
-            </h2>
+            {/* A communication reads as a message: who it goes to, what it
+                says, and where it got to - not as a database record. */}
+            <SectionHead
+              icon={<MailIcon />}
+              tone={
+                ['ACKNOWLEDGED', 'CONFIRMED_COMPLETE', 'SENT', 'MANUALLY_SENT'].includes(r.status)
+                  ? 'done'
+                  : r.status === 'FAILED'
+                    ? 'critical'
+                    : 'progress'
+              }
+              title={typeLabel}
+              description={recipientDisplay ? `To ${recipientDisplay}` : undefined}
+              aside={
+                <span className={`badge ${BADGE[r.status] ?? 'badge--neutral'}`}>
+                  {NOTIFICATION_STATUS_LABELS[r.status] ?? r.status}
+                </span>
+              }
+            />
+            {r.subjectSnapshot ? (
+              <p className="value" style={{ marginTop: 0 }}>
+                {r.subjectSnapshot}
+              </p>
+            ) : null}
             {live && isSendControlLevel(r.controlLevel) ? (
               <p className="hint">{CONTROL_HINT[r.controlLevel]}</p>
             ) : null}
-            {recipientDisplay ? <p className="hint">Recipient: {recipientDisplay}</p> : null}
             {r.ccNames.length > 0 ? (
               <p className="hint">
                 Copied:{' '}
@@ -181,21 +200,39 @@ export default async function CaseNotificationsPage({
                 </span>
               </p>
             ) : null}
-            <p className="hint">
-              Prepared {formatInstant(r.createdAt)}
-              {r.scheduledSendAt && !r.sentAt
-                ? ` - scheduled for ${formatScheduledFor(r.scheduledSendAt)}`
-                : ''}
-              {r.sentAt ? ` - sent ${formatInstant(r.sentAt)}` : ''}
-              {r.manualSentAt ? ` - sent manually ${formatInstant(r.manualSentAt)}` : ''}
-              {r.acknowledgedAt ? ` - acknowledged ${formatInstant(r.acknowledgedAt)}` : ''}
-              {r.completionConfirmedAt
-                ? ` - completed ${formatInstant(r.completionConfirmedAt)}`
-                : ''}
-            </p>
-            {r.completionEvidenceNote ? (
-              <p className="hint">Evidence note: {r.completionEvidenceNote}</p>
-            ) : null}
+            <div className="well" style={{ marginTop: 'var(--space-3)' }}>
+              <Activity label={`${typeLabel} delivery history`}>
+                <Event time={formatInstant(r.createdAt)} title="Prepared" />
+                {r.scheduledSendAt && !r.sentAt ? (
+                  <Event
+                    time={formatScheduledFor(r.scheduledSendAt)}
+                    title="Scheduled to send"
+                    tone="auto"
+                  />
+                ) : null}
+                {r.sentAt ? (
+                  <Event time={formatInstant(r.sentAt)} title="Sent" tone="done" />
+                ) : null}
+                {r.manualSentAt ? (
+                  <Event time={formatInstant(r.manualSentAt)} title="Sent by hand" tone="done" />
+                ) : null}
+                {r.acknowledgedAt ? (
+                  <Event
+                    time={formatInstant(r.acknowledgedAt)}
+                    title="Acknowledged by the recipient"
+                    tone="done"
+                  />
+                ) : null}
+                {r.completionConfirmedAt ? (
+                  <Event
+                    time={formatInstant(r.completionConfirmedAt)}
+                    title="Confirmed complete"
+                    detail={r.completionEvidenceNote ?? undefined}
+                    tone="done"
+                  />
+                ) : null}
+              </Activity>
+            </div>
 
             <details>
               <summary>Preview content</summary>

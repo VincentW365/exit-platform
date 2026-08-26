@@ -12,6 +12,7 @@ import { formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { CaseTitle, Feedback } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
+import { AssignmentSection } from './AssignmentSection';
 import {
   activateWorkflowAction,
   holdCaseAction,
@@ -78,6 +79,7 @@ export default async function CaseWorkflowPage({
       <CaseTitle title="Workflow" caseNumber={data.caseNumber} status={data.caseStatus} />
       <CaseNav caseId={id} active="workflow" />
       <Feedback err={sp.err} ok={sp.ok} />
+      <AssignmentSection actor={actor} caseId={id} />
 
       {preview && assignmentBlockers.length > 0 ? (
         <div className="banner-baseline" role="status">
@@ -87,9 +89,7 @@ export default async function CaseWorkflowPage({
               <li key={b}>{b}</li>
             ))}
           </ul>
-          <p style={{ margin: '0.4rem 0 0' }}>
-            <Link href={`/cases/${id}/assignment`}>Open the Assignment tab</Link> to resolve these.
-          </p>
+          <p style={{ margin: '0.4rem 0 0' }}>Resolve these in the responsibility plan above.</p>
         </div>
       ) : null}
 

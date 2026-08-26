@@ -223,3 +223,117 @@ export function ShieldIcon(p: IconProps) {
     </Icon>
   );
 }
+
+/* --- entity icons ----------------------------------------------------------
+   One family, one stroke weight: these name the kinds of thing the platform
+   tracks, so a row is recognizable before its label is read. */
+
+export function UserIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </Icon>
+  );
+}
+
+export function LaptopIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M2 20h20" />
+    </Icon>
+  );
+}
+
+export function PhoneIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="7" y="2" width="10" height="20" rx="2" />
+      <path d="M11 18h2" />
+    </Icon>
+  );
+}
+
+export function KeyIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <circle cx="8" cy="15" r="4" />
+      <path d="M10.85 12.15 19 4l2 2-2 2 2 2-3 3-2-2-1.5 1.5" />
+    </Icon>
+  );
+}
+
+export function CardIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20" />
+    </Icon>
+  );
+}
+
+export function ShirtIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M9 3 3 6l2 4 2-1v12h10V9l2 1 2-4-6-3a3 3 0 0 1-6 0Z" />
+    </Icon>
+  );
+}
+
+export function BuildingIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <path d="M9 8h.01M15 8h.01M9 12h.01M15 12h.01M10 21v-4h4v4" />
+    </Icon>
+  );
+}
+
+export function CalendarIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18M8 3v4M16 3v4" />
+    </Icon>
+  );
+}
+
+export function CoinsIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <ellipse cx="12" cy="6" rx="8" ry="3" />
+      <path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6" />
+      <path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" />
+    </Icon>
+  );
+}
+
+export function ServerIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="3" y="4" width="18" height="7" rx="2" />
+      <rect x="3" y="13" width="18" height="7" rx="2" />
+      <path d="M7 7.5h.01M7 16.5h.01" />
+    </Icon>
+  );
+}
+
+export function ShieldCheckIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6Z" />
+      <path d="m9 12 2 2 4-4" />
+    </Icon>
+  );
+}
+
+export function FlowIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="3" y="3" width="6" height="6" rx="1.5" />
+      <rect x="15" y="15" width="6" height="6" rx="1.5" />
+      <path d="M9 6h4a2 2 0 0 1 2 2v10" />
+    </Icon>
+  );
+}

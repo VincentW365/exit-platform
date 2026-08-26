@@ -17,11 +17,14 @@ import { countOf, humanize, plural } from '@/lib/text';
 import {
   AlertIcon,
   BoxIcon,
-  CasesIcon,
+  CalendarIcon,
   ChartIcon,
   ClockIcon,
   DocumentIcon,
+  FlowIcon,
 } from '@/components/icons';
+import { EmptyState } from '@/components/EmptyState';
+import { Chip, Avatar, Kpi, Row, Rows, SectionHead } from '@/components/patterns';
 
 // "Exit Center" (owner request 2026-08-17): the company's separate "HR
 // Dashboard" app makes a generic "Dashboard" label ambiguous.
@@ -208,18 +211,59 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <h1>Exit Center</h1>
+      <h1 className="page-title">Exit Center</h1>
+      <p className="page-lede">
+        Every departure the company is currently working, what each one still needs, and what the
+        platform is handling on its own.
+      </p>
       {automationOff ? <BaselineBanner /> : null}
+
+      {/* The shape of the work before the detail of it: how many departures
+          sit at each stage, so a glance says where the load is. */}
+      <section aria-labelledby="pipeline-h" className="band">
+        <SectionHead
+          id="pipeline-h"
+          icon={<FlowIcon />}
+          title="Exit pipeline"
+          description="Open cases by the stage they have reached. Select a stage to work the cases in it."
+        />
+        <ol className="pipeline">
+          {statusOrder.map((s) => {
+            const count = dash.countsByStatus[s] ?? 0;
+            return (
+              <li key={s} className={`pipeline__stage${count > 0 ? ' is-live' : ''}`}>
+                <Link href={`/cases?status=${s}`} className="pipeline__link">
+                  <span className="pipeline__count numeric">{count}</span>
+                  <span className="pipeline__name">{humanize(s)}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ol>
+        {dash.baselineOpenCount > 0 || dash.nonOperationalCount > 0 ? (
+          <p className="meta" style={{ marginTop: 'var(--space-3)' }}>
+            {dash.baselineOpenCount > 0 ? `${dash.baselineOpenCount} baseline case(s) open. ` : ''}
+            {dash.nonOperationalCount > 0
+              ? `${dash.nonOperationalCount} training or test record(s) excluded from reporting.`
+              : ''}
+          </p>
+        ) : null}
+        <p className="meta">
+          Counts include only cases your access permits; restricted cases you are not assigned to
+          are excluded everywhere, including totals.
+        </p>
+      </section>
 
       {/* Directive 6.3 (Z, correction 8): exception-first - the dashboard
           leads with what needs a human decision, not with metrics. */}
       <section className="panel attention-row" aria-labelledby="attn-h">
-        <h2 id="attn-h" style={{ marginTop: 0 }}>
-          <span className="icon-tile section-icon icon-tile--attention">
-            <AlertIcon />
-          </span>
-          Requires Your Attention
-        </h2>
+        <SectionHead
+          id="attn-h"
+          icon={<AlertIcon />}
+          tone={feed.length > 0 || exceptions.length > 0 ? 'attention' : 'done'}
+          title="Requires your attention"
+          description="Anything the platform cannot decide on its own. Everything else is running without you."
+        />
         {feed.length === 0 ? (
           <p className="hint">Nothing needs your attention right now.</p>
         ) : (
@@ -267,49 +311,50 @@ export default async function DashboardPage() {
             </ul>
           </>
         ) : null}
-        <h3>Open Work Queues</h3>
-        <div className="stat-grid">
+        <h3>Open work queues</h3>
+        {/* Urgency is carried by the accent edge and the figure, not by five
+            competing colours. A queue at zero is quietly good news. */}
+        <div className="kpi-grid">
           {(
             [
-              [
-                'Critical / escalated',
-                attention.criticalTasks,
-                '/queue?view=critical',
-                'badge--danger',
-              ],
-              ['Overdue tasks', attention.overdueTasks, '/queue?view=overdue', 'badge--danger'],
+              ['Critical / escalated', attention.criticalTasks, '/queue?view=critical', 'critical'],
+              ['Overdue tasks', attention.overdueTasks, '/queue?view=overdue', 'critical'],
               [
                 'Pending approval',
                 attention.pendingApproval,
                 '/cases?status=PENDING_HR_REVIEW',
-                'badge--warning',
+                'pending',
               ],
-              ['Due today', attention.dueToday, '/queue?view=dueToday', 'badge--warning'],
+              ['Due today', attention.dueToday, '/queue?view=dueToday', 'pending'],
               [
                 'Ready for clearance',
                 s3.queues.casesReadyForClearance,
                 '/cases?status=ACTIVE',
-                'badge--info',
+                'info',
               ],
             ] as const
-          ).map(([label, count, href, cls]) => (
-            <Link key={label} href={href} className="stat stat--link">
-              <span className="stat__value tabular-nums">{count}</span>
-              <span className={`badge ${count > 0 ? cls : 'badge--success'}`}>{label}</span>
+          ).map(([label, count, href, tone]) => (
+            <Link key={label} href={href} className="kpi-link">
+              <Kpi
+                label={label}
+                value={count}
+                tone={count > 0 ? tone : 'done'}
+                note={count > 0 ? 'Open this queue' : 'Nothing outstanding'}
+              />
             </Link>
           ))}
         </div>
-        <p className="hint">Select any item above to go straight to where it is handled.</p>
       </section>
 
       {/* Directive 6.3 (Z): what the platform will do without HR input. */}
       <section className="panel" aria-labelledby="auto-h">
-        <h2 id="auto-h" style={{ marginTop: 0 }}>
-          <span className="icon-tile section-icon icon-tile--progress">
-            <ClockIcon />
-          </span>
-          In Progress Automatically
-        </h2>
+        <SectionHead
+          id="auto-h"
+          icon={<ClockIcon />}
+          tone={'progress'}
+          title="In progress automatically"
+          description="Scheduled work the platform will carry out without HR input."
+        />
         {automations.length === 0 ? (
           <p className="hint">
             No email actions or survey invitations are scheduled for the next 7 days.
@@ -335,93 +380,89 @@ export default async function DashboardPage() {
         </p>
       </section>
 
-      <section className="panel" aria-labelledby="counts-h">
-        <h2 id="counts-h" style={{ marginTop: 0 }}>
-          <span className="icon-tile section-icon">
-            <CasesIcon />
-          </span>
-          Active Cases
-        </h2>
-        <div className="stat-grid">
-          {statusOrder.map((s) => (
-            <div key={s} className="stat">
-              <span className="stat__value">{dash.countsByStatus[s] ?? 0}</span>
-              <StatusBadge status={s} />
-            </div>
-          ))}
-          {dash.baselineOpenCount > 0 ? (
-            <div className="stat">
-              <span className="stat__value">{dash.baselineOpenCount}</span>
-              <span className="badge badge--warning">Baseline open</span>
-            </div>
-          ) : null}
-          {dash.nonOperationalCount > 0 ? (
-            <div className="stat">
-              <span className="stat__value">{dash.nonOperationalCount}</span>
-              <span className="badge badge--neutral">Training/test records</span>
-            </div>
-          ) : null}
-        </div>
-        <p className="hint">
-          Counts include only cases your access permits; restricted cases you are not assigned to
-          are excluded everywhere, including totals.
-        </p>
-      </section>
-
-      <section className="panel" aria-labelledby="upcoming-h">
-        <h2 id="upcoming-h" style={{ marginTop: 0 }}>
-          <span className="icon-tile section-icon">
-            <ClockIcon />
-          </span>
-          Upcoming Departures (Next 30 Days)
-        </h2>
+      <section aria-labelledby="upcoming-h">
+        <SectionHead
+          id="upcoming-h"
+          icon={<CalendarIcon />}
+          tone="pending"
+          title="Leaving in the next 30 days"
+          description="Who is going, when, and how close each one is to the day. The nearest departure is first."
+          aside={
+            dash.upcomingDepartures.length > 0 ? (
+              <Chip tone="pending">{dash.upcomingDepartures.length} upcoming</Chip>
+            ) : null
+          }
+        />
         {dash.upcomingDepartures.length === 0 ? (
-          <p>No approved departures with an effective time in the next 30 days.</p>
-        ) : (
-          <div className="table-wrap" tabIndex={0}>
-            <table className="data">
-              <caption className="sr-only">Upcoming departures</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Case</th>
-                  <th scope="col">Employee</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Effective Separation</th>
-                  <th scope="col">Days</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dash.upcomingDepartures.map((c) => (
-                  <tr key={c.id}>
-                    <td>
-                      <Link href={`/cases/${c.id}`}>{c.caseNumber}</Link>{' '}
-                      <ClassificationBadge classification={c.classification} />
-                    </td>
-                    <td>{c.employeeDisplayName}</td>
-                    <td>{humanize(c.departureType)}</td>
-                    <td>
-                      <StatusBadge status={c.status} />
-                    </td>
-                    <td>
-                      {c.effectiveSeparationAt ? formatInstant(c.effectiveSeparationAt) : '-'}
-                    </td>
-                    <td>{c.daysUntil ?? '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="panel">
+            <EmptyState
+              icon={<CalendarIcon />}
+              title="Nobody is leaving in the next 30 days"
+              body="Approved departures appear here as their last working day approaches."
+            />
           </div>
+        ) : (
+          <Rows label="Upcoming departures">
+            {dash.upcomingDepartures.map((c) => (
+              <Row
+                key={c.id}
+                tone={
+                  c.daysUntil !== null && c.daysUntil <= 3
+                    ? 'critical'
+                    : c.daysUntil !== null && c.daysUntil <= 7
+                      ? 'attention'
+                      : 'progress'
+                }
+                mark={<Avatar name={c.employeeDisplayName} />}
+                title={<Link href={`/cases/${c.id}`}>{c.employeeDisplayName}</Link>}
+                sub={
+                  <>
+                    {humanize(c.departureType)} · {c.caseNumber}
+                  </>
+                }
+                facts={
+                  <>
+                    <span>
+                      <span className="label">Employment ends</span>
+                      <span className="value numeric">
+                        {c.effectiveSeparationAt ? formatInstant(c.effectiveSeparationAt) : '-'}
+                      </span>
+                    </span>
+                    <StatusBadge status={c.status} />
+                    <ClassificationBadge classification={c.classification} />
+                  </>
+                }
+                action={
+                  <Chip
+                    tone={
+                      c.daysUntil !== null && c.daysUntil <= 3
+                        ? 'critical'
+                        : c.daysUntil !== null && c.daysUntil <= 7
+                          ? 'attention'
+                          : 'neutral'
+                    }
+                  >
+                    {c.daysUntil === null
+                      ? 'No date'
+                      : c.daysUntil <= 0
+                        ? 'Today'
+                        : `${c.daysUntil} day${c.daysUntil === 1 ? '' : 's'} left`}
+                  </Chip>
+                }
+              />
+            ))}
+          </Rows>
         )}
       </section>
 
       <section className="panel" aria-labelledby="wf-h">
-        <h2 id="wf-h" style={{ marginTop: 0 }}>
-          <span className="icon-tile section-icon">
-            <ChartIcon />
-          </span>
-          Workflow Health
-        </h2>
+        <SectionHead
+          id="wf-h"
+          icon={<ChartIcon />}
+          tone={'info'}
+          title="Workflow health"
+          description="How the process itself is performing - timeliness, blockages and cycle times."
+        />
         <div className="stat-grid">
           {(
             [
@@ -476,12 +517,13 @@ export default async function DashboardPage() {
       </section>
 
       <section className="panel" aria-labelledby="assets-h">
-        <h2 id="assets-h" style={{ marginTop: 0 }}>
-          <span className="icon-tile section-icon">
-            <BoxIcon />
-          </span>
-          Asset Recovery
-        </h2>
+        <SectionHead
+          id="assets-h"
+          icon={<BoxIcon />}
+          tone={'info'}
+          title="Asset recovery"
+          description="Company property still with departing employees, and anything needing HR review."
+        />
         <div className="stat-grid">
           {(
             [
@@ -516,12 +558,13 @@ export default async function DashboardPage() {
       </section>
 
       <section className="panel" aria-labelledby="work-h">
-        <h2 id="work-h" style={{ marginTop: 0 }}>
-          <span className="icon-tile section-icon">
-            <DocumentIcon />
-          </span>
-          Documents, Forms and Surveys
-        </h2>
+        <SectionHead
+          id="work-h"
+          icon={<DocumentIcon />}
+          tone="info"
+          title="Documents, forms and surveys"
+          description="Paperwork waiting on someone, and how quickly it is turning around."
+        />
         {(() => {
           const queueRows: Array<{
             label: string;

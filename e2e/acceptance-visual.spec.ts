@@ -103,7 +103,7 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
   await axeCheck(page, 'baseline');
 
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Submit for HR review' }).click();
+  await page.getByRole('button', { name: 'Submit for review' }).click();
   await signOut(page);
 
   // HR manager: approve, attachments area, audit timeline, admin.

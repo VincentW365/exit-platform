@@ -42,6 +42,9 @@ describe("the employee number is the employer's own", () => {
     const directory = await prisma.employeeSourceRecord.findFirstOrThrow({
       where: { sourceId: 'EMP-TEST-001' },
     });
+    // Vacuous-pass guard: null === null once hid a broken lookup. The
+    // fixture employee HAS a number, so the case must actually carry one.
+    expect(row.employeeNumber).toBeTruthy();
     expect(row.employeeNumber).toBe(directory.employeeNumber);
     // The two are genuinely different values: one is HR's number, the other
     // is the directory's internal key, and they must never be confused.

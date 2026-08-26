@@ -16,7 +16,8 @@ function back(caseId: string, opts: { err?: string; ok?: string }): never {
   const p = new URLSearchParams();
   if (opts.err) p.set('err', opts.err.slice(0, 900));
   if (opts.ok) p.set('ok', opts.ok);
-  redirect(`/cases/${caseId}/assignment?${p.toString()}`);
+  // The assignment panels live on the Workflow tab (owner, 2026-08-25).
+  redirect(`/cases/${caseId}/workflow?${p.toString()}`);
 }
 
 function errText(e: unknown): string {

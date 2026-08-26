@@ -8,7 +8,7 @@ import {
   recordReturnItemsChecklist,
   setAssetDisposition,
 } from '@exit/db';
-import { RETURN_ITEM_CATALOGUE } from '@exit/domain';
+import { ASSET_TYPE_LABELS, RETURN_ITEM_CATALOGUE } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { touchSession } from '@/lib/session';
 
@@ -41,6 +41,46 @@ export async function addAssetAction(formData: FormData): Promise<void> {
     });
     revalidatePath(`/cases/${caseId}/assets`);
     back(caseId, { ok: 'Asset recovery item added.' });
+  } catch (e) {
+    if (e instanceof ServiceError) back(caseId, { err: errText(e) });
+    throw e;
+  }
+}
+
+/**
+ * Tick which company assets an employee holds, in one pass.
+ *
+ * The issued-asset register only ever covered part of the company, so for
+ * most people the case starts with nothing on record and HR knows what the
+ * person holds. This turns each ticked item into a tracked recovery item
+ * through the same audited path as adding one by hand.
+ */
+export async function selectAssetsAction(formData: FormData): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  const caseId = str(formData, 'caseId');
+  const picked = formData.getAll('assetType').map((v) => String(v));
+  if (picked.length === 0) {
+    back(caseId, { err: 'Tick at least one asset, or close this without saving.' });
+  }
+  try {
+    for (const assetType of picked) {
+      const label =
+        str(formData, `label.${assetType}`) ||
+        ASSET_TYPE_LABELS[assetType as keyof typeof ASSET_TYPE_LABELS] ||
+        assetType;
+      await addAssetRecoveryItem(actor, caseId, {
+        assetType,
+        label,
+        identifier: str(formData, `identifier.${assetType}`) || undefined,
+        responsibleDepartment: 'HR',
+        requiredForClearance: true,
+      });
+    }
+    revalidatePath(`/cases/${caseId}/assets`);
+    back(caseId, {
+      ok: `${picked.length} asset${picked.length === 1 ? '' : 's'} added for recovery.`,
+    });
   } catch (e) {
     if (e instanceof ServiceError) back(caseId, { err: errText(e) });
     throw e;

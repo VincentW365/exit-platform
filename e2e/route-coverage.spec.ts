@@ -78,7 +78,7 @@ test('every case tab renders for the HR Manager on a real case', async ({ page }
   await page.getByRole('button', { name: 'Sign in as HR Manager', exact: true }).click();
   await page.waitForURL('**/');
   await page.goto('/cases');
-  const firstCase = page.locator('table a[href*="/cases/"]').first();
+  const firstCase = page.locator('.rows a[href*="/cases/"]').first();
   await expect(firstCase).toBeVisible();
   await firstCase.click();
   await page.waitForURL('**/cases/**');

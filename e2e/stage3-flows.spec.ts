@@ -56,8 +56,8 @@ async function createTestCase(
 
 async function submitAndApprove(page: Page, caseUrl: string): Promise<void> {
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Submit for HR review' }).click();
-  await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit for review' }).click();
+  await expect(page.getByText('Case submitted for review.')).toBeVisible();
   await signOut(page);
   await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
@@ -127,7 +127,7 @@ async function recordFirstAssetDisposition(
       await page.waitForLoadState('load');
       await page.waitForTimeout(600);
       const summary = page
-        .locator('details.action > summary', { hasText: 'Record status / disposition' })
+        .locator('details.action > summary', { hasText: 'Record outcome' })
         .first();
       if ((await summary.count()) === 0) return; // nothing actionable left
       await summary.click({ timeout: 5000 });
@@ -225,9 +225,16 @@ test('Scenario 1 - resignation with notice: activate, HR journey, email evidence
 
   // Directive 6.3 V: one benefits confirmation feeds the provider rules.
   await page.goto(caseUrl);
-  await page
-    .locator('details.action > summary', { hasText: 'Confirm benefits applicability' })
-    .click();
+  // The confirm form opens itself while a benefit is undecided; toggle it
+  // open only when it is not already.
+  {
+    const benefitsDetails = page.locator('details.action', {
+      has: page.locator('summary', { hasText: 'Confirm which benefits apply' }),
+    });
+    if (!(await benefitsDetails.evaluate((el) => (el as HTMLDetailsElement).open))) {
+      await benefitsDetails.locator('summary').click();
+    }
+  }
   await page.locator('#ben-health').selectOption('NO');
   await page.locator('#ben-life').selectOption('NO');
   await page.getByRole('button', { name: 'Confirm applicability' }).click();
@@ -249,7 +256,7 @@ test('Scenario 1 - resignation with notice: activate, HR journey, email evidence
     'surveyEligibilityAssessed',
     'hrisUpdate',
   ]) {
-    await page.locator(`#hr-${key}`).selectOption('DONE');
+    await page.locator(`#hr-${key}-DONE`).check();
   }
   await page.locator('#ackStatus').selectOption('NOT_OBTAINED');
   await page.locator('#ackReason').fill('Employee unavailable for signature; recorded per policy.');
@@ -408,8 +415,8 @@ test('Scenario 3 - restricted termination: undiscoverable, minimum-data IT email
     effectiveAt: effectiveLocal,
   });
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Submit for HR review' }).click();
-  await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
+  // The reviewer approves her own draft in one audited step - no
+  // submit-to-self detour (owner, 2026-08-25).
   await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
   // Restricted case: the manager keeps operational ownership herself so the

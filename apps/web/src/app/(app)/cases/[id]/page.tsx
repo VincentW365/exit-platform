@@ -24,15 +24,58 @@ import {
 } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { CaseNav } from './CaseNav';
+import {
+  Activity,
+  Chip,
+  Event,
+  Facts,
+  Fact,
+  ProviderPanel,
+  Rail,
+  Row,
+  Rows,
+  SectionHead,
+} from '@/components/patterns';
+import {
+  AlertIcon,
+  AuditIcon,
+  CalendarIcon,
+  ClockIcon,
+  BookIcon,
+  ChartIcon,
+  DocumentIcon,
+  FlowIcon,
+  ShieldCheckIcon,
+  UserIcon,
+} from '@/components/icons';
+
+/**
+ * Which provider carries which benefit. Held here as presentation only - the
+ * platform's own provider directory is what actually addresses the email.
+ */
+const BENEFIT_PROVIDERS = [
+  {
+    field: 'groupHealth' as const,
+    provider: 'Group health provider',
+    benefit: 'Group health cover',
+    monogram: 'GH',
+  },
+  {
+    field: 'groupLife' as const,
+    provider: 'Group life provider',
+    benefit: 'Group life cover',
+    monogram: 'GL',
+  },
+];
+
+/** The section takes its tone from the least settled benefit on the case. */
+function benefitsTone(b: { groupHealth: string; groupLife: string }) {
+  if (b.groupHealth === 'UNKNOWN' || b.groupLife === 'UNKNOWN') return 'pending' as const;
+  return 'done' as const;
+}
 import { CaseHeader } from '@/components/CaseHeader';
 import { ProgressStrip } from '@/components/ProgressStrip';
-import {
-  ClassificationBadge,
-  Feedback,
-  PurposeBadge,
-  RestrictedBanner,
-  StatusBadge,
-} from '@/components/ui';
+import { Feedback, RestrictedBanner } from '@/components/ui';
 import {
   addNoteAction,
   addParticipantAction,
@@ -44,9 +87,8 @@ import {
   updateDraftAction,
   uploadAttachmentAction,
 } from '../actions';
-import { countOf, humanize, roleList } from '@/lib/text';
+import { humanize, roleList } from '@/lib/text';
 import { EmptyState } from '@/components/EmptyState';
-import { ChartIcon, DocumentIcon } from '@/components/icons';
 
 export const metadata: Metadata = { title: 'Case' };
 export const dynamic = 'force-dynamic';
@@ -106,8 +148,6 @@ export default async function CaseDetailPage({
       required.summary.counts.automatic +
       required.summary.counts.done
     : 0;
-  const benefitsText = (v: string) =>
-    v === 'YES' ? 'Yes' : v === 'NO' ? 'No' : 'Not yet confirmed';
 
   return (
     <>
@@ -129,7 +169,9 @@ export default async function CaseDetailPage({
           officerName: nameOf((c as { assignedOfficerId?: string | null }).assignedOfficerId),
           managerName: (c as { managerName?: string | null }).managerName ?? null,
           managerUserName: nameOf((c as { managerUserId?: string | null }).managerUserId),
+          confirmedLastDay: c.confirmedLastDay,
           nextAction: progressSummary?.nextAction ?? null,
+          stages: progress,
         }}
       />
       <Feedback err={sp.err} ok={sp.ok} />
@@ -143,55 +185,83 @@ export default async function CaseDetailPage({
       {progress.length > 0 ? <ProgressStrip stages={progress} /> : null}
 
       {required && requiredTotal > 0 ? (
-        <section className="panel" aria-labelledby="required-h">
-          <h2 id="required-h" style={{ marginTop: 0 }}>
-            Required Actions
-          </h2>
+        <section aria-labelledby="required-h">
+          <SectionHead
+            id="required-h"
+            icon={<AlertIcon />}
+            tone={required.summary.attention.length > 0 ? 'attention' : 'done'}
+            title="What this case needs"
+            description="Outstanding work first, then what the platform is handling on its own. Settled work is folded away."
+            aside={
+              required.summary.attention.length > 0 ? (
+                <Chip tone="attention">{required.summary.attention.length} to resolve</Chip>
+              ) : (
+                <Chip tone="done">Nothing outstanding</Chip>
+              )
+            }
+          />
           {required.summary.attention.length > 0 ? (
-            <>
-              <h3 style={{ marginBottom: '0.35rem' }}>Requires Your Attention</h3>
-              <ul className="stack" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                {required.summary.attention.map((r: RequiredActionRow) => (
-                  <li key={r.key}>
-                    <span
-                      className={`badge ${
-                        r.status === 'ACTION_REQUIRED' ? 'badge--warning' : 'badge--danger'
-                      }`}
+            <Rows label="Outstanding actions">
+              {required.summary.attention.map((r: RequiredActionRow) => (
+                <Row
+                  key={r.key}
+                  tone={r.status === 'OVERDUE' || r.status === 'FAILED' ? 'critical' : 'attention'}
+                  mark={
+                    r.status === 'OVERDUE' || r.status === 'FAILED' ? <AlertIcon /> : <ClockIcon />
+                  }
+                  title={r.label}
+                  sub={r.detail}
+                  facts={
+                    <Chip
+                      tone={
+                        r.status === 'OVERDUE' || r.status === 'FAILED' ? 'critical' : 'attention'
+                      }
                     >
                       {r.status === 'FAILED'
                         ? 'Failed'
                         : r.status === 'OVERDUE'
                           ? 'Overdue'
                           : 'Needs a decision'}
-                    </span>{' '}
-                    <strong>{r.label}</strong> - {r.detail} <Link href={r.href}>Resolve</Link>
-                  </li>
-                ))}
-              </ul>
-            </>
+                    </Chip>
+                  }
+                  action={
+                    <Link href={r.href} className="button secondary">
+                      Resolve
+                    </Link>
+                  }
+                />
+              ))}
+            </Rows>
           ) : (
             <p className="ok-summary" role="status">
               Nothing needs your attention on this case.
             </p>
           )}
+
           {required.summary.automatic.length > 0 ? (
-            <>
-              <h3 style={{ marginBottom: '0.35rem' }}>In Progress Automatically</h3>
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            <div className="well" style={{ marginTop: 'var(--space-4)' }}>
+              {/* A labelled group of work deserves a real heading, not a
+                  styled span: it is how the section is reached. */}
+              <h3 className="label" style={{ margin: 0 }}>
+                In progress automatically
+              </h3>
+              <ul className="plain-list" style={{ marginTop: 'var(--space-2)' }}>
                 {required.summary.automatic.map((r: RequiredActionRow) => (
-                  <li key={r.key} className="hint">
-                    {r.label} - {r.detail}
+                  <li key={r.key}>
+                    <span className="value">{r.label}</span>{' '}
+                    <span className="meta">- {r.detail}</span>
                   </li>
                 ))}
               </ul>
-            </>
+            </div>
           ) : null}
+
           {required.summary.done.length > 0 ? (
-            <details className="action" style={{ marginTop: '0.5rem' }}>
-              <summary>Completed / not applicable ({required.summary.counts.done})</summary>
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            <details className="action" style={{ marginTop: 'var(--space-3)' }}>
+              <summary>Settled ({required.summary.counts.done})</summary>
+              <ul className="plain-list">
                 {required.summary.done.map((r: RequiredActionRow) => (
-                  <li key={r.key} className="hint">
+                  <li key={r.key} className="meta">
                     {r.label} - {r.status === 'NOT_APPLICABLE' ? 'not applicable' : 'completed'} (
                     {r.detail})
                   </li>
@@ -202,138 +272,155 @@ export default async function CaseDetailPage({
         </section>
       ) : null}
 
-      <section className="panel" aria-labelledby="summary-h">
-        <h2 id="summary-h" style={{ marginTop: 0 }}>
-          Summary <StatusBadge status={c.status} />{' '}
-          <ClassificationBadge classification={c.classification} />{' '}
-          <PurposeBadge purpose={c.recordPurpose} cohort={c.measurementCohort} />
-        </h2>
-        <dl className="kv">
-          {/* Employee identity, department and departure type live in the
-              case header (AE) - the summary keeps only what the header
-              doesn't show. */}
-          <dt>Employee #</dt>
-          <dd>{c.employeeNumber ?? 'Not recorded in BambooHR'}</dd>
-          <dt>Directory Record</dt>
-          <dd className="meta">
-            {humanize(c.employeeSourceSystem)} id {c.employeeSourceId}
-          </dd>
-          <dt>Received</dt>
-          <dd>
-            {dt(c.receivedAt)} - {c.receiptSource}
-          </dd>
-          <dt>Final Working Date</dt>
-          <dd>{c.confirmedLastDay ? formatDateOnly(c.confirmedLastDay) : 'Not set'}</dd>
-          <dt>Effective Separation (Exact)</dt>
-          <dd>
-            <strong>{dt(c.effectiveSeparationAt)}</strong>
-          </dd>
-          <dt>Reason Category</dt>
-          <dd>
-            {c.reasonCategory
-              ? `${c.reasonCategory.label}${c.reasonCategory.isTestOnly ? ' (TEST ONLY)' : ''}`
-              : `None recorded (${humanize(c.reasonCaptureStatus).toLowerCase()})`}
-          </dd>
-          <dt>Reason Notes</dt>
-          <dd>
-            {c.reasonNotesMasked ? <em>masked (restricted HR data)</em> : (c.reasonNotes ?? '-')}
-          </dd>
-          <dt>Rehire Eligibility</dt>
-          <dd>
-            {c.rehireMasked ? (
-              <em>Masked (HR Manager only)</em>
-            ) : (
-              humanize(c.rehireEligibility) || 'Not set'
-            )}
-          </dd>
-          <dt>Snapshot</dt>
-          <dd>
-            {c.snapshot ? (
-              <>
-                captured {formatInstant(c.snapshot.capturedAt)} (checksum{' '}
-                <code>{c.snapshot.checksum.slice(0, 12)}...</code>, source retrieved{' '}
-                {formatInstant(c.snapshot.retrievedAt)}) - immutable
-              </>
-            ) : (
-              'Not yet captured (created at approval)'
-            )}
-          </dd>
-          {c.closeReason ? (
-            <>
-              <dt>Closure Reason</dt>
-              <dd>{c.closeReason}</dd>
-            </>
-          ) : null}
-        </dl>
-        {/* Editing a draft belongs with the values being edited (owner
-            request, 2026-08-19): one disclosure under the summary instead of
-            a second full-width section repeating the same fields. */}
-        {cap.canEditDraft ? (
-          <details className="action" style={{ marginTop: '0.75rem' }}>
-            <summary>Edit these details</summary>
-            <form action={updateDraftAction} className="stack">
-              <input type="hidden" name="caseId" value={c.id} />
-              <div className="field">
-                <label htmlFor="e-recv">Date and Time Received</label>
-                <input id="e-recv" name="receivedAt" type="datetime-local" />
-                <p className="hint">Currently: {dt(c.receivedAt)}. Leave blank to keep.</p>
-              </div>
-              <div className="field">
-                <label htmlFor="e-recv-src">How It Was Received</label>
-                <select id="e-recv-src" name="receiptSourceKind" defaultValue="">
-                  <option value="">(keep current)</option>
-                  <option value="Signed letter">Signed letter</option>
-                  <option value="Email">Email</option>
-                  <option value="Verbal (in person)">Verbal (in person)</option>
-                  <option value="Other">Other</option>
-                </select>
-                <p className="hint">Currently: {c.receiptSource}.</p>
-              </div>
-              <div className="field">
-                <label htmlFor="e-recv-detail">Describe How It Was Received</label>
-                <input id="e-recv-detail" name="receiptSourceDetail" type="text" maxLength={150} />
-              </div>
-              <div className="field">
-                <label htmlFor="e-eff">Employment Ends (Date and Exact Time)</label>
-                <input id="e-eff" name="effectiveSeparationAt" type="datetime-local" />
-                <p className="hint">Currently: {dt(c.effectiveSeparationAt)}.</p>
-              </div>
-              <div className="field">
-                <label htmlFor="e-reason-status">Did the Employee Give a Reason?</label>
-                <select
-                  id="e-reason-status"
-                  name="reasonCaptureStatus"
-                  defaultValue={c.reasonCaptureStatus}
-                >
-                  <option value="PENDING">Not provided yet</option>
-                  <option value="PROVIDED">Yes</option>
-                  <option value="NOT_PROVIDED">No, they preferred not to say</option>
-                  <option value="NOT_APPLICABLE">Not applicable</option>
-                </select>
-              </div>
-              {!c.reasonNotesMasked ? (
-                <div className="field field--reason-notes">
-                  <label htmlFor="e-reason-notes">What Did They Say?</label>
-                  <textarea
-                    id="e-reason-notes"
-                    name="reasonNotes"
-                    rows={3}
-                    maxLength={2000}
-                    defaultValue={c.reasonNotes ?? ''}
-                  />
-                </div>
-              ) : null}
-              <button type="submit">Save draft changes</button>
-            </form>
-          </details>
-        ) : null}
+      <section aria-labelledby="details-h">
+        <SectionHead
+          id="details-h"
+          icon={<CalendarIcon />}
+          title="Exit details"
+          description="The dates and classifications this case is worked against. The separation instant is the one the workflow schedules from."
+        />
+        {/* Dates carry the weight here: they are what the rest of the case is
+            timed against, so they are set louder than the values beside them. */}
+        <div className="panel">
+          <Facts>
+            <Fact label="Final working date" isKey>
+              {c.confirmedLastDay ? formatDateOnly(c.confirmedLastDay) : 'Not set'}
+            </Fact>
+            <Fact label="Employment ends" isKey>
+              {dt(c.effectiveSeparationAt)}
+            </Fact>
+            <Fact label="Resignation received">
+              {dt(c.receivedAt)}
+              <span className="meta"> · {c.receiptSource}</span>
+            </Fact>
+            <Fact label="Reason category">
+              {c.reasonCategory
+                ? `${c.reasonCategory.label}${c.reasonCategory.isTestOnly ? ' (TEST ONLY)' : ''}`
+                : `None recorded (${humanize(c.reasonCaptureStatus).toLowerCase()})`}
+            </Fact>
+            <Fact label="Reason notes">
+              {c.reasonNotesMasked ? <em>Masked (restricted HR data)</em> : (c.reasonNotes ?? '-')}
+            </Fact>
+            <Fact label="Rehire eligibility">
+              {c.rehireMasked ? (
+                <em>Masked (HR Manager only)</em>
+              ) : (
+                humanize(c.rehireEligibility) || 'Not set'
+              )}
+            </Fact>
+            {c.closeReason ? <Fact label="Closure reason">{c.closeReason}</Fact> : null}
+          </Facts>
+        </div>
       </section>
 
+      <section aria-labelledby="who-h">
+        <SectionHead
+          id="who-h"
+          icon={<UserIcon />}
+          tone="info"
+          title="Employee record"
+          description="Confirmed from the company directory when the case was approved, and held unchanged from that point."
+        />
+        <div className="panel">
+          <Facts>
+            <Fact label="Employee #" isKey>
+              {c.employeeNumber ?? <span className="meta">Not recorded in BambooHR</span>}
+            </Fact>
+            <Fact label="Department">{c.department}</Fact>
+            <Fact label="Location">{c.location}</Fact>
+            <Fact label="Position">{c.jobTitle ?? '-'}</Fact>
+          </Facts>
+          {/* Provenance is reference material, not headline information. */}
+          <div className="well" style={{ marginTop: 'var(--space-4)' }}>
+            <span className="label">Record provenance</span>
+            <p className="meta" style={{ margin: 'var(--space-1) 0 0' }}>
+              {humanize(c.employeeSourceSystem)} directory record {c.employeeSourceId}.{' '}
+              {c.snapshot ? (
+                <>
+                  Snapshot captured {formatInstant(c.snapshot.capturedAt)} (checksum{' '}
+                  <code>{c.snapshot.checksum.slice(0, 12)}...</code>, source retrieved{' '}
+                  {formatInstant(c.snapshot.retrievedAt)}) and immutable from then on.
+                </>
+              ) : (
+                'No snapshot yet - one is captured when the case is approved.'
+              )}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Editing a draft belongs with the values being edited (owner
+            request, 2026-08-19): one disclosure under the summary instead of
+            a second full-width section repeating the same fields. */}
+      {cap.canEditDraft ? (
+        <details className="action" style={{ marginTop: '0.75rem' }}>
+          <summary>Edit these details</summary>
+          <form action={updateDraftAction} className="stack">
+            <input type="hidden" name="caseId" value={c.id} />
+            <div className="field">
+              <label htmlFor="e-recv">Date and Time Received</label>
+              <input id="e-recv" name="receivedAt" type="datetime-local" />
+              <p className="hint">Currently: {dt(c.receivedAt)}. Leave blank to keep.</p>
+            </div>
+            <div className="field">
+              <label htmlFor="e-recv-src">How It Was Received</label>
+              <select id="e-recv-src" name="receiptSourceKind" defaultValue="">
+                <option value="">(keep current)</option>
+                <option value="Signed letter">Signed letter</option>
+                <option value="Email">Email</option>
+                <option value="Verbal (in person)">Verbal (in person)</option>
+                <option value="Other">Other</option>
+              </select>
+              <p className="hint">Currently: {c.receiptSource}.</p>
+            </div>
+            <div className="field">
+              <label htmlFor="e-recv-detail">Describe How It Was Received</label>
+              <input id="e-recv-detail" name="receiptSourceDetail" type="text" maxLength={150} />
+            </div>
+            <div className="field">
+              <label htmlFor="e-eff">Employment Ends (Date and Exact Time)</label>
+              <input id="e-eff" name="effectiveSeparationAt" type="datetime-local" />
+              <p className="hint">Currently: {dt(c.effectiveSeparationAt)}.</p>
+            </div>
+            <div className="field">
+              <label htmlFor="e-reason-status">Did the Employee Give a Reason?</label>
+              <select
+                id="e-reason-status"
+                name="reasonCaptureStatus"
+                defaultValue={c.reasonCaptureStatus}
+              >
+                <option value="PENDING">Not provided yet</option>
+                <option value="PROVIDED">Yes</option>
+                <option value="NOT_PROVIDED">No, they preferred not to say</option>
+                <option value="NOT_APPLICABLE">Not applicable</option>
+              </select>
+            </div>
+            {!c.reasonNotesMasked ? (
+              <div className="field field--reason-notes">
+                <label htmlFor="e-reason-notes">What Did They Say?</label>
+                <textarea
+                  id="e-reason-notes"
+                  name="reasonNotes"
+                  rows={3}
+                  maxLength={2000}
+                  defaultValue={c.reasonNotes ?? ''}
+                />
+              </div>
+            ) : null}
+            <button type="submit">Save draft changes</button>
+          </form>
+        </details>
+      ) : null}
+
       {(cap.canChangeEffectiveTime || cap.canCorrect || cap.canSetRehire) && !cap.canEditDraft ? (
-        <section className="panel" aria-labelledby="corr-h">
-          <h2 id="corr-h" style={{ marginTop: 0 }}>
-            Audited Corrections
-          </h2>
+        <section aria-labelledby="corr-h" className="panel">
+          <SectionHead
+            id="corr-h"
+            icon={<ShieldCheckIcon />}
+            tone="pending"
+            title="Audited corrections"
+            description="Changes to a live case that alter what the workflow schedules. Each one is recorded with a reason."
+          />
           <div className="actions-row">
             {cap.canChangeEffectiveTime ? (
               <details className="action">
@@ -392,68 +479,144 @@ export default async function CaseDetailPage({
           audited service path remains for legacy-record housekeeping. */}
 
       {required?.canConfirmBenefits ? (
-        <section className="panel" aria-labelledby="benefits-h">
-          <h2 id="benefits-h" style={{ marginTop: 0 }}>
-            Benefits and Providers
-          </h2>
-          <dl className="kv">
-            <dt>Group Health</dt>
-            <dd>{benefitsText(required.benefits.groupHealth)}</dd>
-            <dt>Group Life</dt>
-            <dd>{benefitsText(required.benefits.groupLife)}</dd>
-            <dt>Confirmed</dt>
-            <dd>
-              {required.benefits.confirmedAt
-                ? formatInstant(required.benefits.confirmedAt)
-                : 'Not yet confirmed'}
-            </dd>
-          </dl>
-          <details className="action" style={{ marginTop: '0.5rem' }}>
-            <summary>Confirm benefits applicability</summary>
-            <form action={confirmBenefitsAction} className="stack">
-              <input type="hidden" name="caseId" value={c.id} />
-              <div className="field">
-                <label htmlFor="ben-health">Group Health Applies to This Employee?</label>
-                <select
-                  id="ben-health"
-                  name="groupHealth"
-                  defaultValue={required.benefits.groupHealth}
-                >
-                  <option value="YES">Yes</option>
-                  <option value="NO">No</option>
-                  <option value="UNKNOWN">Unknown</option>
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="ben-life">Group Life Applies to This Employee?</label>
-                <select id="ben-life" name="groupLife" defaultValue={required.benefits.groupLife}>
-                  <option value="YES">Yes</option>
-                  <option value="NO">No</option>
-                  <option value="UNKNOWN">Unknown</option>
-                </select>
-              </div>
-              <p className="hint">
-                Confirming &quot;Yes&quot; prepares the matching provider notification;
-                &quot;No&quot; removes it. Anything left unknown stays on the attention list until
-                confirmed.
-              </p>
-              <button type="submit">Confirm applicability</button>
-            </form>
-          </details>
+        <section aria-labelledby="benefits-h">
+          <SectionHead
+            id="benefits-h"
+            icon={<ShieldCheckIcon />}
+            tone={benefitsTone(required.benefits)}
+            title="Benefits and providers"
+            description="Each benefit this employee holds has to be cancelled with the provider that carries it. Confirming applicability is what starts - or stands down - that provider's notification."
+            aside={
+              required.benefits.confirmedAt ? (
+                <Chip tone="done">Confirmed</Chip>
+              ) : (
+                <Chip tone="attention">Awaiting confirmation</Chip>
+              )
+            }
+          />
+
+          {required.canConfirmBenefits ? (
+            <details
+              className="action"
+              open={
+                required.benefits.groupHealth === 'UNKNOWN' ||
+                required.benefits.groupLife === 'UNKNOWN'
+              }
+            >
+              <summary>Confirm which benefits apply</summary>
+              <form action={confirmBenefitsAction} className="stack">
+                <input type="hidden" name="caseId" value={c.id} />
+                <div className="field">
+                  <label htmlFor="ben-health">Group Health Applies to This Employee?</label>
+                  <select
+                    id="ben-health"
+                    name="groupHealth"
+                    defaultValue={required.benefits.groupHealth}
+                  >
+                    <option value="YES">Yes</option>
+                    <option value="NO">No</option>
+                    <option value="UNKNOWN">Unknown</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="ben-life">Group Life Applies to This Employee?</label>
+                  <select id="ben-life" name="groupLife" defaultValue={required.benefits.groupLife}>
+                    <option value="YES">Yes</option>
+                    <option value="NO">No</option>
+                    <option value="UNKNOWN">Unknown</option>
+                  </select>
+                </div>
+                <p className="hint">
+                  Confirming &quot;Yes&quot; prepares the matching provider notification;
+                  &quot;No&quot; removes it. Anything left unknown stays on the attention list until
+                  confirmed.
+                </p>
+                <button type="submit">Confirm applicability</button>
+              </form>
+            </details>
+          ) : null}
+
+          {BENEFIT_PROVIDERS.map((b) => {
+            const applies = required.benefits[b.field];
+            return (
+              <ProviderPanel
+                key={b.field}
+                monogram={b.monogram}
+                name={b.provider}
+                subtitle={b.benefit}
+                status={
+                  applies === 'YES' ? (
+                    <Chip tone="progress">Notification required</Chip>
+                  ) : applies === 'NO' ? (
+                    <Chip tone="done">Not applicable</Chip>
+                  ) : (
+                    <Chip tone="attention">Applicability unknown</Chip>
+                  )
+                }
+                footer={
+                  <span className="meta">
+                    {applies === 'YES'
+                      ? 'The removal email is prepared for this case and appears under Email actions.'
+                      : applies === 'NO'
+                        ? 'No provider notification is raised for this employee.'
+                        : 'Nothing is sent until HR confirms whether this benefit applies.'}
+                  </span>
+                }
+              >
+                {/* The provider's own progression, so it is obvious how far
+                    this one benefit has travelled rather than the case as a
+                    whole. */}
+                <Rail
+                  label={`${b.provider} progress`}
+                  steps={[
+                    {
+                      name: 'Benefit confirmed',
+                      state: applies === 'UNKNOWN' ? 'current' : 'done',
+                      meta: required.benefits.confirmedAt
+                        ? formatInstant(required.benefits.confirmedAt)
+                        : 'Awaiting HR',
+                    },
+                    {
+                      name: 'Removal prepared',
+                      state: applies === 'NO' ? 'todo' : applies === 'YES' ? 'done' : 'todo',
+                      meta: applies === 'NO' ? 'Not applicable' : undefined,
+                    },
+                    {
+                      name: 'Sent to provider',
+                      state: applies === 'YES' ? 'current' : 'todo',
+                      meta: applies === 'YES' ? 'See Email actions' : undefined,
+                    },
+                    { name: 'Provider confirmed', state: 'todo' },
+                  ]}
+                />
+              </ProviderPanel>
+            );
+          })}
         </section>
       ) : null}
 
       {(cap.canSubmit || cap.canApprove || cap.canReturn || cap.canCancel || cap.canVoid) && (
-        <section className="panel" aria-labelledby="actions-h">
-          <h2 id="actions-h" style={{ marginTop: 0 }}>
-            Actions
-          </h2>
+        <section aria-labelledby="actions-h" className="panel">
+          <SectionHead
+            id="actions-h"
+            icon={<FlowIcon />}
+            title="Move this case"
+            description="Where the case goes next in its lifecycle. Cases are never deleted - cancelling or voiding preserves the full history."
+          />
           <div className="actions-row">
-            {cap.canSubmit ? (
+            {'canApproveDraft' in cap && cap.canApproveDraft ? (
+              <form action={transitionAction}>
+                <input type="hidden" name="caseId" value={c.id} />
+                <input type="hidden" name="action" value="submitAndApprove" />
+                {/* The reviewer never asks themselves for review: one click
+                    runs submit and approve in order, fully audited. */}
+                <button type="submit">Approve case and capture snapshot</button>
+              </form>
+            ) : cap.canSubmit ? (
               <form action={transitionAction}>
                 <input type="hidden" name="caseId" value={c.id} />
                 <input type="hidden" name="action" value="submit" />
-                <button type="submit">Submit for HR review</button>
+                <button type="submit">Submit for review</button>
               </form>
             ) : null}
             {cap.canApprove ? (
@@ -518,7 +681,7 @@ export default async function CaseDetailPage({
 
       {c.classification === 'RESTRICTED' ||
       c.participants.some((p) => p.participantRole === 'HR_SUPPORT') ? (
-        <section className="panel" aria-labelledby="participants-h">
+        <section aria-labelledby="participants-h" className="panel">
           <h2 id="participants-h" style={{ marginTop: 0 }}>
             Case Access
           </h2>
@@ -560,8 +723,8 @@ export default async function CaseDetailPage({
                     <option value="HR_SUPPORT">HR support (requires an HR role)</option>
                   </select>
                   <p className="hint">
-                    IT and Finance are reached by controlled email, and the manager participant is
-                    added automatically at activation for the handover.
+                    IT, Finance and the line manager are reached by controlled email - none of them
+                    holds a login or a participant seat here.
                   </p>
                 </div>
                 <div className="field">
@@ -576,10 +739,14 @@ export default async function CaseDetailPage({
       ) : null}
 
       {cap.canUpload || attachments.length > 0 ? (
-        <section className="panel" aria-labelledby="files-h">
-          <h2 id="files-h" style={{ marginTop: 0 }}>
-            Attachments
-          </h2>
+        <section aria-labelledby="files-h" className="panel">
+          <SectionHead
+            id="files-h"
+            icon={<DocumentIcon />}
+            tone="info"
+            title="Attachments"
+            description="Scanned resignation letters, signed forms and supporting evidence held against this case."
+          />
           {attachments.length ? (
             <div className="table-wrap" tabIndex={0}>
               <table className="data">
@@ -656,10 +823,14 @@ export default async function CaseDetailPage({
       ) : null}
 
       {cap.canRecordBaseline ? (
-        <section className="panel" aria-labelledby="baseline-h">
-          <h2 id="baseline-h" style={{ marginTop: 0 }}>
-            Baseline Facts
-          </h2>
+        <section aria-labelledby="baseline-h" className="panel">
+          <SectionHead
+            id="baseline-h"
+            icon={<ChartIcon />}
+            tone="info"
+            title="Baseline facts"
+            description="Manually measured figures from the old process, kept so this one can be compared against it."
+          />
           {baselineEvents.length ? (
             <div className="table-wrap" tabIndex={0}>
               <table className="data">
@@ -749,10 +920,13 @@ export default async function CaseDetailPage({
       ) : null}
 
       {cap.canAddNote || notes.length > 0 ? (
-        <section className="panel" aria-labelledby="notes-h">
-          <h2 id="notes-h" style={{ marginTop: 0 }}>
-            Internal Notes
-          </h2>
+        <section aria-labelledby="notes-h" className="panel">
+          <SectionHead
+            id="notes-h"
+            icon={<BookIcon />}
+            title="Internal notes"
+            description="Visible to HR on this case and part of the permanent record."
+          />
           {notes.length ? (
             <ul className="timeline">
               {notes.map((n) => (
@@ -790,14 +964,14 @@ export default async function CaseDetailPage({
         </section>
       ) : null}
 
-      <section className="panel" aria-labelledby="audit-h">
-        <h2 id="audit-h" style={{ marginTop: 0 }}>
-          Audit History
-        </h2>
-        <p className="hint">
-          Newest first ({countOf(audit.length, 'event')}); the complete history is immutable
-          evidence. Low-level system noise is hidden by default.
-        </p>
+      <section aria-labelledby="audit-h" className="panel">
+        <SectionHead
+          id="audit-h"
+          icon={<AuditIcon />}
+          tone="info"
+          title="Case history"
+          description="Every recorded event, newest first. The history is immutable evidence - nothing here can be edited or removed."
+        />
         <nav aria-label="Audit filters" style={{ marginBottom: '0.6rem' }}>
           <ul
             style={{
@@ -828,10 +1002,20 @@ export default async function CaseDetailPage({
           </ul>
         </nav>
         <div className="timeline-scroll" tabIndex={0}>
-          <ul className="timeline">
+          <Activity label="Case history">
             {[...audit].reverse().map((e) => (
-              <li key={e.id}>
-                {humanizeAuditEvent({
+              <Event
+                key={e.id}
+                time={formatInstant(e.occurredAt)}
+                tone={
+                  e.result === 'FAILURE'
+                    ? 'critical'
+                    : e.actorType === 'SYSTEM'
+                      ? 'auto'
+                      : undefined
+                }
+                automated={e.actorType === 'SYSTEM'}
+                title={humanizeAuditEvent({
                   eventType: e.eventType as never,
                   result: e.result,
                   actorType: e.actorType,
@@ -839,11 +1023,10 @@ export default async function CaseDetailPage({
                     ? (users.find((u) => u.userId === e.actorId)?.displayName ?? null)
                     : null,
                   metadata: e.metadata as never,
-                })}{' '}
-                <span className="meta">{formatInstant(e.occurredAt)}</span>
-              </li>
+                })}
+              />
             ))}
-          </ul>
+          </Activity>
         </div>
       </section>
     </>

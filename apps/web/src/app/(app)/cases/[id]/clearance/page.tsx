@@ -151,7 +151,9 @@ export default async function CaseClearancePage({
       <details className="action" style={{ marginBottom: '1rem' }}>
         <summary>Notification status ({data.notifications.length})</summary>
         {data.notifications.length === 0 ? (
-          <p>No notification records.</p>
+          <p className="meta">
+            No notifications for this case yet. They are prepared when the workflow is activated.
+          </p>
         ) : (
           <ul>
             {data.notifications.map((n) => (

@@ -17,6 +17,7 @@ import {
 } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { humanize } from '@/lib/text';
+import { Chip } from '@/components/patterns';
 
 export const metadata: Metadata = { title: 'Audit Center' };
 export const dynamic = 'force-dynamic';
@@ -224,7 +225,24 @@ export default async function AuditCentrePage({
                           actorDisplayName: e.actorDisplayName,
                           actorType: e.actorType,
                           metadata: e.metadata,
-                        })}
+                        })}{' '}
+                        {/* Whether a person did this or the workflow did is
+                            the first question of any audit review. */}
+                        {e.actorType === 'SYSTEM' ? (
+                          <Chip tone="info">Automated</Chip>
+                        ) : (
+                          <Chip>By a person</Chip>
+                        )}
+                        {/* A change is best read as a change, not buried in a
+                            details panel. */}
+                        {beforeAfterPairs(e.metadata).map((pair) => (
+                          <span key={`inline-${pair.label}`} className="activity__change">
+                            <span className="label">{pair.label}</span>
+                            <s>{pair.before}</s>
+                            <span aria-hidden>&rarr;</span>
+                            <strong>{pair.after}</strong>
+                          </span>
+                        ))}
                         <details className="action" style={{ marginTop: '0.3rem' }}>
                           <summary>Details</summary>
                           <dl className="kv" style={{ marginTop: '0.4rem' }}>

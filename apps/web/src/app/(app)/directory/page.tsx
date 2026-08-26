@@ -191,7 +191,10 @@ export default async function DirectoryPage() {
           Synchronization History
         </h2>
         {data.lastSyncs.length === 0 ? (
-          <p>No synchronization has run yet.</p>
+          <p className="meta">
+            The directory has never been synchronized. Run a sync to pull the current employee
+            records from the company directory.
+          </p>
         ) : (
           <ul>
             {data.lastSyncs.map((s, i) => (

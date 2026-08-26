@@ -8,6 +8,7 @@ import {
   type Actor,
   buildSnapshotPayload,
   can,
+  daysUntil,
   canActOnCase,
   canDiscoverCase,
   canViewCase,
@@ -299,6 +300,9 @@ async function lookupEmployeeSource(sourceId: string) {
       jobTitle: row.jobTitle ?? '',
       department: row.department ?? '',
       location: row.location ?? '',
+      // The employer's own Employee # - without this, every case created from
+      // a cached directory row stamped null and the form printed nothing.
+      employeeNumber: row.employeeNumber ?? null,
     };
   }
   return employeeSource.getById(sourceId);
@@ -578,6 +582,8 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
 export interface CaseViewCapabilities {
   canEditDraft: boolean;
   canSubmit: boolean;
+  /// True for a reviewer holding a DRAFT: submit+approve in one audited step.
+  canApproveDraft: boolean;
   canReturn: boolean;
   canApprove: boolean;
   canCancel: boolean;
@@ -616,6 +622,10 @@ export async function getCase(actor: Actor, caseId: string) {
   const capabilities: CaseViewCapabilities = {
     canEditDraft: canActOnCase(actor, 'case.editDraft', ctx) && c.status === 'DRAFT',
     canSubmit: canActOnCase(actor, 'case.submit', ctx) && c.status === 'DRAFT',
+    // The HR Manager IS the reviewer: a draft in their hands can go straight
+    // to approval. Both transitions still run and are audited - the shortcut
+    // is one click, never one record.
+    canApproveDraft: canActOnCase(actor, 'case.approve', ctx) && c.status === 'DRAFT',
     canReturn: canActOnCase(actor, 'case.return', ctx) && c.status === 'PENDING_HR_REVIEW',
     canApprove: canActOnCase(actor, 'case.approve', ctx) && c.status === 'PENDING_HR_REVIEW',
     canCancel:
@@ -744,6 +754,9 @@ export async function listCases(actor: Actor, rawFilter: unknown = {}) {
     include: { participants: { where: { removedAt: null }, select: { userId: true } } },
   });
 
+  // One instant for the whole page, so every row is measured against the
+  // same clock and the list cannot disagree with itself.
+  const now = new Date();
   return rows.map((c) => {
     const ctx: CaseAccessContext = {
       ownerId: c.ownerId,
@@ -763,11 +776,45 @@ export async function listCases(actor: Actor, rawFilter: unknown = {}) {
       department: full ? c.department : null,
       location: full ? c.location : null,
       effectiveSeparationAt: full ? c.effectiveSeparationAt : null,
+      /// Days until employment ends - derived for display only.
+      daysUntil: full && c.effectiveSeparationAt ? daysUntil(c.effectiveSeparationAt, now) : null,
       receivedAt: c.receivedAt,
       createdAt: c.createdAt,
       minimized: !full,
     };
   });
+}
+
+/**
+ * Small counts for the case tab strip, so a long case says where the work is
+ * without opening every section (owner redesign, section 26). Read-only and
+ * deliberately cheap: four counts, no joins, no case payload.
+ */
+export async function caseNavCounts(actor: Actor, caseId: string) {
+  const { ctx } = await loadCaseWithAccess(caseId);
+  assertView(actor, ctx);
+  const prisma = getPrisma();
+  const [assetsOutstanding, documents, emailsPending, tasksOpen] = await Promise.all([
+    prisma.assetRecoveryItem.count({
+      where: { caseId, status: { in: ['EXPECTED', 'REQUESTED', 'PARTIALLY_RETURNED'] } },
+    }),
+    prisma.documentInstance.count({
+      where: { caseId, status: { notIn: ['VOIDED', 'SUPERSEDED'] } },
+    }),
+    prisma.notificationRecord.count({
+      where: {
+        caseId,
+        status: { in: ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'READY_FOR_MANUAL_SEND'] },
+      },
+    }),
+    prisma.workflowTask.count({
+      where: {
+        instance: { caseId },
+        status: { in: ['NOT_READY', 'READY', 'IN_PROGRESS', 'BLOCKED'] },
+      },
+    }),
+  ]);
+  return { assetsOutstanding, documents, emailsPending, tasksOpen };
 }
 
 // --- draft edit --------------------------------------------------------------

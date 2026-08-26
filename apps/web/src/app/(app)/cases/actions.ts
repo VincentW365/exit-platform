@@ -120,7 +120,7 @@ export async function createCaseAction(formData: FormData): Promise<void> {
       ? ` Warning: other open case(s) exist for this employee: ${result.duplicateWarnings.join(', ')}.`
       : '';
     feedbackRedirect(`/cases/${result.caseId}`, {
-      ok: `Draft case ${result.caseNumber} created. Review the details below, then submit for HR review.${dup}`,
+      ok: `Draft case ${result.caseNumber} created. Review the details below, then submit for review.${dup}`,
     });
   } catch (e) {
     if (e instanceof ServiceError) {
@@ -184,21 +184,30 @@ export async function transitionAction(formData: FormData): Promise<void> {
   const caseId = str(formData, 'caseId');
   const action = str(formData, 'action') as IntakeTransitionAction;
   const reason = opt(formData, 'reason') ?? undefined;
-  if (!['submit', 'return', 'approve', 'cancel', 'void'].includes(action)) {
+  if (!['submit', 'submitAndApprove', 'return', 'approve', 'cancel', 'void'].includes(action)) {
     feedbackRedirect(`/cases/${caseId}`, { err: 'Unknown action.' });
   }
   try {
-    await transitionCase(actor, caseId, action, reason);
+    if ((action as string) === 'submitAndApprove') {
+      // The HR Manager IS the reviewer: asking them to submit a draft to
+      // themselves is a pointless click (owner, 2026-08-25). Both transitions
+      // still run in order, with readiness checks and full audit intact.
+      await transitionCase(actor, caseId, 'submit');
+      await transitionCase(actor, caseId, 'approve');
+    } else {
+      await transitionCase(actor, caseId, action, reason);
+    }
     revalidatePath(`/cases/${caseId}`);
     revalidatePath('/cases');
-    const okText: Record<IntakeTransitionAction, string> = {
-      submit: 'Case submitted for HR review.',
+    const okText: Record<string, string> = {
+      submit: 'Case submitted for review.',
+      submitAndApprove: 'Case approved. The employee snapshot has been captured.',
       return: 'Case returned to draft for correction.',
       approve: 'Case approved. The employee snapshot has been captured.',
       cancel: 'Case cancelled.',
       void: 'Case voided.',
     };
-    feedbackRedirect(`/cases/${caseId}`, { ok: okText[action] });
+    feedbackRedirect(`/cases/${caseId}`, { ok: okText[action] ?? 'Done.' });
   } catch (e) {
     if (e instanceof ServiceError) feedbackRedirect(`/cases/${caseId}`, { err: errText(e) });
     throw e;

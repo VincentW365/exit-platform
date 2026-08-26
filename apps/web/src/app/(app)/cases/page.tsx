@@ -8,6 +8,7 @@ import { ClassificationBadge, Feedback, PurposeBadge, StatusBadge } from '@/comp
 import { humanize } from '@/lib/text';
 import { PlusIcon } from '@/components/icons';
 import { EmptyState } from '@/components/EmptyState';
+import { Chip, Avatar, Row, Rows } from '@/components/patterns';
 import { CasesIcon } from '@/components/icons';
 
 export const metadata: Metadata = { title: 'Cases' };
@@ -95,46 +96,60 @@ export default async function CasesPage({
           />
         </div>
       ) : (
-        <div className="table-wrap" tabIndex={0}>
-          <table className="data">
-            <caption>
-              {rows.length} case{rows.length === 1 ? '' : 's'} (restricted cases you are not
-              assigned to are not listed)
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Case</th>
-                <th scope="col">Employee</th>
-                <th scope="col">Type</th>
-                <th scope="col">Status</th>
-                <th scope="col">Received</th>
-                <th scope="col">Effective separation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    {c.minimized ? (
-                      c.caseNumber
+        <>
+          <p className="meta" style={{ marginBottom: 'var(--space-3)' }}>
+            {rows.length} case{rows.length === 1 ? '' : 's'}. Restricted cases you are not assigned
+            to are never listed.
+          </p>
+          {/* A case is a person, so the row leads with the person and carries
+              enough context to act without opening it. */}
+          <Rows label="Offboarding cases">
+            {rows.map((c) => {
+              const days = c.daysUntil;
+              const soon = days !== null && days >= 0 && days <= 7;
+              return (
+                <Row
+                  key={c.id}
+                  tone={soon ? 'attention' : undefined}
+                  mark={<Avatar name={c.employeeDisplayName} />}
+                  title={
+                    c.minimized ? (
+                      c.employeeDisplayName
                     ) : (
-                      <Link href={`/cases/${c.id}`}>{c.caseNumber}</Link>
-                    )}{' '}
-                    <ClassificationBadge classification={c.classification} />{' '}
-                    <PurposeBadge purpose={c.recordPurpose} cohort={c.measurementCohort} />
-                  </td>
-                  <td>{c.employeeDisplayName}</td>
-                  <td>{humanize(c.departureType)}</td>
-                  <td>
-                    <StatusBadge status={c.status} />
-                  </td>
-                  <td>{formatDateOnly(c.receivedAt)}</td>
-                  <td>{c.effectiveSeparationAt ? formatInstant(c.effectiveSeparationAt) : '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                      <Link href={`/cases/${c.id}`}>{c.employeeDisplayName}</Link>
+                    )
+                  }
+                  sub={
+                    <>
+                      {humanize(c.departureType)} · {c.caseNumber} · received{' '}
+                      {formatDateOnly(c.receivedAt)}
+                    </>
+                  }
+                  facts={
+                    <>
+                      <span>
+                        <span className="label">Employment ends</span>
+                        <span className="value numeric">
+                          {c.effectiveSeparationAt ? formatInstant(c.effectiveSeparationAt) : '-'}
+                        </span>
+                      </span>
+                      <StatusBadge status={c.status} />
+                      <ClassificationBadge classification={c.classification} />
+                      <PurposeBadge purpose={c.recordPurpose} cohort={c.measurementCohort} />
+                    </>
+                  }
+                  action={
+                    soon ? (
+                      <Chip tone="attention">
+                        {days === 0 ? 'Today' : `${days} day${days === 1 ? '' : 's'} left`}
+                      </Chip>
+                    ) : null
+                  }
+                />
+              );
+            })}
+          </Rows>
+        </>
       )}
     </>
   );

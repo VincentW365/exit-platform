@@ -44,11 +44,13 @@ test('HR officer creates and submits; HR manager approves with snapshot; line ma
   await expect(
     page.getByRole('heading', { name: /OFF-\d{4}-\d{4,}(?:-\d)? - Avery Brown/ }),
   ).toBeVisible();
-  await expect(page.getByText('Not yet captured (created at approval)')).toBeVisible();
+  await expect(
+    page.getByText('No snapshot yet - one is captured when the case is approved.'),
+  ).toBeVisible();
 
   // --- submit for review --------------------------------------------------
-  await page.getByRole('button', { name: 'Submit for HR review' }).click();
-  await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit for review' }).click();
+  await expect(page.getByText('Case submitted for review.')).toBeVisible();
   await expect(page.getByText('Pending HR Review').first()).toBeVisible();
 
   // The officer must not see an approval control (maker-checker).

@@ -3,7 +3,9 @@ import { notFound } from 'next/navigation';
 import {
   formatInstant,
   letterTypeForDeparture,
+  DOWNLOADABLE_DOC_STATUSES,
   RENDERABLE_LETTER_TYPES,
+  type DocumentStatus,
   type DocumentType,
 } from '@exit/domain';
 import {
@@ -31,6 +33,7 @@ import {
 } from './actions';
 import { humanize } from '@/lib/text';
 import { EmptyState } from '@/components/EmptyState';
+import { DocObject } from '@/components/patterns';
 import { DocumentIcon } from '@/components/icons';
 
 export const metadata: Metadata = { title: 'Case Documents' };
@@ -175,13 +178,31 @@ export default async function CaseDocumentsPage({
           const att = docsData.attestations.filter((a) => a.subjectId === d.id);
           return (
             <section key={d.id} className="panel" aria-label={`${d.documentType} v${d.version}`}>
-              <h2 style={{ marginTop: 0 }}>
-                {d.template?.name ?? humanize(d.documentType)}{' '}
-                <span className="badge badge--neutral">V{d.version}</span>{' '}
-                <span className={`badge ${STATUS_BADGE[d.status] ?? 'badge--neutral'}`}>
-                  {humanize(d.status)}
-                </span>
-              </h2>
+              {/* A document reads as a document: a sheet, its name, what it
+                  is, where it stands, and what can be done with it. */}
+              <DocObject
+                icon={<DocumentIcon />}
+                name={d.template?.name ?? humanize(d.documentType)}
+                meta={
+                  <>
+                    {humanize(d.documentType)} · version {d.version}
+                    {d.issuedAt ? ` · issued ${formatInstant(d.issuedAt)}` : ''}
+                  </>
+                }
+                status={
+                  <span className={`badge ${STATUS_BADGE[d.status] ?? 'badge--neutral'}`}>
+                    {humanize(d.status)}
+                  </span>
+                }
+                actions={
+                  docsData.capabilities.canDownload &&
+                  DOWNLOADABLE_DOC_STATUSES.includes(d.status as DocumentStatus) ? (
+                    <a className="button secondary compact" href={`/api/documents/${d.id}/pdf`}>
+                      Download PDF
+                    </a>
+                  ) : null
+                }
+              />
 
               {Array.isArray(d.validationErrors) && d.validationErrors.length > 0 ? (
                 <div className="error-summary" role="alert">

@@ -4,6 +4,9 @@ import { ServiceError, listSchedules, runReport, REPORT_CATALOG } from '@exit/db
 import { can, formatInstant, RECIPIENT_CLASSES } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
+import { Chip, Row, Rows, SectionHead } from '@/components/patterns';
+import { ChartIcon, ReportsIcon } from '@/components/icons';
+import { countOf } from '@/lib/text';
 import { createScheduleAction, toggleScheduleAction } from './actions';
 
 export const metadata: Metadata = { title: 'Reporting Center' };
@@ -47,7 +50,11 @@ export default async function ReportsPage({
 
   return (
     <>
-      <h1>Reporting Center</h1>
+      <h1 className="page-title">Reporting Center</h1>
+      <p className="page-lede">
+        How the offboarding process is actually performing - volumes, timeliness and outcomes, drawn
+        from the same records the cases run on.
+      </p>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
         TRAINING/TEST records are excluded by default; restricted cases never appear for
@@ -55,31 +62,35 @@ export default async function ReportsPage({
         groups are suppressed; every export is audited.
       </p>
 
-      <section className="panel" aria-labelledby="cat-h">
-        <h2 id="cat-h" style={{ marginTop: 0 }}>
-          Report Catalogue
-        </h2>
-        {families.map((family) => (
-          <div key={family}>
-            <h3>{family}</h3>
-            <ul>
-              {REPORT_CATALOG.filter((r) => r.family === family).map((r) => (
-                <li key={r.key}>
-                  <Link href={`/reports?report=${r.key}`}>{r.title}</Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </section>
+      {/* The catalogue is a set of questions you can ask, grouped by subject -
+          not a bulleted list of links. */}
+      {families.map((family) => (
+        <section key={family} aria-label={`${family} reports`}>
+          <SectionHead icon={<ChartIcon />} tone="info" title={family} />
+          <Rows label={`${family} reports`}>
+            {REPORT_CATALOG.filter((r) => r.family === family).map((r) => (
+              <Row
+                key={r.key}
+                mark={<ReportsIcon />}
+                title={<Link href={`/reports?report=${r.key}`}>{r.title}</Link>}
+                sub={selected === r.key ? 'Showing below' : undefined}
+                tone={selected === r.key ? 'progress' : undefined}
+              />
+            ))}
+          </Rows>
+        </section>
+      ))}
 
       {reportError ? <p className="panel">Report unavailable: {reportError}</p> : null}
       {output ? (
         <section className="panel" aria-labelledby="out-h">
-          <h2 id="out-h" style={{ marginTop: 0 }}>
-            {output.title}
-          </h2>
-          {output.note ? <p className="hint">{output.note}</p> : null}
+          <SectionHead
+            id="out-h"
+            icon={<ChartIcon />}
+            title={output.title}
+            description={output.note ?? undefined}
+            aside={<Chip tone="info">{countOf(output.rows.length, 'row')}</Chip>}
+          />
           <div style={{ overflowX: 'auto' }} tabIndex={0}>
             <table>
               <caption className="visually-hidden">{output.title}</caption>
@@ -95,7 +106,10 @@ export default async function ReportsPage({
               <tbody>
                 {output.rows.length === 0 ? (
                   <tr>
-                    <td colSpan={output.columns.length}>No data for the selected filters.</td>
+                    <td colSpan={output.columns.length} className="meta">
+                      Nothing matches these filters. Widen the date range, or this measure genuinely
+                      has no activity in the period.
+                    </td>
                   </tr>
                 ) : (
                   output.rows.map((row, i) => (
@@ -123,7 +137,11 @@ export default async function ReportsPage({
         <h2 id="sch-h" style={{ marginTop: 0 }}>
           Scheduled Reports
         </h2>
-        {schedules.length === 0 ? <p>No schedules.</p> : null}
+        {schedules.length === 0 ? (
+          <p className="meta">
+            No scheduled reports. Schedule one below to have it delivered on a recurring basis.
+          </p>
+        ) : null}
         <ul>
           {schedules.map((s) => (
             <li key={s.id}>

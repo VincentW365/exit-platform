@@ -102,8 +102,7 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
   const caseUrl = page.url().split('?')[0]!;
 
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Submit for HR review' }).click();
-  await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
+  // The manager approves her own draft in one audited step.
   await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
 

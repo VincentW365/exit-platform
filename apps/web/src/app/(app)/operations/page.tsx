@@ -44,16 +44,6 @@ const SOPS: ReadonlyArray<{ module: string; title: string; audience: string; sum
       ],
     },
     {
-      module: 'manager-handover',
-      title: 'Line-manager handover guide',
-      audience: 'Line manager',
-      summary: [
-        'Record duties, open work, locations and the replacement owner in the handover record.',
-        'Complete with attestation before the final working day where notice permits.',
-        'Never record credentials; the form rejects likely secrets.',
-      ],
-    },
-    {
       module: 'asset-recovery',
       title: 'Asset-recovery procedure',
       audience: 'HR / asset owners',

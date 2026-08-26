@@ -88,7 +88,11 @@ export default async function SystemAdminPage({
         <h2 id="cfg-h" style={{ marginTop: 0 }}>
           System Configuration
         </h2>
-        {config.length === 0 ? <p>No configuration entries.</p> : null}
+        {config.length === 0 ? (
+          <p className="meta">
+            No configuration entries yet. Settings appear here as they are recorded.
+          </p>
+        ) : null}
         <ul>
           {config.map((c) => (
             <li key={c.key}>
@@ -207,7 +211,9 @@ export default async function SystemAdminPage({
           <>
             <h3>Latest Reconciliation ({humanize(recon.adapterMode)} Source)</h3>
             {recon.findings.length === 0 ? (
-              <p>No mismatches.</p>
+              <p className="meta">
+                No mismatches - every runtime privilege matches what the grants define.
+              </p>
             ) : (
               <ul>
                 {recon.findings.map((f, i) => (
@@ -234,7 +240,11 @@ export default async function SystemAdminPage({
         <form action={createBackupAction} style={{ display: 'inline-block' }}>
           <button type="submit">Create database backup (pg_dump)</button>
         </form>
-        {backups.length === 0 ? <p>No backups recorded.</p> : null}
+        {backups.length === 0 ? (
+          <p className="meta">
+            No verified backup recorded yet. Backup runs appear here once one has been verified.
+          </p>
+        ) : null}
         <ul>
           {backups.map((b) => (
             <li key={b.id}>

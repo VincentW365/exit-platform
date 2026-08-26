@@ -55,10 +55,8 @@ test('directive 6.1 surfaces: responsive + axe sweep', async ({ page }) => {
 
   // A case for header/progress/assignment surfaces.
   await page.goto('/cases');
-  await page
-    .getByRole('link', { name: /OFF-\d{4}-\d{4,}(?:-\d)?/ })
-    .first()
-    .click();
+  // A case row links by the employee's name now, so reach it by href.
+  await page.locator('.rows a[href*="/cases/"]').first().click();
   await page.waitForLoadState('load');
   await sweep(page, '02-case-header-progress');
   const caseUrl = page.url().split('?')[0]!.replace(/#.*$/, '');

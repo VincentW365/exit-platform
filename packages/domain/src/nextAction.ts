@@ -44,13 +44,13 @@ export function computeCaseNextAction(
   const base = `/cases/${caseId}`;
   switch (input.status) {
     case 'DRAFT':
-      return { label: 'Complete the draft and submit for HR review', href: base, tone: 'progress' };
+      return { label: 'Complete the draft and submit for review', href: base, tone: 'progress' };
     case 'PENDING_HR_REVIEW':
       return { label: 'HR Manager: review and approve the case', href: base, tone: 'attention' };
     case 'APPROVED':
       return {
         label: 'Complete the responsibility plan, then activate the workflow',
-        href: `${base}/assignment`,
+        href: `${base}/workflow`,
         tone: 'attention',
       };
     case 'ON_HOLD':

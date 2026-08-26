@@ -1,13 +1,41 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { ServiceError, getReturnItemsChecklist, listCaseAssets } from '@exit/db';
+import {
+  ServiceError,
+  getReturnItemsChecklist,
+  listCaseAssets,
+  listIssuedAssetsForEmployee,
+} from '@exit/db';
 import { formatInstant, ASSET_TYPES, ASSET_TYPE_LABELS } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { CaseTitle, Feedback } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
-import { addAssetAction, assetDispositionAction } from './actions';
+import { addAssetAction, assetDispositionAction, selectAssetsAction } from './actions';
 import { ReturnChecklistPanel, type ChecklistView } from './ReturnChecklistPanel';
 import { humanize } from '@/lib/text';
+import { Chip, Row, Rows, SectionHead } from '@/components/patterns';
+import { BoxIcon, CardIcon, KeyIcon, LaptopIcon, PhoneIcon, ShirtIcon } from '@/components/icons';
+
+/** A recognizable mark per asset kind, so a row reads before its label. */
+function assetIcon(assetType: string) {
+  switch (assetType) {
+    case 'LAPTOP':
+      return <LaptopIcon />;
+    case 'MOBILE_PHONE':
+      return <PhoneIcon />;
+    case 'KEYS':
+      return <KeyIcon />;
+    case 'EMPLOYEE_ID_CARD':
+    case 'ACCESS_CARD':
+    case 'HEALTH_CARD':
+    case 'LUNCH_CARD':
+      return <CardIcon />;
+    case 'UNIFORM':
+      return <ShirtIcon />;
+    default:
+      return <BoxIcon />;
+  }
+}
 
 export const metadata: Metadata = { title: 'Asset Recovery' };
 export const dynamic = 'force-dynamic';
@@ -53,6 +81,15 @@ export default async function CaseAssetsPage({
 
   const checklist = (await getReturnItemsChecklist(actor, id)) as ChecklistView | null;
   const m = data.metrics;
+  // What the directory says this employee holds - alive from the first day
+  // of the case, before activation turns these into recovery items.
+  const issued = await listIssuedAssetsForEmployee(actor, data.employeeSourceId).catch(() => []);
+  const preActivation = ['DRAFT', 'PENDING_HR_REVIEW', 'APPROVED'].includes(data.caseStatus);
+  // A type already being recovered must not be offered again, or the same
+  // laptop ends up tracked twice.
+  const tracked = new Set(data.items.map((i) => i.assetType));
+  const caseClosed = ['COMPLETED', 'CANCELLED', 'VOIDED'].includes(data.caseStatus);
+  const selectable = ASSET_TYPES.filter((a) => !tracked.has(a));
 
   return (
     <>
@@ -65,7 +102,263 @@ export default async function CaseAssetsPage({
         asset creates a review exception for authorized HR/Finance review only.
       </p>
 
-      {checklist ? <ReturnChecklistPanel caseId={id} checklist={checklist} /> : null}
+      {checklist ? (
+        <ReturnChecklistPanel caseId={id} checklist={checklist} />
+      ) : (
+        <section className="panel" aria-labelledby="return-checklist-h">
+          <h2 id="return-checklist-h" style={{ marginTop: 0 }}>
+            Exit Checklist for Return Items{' '}
+            <span className="badge badge--neutral">Not created yet</span>
+          </h2>
+          {/* Absent silently was read as broken (owner, 2026-08-25): the
+              section now says when the checklist will exist. */}
+          <p className="hint">
+            The checklist is created when the workflow is activated, and the secure link for whoever
+            receives the items goes out with the activation emails. Activate the case under Workflow
+            to start it.
+          </p>
+        </section>
+      )}
+
+      {data.canManage && !caseClosed && selectable.length > 0 ? (
+        <section className="panel" aria-labelledby="select-assets-h">
+          <SectionHead
+            id="select-assets-h"
+            icon={<BoxIcon />}
+            tone="attention"
+            title="Which company assets does this employee hold?"
+            description="Tick everything they hold. Each ticked item becomes a tracked recovery item, appears on the exit checklist, and is followed until it comes back."
+            aside={
+              data.items.length > 0 ? (
+                <Chip tone="progress">{data.items.length} already tracked</Chip>
+              ) : null
+            }
+          />
+          <form action={selectAssetsAction}>
+            <input type="hidden" name="caseId" value={id} />
+            <table className="form-table">
+              <caption className="sr-only">Company assets to select</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Holds</th>
+                  <th scope="col">Asset</th>
+                  <th scope="col">Identifier or serial (optional)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectable.map((a) => (
+                  <tr key={a}>
+                    <td style={{ width: '5rem' }}>
+                      <label className="tickbox">
+                        <input type="checkbox" name="assetType" value={a} />
+                        <span className="sr-only">{ASSET_TYPE_LABELS[a]}</span>
+                      </label>
+                    </td>
+                    <th scope="row">
+                      <span
+                        className="row-item__mark"
+                        aria-hidden
+                        style={{ marginRight: 'var(--space-2)' }}
+                      >
+                        {assetIcon(a)}
+                      </span>
+                      {ASSET_TYPE_LABELS[a]}
+                    </th>
+                    <td>
+                      <input
+                        type="text"
+                        name={`identifier.${a}`}
+                        aria-label={`Identifier for ${ASSET_TYPE_LABELS[a]}`}
+                        maxLength={100}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="hint">
+              Ticked assets are required for clearance and owned by HR. Anything unusual - a
+              vehicle, tools, a company card - goes in under &ldquo;Other approved asset&rdquo; with
+              a note in the identifier field.
+            </p>
+            <button type="submit" className="button--primary">
+              Add the ticked assets
+            </button>
+          </form>
+        </section>
+      ) : null}
+
+      {data.items.length === 0 ? (
+        <section className="panel" aria-labelledby="issued-h">
+          <SectionHead
+            id="issued-h"
+            icon={<BoxIcon />}
+            tone={issued.length > 0 ? 'pending' : 'info'}
+            title="Issued to this employee"
+            description={
+              preActivation
+                ? 'What the company records say this employee holds. Each of these becomes a tracked recovery item the moment the workflow is activated - nothing needs recording here yet.'
+                : 'No recovery items exist on this case yet. Add anything the employee holds below.'
+            }
+            aside={
+              issued.length > 0 ? (
+                <Chip tone="pending">{issued.length} to recover at activation</Chip>
+              ) : (
+                <Chip>Nothing on record</Chip>
+              )
+            }
+          />
+          {issued.length > 0 ? (
+            <ul className="plain-list">
+              {issued.map((a) => (
+                <li
+                  key={a.id}
+                  className="row-item"
+                  style={{ border: 0, padding: 'var(--space-2) 0' }}
+                >
+                  <span className="row-item__mark" aria-hidden>
+                    {assetIcon(a.assetType)}
+                  </span>
+                  <span className="row-item__body">
+                    <span className="row-item__title">{a.catalogueLabel}</span>
+                    <span className="row-item__sub">
+                      {humanize(a.assetType)}
+                      {a.identifier ? ` · ${a.identifier}` : ''}
+                      {a.issuedAt ? ` · issued ${formatInstant(a.issuedAt).split(',')[0]}` : ''}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="hint">
+              The company&apos;s issued-asset records hold nothing for this employee. If they do
+              hold company property, add it below so its return is tracked.
+            </p>
+          )}
+        </section>
+      ) : (
+        <section aria-labelledby="tracked-h">
+          <SectionHead
+            id="tracked-h"
+            icon={<BoxIcon />}
+            tone={m.unresolvedCount > 0 ? 'critical' : m.openCount > 0 ? 'pending' : 'done'}
+            title="Company property being recovered"
+            description="Each item is followed until it comes back or its outcome is recorded. An unresolved item never affects pay - it raises a review exception for HR."
+            aside={
+              m.openCount > 0 ? (
+                <Chip tone="pending">{m.openCount} outstanding</Chip>
+              ) : (
+                <Chip tone="done">All settled</Chip>
+              )
+            }
+          />
+          {/* Physical things, tracked: what it is, which one, when it is due
+              back, and where it stands. */}
+          <Rows label="Asset recovery items">
+            {data.items.map((i) => (
+              <Row
+                key={i.id}
+                tone={
+                  ['LOST', 'DAMAGED', 'UNRESOLVED'].includes(i.status)
+                    ? 'critical'
+                    : i.overdue
+                      ? 'attention'
+                      : i.status === 'RETURNED'
+                        ? 'done'
+                        : 'progress'
+                }
+                muted={['RETURNED', 'NOT_ISSUED'].includes(i.status)}
+                mark={assetIcon(i.assetType)}
+                title={
+                  <>
+                    {i.label}
+                    {!i.requiredForClearance ? (
+                      <span className="meta"> · not required for clearance</span>
+                    ) : null}
+                  </>
+                }
+                sub={
+                  <>
+                    {[i.identifier, i.serialNumber].filter(Boolean).join(' / ') ||
+                      humanize(i.assetType)}
+                    {' · '}
+                    {i.responsibleDepartment}
+                    {i.dispositionAt
+                      ? ` · recorded ${formatInstant(i.dispositionAt)}${i.dispositionReason ? ` - ${i.dispositionReason}` : ''}`
+                      : i.remarks
+                        ? ` · ${i.remarks}`
+                        : ''}
+                  </>
+                }
+                facts={
+                  <>
+                    <span>
+                      <span className="label">Expected back</span>
+                      <span className="value numeric">
+                        {i.expectedReturnAt ? formatInstant(i.expectedReturnAt).split(',')[0] : '-'}
+                      </span>
+                    </span>
+                    <span className={`badge ${BADGE[i.status] ?? 'badge--neutral'}`}>
+                      {humanize(i.status)}
+                    </span>
+                    {i.overdue ? <Chip tone="critical">Overdue</Chip> : null}
+                  </>
+                }
+                action={
+                  data.canManage &&
+                  ['EXPECTED', 'REQUESTED', 'PARTIALLY_RETURNED', 'UNRESOLVED'].includes(
+                    i.status,
+                  ) ? (
+                    <details className="action">
+                      <summary>Record outcome</summary>
+                      <form action={assetDispositionAction} className="stack">
+                        <input type="hidden" name="caseId" value={id} />
+                        <input type="hidden" name="itemId" value={i.id} />
+                        <div className="field">
+                          <label htmlFor={`st-${i.id}`}>New Status</label>
+                          <select id={`st-${i.id}`} name="status" required>
+                            <option value="REQUESTED">Requested</option>
+                            <option value="PARTIALLY_RETURNED">Partially returned</option>
+                            <option value="RETURNED">Returned (final)</option>
+                            <option value="NOT_ISSUED">Not issued (final)</option>
+                            <option value="LOST">Lost (final, reason required)</option>
+                            <option value="DAMAGED">Damaged (final, reason required)</option>
+                            {data.canWaiveWriteOff ? (
+                              <>
+                                <option value="WAIVED">Waived (HR Manager, reason required)</option>
+                                <option value="WRITTEN_OFF">
+                                  Written off (HR Manager, reason required)
+                                </option>
+                              </>
+                            ) : null}
+                            <option value="UNRESOLVED">Unresolved (reason required)</option>
+                          </select>
+                        </div>
+                        <div className="field">
+                          <label htmlFor={`cond-${i.id}`}>Condition</label>
+                          <input id={`cond-${i.id}`} name="condition" maxLength={300} />
+                        </div>
+                        <div className="field">
+                          <label htmlFor={`rem-${i.id}`}>Remarks</label>
+                          <input id={`rem-${i.id}`} name="remarks" maxLength={1000} />
+                        </div>
+                        <div className="field">
+                          <label htmlFor={`rsn-${i.id}`}>
+                            Reason (Required for lost, damaged, waived, written off or unresolved)
+                          </label>
+                          <input id={`rsn-${i.id}`} name="reason" maxLength={1000} />
+                        </div>
+                        <button type="submit">Record</button>
+                      </form>
+                    </details>
+                  ) : null
+                }
+              />
+            ))}
+          </Rows>
+        </section>
+      )}
 
       <section className="panel" aria-labelledby="asset-metrics-h">
         <h2 id="asset-metrics-h" style={{ marginTop: 0 }}>
@@ -90,105 +383,9 @@ export default async function CaseAssetsPage({
         </dl>
       </section>
 
-      {data.items.length === 0 ? (
-        <p className="panel">
-          No recovery items. Items are created from issued-asset records at activation and can be
-          added manually below.
-        </p>
-      ) : (
-        <div className="panel" style={{ overflowX: 'auto' }} tabIndex={0}>
-          <table>
-            <caption className="visually-hidden">Asset recovery items</caption>
-            <thead>
-              <tr>
-                <th scope="col">Asset</th>
-                <th scope="col">Identifier</th>
-                <th scope="col">Department</th>
-                <th scope="col">Expected return</th>
-                <th scope="col">Status</th>
-                <th scope="col">Disposition</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((i) => (
-                <tr key={i.id}>
-                  <td>
-                    {i.label}
-                    {!i.requiredForClearance ? <span className="hint"> (not required)</span> : null}
-                  </td>
-                  <td>
-                    {i.identifier ?? '-'}
-                    {i.serialNumber ? <span className="hint"> / {i.serialNumber}</span> : null}
-                  </td>
-                  <td>{i.responsibleDepartment}</td>
-                  <td>
-                    {i.expectedReturnAt ? formatInstant(i.expectedReturnAt) : '-'}
-                    {i.overdue ? (
-                      <>
-                        {' '}
-                        <span className="badge badge--danger">Overdue</span>
-                      </>
-                    ) : null}
-                  </td>
-                  <td>
-                    <span className={`badge ${BADGE[i.status] ?? 'badge--neutral'}`}>
-                      {humanize(i.status)}
-                    </span>
-                  </td>
-                  <td>
-                    {i.dispositionAt
-                      ? `${formatInstant(i.dispositionAt)}${i.dispositionReason ? ` - ${i.dispositionReason}` : ''}`
-                      : (i.remarks ?? '-')}
-                    {data.canManage &&
-                    ['EXPECTED', 'REQUESTED', 'PARTIALLY_RETURNED', 'UNRESOLVED'].includes(
-                      i.status,
-                    ) ? (
-                      <details className="action">
-                        <summary>Record status / disposition</summary>
-                        <form action={assetDispositionAction}>
-                          <input type="hidden" name="caseId" value={id} />
-                          <input type="hidden" name="itemId" value={i.id} />
-                          <label htmlFor={`st-${i.id}`}>New Status</label>
-                          <select id={`st-${i.id}`} name="status" required>
-                            <option value="REQUESTED">Requested</option>
-                            <option value="PARTIALLY_RETURNED">Partially returned</option>
-                            <option value="RETURNED">Returned (final)</option>
-                            <option value="NOT_ISSUED">Not issued (final)</option>
-                            <option value="LOST">Lost (final, reason required)</option>
-                            <option value="DAMAGED">Damaged (final, reason required)</option>
-                            {data.canWaiveWriteOff ? (
-                              <>
-                                <option value="WAIVED">Waived (HR Manager, reason required)</option>
-                                <option value="WRITTEN_OFF">
-                                  Written off (HR Manager, reason required)
-                                </option>
-                              </>
-                            ) : null}
-                            <option value="UNRESOLVED">Unresolved (reason required)</option>
-                          </select>
-                          <label htmlFor={`cond-${i.id}`}>Condition</label>
-                          <input id={`cond-${i.id}`} name="condition" maxLength={300} />
-                          <label htmlFor={`rem-${i.id}`}>Remarks</label>
-                          <input id={`rem-${i.id}`} name="remarks" maxLength={1000} />
-                          <label htmlFor={`rsn-${i.id}`}>
-                            Reason (Required for LOST / DAMAGED / WAIVED / WRITTEN_OFF / UNRESOLVED)
-                          </label>
-                          <input id={`rsn-${i.id}`} name="reason" maxLength={1000} />
-                          <button type="submit">Record</button>
-                        </form>
-                      </details>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
       {data.canManage ? (
         <details className="action">
-          <summary>Add an asset recovery item</summary>
+          <summary>Add an asset this employee holds (unlisted in the records)</summary>
           <form action={addAssetAction}>
             <input type="hidden" name="caseId" value={id} />
             <label htmlFor="a-type">Asset Type</label>

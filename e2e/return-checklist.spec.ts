@@ -39,8 +39,8 @@ test('the secure link opens the checklist directly and records it without a sign
       publicPage.getByRole('heading', { name: 'Exit Checklist for Return Items' }),
     ).toBeVisible();
     // The ten paper-form items are present and answerable.
-    await expect(publicPage.getByLabel('Laptop', { exact: true })).toBeVisible();
-    await expect(publicPage.getByLabel('Keys - Door', { exact: true })).toBeVisible();
+    await expect(publicPage.getByRole('rowheader', { name: 'Laptop', exact: true })).toBeVisible();
+    await expect(publicPage.getByRole('rowheader', { name: 'Door', exact: true })).toBeVisible();
 
     // The form is usable on a phone: no sideways scrolling in a stockroom.
     await publicPage.setViewportSize(MOBILE);
@@ -59,12 +59,19 @@ test('the secure link opens the checklist directly and records it without a sign
     // An incomplete submission is refused and says exactly what is missing,
     // without discarding the work already entered.
     await publicPage.setViewportSize({ width: 1280, height: 800 });
-    await publicPage.getByLabel('Laptop', { exact: true }).selectOption('RETURNED');
+    await publicPage
+      .getByRole('row', { name: /Laptop/ })
+      .getByRole('radio', { name: 'Returned', exact: true })
+      .check();
     await publicPage.getByLabel('Items Received By').fill('Avery Brown');
     await publicPage.getByLabel('Your Name').fill('Avery Brown');
     await publicPage.getByRole('button', { name: 'Submit Checklist' }).click();
     await expect(publicPage.getByText('The checklist was not submitted')).toBeVisible();
-    await expect(publicPage.getByLabel('Laptop', { exact: true })).toHaveValue('RETURNED');
+    await expect(
+      publicPage
+        .getByRole('row', { name: /Laptop/ })
+        .getByRole('radio', { name: 'Returned', exact: true }),
+    ).toBeChecked();
   }
 
   // An invalid token is answered neutrally - no reason is disclosed.
@@ -79,7 +86,7 @@ test('HR sees the checklist on the case and can record it directly', async ({ pa
 
   // Any ACTIVE case will do - the checklist exists from activation onwards.
   await page.goto('/cases?status=ACTIVE');
-  const firstCase = page.locator('table a[href*="/cases/"]').first();
+  const firstCase = page.locator('.rows a[href*="/cases/"]').first();
   test.skip((await firstCase.count()) === 0, 'No active case in this seed state.');
   await firstCase.click();
   await page.waitForURL(/\/cases\/[^/]+$/);

@@ -120,7 +120,7 @@ test('Scenario 2 - action form: HR-only completion (Directive 6.3), PDF and audi
     'surveyEligibilityAssessed',
     'hrisUpdate',
   ]) {
-    await page.locator(`#hr-${key}`).selectOption('DONE');
+    await page.locator(`#hr-${key}-DONE`).check();
   }
   await page.locator('#ackStatus').selectOption('NOT_OBTAINED');
   await page.locator('#ackReason').fill('Employee left immediately; not obtainable.');
@@ -136,7 +136,7 @@ test('Scenario 2 - action form: HR-only completion (Directive 6.3), PDF and audi
     'payrollActioned',
     'otherApprovedAction',
   ]) {
-    await page.locator(`#fin-${key}`).selectOption('DONE');
+    await page.locator(`#fin-${key}-DONE`).check();
   }
   await page.getByRole('button', { name: 'Save Finance evidence' }).click();
   await expect(page.getByText('Finance evidence saved.')).toBeVisible();
@@ -158,7 +158,7 @@ test('Scenario 2 - action form: HR-only completion (Directive 6.3), PDF and audi
 
   // Audit history shows preparation and the attested HR completion.
   await page.goto(caseUrl);
-  const timeline = page.locator('ul.timeline').last();
+  const timeline = page.locator('ol.activity').last();
   await expect(timeline.getByText('form created', { exact: false })).toHaveCount(1);
   await expect(
     timeline.getByText('finished preparing the action form', { exact: false }),

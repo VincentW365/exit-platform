@@ -1,0 +1,1369 @@
+/* ===========================================================================
+   Offboarding platform - design system
+   ===========================================================================
+
+   Loaded after globals.css, so it refines the existing foundation rather than
+   competing with it. Three jobs:
+
+     1. Type roles. A page title, a value, a label and a timestamp are
+        different kinds of information and should not all read as the same
+        grey sentence. Each role gets a size, a weight and a colour.
+
+     2. Surfaces. Not everything belongs in a white rectangle. A section can
+        be a tinted band, a sunken well, a row list or an accent-edged panel,
+        and the choice should say something about the content.
+
+     3. Patterns for the work this application actually does - an employee
+        identity, a case header, a workflow rail, an asset row, a document
+        object, a provider panel, an activity event. These exist so screens
+        are assembled from meaningful pieces instead of generic cards.
+
+   Colour discipline: brand navy/blue carries identity and actions; the status
+   families carry workflow meaning; nothing else introduces hue. Every status
+   is a colour AND a word (WCAG 1.4.1), and every interactive surface keeps a
+   visible focus ring.
+   ========================================================================= */
+
+:root {
+  /* --- type ---------------------------------------------------------------
+     The existing --text-* scale stays; these add the ends it lacked and the
+     weights and rhythm that make hierarchy legible. */
+  --text-2xl: 2.1rem; /* page titles */
+  --text-3xl: 2.75rem; /* KPI figures */
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semi: 600;
+  --weight-bold: 700;
+  --lh-tight: 1.15;
+  --lh-snug: 1.3;
+  --lh-normal: 1.55;
+  --tracking-tight: -0.02em;
+  --tracking-wide: 0.06em;
+
+  /* --- surfaces -----------------------------------------------------------
+     A tint for grouping without a border, a well for recessed content, and a
+     brand wash for the identity surfaces. */
+  --surface-tint: #f7f9fc;
+  --surface-well: #eef2f7;
+  --surface-brand: linear-gradient(135deg, #12263f 0%, #1b3a5e 100%);
+  --surface-brand-soft: #eaf1f9;
+  --on-brand: #ffffff;
+  --on-brand-dim: #b9c9dd;
+
+  /* Divider weights: hairline for inside a list, rule for between sections. */
+  --hairline: rgba(16, 24, 40, 0.08);
+  --rule: var(--border);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --surface-tint: #16202d;
+    --surface-well: #101823;
+    --surface-brand: linear-gradient(135deg, #14263c 0%, #1d3a5c 100%);
+    --surface-brand-soft: #17263a;
+    --on-brand: #f2f6fb;
+    --on-brand-dim: #9fb3cb;
+    --hairline: rgba(255, 255, 255, 0.09);
+  }
+}
+
+:root[data-theme='dark'] {
+  --surface-tint: #16202d;
+  --surface-well: #101823;
+  --surface-brand: linear-gradient(135deg, #14263c 0%, #1d3a5c 100%);
+  --surface-brand-soft: #17263a;
+  --on-brand: #f2f6fb;
+  --on-brand-dim: #9fb3cb;
+  --hairline: rgba(255, 255, 255, 0.09);
+}
+
+/* ---------------------------------------------------------------------------
+   1. TYPE ROLES
+   ------------------------------------------------------------------------ */
+
+/* Page title: the one dominant line on a screen. */
+.page-title,
+main > h1 {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--lh-tight);
+}
+
+/* One short sentence under a page title saying what the screen is for. */
+.page-lede {
+  margin: calc(var(--space-2) * -1) 0 var(--space-5);
+  max-width: 62ch;
+  font-size: var(--text-md);
+  line-height: var(--lh-normal);
+  color: var(--text-2);
+}
+
+/* A small capitalised marker above a title: section kind, case reference. */
+.eyebrow {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+/* Labels are quiet; values are what you actually read. */
+.label {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.value {
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+}
+.value--strong {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semi);
+}
+
+/* Metadata recedes: timestamps, references, provenance. */
+.meta {
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+
+/* Figures line up in columns and never reflow as they tick over. */
+.numeric,
+.kpi__value,
+td.numeric,
+.stat__value {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ---------------------------------------------------------------------------
+   2. SECTION HEADERS
+   Every major section announces itself the same way: an icon tile in the
+   section's own colour, a title, an optional count, and room for one action.
+   ------------------------------------------------------------------------ */
+
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.section-head__icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+  --icon-size: 1.15rem;
+}
+.section-head__icon--info {
+  background: var(--st-info-bg);
+  color: var(--st-info);
+}
+.section-head__icon--done {
+  background: var(--st-done-bg);
+  color: var(--st-done);
+}
+.section-head__icon--pending {
+  background: var(--st-pending-bg);
+  color: var(--st-pending);
+}
+.section-head__icon--critical {
+  background: var(--st-critical-bg);
+  color: var(--st-critical);
+}
+.section-head__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.section-head__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semi);
+  line-height: var(--lh-snug);
+}
+.section-head__desc {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  max-width: 68ch;
+}
+.section-head__aside {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ---------------------------------------------------------------------------
+   3. SURFACES BEYOND THE CARD
+   ------------------------------------------------------------------------ */
+
+/* A grouped band with no border - structure from tone, not from a box. */
+.band {
+  background: var(--surface-tint);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+/* A recessed well for secondary or reference content inside a panel. */
+.well {
+  background: var(--surface-well);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+}
+
+/* A panel that carries a status meaning on its leading edge. */
+.panel--edge {
+  border-left: 3px solid var(--border-strong);
+}
+.panel--edge-done {
+  border-left-color: var(--st-done);
+}
+.panel--edge-progress {
+  border-left-color: var(--st-progress);
+}
+.panel--edge-pending {
+  border-left-color: var(--st-pending);
+}
+.panel--edge-attention {
+  border-left-color: var(--st-attention);
+}
+.panel--edge-critical {
+  border-left-color: var(--st-critical);
+}
+
+/* Section separation without a card: a rule and generous space. */
+.section-rule {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: var(--space-6) 0 var(--space-5);
+}
+
+/* ---------------------------------------------------------------------------
+   4. IDENTITY - a person, not a database row
+   ------------------------------------------------------------------------ */
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.identity__avatar {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--brand-navy);
+  color: var(--on-brand);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.02em;
+}
+.identity__avatar--lg {
+  width: 3.5rem;
+  height: 3.5rem;
+  font-size: var(--text-md);
+}
+.identity__body {
+  min-width: 0;
+}
+.identity__name {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semi);
+  line-height: var(--lh-snug);
+  overflow-wrap: anywhere;
+}
+.identity__role {
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+
+/* ---------------------------------------------------------------------------
+   5. CASE HEADER - who is leaving, when, and where the case stands
+   ------------------------------------------------------------------------ */
+
+.case-head {
+  background: var(--surface-brand);
+  color: var(--on-brand);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+  box-shadow: var(--shadow-md);
+}
+.case-head__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.case-head .identity__avatar {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--on-brand);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+.case-head__name {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--lh-tight);
+  color: var(--on-brand);
+}
+.case-head__role {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-md);
+  color: var(--on-brand-dim);
+}
+.case-head__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+/* Chips on the dark header need their own contrast, not the light palette. */
+.case-head .chip {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: var(--on-brand);
+}
+.case-head__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+}
+.case-head__fact {
+  min-width: 8rem;
+}
+.case-head__fact .label {
+  color: var(--on-brand-dim);
+}
+.case-head__fact .value {
+  color: var(--on-brand);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semi);
+}
+.case-head__progress {
+  flex: 1 1 14rem;
+  min-width: 12rem;
+}
+
+/* A slim completion bar readable on the dark header. */
+.progress-bar {
+  height: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+  margin-top: var(--space-2);
+}
+.progress-bar__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--brand-yellow);
+  transition: width var(--dur-base, 180ms) var(--ease, ease);
+}
+/* On light surfaces the same bar uses the accent. */
+.progress-bar--light {
+  background: var(--surface-well);
+}
+.progress-bar--light .progress-bar__fill {
+  background: var(--accent);
+}
+
+/* ---------------------------------------------------------------------------
+   6. CHIPS - compact status and fact markers
+   ------------------------------------------------------------------------ */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  white-space: nowrap;
+}
+.chip--done {
+  background: var(--st-done-bg);
+  border-color: var(--st-done-border);
+  color: var(--st-done);
+}
+.chip--progress {
+  background: var(--st-progress-bg);
+  border-color: var(--st-progress-border);
+  color: var(--st-progress);
+}
+.chip--pending {
+  background: var(--st-pending-bg);
+  border-color: var(--st-pending-border);
+  color: var(--st-pending);
+}
+.chip--attention {
+  background: var(--st-attention-bg);
+  border-color: var(--st-attention-border);
+  color: var(--st-attention);
+}
+.chip--critical {
+  background: var(--st-critical-bg);
+  border-color: var(--st-critical-border);
+  color: var(--st-critical);
+}
+.chip--info {
+  background: var(--st-info-bg);
+  border-color: var(--st-info-border);
+  color: var(--st-info);
+}
+
+/* ---------------------------------------------------------------------------
+   7. ENTITY ROWS - tasks, assets, documents, communications
+   One row grammar, four dialects. A row is a leading mark, a body that says
+   what the thing is, facts that say where it stands, and a trailing action.
+   ------------------------------------------------------------------------ */
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  overflow: hidden;
+}
+.row-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+  transition: background var(--dur-fast, 120ms) var(--ease, ease);
+}
+.rows > .row-item:last-child {
+  border-bottom: 0;
+}
+.row-item:hover {
+  background: var(--panel-hover);
+}
+.row-item__mark {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius);
+  background: var(--surface-well);
+  color: var(--text-2);
+  --icon-size: 1.15rem;
+}
+.row-item__body {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.row-item__title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semi);
+  line-height: var(--lh-snug);
+  overflow-wrap: anywhere;
+}
+.row-item__sub {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+.row-item__facts {
+  flex: 0 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+.row-item__action {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* Status colour on the leading edge, so a scan down the list reads. */
+.row-item--done .row-item__mark {
+  background: var(--st-done-bg);
+  color: var(--st-done);
+}
+.row-item--progress .row-item__mark {
+  background: var(--st-progress-bg);
+  color: var(--st-progress);
+}
+.row-item--pending .row-item__mark {
+  background: var(--st-pending-bg);
+  color: var(--st-pending);
+}
+.row-item--attention .row-item__mark {
+  background: var(--st-attention-bg);
+  color: var(--st-attention);
+}
+.row-item--critical {
+  background: var(--st-critical-bg);
+}
+.row-item--critical .row-item__mark {
+  background: var(--st-critical-border);
+  color: var(--st-critical);
+}
+/* Settled work recedes so outstanding work stands out. */
+.row-item--muted .row-item__title {
+  font-weight: var(--weight-medium);
+  color: var(--text-2);
+}
+
+/* ---------------------------------------------------------------------------
+   8. WORKFLOW RAIL - a sequence that looks like a sequence
+   ------------------------------------------------------------------------ */
+
+.rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.rail__step {
+  flex: 1 1 7rem;
+  min-width: 6.5rem;
+  padding: var(--space-2) var(--space-3);
+  border-top: 3px solid var(--border-strong);
+  background: transparent;
+}
+.rail__step-name {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  line-height: var(--lh-snug);
+}
+.rail__step-meta {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+.rail__step--done {
+  border-top-color: var(--st-done);
+}
+.rail__step--current {
+  border-top-color: var(--st-progress);
+  background: var(--st-progress-bg);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.rail__step--current .rail__step-name {
+  color: var(--st-progress);
+}
+.rail__step--blocked {
+  border-top-color: var(--st-critical);
+}
+.rail__step--todo {
+  border-top-color: var(--border-strong);
+}
+.rail__step--todo .rail__step-name {
+  color: var(--text-2);
+  font-weight: var(--weight-medium);
+}
+
+/* ---------------------------------------------------------------------------
+   9. KPI BLOCKS - figures that dominate, with restrained variation
+   ------------------------------------------------------------------------ */
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.kpi {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-xs);
+}
+.kpi__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  --icon-size: 1rem;
+}
+.kpi__value {
+  margin-top: var(--space-2);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  letter-spacing: var(--tracking-tight);
+}
+.kpi__unit {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semi);
+  color: var(--text-2);
+  margin-left: 0.15rem;
+}
+.kpi__note {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+.kpi--done {
+  border-top-color: var(--st-done);
+}
+.kpi--pending {
+  border-top-color: var(--st-pending);
+}
+.kpi--critical {
+  border-top-color: var(--st-critical);
+}
+.kpi--critical .kpi__value {
+  color: var(--st-critical);
+}
+.kpi--info {
+  border-top-color: var(--st-info);
+}
+
+/* ---------------------------------------------------------------------------
+   10. ACTIVITY TIMELINE - chronology that reads as chronology
+   ------------------------------------------------------------------------ */
+
+.activity {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 var(--space-5);
+  position: relative;
+}
+.activity::before {
+  content: '';
+  position: absolute;
+  left: 0.65rem;
+  top: 0.4rem;
+  bottom: 0.4rem;
+  width: 2px;
+  background: var(--border);
+}
+.activity__item {
+  position: relative;
+  padding: 0 0 var(--space-4) var(--space-4);
+}
+.activity__item:last-child {
+  padding-bottom: 0;
+}
+.activity__dot {
+  position: absolute;
+  left: calc(var(--space-5) * -1 + 0.3rem);
+  top: 0.35rem;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  border: 2px solid var(--accent);
+}
+.activity__dot--done {
+  border-color: var(--st-done);
+  background: var(--st-done);
+}
+.activity__dot--critical {
+  border-color: var(--st-critical);
+  background: var(--st-critical);
+}
+.activity__dot--auto {
+  border-color: var(--st-info);
+}
+.activity__time {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.activity__title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semi);
+  line-height: var(--lh-snug);
+}
+.activity__detail {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+/* Before/after on an audited change, shown as a change rather than prose. */
+.activity__change {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+}
+.activity__change s {
+  color: var(--text-2);
+  text-decoration-thickness: 1px;
+}
+
+/* ---------------------------------------------------------------------------
+   11. DOCUMENT OBJECTS - a document should look like a document
+   ------------------------------------------------------------------------ */
+
+.doc {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-xs);
+}
+.doc__sheet {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 3.15rem;
+  border-radius: 3px 8px 3px 3px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  color: var(--accent);
+  box-shadow: var(--shadow-xs);
+  --icon-size: 1.2rem;
+  /* The clipped corner is what makes it read as a sheet of paper. */
+  clip-path: polygon(0 0, 72% 0, 100% 18%, 100% 100%, 0 100%);
+}
+.doc__body {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.doc__name {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semi);
+  line-height: var(--lh-snug);
+  overflow-wrap: anywhere;
+}
+.doc__meta {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+.doc__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/* ---------------------------------------------------------------------------
+   12. PROVIDER PANEL - external parties are a different kind of work
+   ------------------------------------------------------------------------ */
+
+.provider {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  overflow: hidden;
+  margin-bottom: var(--space-4);
+  box-shadow: var(--shadow-xs);
+}
+.provider__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface-brand-soft);
+  border-bottom: 1px solid var(--border);
+}
+.provider__logo {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-weight: var(--weight-bold);
+  font-size: var(--text-sm);
+}
+.provider__name {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.provider__name strong {
+  display: block;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semi);
+}
+.provider__body {
+  padding: var(--space-4);
+}
+.provider__foot {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--hairline);
+  background: var(--surface-tint);
+}
+
+/* ---------------------------------------------------------------------------
+   13. DEFINITION GRID - labels quiet, values loud
+   ------------------------------------------------------------------------ */
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+}
+.facts > div {
+  min-width: 0;
+}
+.facts dt {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.facts dd {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+/* A date that matters - a last working day, an effective time. */
+.facts dd.is-key {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semi);
+}
+
+/* ---------------------------------------------------------------------------
+   14. SPLIT LAYOUT - a workspace with a main column and a rail
+   ------------------------------------------------------------------------ */
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 21rem);
+  gap: var(--space-5);
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   15. RESPONSIVE + MOTION
+   ------------------------------------------------------------------------ */
+
+@media (max-width: 40rem) {
+  .page-title,
+  main > h1 {
+    font-size: var(--text-xl);
+  }
+  .case-head {
+    padding: var(--space-4);
+  }
+  .case-head__name {
+    font-size: var(--text-xl);
+  }
+  .kpi__value {
+    font-size: var(--text-2xl);
+  }
+  .row-item {
+    flex-wrap: wrap;
+  }
+  .row-item__action {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-bar__fill,
+  .row-item {
+    transition: none;
+  }
+}
+
+/* A list that is a list, without the browser's bullets or indent. */
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* --- stacked label/value pairs ---------------------------------------------
+   A label sits ABOVE its value wherever the two are stacked, so they must not
+   run together on one line. The flex-based .kpi__label keeps its own rule. */
+.label,
+.value,
+.rail__step-name,
+.rail__step-meta,
+.identity__name,
+.identity__role {
+  display: block;
+}
+.case-head__fact .label {
+  margin-bottom: var(--space-1);
+}
+.rail__step-meta {
+  margin-top: 0.1rem;
+}
+
+/* ---------------------------------------------------------------------------
+   16. PIPELINE - the shape of the work, before the detail of it
+   ------------------------------------------------------------------------ */
+
+.pipeline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: stage;
+}
+.pipeline__stage {
+  position: relative;
+}
+.pipeline__link {
+  display: block;
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: inherit;
+  transition:
+    border-color var(--dur-fast, 120ms) var(--ease, ease),
+    box-shadow var(--dur-fast, 120ms) var(--ease, ease);
+}
+.pipeline__link:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+/* A stage carrying live cases earns the accent; an empty one stays quiet. */
+.pipeline__stage.is-live .pipeline__link {
+  border-left-color: var(--accent);
+}
+.pipeline__count {
+  display: block;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  letter-spacing: var(--tracking-tight);
+}
+.pipeline__stage:not(.is-live) .pipeline__count {
+  color: var(--text-2);
+}
+.pipeline__name {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-2);
+}
+
+/* A KPI that is also a link keeps the tile's shape and gains its lift. */
+.kpi-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+.kpi-link:hover .kpi {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+/* The mark slot is a fixed square; an avatar inside it must not be squeezed. */
+.row-item__mark .identity__avatar {
+  width: 100%;
+  height: 100%;
+}
+
+/* In dark mode the brand wash sits close to the canvas, so the header needs a
+   defined edge to keep reading as its own surface rather than as the page. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .case-head {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+}
+:root[data-theme='dark'] .case-head {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* ---------------------------------------------------------------------------
+   17. PAPER FORMS
+   The company's printed HR forms, replicated as interactive documents. The
+   layout mirrors the sheet - letterhead, boxed identity rows, ruled item
+   table, heavy section bars, signature lines - while every control stays a
+   real, labelled, keyboard-reachable input.
+   ------------------------------------------------------------------------ */
+
+.paper {
+  max-width: 52rem;
+  margin: 0 auto var(--space-5);
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: clamp(1rem, 4vw, 2.5rem);
+}
+
+.paper__letterhead {
+  text-align: center;
+  margin-bottom: var(--space-5);
+}
+.paper__org {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--brand-navy);
+}
+:root[data-theme='dark'] .paper__org {
+  color: var(--on-brand);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .paper__org {
+    color: var(--on-brand);
+  }
+}
+.paper__title {
+  display: inline-block;
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  border-bottom: 2px solid currentColor;
+  line-height: 1.6;
+}
+.paper__ref {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+
+/* Boxed identity rows: "Employee Name: [        ]  Effective Date: [   ]" */
+.idgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  border: 2px solid var(--text);
+  border-radius: 2px;
+  margin-bottom: var(--space-4);
+}
+.idgrid > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  min-width: 0;
+}
+.idgrid .label {
+  display: inline;
+  flex: 0 0 auto;
+}
+.idgrid .value {
+  display: inline;
+  overflow-wrap: anywhere;
+}
+
+/* Heavy section bars, as the sheet draws between its regions. */
+.paper__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-5) 0 var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 3px solid var(--text);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: var(--text-base);
+}
+.paper__bar .meta {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: var(--weight-normal);
+}
+
+/* The ruled item table: # | ITEMS | CHECK | REMARKS. */
+.form-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 2px solid var(--text);
+  font-size: var(--text-base);
+}
+.form-table th,
+.form-table td {
+  border: 1px solid var(--border-strong);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: middle;
+}
+.form-table thead th {
+  background: var(--surface-well);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  font-size: var(--text-sm);
+  letter-spacing: 0.03em;
+}
+.form-table .form-table__num {
+  width: 2.5rem;
+  text-align: right;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.form-table .form-table__group th {
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  background: var(--surface-tint);
+}
+.form-table input[type='text'] {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px dashed var(--border-strong);
+  border-radius: 0;
+  background: transparent;
+  padding: 0.25rem 0.1rem;
+}
+.form-table input[type='text']:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* The CHECK cell: one tick among named options. Real radios, styled as the
+   tick marks the sheet expects; the word always accompanies the mark. */
+.tickset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}
+.tick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  background: var(--panel);
+}
+.tick:hover {
+  border-color: var(--border-strong);
+  background: var(--panel-hover);
+}
+.tick input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+.tick:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: var(--weight-semi);
+}
+.tick:has(input:checked):has(input[value='NOT_RETURNED']),
+.tick:has(input:checked):has(input[value='LOST_OR_DAMAGED']) {
+  border-color: var(--st-attention-border);
+  background: var(--st-attention-bg);
+}
+.tick:has(input:disabled) {
+  cursor: default;
+  opacity: 0.75;
+}
+
+/* Checkbox-style items: "☐ Resignation" rows and checklist blocks. */
+.tickbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: var(--text-base);
+  cursor: pointer;
+}
+.tickbox input {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--accent);
+  margin: 0;
+}
+.tickbox--static {
+  cursor: default;
+}
+.tickrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-2) 0;
+}
+
+/* Signature lines: label, then a rule the value sits on. */
+.sigline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+.sigline > .sigline__label {
+  font-weight: var(--weight-bold);
+  flex: 0 0 auto;
+}
+.sigline input,
+.sigline .sigline__value {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+  border: 0;
+  border-bottom: 1px solid var(--text);
+  border-radius: 0;
+  background: transparent;
+  padding: 0.2rem 0.1rem;
+  font-size: var(--text-base);
+}
+.sigline input:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.sigline .meta {
+  flex-basis: 100%;
+}
+
+/* Two-column checklist block (Human Resources | Payroll). */
+.paper-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  border: 2px solid var(--text);
+}
+.paper-cols > section {
+  padding: var(--space-3);
+  border: 1px solid var(--border-strong);
+  min-width: 0;
+}
+.paper-cols h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-base);
+  font-weight: var(--weight-bold);
+  border-bottom: 1px solid var(--border-strong);
+  padding-bottom: var(--space-1);
+}
+.paper-cols .form-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1) 0;
+}
+.paper-cols .form-item > span:first-child {
+  flex: 1 1 12rem;
+}
+
+@media (max-width: 40rem) {
+  .form-table thead {
+    display: none;
+  }
+  .form-table,
+  .form-table tbody,
+  .form-table tr,
+  .form-table th,
+  .form-table td {
+    display: block;
+    width: 100%;
+    border: 0;
+  }
+  .form-table tr {
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    margin-bottom: var(--space-2);
+    padding: var(--space-2);
+  }
+  .form-table .form-table__num {
+    display: none;
+  }
+}
+
+/* Row title/sub stack whatever element carries them - a list reuse renders
+   them as spans, and inline spans ran the two lines together. */
+.row-item__title,
+.row-item__sub {
+  display: block;
+}
+
+/* A row header NAMES a thing - only column headers are set as labels. The
+   panel table rule uppercases every th, which turned "Laptop" into "LAPTOP"
+   on the replicated forms. */
+.form-table tbody th {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semi);
+  color: var(--text);
+}
+/* The sheet's own sub-headings (KEYS) stay set as headings. */
+.form-table tbody tr.form-table__group th {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: var(--weight-bold);
+}
+
+/* --- case tab counts -------------------------------------------------------
+   A count on a tab answers "how much is left in there". Zero counts never
+   render, so a quiet tab means nothing is waiting. */
+.tab-count {
+  display: inline-block;
+  margin-left: var(--space-2);
+  min-width: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface-well);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  line-height: 1.5;
+}
+.tab-count--pending {
+  background: var(--st-pending-bg);
+  color: var(--st-pending);
+}
+.tab-count--progress {
+  background: var(--st-progress-bg);
+  color: var(--st-progress);
+}
+
+/* A mark used inside a table cell sits BESIDE its label, not above it: the
+   standalone mark is a grid block, which pushed the text onto a new line. */
+.form-table th .row-item__mark,
+.form-table td .row-item__mark {
+  display: inline-grid;
+  vertical-align: middle;
+  width: 1.9rem;
+  height: 1.9rem;
+}

@@ -52,8 +52,8 @@ test('Scenario F - missing manager blocks activation until an audited override',
     type: 'RESIGNATION_WITH_NOTICE',
   });
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Submit for HR review' }).click();
-  await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit for review' }).click();
+  await expect(page.getByText('Case submitted for review.')).toBeVisible();
   await signOut(page);
 
   await signInAs(page, 'HR Manager');
@@ -109,8 +109,8 @@ test('Scenario D - queue claim, return to queue and reclaim through the UI', asy
     type: 'RESIGNATION_WITH_NOTICE',
   });
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Submit for HR review' }).click();
-  await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit for review' }).click();
+  await expect(page.getByText('Case submitted for review.')).toBeVisible();
   await signOut(page);
   await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
@@ -145,7 +145,9 @@ test('Scenario D - queue claim, return to queue and reclaim through the UI', asy
   // The HR Officer claims an unassigned HR task from the queue.
   await signInAs(page, 'HR Officer');
   await page.goto(`/queue?view=unassigned&q=${caseNo}`);
-  const row = page.locator('tr', { hasText: 'Verify resignation and case information' }).first();
+  const row = page
+    .locator('.row-item', { hasText: 'Verify resignation and case information' })
+    .first();
   await row.getByRole('button', { name: 'Claim' }).click();
   await expect(page.getByText('Task claimed - it is now assigned to you (audited).')).toBeVisible();
 
@@ -154,7 +156,9 @@ test('Scenario D - queue claim, return to queue and reclaim through the UI', asy
   await expect(page.getByText('HR Officer').first()).toBeVisible();
 
   // Return it to the queue with a reason; it becomes claimable again.
-  const mine = page.locator('tr', { hasText: 'Verify resignation and case information' }).first();
+  const mine = page
+    .locator('.row-item', { hasText: 'Verify resignation and case information' })
+    .first();
   await mine.locator('details.action > summary', { hasText: 'Return to queue' }).click();
   await mine.locator('input[name="reason"]').fill('Scenario D - handing back for reallocation.');
   await mine.getByRole('button', { name: 'Return task' }).click();
@@ -162,7 +166,7 @@ test('Scenario D - queue claim, return to queue and reclaim through the UI', asy
   await page.goto(`/queue?view=unassigned&q=${caseNo}`);
   await expect(
     page
-      .locator('tr', { hasText: 'Verify resignation and case information' })
+      .locator('.row-item', { hasText: 'Verify resignation and case information' })
       .first()
       .getByRole('button', { name: 'Claim' }),
   ).toBeVisible();

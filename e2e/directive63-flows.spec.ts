@@ -32,17 +32,18 @@ test('HR manager reviews an active case: required actions, benefits, email actio
   // Exception-first Overview (Directive 6.3 Z): the Required actions panel
   // groups work into "Requires your attention" and "In progress
   // automatically" (either group may be empty depending on seed state).
-  await expect(page.getByRole('heading', { name: 'Required Actions' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What this case needs' })).toBeVisible();
+  // Outstanding work is a list of rows; a clear case says so in words.
   await expect(
     page
-      .getByRole('heading', { name: 'Requires your attention' })
+      .getByRole('list', { name: 'Outstanding actions' })
       .or(page.getByText('Nothing needs your attention on this case.'))
       .first(),
   ).toBeVisible();
   await expect(
     page
-      .getByRole('heading', { name: 'In Progress Automatically' })
-      .or(page.getByRole('heading', { name: 'Requires your attention' }))
+      .getByRole('heading', { name: 'In progress automatically' })
+      .or(page.getByRole('list', { name: 'Outstanding actions' }))
       .first(),
   ).toBeVisible();
 

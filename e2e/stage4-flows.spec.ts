@@ -78,8 +78,8 @@ test('Scenario 1 - notification delivery through development capture', async ({ 
     type: 'RESIGNATION_WITH_NOTICE',
   });
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Submit for HR review' }).click();
-  await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit for review' }).click();
+  await expect(page.getByText('Case submitted for review.')).toBeVisible();
   await signOut(page);
   await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);

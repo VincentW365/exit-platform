@@ -37,9 +37,8 @@ export async function openActiveHrValidatedCase(page: Page): Promise<string> {
   await expect(page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/)).toBeVisible();
   const caseUrl = page.url().split('?')[0]!;
 
-  // Approval (the HR Manager is already signed in for this scenario).
-  await page.getByRole('button', { name: 'Submit for HR review' }).click();
-  await expect(page.getByText('Case submitted for HR review.')).toBeVisible();
+  // Approval: the signed-in HR Manager approves her own draft in one
+  // audited step (owner, 2026-08-25) - no submit-to-self detour.
   await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
 
