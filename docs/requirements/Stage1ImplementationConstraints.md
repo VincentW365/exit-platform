@@ -75,11 +75,20 @@ Each constraint names the decision it works around. The decision's status is unc
 
 ### IC-S1-003 / DEC-003 — Workflow variants
 
-Preserve three future workflow types:
+Preserve a workflow type per canonical separation (extended from three to
+seven by DEC-058, 2026-08-26):
 
 - `RESIGNATION_WITH_NOTICE`
 - `IMMEDIATE_RESIGNATION`
 - `TERMINATION`
+- `RETIREMENT`
+- `CONTRACT_EXPIRY`
+- `REDUNDANCY`
+- `OTHER`
+
+No type may fall back to another type's workflow: a separation with no
+definition of its own fails activation with an explicit exception rather than
+running someone else's process.
 
 Directive 1 may store the departure type but must **not** activate automated workflow content. During the baseline-capture foundation, do not automatically generate documents, departmental tasks, notifications, surveys or asset workflows.
 

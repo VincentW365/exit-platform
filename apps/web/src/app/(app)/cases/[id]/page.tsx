@@ -9,6 +9,7 @@ import {
   TIMELINE_CHIPS,
   formatDateOnly,
   formatInstant,
+  separationProfile,
   humanizeAuditEvent,
   type RequiredActionRow,
   type TimelineChip,
@@ -139,6 +140,7 @@ export default async function CaseDetailPage({
   ]);
 
   const dt = (d: Date | null) => (d ? formatInstant(d) : '-');
+  const dateOnly = (d: Date) => formatDateOnly(d);
   const nameOf = (userId: string | null | undefined) =>
     userId ? (users.find((u) => u.userId === userId)?.displayName ?? null) : null;
   const progressSummary = await caseProgressSummary(actor, id).catch(() => null);
@@ -174,6 +176,7 @@ export default async function CaseDetailPage({
           confirmedLastDay: c.confirmedLastDay,
           nextAction: progressSummary?.nextAction ?? null,
           stages: progress,
+          separation: data.separation,
         }}
       />
       <Feedback err={sp.err} ok={sp.ok} />
@@ -379,10 +382,47 @@ export default async function CaseDetailPage({
               <label htmlFor="e-recv-detail">Describe How It Was Received</label>
               <input id="e-recv-detail" name="receiptSourceDetail" type="text" maxLength={150} />
             </div>
+            {/* The date concepts a correction can touch are the ones this
+                separation actually uses (DEC-058). The last working day was
+                missing entirely, so a mistyped final date could only be fixed
+                by voiding the case. */}
+            {data.separation.dates.confirmedLastDay !== undefined &&
+            !separationProfile(data.separation.type).forbiddenDates.includes('confirmedLastDay') ? (
+              <div className="field">
+                <label htmlFor="e-last-day">Last Working Day</label>
+                <input id="e-last-day" name="confirmedLastDay" type="date" />
+                <p className="hint">
+                  Currently: {c.confirmedLastDay ? dateOnly(c.confirmedLastDay) : 'not set'}.
+                </p>
+              </div>
+            ) : null}
+            {!separationProfile(data.separation.type).forbiddenDates.includes('contractEndDate') &&
+            (separationProfile(data.separation.type).requiredDates.includes('contractEndDate') ||
+              c.contractEndDate) ? (
+              <div className="field">
+                <label htmlFor="e-contract-end">Contract End Date</label>
+                <input id="e-contract-end" name="contractEndDate" type="date" />
+                <p className="hint">
+                  Currently: {c.contractEndDate ? dateOnly(c.contractEndDate) : 'not set'}.
+                </p>
+              </div>
+            ) : null}
             <div className="field">
-              <label htmlFor="e-eff">Employment Ends (Date and Exact Time)</label>
+              <label htmlFor="e-eff">
+                {data.separation.initiator === 'EMPLOYER'
+                  ? 'Effective Date (and Exact Time)'
+                  : 'Employment Ends (Date and Exact Time)'}
+              </label>
               <input id="e-eff" name="effectiveSeparationAt" type="datetime-local" />
               <p className="hint">Currently: {dt(c.effectiveSeparationAt)}.</p>
+            </div>
+            {/* An unusual combination is accepted with an audited reason
+                rather than blocked - a correction to a historical record has
+                to be possible (directive 25, 31). */}
+            <div className="field">
+              <label htmlFor="e-date-reason">Why are these dates correct? (if unusual)</label>
+              <input id="e-date-reason" name="dateOverrideReason" type="text" maxLength={500} />
+              <p className="hint">Recorded in the audit trail beside the dates it explains.</p>
             </div>
             <div className="field">
               <label htmlFor="e-reason-status">Did the Employee Give a Reason?</label>

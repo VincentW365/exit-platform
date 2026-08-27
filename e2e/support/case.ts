@@ -30,9 +30,14 @@ export async function openActiveHrValidatedCase(page: Page): Promise<string> {
   await page.getByLabel('Employee Name or Number').fill('avery');
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure Type').selectOption('RESIGNATION_WITH_NOTICE');
-  await page.getByLabel('Date and Time Received').fill('2026-07-20T09:30');
-  await page.getByLabel('Final Working Date').fill('2026-08-14');
+  // The separation type is chosen first and the form re-renders from its
+  // profile (DEC-058), so it is a radio plus a round trip, not a select.
+  await page.locator('input[name="type"][value="RESIGNATION_WITH_NOTICE"]').check();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  // Field labels now name what each date IS for the chosen separation, so the
+  // helper addresses the field names, which do not change.
+  await page.locator('input[name="receivedAt"]').fill('2026-07-20T09:30');
+  await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
   await page.getByRole('button', { name: 'Create draft case' }).click();
   await expect(page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/)).toBeVisible();
   const caseUrl = page.url().split('?')[0]!;

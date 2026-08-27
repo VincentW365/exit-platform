@@ -47,9 +47,12 @@ test('every rebuilt surface holds its width from mobile to laptop', async ({ pag
   await page.getByLabel('Employee Name or Number').fill('avery');
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure Type').selectOption('RESIGNATION_WITH_NOTICE');
-  await page.getByLabel('Date and Time Received').fill('2026-07-20T09:30');
-  await page.getByLabel('Final Working Date').fill('2026-08-14');
+  await page
+    .locator(`input[name="type"][value=${JSON.stringify('RESIGNATION_WITH_NOTICE')}]`)
+    .check();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.locator('input[name="receivedAt"]').fill('2026-07-20T09:30');
+  await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
   await page.getByRole('button', { name: 'Create draft case' }).click();
   await expect(page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/)).toBeVisible();
   const caseHref = new URL(page.url()).pathname;

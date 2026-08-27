@@ -38,7 +38,7 @@
 | REQ-CASE-002 | HR-led case creation | The MVP shall allow only authorized HR roles to create an offboarding case. | MUST | 1 | PROVISIONAL |
 | REQ-CASE-003 | Employee selection | Case creation shall support employee lookup from the configured employee source and controlled manual entry when the source is unavailable. | MUST | 1 | PROVISIONAL |
 | REQ-CASE-004 | Employee snapshot | On case approval, the system shall store an immutable employee snapshot containing the approved fields used by the workflow and documents. | MUST | 1 | PROVISIONAL |
-| REQ-CASE-005 | Departure types | The case shall require one of RESIGNATION_WITH_NOTICE, IMMEDIATE_RESIGNATION, or TERMINATION; additional types require a versioned configuration change. | MUST | 1 | PROVISIONAL |
+| REQ-CASE-005 | Departure types | The case shall require exactly one canonical separation type: RESIGNATION_WITH_NOTICE, IMMEDIATE_RESIGNATION, TERMINATION, RETIREMENT, CONTRACT_EXPIRY, REDUNDANCY or OTHER. What each type implies is defined once in the separation profile; a new type is added there with its own workflow definition, never by letting it inherit another type's behaviour. | MUST | 1 | APPROVED (DEC-058) |
 | REQ-CASE-006 | Receipt timestamp | The case shall record the date and time the resignation/termination instruction was received and the source of that timestamp. | MUST | 1 | PROVISIONAL |
 | REQ-CASE-007 | Proposed and confirmed dates | The case shall distinguish proposed last working date, confirmed last working date, and effective separation date/time. | MUST | 1 | PROVISIONAL |
 | REQ-CASE-008 | Exact effective time | The case shall support an exact effective separation time, not only a date. | MUST | 1 | PROVISIONAL |

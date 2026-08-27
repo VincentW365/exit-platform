@@ -295,7 +295,8 @@ describe('exact-time access revocation on legacy v1 instances (T.5, T.6, I)', ()
         employeeSourceId: 'EMP-TEST-010',
         receivedAt: '2026-07-28T13:00:00.000Z',
         effectiveSeparationAt: '2026-07-28T14:00:00.000Z',
-        confirmedLastDay: null,
+        // Historical: they stopped work the day they resigned.
+        confirmedLastDay: '2026-07-28',
       }),
     );
     const access = (await tasksOf(caseId)).find((t) => t.taskCode === 'IT_ACCESS_REVOCATION')!;

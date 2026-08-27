@@ -14,6 +14,20 @@ import {
   canViewCase,
   type CaseAccessContext,
   caseNumberSearchTerm,
+  DEPARTURE_TYPES,
+  separationErrors,
+  isDepartureType,
+  separationProfile,
+  defaultDates,
+  separationUrgency,
+  operativeDate,
+  isBackdated,
+  wholeDaysBetween,
+  incompatibleDates,
+  noticeApplies,
+  noticeIsServed,
+  type DepartureType,
+  type SeparationDates,
   TERMINAL_STATUSES,
   caseNumberYearFor,
   type CaseTransitionAction,
@@ -72,7 +86,7 @@ const shortText = (max: number) => z.string().trim().max(max);
 
 export const createDraftSchema = z.object({
   employeeSourceId: shortText(40).min(1),
-  departureType: z.enum(['RESIGNATION_WITH_NOTICE', 'IMMEDIATE_RESIGNATION', 'TERMINATION']),
+  departureType: z.enum(DEPARTURE_TYPES),
   receivedAt: isoDate,
   receiptSource: shortText(200).min(1),
   // One working-date field (owner request, 2026-08-18): `confirmedLastDay`
@@ -81,6 +95,15 @@ export const createDraftSchema = z.object({
   // its historical values and is never written again.
   confirmedLastDay: optionalIsoDate,
   effectiveSeparationAt: optionalIsoDate,
+  /// The predetermined contractual completion date (directive 5, 11).
+  contractEndDate: optionalIsoDate,
+  /// HR's answer for OTHER only - every other type is answered by its
+  /// profile and this is rejected if sent (directive 13, 30).
+  noticeApplicableOverride: z.boolean().nullable().optional(),
+  separationTypeDetail: shortText(300).optional(),
+  authorizedByName: shortText(160).optional(),
+  /// Why an unusual date relationship is correct. Audited (directive 25).
+  dateOverrideReason: shortText(500).optional(),
   department: shortText(100).optional(),
   location: shortText(100).optional(),
   measurementCohort: z.enum(['BASELINE', 'PILOT', 'POST_ROLLOUT']).nullable().default('BASELINE'),
@@ -184,8 +207,66 @@ async function derivedEffectiveSeparation(
   departureType: string,
   confirmedLastDay: Date | null | undefined,
 ): Promise<Date | null> {
-  if (departureType !== 'RESIGNATION_WITH_NOTICE' || !confirmedLastDay) return null;
+  if (!confirmedLastDay || !isDepartureType(departureType)) return null;
+  // Any separation whose profile hangs off the final working day ends at
+  // close of business on it. This used to name resignation-with-notice
+  // directly, which left an immediate resignation with no effective instant
+  // at all - and the effective instant is what access removal is timed to.
+  if (separationProfile(departureType).effectiveDateSource !== 'confirmedLastDay') return null;
   return effectiveSeparationFromFinalDay(confirmedLastDay, await closeOfBusiness());
+}
+
+/**
+ * The four date concepts a separation carries (directive 5), read off an
+ * input or off a stored case. Written once so validation, defaulting and
+ * downstream timing all see the same shape - the whole point of the
+ * canonical model is that nobody re-derives this.
+ */
+function datesOf(source: {
+  receivedAt?: Date | null;
+  confirmedLastDay?: Date | null;
+  effectiveSeparationAt?: Date | null;
+  contractEndDate?: Date | null;
+}): SeparationDates {
+  return {
+    receivedAt: source.receivedAt ?? null,
+    confirmedLastDay: source.confirmedLastDay ?? null,
+    effectiveSeparationAt: source.effectiveSeparationAt ?? null,
+    contractEndDate: source.contractEndDate ?? null,
+  };
+}
+
+/**
+ * Server-side separation rules (directive 30). The form hides fields a type
+ * does not use; this rejects them, so a direct API call cannot attach
+ * resignation notice to a termination.
+ */
+function assertSeparationRules(input: {
+  departureType: DepartureType;
+  dates: SeparationDates;
+  noticeApplicableOverride?: boolean | null;
+  separationTypeDetail?: string | null;
+  authorizedByName?: string | null;
+  dateOverrideReason?: string | null;
+}): void {
+  const errors = separationErrors({
+    type: input.departureType,
+    dates: input.dates,
+    noticeApplicableOverride: input.noticeApplicableOverride ?? null,
+    separationTypeDetail: input.separationTypeDetail ?? null,
+    authorizedByName: input.authorizedByName ?? null,
+    dateOverrideReason: input.dateOverrideReason ?? null,
+  });
+  if (errors.length) throw ServiceError.validation(errors);
+
+  // A profile that does not defer to HR must not be overridden by one. The
+  // UI never offers this control outside OTHER; the server enforces it.
+  const profile = separationProfile(input.departureType);
+  if (profile.noticeApplicable !== null && input.noticeApplicableOverride != null) {
+    throw ServiceError.validation([
+      `Whether notice applies is determined by "${profile.label}" and cannot be set on the case.`,
+    ]);
+  }
 }
 
 // --- employee search ---------------------------------------------------------
@@ -193,6 +274,9 @@ async function derivedEffectiveSeparation(
 export interface EmployeeSearchRow {
   sourceSystem: string;
   sourceId: string;
+  /// Fixed-term contract end date where the directory holds one, so
+  /// selecting End of contract reuses it (directive 11).
+  contractEndDate?: Date | null;
   displayName: string;
   workEmail: string | null;
   jobTitle: string | null;
@@ -247,6 +331,7 @@ export async function searchEmployees(actor: Actor, query: string) {
     department: r.department,
     location: r.location,
     employeeNumber: r.employeeNumber,
+    contractEndDate: r.contractEndDate,
     managerName: r.managerName,
     active: r.active,
     lastSyncedAt: r.retrievedAt,
@@ -305,9 +390,14 @@ async function lookupEmployeeSource(sourceId: string) {
       // The employer's own Employee # - without this, every case created from
       // a cached directory row stamped null and the form printed nothing.
       employeeNumber: row.employeeNumber ?? null,
+      // Fixed-term contract end date, where the source system holds one.
+      // Selecting End of contract reuses it rather than asking HR to retype
+      // a date that already exists (directive 11).
+      contractEndDate: row.contractEndDate ?? null,
     };
   }
-  return employeeSource.getById(sourceId);
+  const remote = await employeeSource.getById(sourceId);
+  return remote ? { ...remote, contractEndDate: null } : remote;
 }
 
 const manualEmployeeSchema = z.object({
@@ -401,15 +491,43 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
     throw ServiceError.validation(['Receipt time cannot be in the future.']);
   }
 
-  // Termination cases are RESTRICTED by default and cannot be downgraded
-  // (DEC-035 / IC-S1-011).
-  const classification = input.departureType === 'TERMINATION' ? 'RESTRICTED' : 'CONFIDENTIAL';
+  // Which separation this is decides everything below. Termination cases are
+  // RESTRICTED by default and cannot be downgraded (DEC-035 / IC-S1-011);
+  // the profile now carries that, along with redundancy.
+  const profile = separationProfile(input.departureType);
+  const classification = profile.restrictedByDefault ? 'RESTRICTED' : 'CONFIDENTIAL';
+
+  // Contextual defaults: today for the dates this type opens with, and the
+  // employee's own contract end date where the directory holds one - HR is
+  // not asked to retype a date the platform already has (directive 6, 11).
+  const defaults = defaultDates(input.departureType, retrievedAt, {
+    contractEndDate: employee.contractEndDate ?? null,
+  });
+  const contractEndDate = input.contractEndDate ?? defaults.contractEndDate;
+  const confirmedLastDay = input.confirmedLastDay ?? defaults.confirmedLastDay;
 
   // Resignation with notice: employment ends at close of business on the
   // final working date unless HR states otherwise (owner request 2026-08-18).
+  // Every other type takes the instant its profile points at.
   const effectiveSeparationAt =
     input.effectiveSeparationAt ??
-    (await derivedEffectiveSeparation(input.departureType, input.confirmedLastDay));
+    defaults.effectiveSeparationAt ??
+    (await derivedEffectiveSeparation(input.departureType, confirmedLastDay)) ??
+    (profile.effectiveDateSource === 'contractEndDate' ? contractEndDate : null);
+
+  assertSeparationRules({
+    departureType: input.departureType,
+    dates: {
+      receivedAt: input.receivedAt,
+      confirmedLastDay,
+      effectiveSeparationAt,
+      contractEndDate,
+    },
+    noticeApplicableOverride: input.noticeApplicableOverride,
+    separationTypeDetail: input.separationTypeDetail,
+    authorizedByName: input.authorizedByName,
+    dateOverrideReason: input.dateOverrideReason,
+  });
 
   const prisma = getPrisma();
 
@@ -484,13 +602,26 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
         receivedAt: input.receivedAt,
         receiptSource: input.receiptSource,
         proposedLastDay: null,
-        confirmedLastDay: input.confirmedLastDay ?? null,
+        confirmedLastDay,
         effectiveSeparationAt,
+        contractEndDate,
+        noticeApplicableOverride: input.noticeApplicableOverride ?? null,
+        separationTypeDetail: input.separationTypeDetail?.trim() || null,
+        authorizedByName: input.authorizedByName?.trim() || null,
+        dateOverrideReason: input.dateOverrideReason?.trim() || null,
         // Notice tracking has no product surface (owner, 2026-08-17); the
         // days-given figure still derives silently onto the record from
         // receipt -> confirmed last day - for the file only, never displayed
         // and never calculated from.
-        noticeProvidedDays: noticeDaysProvided(input.receivedAt, input.confirmedLastDay),
+        // Notice days are only meaningful where a notice period is actually
+        // served. A termination has no notice to count, and recording zero
+        // there would read as "no notice given" rather than "not a concept".
+        noticeProvidedDays: noticeIsServed(
+          input.departureType,
+          input.noticeApplicableOverride ?? null,
+        )
+          ? noticeDaysProvided(input.receivedAt, confirmedLastDay)
+          : null,
         noticeRequiredDays: null,
         noticeTreatment: null,
         reasonCategoryId: input.reasonCategoryId ?? null,
@@ -602,6 +733,51 @@ export interface CaseViewCapabilities {
   canDownload: boolean;
 }
 
+/**
+ * What the separation MEANS for this case, derived once on the server.
+ *
+ * The case header, the dashboard and every downstream screen read this
+ * rather than each deciding for itself whether a departure is urgent
+ * (directive 17, 28). It is derived, never stored: it changes when the
+ * clock moves past the effective date, and a stored copy would go stale.
+ */
+export function separationSummaryOf(
+  c: {
+    departureType: string;
+    receivedAt: Date;
+    confirmedLastDay: Date | null;
+    effectiveSeparationAt: Date | null;
+    contractEndDate: Date | null;
+    noticeApplicableOverride: boolean | null;
+    createdAt: Date;
+  },
+  now: Date = new Date(),
+) {
+  const type = isDepartureType(c.departureType) ? c.departureType : 'OTHER';
+  const profile = separationProfile(type);
+  const dates = datesOf(c);
+  const operative = operativeDate(type, dates);
+  return {
+    type,
+    label: profile.label,
+    receivedDateLabel: profile.receivedDateLabel,
+    initiator: profile.initiator,
+    noticeApplies: noticeApplies(type, c.noticeApplicableOverride),
+    noticeServed: noticeIsServed(type, c.noticeApplicableOverride),
+    noticeArrangement: profile.noticeArrangement,
+    urgency: separationUrgency(type, dates, now),
+    /// The single date the operational timing hangs off.
+    operativeDate: operative,
+    /// Negative once the departure has passed. Null when no date is set yet.
+    daysUntilDeparture: operative ? wholeDaysBetween(now, operative) : null,
+    /// Entered after the event. Legitimate and supported, never blocked -
+    /// but worth saying out loud so nobody reads it as live work.
+    backdated: isBackdated(type, dates, c.createdAt),
+    dates,
+  };
+}
+export type SeparationSummary = ReturnType<typeof separationSummaryOf>;
+
 export async function getCase(actor: Actor, caseId: string) {
   const { c, ctx } = await loadCaseWithAccess(caseId);
   assertView(actor, ctx);
@@ -661,7 +837,7 @@ export async function getCase(actor: Actor, caseId: string) {
     reasonNotesMasked: !capabilities.canViewReasonNotes,
   };
 
-  return { case: dto, capabilities };
+  return { case: dto, capabilities, separation: separationSummaryOf(c) };
 }
 
 // --- list --------------------------------------------------------------------
@@ -701,9 +877,7 @@ export const listFilterSchema = z.object({
       'REOPENED',
     ])
     .optional(),
-  departureType: z
-    .enum(['RESIGNATION_WITH_NOTICE', 'IMMEDIATE_RESIGNATION', 'TERMINATION'])
-    .optional(),
+  departureType: z.enum(DEPARTURE_TYPES).optional(),
   measurementCohort: z.enum(['BASELINE', 'PILOT', 'POST_ROLLOUT']).optional(),
   recordPurpose: z.enum(['OPERATIONAL', 'TRAINING', 'TEST']).optional(),
   q: z.string().trim().max(100).optional(),
@@ -995,6 +1169,29 @@ export async function updateDraft(actor: Actor, caseId: string, rawPatch: unknow
   const nextDepartureType = patch.departureType ?? c.departureType;
   const nextConfirmedLastDay =
     'confirmedLastDay' in patch ? (patch.confirmedLastDay ?? null) : c.confirmedLastDay;
+  const nextContractEndDate =
+    'contractEndDate' in patch ? (patch.contractEndDate ?? null) : c.contractEndDate;
+
+  // Changing the separation type must never re-read one date as another: a
+  // notice date is not a termination date (directive 16). Anything the new
+  // type has no meaning for is named, and HR clears it deliberately - the
+  // platform will not quietly drop or reinterpret it.
+  if (patch.departureType && patch.departureType !== c.departureType) {
+    const stranded = incompatibleDates(c.departureType, patch.departureType, {
+      receivedAt: c.receivedAt,
+      confirmedLastDay: nextConfirmedLastDay,
+      effectiveSeparationAt: c.effectiveSeparationAt,
+      contractEndDate: nextContractEndDate,
+    });
+    if (stranded.length > 0) {
+      throw ServiceError.validation([
+        `Changing this case to ${separationProfile(patch.departureType).label} would leave ` +
+          `${stranded.length === 1 ? 'a value' : 'values'} that no longer mean anything: ` +
+          `${stranded.join(', ')}. Clear ${stranded.length === 1 ? 'it' : 'them'} first - ` +
+          'the platform will not reinterpret one date as another.',
+      ]);
+    }
+  }
   const previouslyDerived = await derivedEffectiveSeparation(c.departureType, c.confirmedLastDay);
   const effectiveWasDerived =
     c.effectiveSeparationAt === null ||
@@ -1005,6 +1202,59 @@ export async function updateDraft(actor: Actor, caseId: string, rawPatch: unknow
       ? await derivedEffectiveSeparation(nextDepartureType, nextConfirmedLastDay)
       : null;
 
+  const nextEffective =
+    'effectiveSeparationAt' in patch
+      ? (patch.effectiveSeparationAt ?? null)
+      : (rederivedEffective ?? c.effectiveSeparationAt);
+
+  // The whole separation is re-validated after the patch, not just the fields
+  // that were sent: changing the type can invalidate a date entered under the
+  // old one, and the server is the authority either way (directive 30).
+  assertSeparationRules({
+    departureType: nextDepartureType,
+    dates: {
+      receivedAt: patch.receivedAt ?? c.receivedAt,
+      confirmedLastDay: nextConfirmedLastDay,
+      effectiveSeparationAt: nextEffective,
+      contractEndDate: nextContractEndDate,
+    },
+    noticeApplicableOverride:
+      'noticeApplicableOverride' in patch
+        ? (patch.noticeApplicableOverride ?? null)
+        : c.noticeApplicableOverride,
+    separationTypeDetail:
+      'separationTypeDetail' in patch ? patch.separationTypeDetail : c.separationTypeDetail,
+    authorizedByName: 'authorizedByName' in patch ? patch.authorizedByName : c.authorizedByName,
+    dateOverrideReason:
+      'dateOverrideReason' in patch ? patch.dateOverrideReason : c.dateOverrideReason,
+  });
+
+  // Directive 31: the fields that drive access removal, payroll timing and
+  // asset deadlines are audited with their old and new values, not merely
+  // named. A date nobody can reconstruct is not traceable.
+  const CRITICAL = [
+    'departureType',
+    'receivedAt',
+    'confirmedLastDay',
+    'effectiveSeparationAt',
+    'contractEndDate',
+  ] as const;
+  const asAuditValue = (v: unknown) =>
+    v instanceof Date ? v.toISOString() : v === null || v === undefined ? null : String(v);
+  // Flat scalar keys, because audit metadata is deliberately flat and
+  // PII-safe: sanitizeMetadata summarizes any nested array as "[array:n]",
+  // which would have recorded that something changed while losing what.
+  const criticalChanges: Record<string, string | null> = {};
+  for (const field of CRITICAL) {
+    if (!(field in patch)) continue;
+    const before = asAuditValue((c as Record<string, unknown>)[field]);
+    const after = asAuditValue((patch as Record<string, unknown>)[field]);
+    if (before === after) continue;
+    criticalChanges[`${field}.from`] = before;
+    criticalChanges[`${field}.to`] = after;
+  }
+  const hasCriticalChanges = Object.keys(criticalChanges).length > 0;
+
   const changedFields = Object.keys(patch);
   const correlationId = newCorrelationId();
   await getPrisma().$transaction(async (tx) => {
@@ -1014,8 +1264,11 @@ export async function updateDraft(actor: Actor, caseId: string, rawPatch: unknow
         ...('departureType' in patch && patch.departureType
           ? {
               departureType: patch.departureType,
-              classification:
-                patch.departureType === 'TERMINATION' ? 'RESTRICTED' : c.classification,
+              // A restricted-by-default type raises the classification; it is
+              // never lowered by a re-type (DEC-035 / IC-S1-011).
+              classification: separationProfile(patch.departureType).restrictedByDefault
+                ? 'RESTRICTED'
+                : c.classification,
             }
           : {}),
         ...('receivedAt' in patch && patch.receivedAt ? { receivedAt: patch.receivedAt } : {}),
@@ -1030,6 +1283,19 @@ export async function updateDraft(actor: Actor, caseId: string, rawPatch: unknow
           : rederivedEffective
             ? { effectiveSeparationAt: rederivedEffective }
             : {}),
+        ...('contractEndDate' in patch ? { contractEndDate: patch.contractEndDate ?? null } : {}),
+        ...('noticeApplicableOverride' in patch
+          ? { noticeApplicableOverride: patch.noticeApplicableOverride ?? null }
+          : {}),
+        ...('separationTypeDetail' in patch
+          ? { separationTypeDetail: patch.separationTypeDetail?.trim() || null }
+          : {}),
+        ...('authorizedByName' in patch
+          ? { authorizedByName: patch.authorizedByName?.trim() || null }
+          : {}),
+        ...('dateOverrideReason' in patch
+          ? { dateOverrideReason: patch.dateOverrideReason?.trim() || null }
+          : {}),
         ...('department' in patch && patch.department ? { department: patch.department } : {}),
         ...('location' in patch && patch.location ? { location: patch.location } : {}),
         ...('reasonCaptureStatus' in patch && patch.reasonCaptureStatus
@@ -1039,13 +1305,18 @@ export async function updateDraft(actor: Actor, caseId: string, rawPatch: unknow
           ? { reasonCategoryId: patch.reasonCategoryId ?? null }
           : {}),
         ...('reasonNotes' in patch ? { reasonNotes: patch.reasonNotes || null } : {}),
-        // Notice given re-derives whenever either anchoring date changes.
-        ...('receivedAt' in patch || 'confirmedLastDay' in patch
+        // Notice given re-derives whenever either anchoring date changes, or
+        // when the type changes - a termination has no notice to count.
+        ...('receivedAt' in patch || 'confirmedLastDay' in patch || 'departureType' in patch
           ? {
-              noticeProvidedDays: noticeDaysProvided(
-                patch.receivedAt ?? c.receivedAt,
-                'confirmedLastDay' in patch ? (patch.confirmedLastDay ?? null) : c.confirmedLastDay,
-              ),
+              noticeProvidedDays: noticeIsServed(
+                nextDepartureType,
+                'noticeApplicableOverride' in patch
+                  ? (patch.noticeApplicableOverride ?? null)
+                  : c.noticeApplicableOverride,
+              )
+                ? noticeDaysProvided(patch.receivedAt ?? c.receivedAt, nextConfirmedLastDay)
+                : null,
             }
           : {}),
         version: { increment: 1 },
@@ -1064,8 +1335,22 @@ export async function updateDraft(actor: Actor, caseId: string, rawPatch: unknow
       caseId,
       result: 'SUCCESS',
       correlationId,
-      // Field names only - values may be sensitive (REQ-SEC-023).
-      metadata: { changedFields: changedFields.join(',') },
+      // Field names only for the general case - values may be sensitive
+      // (REQ-SEC-023). The separation dates are the exception the directive
+      // requires: they are operational facts, carry no personal detail, and
+      // drive access removal and payroll timing, so their before and after
+      // are recorded (directive 31).
+      metadata: {
+        changedFields: changedFields.join(','),
+        ...(hasCriticalChanges
+          ? {
+              ...criticalChanges,
+              ...(patch.dateOverrideReason?.trim()
+                ? { dateOverrideReason: patch.dateOverrideReason.trim() }
+                : {}),
+            }
+          : {}),
+      },
     });
   });
 }

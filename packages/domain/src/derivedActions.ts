@@ -1,3 +1,4 @@
+import { separationProfile, type DepartureType } from './separation.ts';
 /**
  * Deterministic derived-action rules engine (Directive 6.3 B/C).
  *
@@ -56,9 +57,18 @@ export type Determination = (typeof DETERMINATIONS)[number];
 
 /** The facts a derivation consumes - everything the platform already knows. */
 export interface DerivationFacts {
-  departureType: 'RESIGNATION_WITH_NOTICE' | 'IMMEDIATE_RESIGNATION' | 'TERMINATION';
+  departureType: DepartureType;
   classification: 'CONFIDENTIAL' | 'RESTRICTED';
   effectiveSeparationAt: Date;
+  /**
+   * The distinct separation dates a recipient actually needs (directive 21,
+   * 24). Finance and the providers were being handed one generic "exit
+   * date"; they need to know which date is which, because the answers differ
+   * - the last day worked is a payroll fact, the effective date is when
+   * employment ends, and neither is the date notice arrived.
+   */
+  receivedAt?: Date | null;
+  confirmedLastDay?: Date | null;
   groupHealthApplicability: BenefitsApplicability;
   groupLifeApplicability: BenefitsApplicability;
   otherProviderApplicability: BenefitsApplicability;
@@ -92,6 +102,7 @@ export interface DerivedActionSpec {
 }
 
 function benefitsRule(args: {
+  separationDates: Record<string, string>;
   key: string;
   group: RequiredActionGroup;
   title: string;
@@ -124,6 +135,10 @@ function benefitsRule(args: {
           : applicability === 'NO'
             ? 'HR confirmed the benefit does not apply; no notification is created.'
             : 'Applicability is unknown; confirm it under Benefits & providers.',
+      // The dates the provider needs, each named. Which of them ends cover
+      // is the provider's own rule, so the platform states the facts and
+      // decides nothing (CLAUDE.md rule 4, directive 21).
+      ...args.separationDates,
     },
     notificationType: applicability === 'YES' ? args.notificationType : null,
     scheduledSendAt: applicability === 'YES' ? args.now : null,
@@ -135,8 +150,44 @@ function benefitsRule(args: {
  * instant. Deterministic and total: every action the platform can know about
  * is present with an explicit determination - nothing silently missing.
  */
+/** "Notice received" -> "noticeReceived", so the key reads as what it is. */
+const camel = (label: string) =>
+  label
+    .split(/[^A-Za-z]+/)
+    .filter(Boolean)
+    .map((word, i) =>
+      i === 0 ? word.toLowerCase() : word[0]!.toUpperCase() + word.slice(1).toLowerCase(),
+    )
+    .join('');
+
 export function deriveRequiredActions(facts: DerivationFacts, now: Date): DerivedActionSpec[] {
   const specs: DerivedActionSpec[] = [];
+
+  // Employer-initiated separations hold their notifications until the
+  // separation is effective: naming a person as being terminated weeks in
+  // advance is a disclosure, and there is nothing the recipient can act on
+  // until it happens. Every other separation notifies at activation, which
+  // is the whole value of advance notice (directive 8, 9, 18, 24).
+  const profile = separationProfile(facts.departureType);
+
+  // The separation dates a recipient needs, each named rather than collapsed
+  // into one "exit date" (directive 21, 24). Only dates that exist appear -
+  // an empty label would read as a date of nothing.
+  const separationDates: Record<string, string> = {
+    separationType: profile.label,
+    effectiveSeparationAt: facts.effectiveSeparationAt.toISOString(),
+    ...(facts.confirmedLastDay ? { lastWorkingDay: facts.confirmedLastDay.toISOString() } : {}),
+    ...(facts.receivedAt
+      ? { [`${camel(profile.receivedDateLabel)}`]: facts.receivedAt.toISOString() }
+      : {}),
+  };
+  const holdUntilEffective = profile.initiator === 'EMPLOYER';
+  const atEffectiveOrNow = () =>
+    facts.effectiveSeparationAt.getTime() > now.getTime() ? facts.effectiveSeparationAt : now;
+  const notifyAt = holdUntilEffective ? atEffectiveOrNow() : now;
+  const scheduleNote = holdUntilEffective
+    ? 'Confidential timing: released at the effective separation time.'
+    : 'Sent when the offboarding process starts.';
 
   // --- IT access removal (always required for an active employee; U) --------
   const itSendAt = itEmailScheduledAt({
@@ -158,10 +209,9 @@ export function deriveRequiredActions(facts: DerivationFacts, now: Date): Derive
       effectiveSeparationAt: facts.effectiveSeparationAt.toISOString(),
     },
     result: {
-      schedule:
-        facts.departureType === 'TERMINATION'
-          ? 'Confidential timing: released one hour before the effective separation time.'
-          : 'Sent when the offboarding process starts, stating the exact effective time.',
+      schedule: holdUntilEffective
+        ? 'Confidential timing: released one hour before the effective separation time.'
+        : 'Sent when the offboarding process starts, stating the exact effective time.',
       exactEffectiveTime: facts.effectiveSeparationAt.toISOString(),
     },
     notificationType: 'IT_ACCESS_REMOVAL',
@@ -203,19 +253,9 @@ export function deriveRequiredActions(facts: DerivationFacts, now: Date): Derive
       departureType: facts.departureType,
       classification: facts.classification,
     },
-    result: {
-      schedule:
-        facts.departureType === 'TERMINATION'
-          ? 'Confidential timing: released at the effective separation time.'
-          : 'Sent when the offboarding process starts.',
-    },
+    result: { schedule: scheduleNote },
     notificationType: 'LINE_MANAGER_HANDOVER',
-    scheduledSendAt:
-      facts.departureType === 'TERMINATION'
-        ? facts.effectiveSeparationAt.getTime() > now.getTime()
-          ? facts.effectiveSeparationAt
-          : now
-        : now,
+    scheduledSendAt: notifyAt,
   });
 
   // --- Finance notification (always required) --------------------------------
@@ -228,19 +268,9 @@ export function deriveRequiredActions(facts: DerivationFacts, now: Date): Derive
     determination: 'DERIVED',
     ruleKey: 'RULE_FINANCE_EMAIL_V1',
     sourceFields: { departureType: facts.departureType },
-    result: {
-      schedule:
-        facts.departureType === 'TERMINATION'
-          ? 'Confidential timing: released at the effective separation time.'
-          : 'Sent when the offboarding process starts.',
-    },
+    result: { schedule: scheduleNote, ...separationDates },
     notificationType: 'FINANCE_OFFBOARDING',
-    scheduledSendAt:
-      facts.departureType === 'TERMINATION'
-        ? facts.effectiveSeparationAt.getTime() > now.getTime()
-          ? facts.effectiveSeparationAt
-          : now
-        : now,
+    scheduledSendAt: notifyAt,
   });
 
   // --- Benefits / external providers (V) -------------------------------------
@@ -253,6 +283,7 @@ export function deriveRequiredActions(facts: DerivationFacts, now: Date): Derive
       notificationType: 'SAGICOR_GROUP_HEALTH_REMOVAL',
       ruleKey: 'RULE_GROUP_HEALTH_V1',
       sourceField: 'groupHealthApplicability',
+      separationDates,
       now,
     }),
     benefitsRule({
@@ -263,6 +294,7 @@ export function deriveRequiredActions(facts: DerivationFacts, now: Date): Derive
       notificationType: 'NCB_GROUP_LIFE_REMOVAL',
       ruleKey: 'RULE_GROUP_LIFE_V1',
       sourceField: 'groupLifeApplicability',
+      separationDates,
       now,
     }),
   );

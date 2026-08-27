@@ -22,13 +22,11 @@ export const CASE_STATUSES = [
 
 export type CaseStatus = (typeof CASE_STATUSES)[number];
 
-export const DEPARTURE_TYPES = [
-  'RESIGNATION_WITH_NOTICE',
-  'IMMEDIATE_RESIGNATION',
-  'TERMINATION',
-] as const;
-
-export type DepartureType = (typeof DEPARTURE_TYPES)[number];
+// The canonical separation model lives in separation.ts - one authoritative
+// statement of what each way of leaving means. These re-exports keep every
+// existing import working (owner directive, 2026-08-26).
+export { DEPARTURE_TYPES, type DepartureType } from './separation.ts';
+import type { DepartureType } from './separation.ts';
 
 export type CaseTransitionAction =
   | 'submit'

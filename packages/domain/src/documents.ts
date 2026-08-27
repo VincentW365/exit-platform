@@ -1,3 +1,4 @@
+import { isDepartureType, type DepartureType } from './separation.ts';
 /**
  * Controlled document domain rules (Directive 2 sections B-D).
  *
@@ -29,10 +30,28 @@ export function isTypePermanentlyDisabled(type: DocumentType): boolean {
   return type === 'TERMINATION_DOCUMENT_PLACEHOLDER';
 }
 
+/**
+ * The employee-facing letter a separation produces, if any.
+ *
+ * Keyed on the separation type so a terminated employee can never receive a
+ * resignation acknowledgement (BR-DOC-006, directive 19). A type with no
+ * approved letter template returns null rather than borrowing another
+ * separation's wording - the platform issues nothing rather than the wrong
+ * thing, and HR raises a manual exception document where one is needed.
+ */
 export function letterTypeForDeparture(departureType: string): DocumentType | null {
-  if (departureType === 'RESIGNATION_WITH_NOTICE') return 'RESIGNATION_ACCEPTANCE_WITH_NOTICE';
-  if (departureType === 'IMMEDIATE_RESIGNATION') return 'IMMEDIATE_RESIGNATION_ACKNOWLEDGEMENT';
-  return null; // terminations have no operational letter (defaults 17/18)
+  switch (departureType) {
+    case 'RESIGNATION_WITH_NOTICE':
+      return 'RESIGNATION_ACCEPTANCE_WITH_NOTICE';
+    case 'IMMEDIATE_RESIGNATION':
+      return 'IMMEDIATE_RESIGNATION_ACKNOWLEDGEMENT';
+    // Terminations have no operational letter (fixed defaults 17/18). The
+    // remaining types have no approved template yet: retirement,
+    // contract expiry, redundancy and "other" each need HR's own wording,
+    // which the platform must not invent (CLAUDE.md rule 4, DEC-058).
+    default:
+      return null;
+  }
 }
 
 // --- placeholder registry (section C field list) -----------------------------
@@ -202,11 +221,28 @@ export function propertyReturnDeadline(c: {
   return due ? formatDateOnly(due) : '';
 }
 
-const DEPARTURE_PHRASE: Record<string, string> = {
+/**
+ * How a separation is NAMED in a document or a message (directive 19, 20).
+ *
+ * Finance must never read "the employee has resigned" about a termination,
+ * and a retiring employee is not resigning. The phrase comes from the
+ * separation profile so a new way of leaving cannot silently borrow another
+ * one's wording - the exact failure this map exists to prevent.
+ */
+const DEPARTURE_PHRASE: Record<DepartureType, string> = {
   RESIGNATION_WITH_NOTICE: 'resignation with notice',
   IMMEDIATE_RESIGNATION: 'immediate resignation',
   TERMINATION: 'termination',
+  RETIREMENT: 'retirement',
+  CONTRACT_EXPIRY: 'end of contract',
+  REDUNDANCY: 'redundancy',
+  OTHER: 'separation',
 };
+
+/** The phrase for a case, refusing to guess for an unknown value. */
+export function departurePhrase(departureType: string): string {
+  return isDepartureType(departureType) ? DEPARTURE_PHRASE[departureType] : 'separation';
+}
 
 export function buildFieldSnapshot(
   c: CaseFieldsForDocument,
@@ -229,7 +265,7 @@ export function buildFieldSnapshot(
     DEPARTMENT: c.department,
     LOCATION: c.location,
     MANAGER_NAME: c.managerName ?? '',
-    DEPARTURE_TYPE: DEPARTURE_PHRASE[c.departureType] ?? c.departureType,
+    DEPARTURE_TYPE: departurePhrase(c.departureType),
     RESIGNATION_RECEIVED_DATE: formatDateOnly(c.receivedAt),
     PROPOSED_LAST_WORKING_DATE: c.proposedLastDay ? formatDateOnly(c.proposedLastDay) : '',
     CONFIRMED_LAST_WORKING_DATE: c.confirmedLastDay ? formatDateOnly(c.confirmedLastDay) : '',

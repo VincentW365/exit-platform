@@ -10,6 +10,7 @@
  */
 import {
   can,
+  separationProfile,
   canViewCase,
   deterministicKeywordSummary,
   hasRole,
@@ -74,6 +75,14 @@ async function suppressionThreshold(): Promise<number> {
   const v = (await getSystemConfigValue('reporting.suppressionThreshold')) as number | null;
   return typeof v === 'number' && v >= 1 ? v : DEFAULT_SUPPRESSION_THRESHOLD;
 }
+
+/** How an initiator reads in a report. */
+const SEPARATION_CLASS: Record<string, string> = {
+  EMPLOYEE: 'Voluntary',
+  EMPLOYER: 'Involuntary',
+  CONTRACT: 'Contractual',
+  UNSPECIFIED: 'Unclassified',
+};
 
 export const REPORT_CATALOG: ReadonlyArray<{ key: string; title: string; family: string }> = [
   { key: 'volumeTrend', title: 'Offboarding volume and trend', family: 'Cases' },
@@ -150,9 +159,13 @@ export async function runReport(
         where,
         _count: { _all: true },
       });
+      // Who ended the employment comes from the separation profile, not from
+      // naming one type here. With seven ways of leaving, "anything that is
+      // not a termination is voluntary" would file a redundancy and a
+      // contract expiry as the employee's own choice (directive 32).
       const mapped = rows.map((r) => ({
-        label: r.departureType === 'TERMINATION' ? 'Involuntary' : 'Voluntary',
-        type: r.departureType,
+        label: SEPARATION_CLASS[separationProfile(r.departureType).initiator] ?? 'Unclassified',
+        type: separationProfile(r.departureType).label,
         count: r._count._all,
       }));
       const suppressed = suppressSmallGroups(mapped, threshold);

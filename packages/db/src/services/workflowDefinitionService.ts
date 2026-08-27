@@ -8,6 +8,7 @@
  */
 import { z } from 'zod';
 import {
+  type DepartureType,
   can,
   workflowConfigChecksum,
   workflowDefinitionErrors,
@@ -98,9 +99,7 @@ export async function getWorkflowDefinition(actor: Actor, id: string) {
 }
 
 /** Active definition for a workflow (departure) type; null when none. */
-export async function getActiveDefinitionForType(
-  workflowType: 'RESIGNATION_WITH_NOTICE' | 'IMMEDIATE_RESIGNATION' | 'TERMINATION',
-) {
+export async function getActiveDefinitionForType(workflowType: DepartureType) {
   return getPrisma().workflowDefinition.findFirst({
     where: { workflowType, status: 'ACTIVE' },
     include: { taskDefs: { where: { enabled: true }, orderBy: { sortOrder: 'asc' } } },
@@ -127,7 +126,7 @@ function toShape(
  */
 export async function createWorkflowDraft(
   actor: Actor,
-  workflowType: 'RESIGNATION_WITH_NOTICE' | 'IMMEDIATE_RESIGNATION' | 'TERMINATION',
+  workflowType: DepartureType,
   rawInput: unknown,
 ) {
   if (!can(actor, 'workflowDef.draft')) throw ServiceError.forbidden();

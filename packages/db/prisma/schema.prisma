@@ -31,10 +31,17 @@ enum Role {
   SYSTEM_ADMIN
 }
 
+/// The canonical separation model (owner directive, 2026-08-26). The rules
+/// each value implies live in packages/domain/src/separation.ts - this enum
+/// records WHICH separation a case is, never what that means.
 enum DepartureType {
   RESIGNATION_WITH_NOTICE
   IMMEDIATE_RESIGNATION
   TERMINATION
+  RETIREMENT
+  CONTRACT_EXPIRY
+  REDUNDANCY
+  OTHER
 }
 
 enum CaseStatus {
@@ -228,6 +235,10 @@ model EmployeeSourceRecord {
   division        String?
   employeeNumber  String?
   active          Boolean   @default(true)
+  /// Fixed-term contract end date where the source system holds one. Read
+  /// only, like every other column here - selecting End of contract reuses
+  /// this rather than asking HR to retype a date that already exists.
+  contractEndDate DateTime?
   lastSyncedAt    DateTime?
 
   @@unique([sourceSystem, sourceId])
@@ -267,10 +278,25 @@ model OffboardingCase {
   confirmedLastDay      DateTime?
   effectiveSeparationAt DateTime?
 
+  /// The predetermined contractual completion date. Distinct from every
+  /// other date here: nobody gave notice, the date was agreed at hire.
+  contractEndDate DateTime?
+
   noticeProvidedDays Int?
   noticeRequiredDays Int?
   /// Approved notice treatment wording; never an entitlement calculation.
   noticeTreatment    String?
+
+  /// Separation-model fields (owner directive, 2026-08-26). The profile in
+  /// packages/domain/src/separation.ts answers these for every type except
+  /// OTHER, where the platform must not infer and HR states it.
+  noticeApplicableOverride Boolean?
+  /// HR's own description, required when the type is OTHER.
+  separationTypeDetail     String?
+  /// Who authorized the separation. Required for employer-initiated exits.
+  authorizedByName         String?
+  /// Why an unusual date relationship was accepted. Audited, never silent.
+  dateOverrideReason       String?
 
   /// IC-S1-008: nullable until DEC-031 approves a taxonomy.
   reasonCategoryId    String?             @db.Uuid

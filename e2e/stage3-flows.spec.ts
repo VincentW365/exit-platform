@@ -35,17 +35,22 @@ async function createTestCase(
   await page.getByLabel('Employee Name or Number').fill(opts.employeeQuery);
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure Type').selectOption(opts.type);
-  await page.getByLabel('Date and Time Received').fill(opts.receivedAt ?? '2026-07-20T09:30');
+  await page.locator(`input[name="type"][value=${JSON.stringify(opts.type)}]`).check();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.locator('input[name="receivedAt"]').fill(opts.receivedAt ?? '2026-07-20T09:30');
   // A resignation with notice ends at close of business on the final working
   // date, so the platform derives the instant and the field is not offered.
   if (opts.type === 'RESIGNATION_WITH_NOTICE') {
-    await page.getByLabel('Final Working Date').fill('2026-08-14');
+    await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
   } else {
-    if (opts.confirmedLastDay) {
-      await page.getByLabel('Final Working Date').fill('2026-08-14');
-    }
-    await page.getByLabel(/Employment Ends/).fill(opts.effectiveAt ?? '2026-08-14T17:00');
+    const effectiveAt = opts.effectiveAt ?? '2026-08-14T17:00';
+    // The last working day now prefills to today (DEC-058). A historical
+    // separation has to state the day work actually stopped, or the record
+    // claims the employee worked past the date employment ended.
+    await page
+      .locator('input[name="confirmedLastDay"]')
+      .fill(opts.confirmedLastDay ? '2026-08-14' : effectiveAt.slice(0, 10));
+    await page.locator('input[name="effectiveSeparationAt"]').fill(effectiveAt);
   }
   await page.getByRole('button', { name: 'Create draft case' }).click();
   const banner = page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/);

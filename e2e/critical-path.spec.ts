@@ -30,13 +30,16 @@ test('HR officer creates and submits; HR manager approves with snapshot; line ma
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
 
-  await page.getByLabel('Departure Type').selectOption('RESIGNATION_WITH_NOTICE');
-  await page.getByLabel('Date and Time Received').fill('2026-07-20T09:30');
+  await page
+    .locator(`input[name="type"][value=${JSON.stringify('RESIGNATION_WITH_NOTICE')}]`)
+    .check();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.locator('input[name="receivedAt"]').fill('2026-07-20T09:30');
   // Receipt channel: the picker defaults to "Signed letter" and the detail
   // field stays hidden unless "Other" is chosen - nothing to fill.
   // A resignation with notice ends at close of business on the final working
   // date, so the platform derives the instant and the field is not offered.
-  await page.getByLabel('Final Working Date').fill('2026-08-14');
+  await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
   await page.getByRole('button', { name: 'Create draft case' }).click();
 
   await expect(page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/)).toBeVisible();

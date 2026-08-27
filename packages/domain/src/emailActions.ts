@@ -1,3 +1,4 @@
+import { isDepartureType, separationProfile } from './separation.ts';
 /**
  * Email-first department action rules (Directive 6.3 K/R/S/T/U).
  *
@@ -110,19 +111,33 @@ export function autoSendBlockers(args: {
 // --- scheduled send timing (Directive 6.3 U/L) -------------------------------
 
 /**
- * When the IT access-removal email goes out, by departure type (U.2):
- * - resignation with notice: immediately at activation (advance notice with
- *   the exact effective time);
- * - immediate resignation: immediately (urgent);
- * - termination: close to the effective instant (confidential timing) - one
- *   hour before, never earlier.
+ * When the IT access-removal email goes out (U.2).
+ *
+ * Timed off the SEPARATION EFFECTIVE instant, never off when the case was
+ * created or when notice arrived (directive 23). Two shapes:
+ *
+ * - Employer-initiated separations are timed close to the effective instant
+ *   and released one hour before it, never earlier: telling IT a month in
+ *   advance that a named person is being terminated is a disclosure, and the
+ *   removal itself is what has to be punctual.
+ * - Every other separation goes at activation carrying the exact effective
+ *   time, so IT can schedule the removal themselves. Advance notice is the
+ *   point: a resignation with a month of notice must not lose its access on
+ *   the day the case was raised.
+ *
+ * Either way the send instant is never in the past - a future-dated
+ * separation does not fire today, and a historical one goes immediately
+ * because the work is already overdue.
  */
 export function itEmailScheduledAt(args: {
   departureType: string;
   effectiveSeparationAt: Date;
   now: Date;
 }): Date {
-  if (args.departureType === 'TERMINATION') {
+  const confidentialTiming =
+    isDepartureType(args.departureType) &&
+    separationProfile(args.departureType).initiator === 'EMPLOYER';
+  if (confidentialTiming) {
     const oneHourBefore = new Date(args.effectiveSeparationAt.getTime() - 60 * 60_000);
     return oneHourBefore.getTime() > args.now.getTime() ? oneHourBefore : args.now;
   }

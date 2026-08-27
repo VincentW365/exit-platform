@@ -208,3 +208,19 @@ export function parseInstantInZone(value: string, zone: string = APP_ZONE): Date
   const dt = DateTime.fromISO(value.trim(), { zone });
   return dt.isValid ? dt.toJSDate() : null;
 }
+
+/**
+ * A date for `<input type="date">`, in the company's own zone.
+ *
+ * The control wants a LOCAL wall-clock date. Formatting with toISOString()
+ * gives the UTC date, which for a Jamaican evening instant is the following
+ * day - so a prefilled last working day would show as one day late.
+ */
+export function isoDateInZone(instant: Date, zone: string = APP_ZONE): string {
+  return DateTime.fromJSDate(instant, { zone }).toFormat('yyyy-LL-dd');
+}
+
+/** The same, for `<input type="datetime-local">`. */
+export function isoDateTimeInZone(instant: Date, zone: string = APP_ZONE): string {
+  return DateTime.fromJSDate(instant, { zone }).toFormat("yyyy-LL-dd'T'HH:mm");
+}

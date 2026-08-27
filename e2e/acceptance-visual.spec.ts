@@ -83,11 +83,14 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
   await snap(page, '04-create-case');
   await axeCheck(page, 'create-case');
 
-  await page.getByLabel('Departure Type').selectOption('RESIGNATION_WITH_NOTICE');
-  await page.getByLabel('Date and Time Received').fill('2026-07-20T09:30');
+  await page
+    .locator(`input[name="type"][value=${JSON.stringify('RESIGNATION_WITH_NOTICE')}]`)
+    .check();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.locator('input[name="receivedAt"]').fill('2026-07-20T09:30');
   // A resignation with notice ends at close of business on the final working
   // date, so the platform derives the instant and the field is not offered.
-  await page.getByLabel('Final Working Date').fill('2026-08-14');
+  await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
   await page.getByRole('button', { name: 'Create draft case' }).click();
   await expect(page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/)).toBeVisible();
   const caseUrl = page.url().split('?')[0]!;
@@ -125,9 +128,11 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
   await page.getByLabel('Employee Name or Number').fill('morgan');
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure Type').selectOption('TERMINATION');
-  await page.getByLabel('Date and Time Received').fill('2026-07-21T10:00');
-  await page.getByLabel(/Employment Ends/).fill('2026-08-01T17:00');
+  await page.locator(`input[name="type"][value=${JSON.stringify('TERMINATION')}]`).check();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.locator('input[name="receivedAt"]').fill('2026-07-21T10:00');
+  await page.locator('input[name="confirmedLastDay"]').fill('2026-08-01');
+  await page.locator('input[name="effectiveSeparationAt"]').fill('2026-08-01T17:00');
   await page.getByRole('button', { name: 'Create draft case' }).click();
   const restrictedUrl = page.url().split('?')[0]!;
   await snap(page, '14a-restricted-authorized');

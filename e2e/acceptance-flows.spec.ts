@@ -22,14 +22,16 @@ async function createDraftCase(
   await page.getByLabel('Employee Name or Number').fill(opts.employeeQuery);
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure Type').selectOption(opts.type);
-  await page.getByLabel('Date and Time Received').fill('2026-07-20T09:30');
+  await page.locator(`input[name="type"][value=${JSON.stringify(opts.type)}]`).check();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.locator('input[name="receivedAt"]').fill('2026-07-20T09:30');
   // A resignation with notice ends at close of business on the final working
   // date, so the platform derives the instant and the field is not offered.
   if (opts.type === 'RESIGNATION_WITH_NOTICE') {
-    await page.getByLabel('Final Working Date').fill('2026-08-14');
+    await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
   } else {
-    await page.getByLabel(/Employment Ends/).fill('2026-08-14T17:00');
+    await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
+    await page.locator('input[name="effectiveSeparationAt"]').fill('2026-08-14T17:00');
   }
   if (opts.purpose === 'TEST') {
   }
@@ -60,7 +62,8 @@ test('J.3 return with reason -> correction -> resubmit; history preserved', asyn
   await page.goto(caseUrl);
   // Draft editing now lives as a disclosure under the case summary.
   await page.locator('details.action > summary', { hasText: 'Edit these details' }).click();
-  await page.getByLabel(/Employment Ends/).fill('2026-08-14T18:00');
+  await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
+  await page.locator('input[name="effectiveSeparationAt"]').fill('2026-08-14T18:00');
   await page.getByRole('button', { name: 'Save draft changes' }).click();
   await expect(page.getByText('Draft updated.')).toBeVisible();
   await page.getByRole('button', { name: 'Submit for review' }).click();

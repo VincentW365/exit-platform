@@ -1,3 +1,4 @@
+import { isDepartureType, separationProfile } from './separation.ts';
 /**
  * Exit-survey domain rules (Directive 2 sections G-H).
  */
@@ -70,8 +71,12 @@ export function surveyEligibility(departureType: string): {
   eligibleByDefault: boolean;
   requiresOverride: boolean;
 } {
-  if (departureType === 'TERMINATION') return { eligibleByDefault: false, requiresOverride: true };
-  return { eligibleByDefault: true, requiresOverride: false };
+  // The separation profile decides this, not a condition written here. Before
+  // the canonical model, adding a way of leaving meant remembering to come
+  // and edit this function; now a new type carries its own answer.
+  if (!isDepartureType(departureType)) return { eligibleByDefault: true, requiresOverride: false };
+  const eligible = separationProfile(departureType).surveyEligibleByDefault;
+  return { eligibleByDefault: eligible, requiresOverride: !eligible };
 }
 
 // --- answers -----------------------------------------------------------------

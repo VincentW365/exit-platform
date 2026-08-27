@@ -250,7 +250,8 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
       ...BASE,
       employeeSourceId: 'EMP-TEST-002',
       departureType: 'IMMEDIATE_RESIGNATION',
-      confirmedLastDay: null,
+      // Historical record: they stopped work when employment ended.
+      confirmedLastDay: BASE.effectiveSeparationAt,
     });
     const caseId = created.caseId;
     await transitionCase(officer.actor, caseId, 'submit');
@@ -291,7 +292,8 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
       ...BASE,
       employeeSourceId: 'EMP-TEST-003',
       departureType: 'TERMINATION',
-      confirmedLastDay: null,
+      // Historical record: the last working day was the effective date.
+      confirmedLastDay: BASE.effectiveSeparationAt,
     });
     const caseId = created.caseId;
     await transitionCase(manager.actor, caseId, 'submit');

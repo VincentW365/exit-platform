@@ -28,17 +28,19 @@ async function createTestCase(
   await page.getByLabel('Employee Name or Number').fill(opts.employeeQuery);
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
-  await page.getByLabel('Departure Type').selectOption(opts.type);
-  await page.getByLabel('Date and Time Received').fill('2026-07-20T09:30');
+  await page.locator(`input[name="type"][value=${JSON.stringify(opts.type)}]`).check();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.locator('input[name="receivedAt"]').fill('2026-07-20T09:30');
   // A resignation with notice ends at close of business on the final working
   // date, so the platform derives the instant and the field is not offered.
   if (opts.type === 'RESIGNATION_WITH_NOTICE') {
-    await page.getByLabel('Final Working Date').fill('2026-08-14');
+    await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
   } else {
     if (opts.confirmedLastDay) {
-      await page.getByLabel('Final Working Date').fill('2026-08-14');
+      await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
     }
-    await page.getByLabel(/Employment Ends/).fill('2026-08-14T17:00');
+    await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
+    await page.locator('input[name="effectiveSeparationAt"]').fill('2026-08-14T17:00');
   }
   await page.getByRole('button', { name: 'Create draft case' }).click();
   await expect(page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/)).toBeVisible();

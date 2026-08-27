@@ -3,11 +3,23 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { can } from '@exit/domain';
 import { searchEmployees } from '@exit/db';
+import {
+  DEPARTURE_TYPES,
+  defaultDates,
+  formatDateOnly,
+  isDepartureType,
+  isoDateInZone,
+  isoDateTimeInZone,
+  separationProfile,
+  type DateField,
+  type DepartureType,
+} from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import { createCaseAction, createManualEmployeeAction } from '../actions';
 import { EmptyState } from '@/components/EmptyState';
-import { SearchIcon } from '@/components/icons';
+import { FlowIcon, SearchIcon } from '@/components/icons';
+import { Chip, Row, Rows } from '@/components/patterns';
 import { Field, FieldRow, FormActions, FormSection } from '@/components/forms';
 
 export const metadata: Metadata = { title: 'New Case' };
@@ -26,6 +38,30 @@ export default async function NewCasePage({
 
   const search = q ? await searchEmployees(actor, q) : null;
   const selected = search?.results.find((e) => e.sourceId === selectedId) ?? null;
+
+  // Section 15/29: the separation type is chosen first and the rest of the
+  // form is drawn from its profile. Reading the type from the query string
+  // rather than from client state means the SERVER decides what is asked -
+  // the same authority that will validate the answers (section 30).
+  const departureType: DepartureType | null = isDepartureType(sp.type) ? sp.type : null;
+  const profile = departureType ? separationProfile(departureType) : null;
+  const contractEnd = selected?.contractEndDate ?? null;
+  const defaults = departureType
+    ? defaultDates(departureType, new Date(), { contractEndDate: contractEnd })
+    : null;
+  const noticeApplicable = departureType ? separationProfile(departureType).noticeApplicable : null;
+  const noticeServed = departureType ? separationProfile(departureType).noticeServed : null;
+
+  /** Whether a date concept is asked for at all, and whether it is required. */
+  const shows = (field: DateField) =>
+    !!profile && (profile.requiredDates.includes(field) || profile.optionalDates.includes(field));
+  const requires = (field: DateField) => !!profile && profile.requiredDates.includes(field);
+
+  // <input type="date"> and type="datetime-local" both want a LOCAL wall
+  // clock, and every date in this platform is a Jamaican working date - so
+  // they are formatted in the company's zone, never with toISOString().
+  const dateInput = (d: Date | null | undefined) => (d ? isoDateInZone(d) : undefined);
+  const instantInput = (d: Date | null | undefined) => (d ? isoDateTimeInZone(d) : undefined);
 
   return (
     <>
@@ -200,13 +236,69 @@ export default async function NewCasePage({
       </section>
 
       {selected ? (
+        <section className="panel" aria-labelledby="type-h">
+          <h2 id="type-h" style={{ marginTop: 0 }}>
+            Step 2: How Is {selected.displayName} Leaving?
+          </h2>
+          <p className="hint">
+            This decides what the platform asks for next, and how the whole case is run. A
+            termination is not a resignation without notice, and a contract expiry is not a
+            resignation at all.
+          </p>
+          {/* Section 15: changing the type re-renders the form from the SERVER,
+              the same way choosing an employee already does. The profile that
+              draws the fields is the profile that validates them, so the two
+              cannot drift apart (section 30). */}
+          <form method="get" aria-label="Separation type">
+            <input type="hidden" name="q" value={q} />
+            <input type="hidden" name="employee" value={selectedId} />
+            <Rows label="Ways of leaving">
+              {DEPARTURE_TYPES.map((type) => {
+                const option = separationProfile(type);
+                const chosen = type === departureType;
+                return (
+                  <Row
+                    key={type}
+                    tone={chosen ? 'progress' : undefined}
+                    mark={<FlowIcon />}
+                    title={
+                      <label htmlFor={`dt-${type}`} style={{ fontWeight: 'var(--weight-semi)' }}>
+                        <input
+                          id={`dt-${type}`}
+                          type="radio"
+                          name="type"
+                          value={type}
+                          defaultChecked={chosen}
+                          style={{ width: 'auto', marginRight: '0.5rem' }}
+                        />
+                        {option.label}
+                      </label>
+                    }
+                    sub={option.guidance}
+                    action={chosen ? <Chip tone="progress">Selected</Chip> : null}
+                  />
+                );
+              })}
+            </Rows>
+            <FormActions note="The next step changes to match.">
+              <button type="submit" className="secondary">
+                Continue
+              </button>
+            </FormActions>
+          </form>
+        </section>
+      ) : null}
+
+      {selected && profile && departureType && defaults ? (
         <section className="panel" aria-labelledby="intake-h">
           <h2 id="intake-h" style={{ marginTop: 0 }}>
-            Step 2: Separation Details for {selected.displayName}
+            Step 3: {profile.label} - Details for {selected.displayName}
           </h2>
           {/* Directive 6.2 (S): SOURCE DATA is confirmed, never re-typed. */}
-          <div className="panel" style={{ background: 'var(--muted)', boxShadow: 'none' }}>
-            <h3 style={{ marginTop: 0 }}>From the Employee Directory</h3>
+          <div className="well" style={{ marginBottom: 'var(--space-4)' }}>
+            <h3 style={{ marginTop: 0, fontSize: 'var(--text-base)' }}>
+              From the Employee Directory
+            </h3>
             <dl className="kv">
               <dt>Employee</dt>
               <dd>{selected.displayName}</dd>
@@ -220,37 +312,53 @@ export default async function NewCasePage({
               </dd>
               <dt>Direct Manager</dt>
               <dd>{selected.managerName ?? 'None recorded - HR will assign an alternate'}</dd>
-              <dt>Status</dt>
-              <dd>{selected.active ? 'Active' : 'Inactive'}</dd>
+              {contractEnd ? (
+                <>
+                  <dt>Contract ends</dt>
+                  <dd>{formatDateOnly(contractEnd)}</dd>
+                </>
+              ) : null}
             </dl>
           </div>
-          {/* Section 18: the intake is three decisions, not seven fields in a
-              row - what kind of departure, when it takes effect, and what the
-              employee said about it. The conditional fields stay adjacent
-              siblings so the :has() rules that reveal them still apply. */}
+
           <form action={createCaseAction} className="stack">
             <input type="hidden" name="employeeSourceId" value={selected.sourceId} />
+            <input type="hidden" name="departureType" value={departureType} />
 
-            <FormSection step={1} title="The departure" note="What arrived, and how it reached HR.">
-              <Field id="departureType" label="Departure Type" required>
-                <select id="departureType" name="departureType" required defaultValue="">
-                  <option value="" disabled>
-                    Choose...
-                  </option>
-                  <option value="RESIGNATION_WITH_NOTICE">Resignation with notice</option>
-                  <option value="IMMEDIATE_RESIGNATION">Immediate resignation</option>
-                  <option value="TERMINATION">Termination</option>
-                </select>
-              </Field>
-
+            <FormSection
+              step={1}
+              title={noticeApplicable ? 'Notice' : 'The separation'}
+              note={profile.noticeArrangement ?? undefined}
+            >
               <Field
                 id="receivedAt"
-                label="Date and Time Received"
+                label={`${profile.receivedDateLabel} (date and time)`}
                 required
-                hint="When HR received it - not when the employee wrote it."
+                hint={
+                  noticeApplicable
+                    ? 'When the employee told HR they were leaving.'
+                    : 'When this separation was recorded by HR.'
+                }
               >
-                <input id="receivedAt" name="receivedAt" type="datetime-local" required />
+                <input
+                  id="receivedAt"
+                  name="receivedAt"
+                  type="datetime-local"
+                  required
+                  defaultValue={instantInput(defaults.receivedAt)}
+                />
               </Field>
+
+              {/* Section 14: the type already answers whether a notice period
+                  is served, so nothing here asks HR to say it again. */}
+              {noticeApplicable ? (
+                <p className="hint" role="note">
+                  <strong>Notice arrangement:</strong>{' '}
+                  {noticeServed
+                    ? (profile.noticeArrangement ?? 'Notice period served.')
+                    : 'No notice period is being served - derived from the separation type.'}
+                </p>
+              ) : null}
 
               {/* One-click provenance for the dispute-sensitive receipt fact
                   (owner request, 2026-08-17): pick the channel; detail only
@@ -260,11 +368,12 @@ export default async function NewCasePage({
                 <select
                   id="receiptSourceKind"
                   name="receiptSourceKind"
-                  defaultValue="Signed letter"
+                  defaultValue={noticeApplicable ? 'Signed letter' : 'Internal HR instruction'}
                 >
                   <option value="Signed letter">Signed letter</option>
                   <option value="Email">Email</option>
                   <option value="Verbal (in person)">Verbal (in person)</option>
+                  <option value="Internal HR instruction">Internal HR instruction</option>
                   <option value="Other">Other</option>
                 </select>
               </Field>
@@ -282,45 +391,145 @@ export default async function NewCasePage({
             <FormSection
               step={2}
               title="When employment ends"
-              note="The final working date drives every due date on the case."
+              note="These dates drive every deadline on the case - access removal, asset return and payroll notification."
             >
-              {/* One working-date field (owner request, 2026-08-18): the
-                  proposed/confirmed pair collapsed into the date that actually
-                  drives the process. */}
-              <Field id="confirmedLastDay" label="Final Working Date" optional>
-                <input id="confirmedLastDay" name="confirmedLastDay" type="date" />
-              </Field>
-              {/* Resignations with notice end at close of business on the final
-                  working date, so the platform sets the instant itself (owner
-                  request, 2026-08-18). Immediate resignations and terminations
-                  keep the field: there the exact moment is a decision, and it
-                  is what access removal is timed to. */}
-              <div className="field field--effective-time">
-                <label htmlFor="effectiveSeparationAt">
-                  <span>Employment Ends (Date and Exact Time)</span>
-                </label>
-                <input
+              {shows('contractEndDate') ? (
+                <Field
+                  id="contractEndDate"
+                  label="Contract End Date"
+                  required={requires('contractEndDate')}
+                  optional={!requires('contractEndDate')}
+                  hint={
+                    contractEnd
+                      ? 'Taken from the employee record. Change it only if the record is wrong.'
+                      : 'The employee record holds no contract end date, so it has to be entered.'
+                  }
+                >
+                  <input
+                    id="contractEndDate"
+                    name="contractEndDate"
+                    type="date"
+                    required={requires('contractEndDate')}
+                    defaultValue={dateInput(defaults.contractEndDate)}
+                  />
+                </Field>
+              ) : null}
+
+              {shows('confirmedLastDay') ? (
+                <Field
+                  id="confirmedLastDay"
+                  label="Last Working Day"
+                  required={requires('confirmedLastDay')}
+                  optional={!requires('confirmedLastDay')}
+                  hint="The final day the employee is expected to perform work."
+                >
+                  <input
+                    id="confirmedLastDay"
+                    name="confirmedLastDay"
+                    type="date"
+                    required={requires('confirmedLastDay')}
+                    defaultValue={dateInput(defaults.confirmedLastDay)}
+                  />
+                </Field>
+              ) : null}
+
+              {shows('effectiveSeparationAt') ? (
+                <Field
                   id="effectiveSeparationAt"
-                  name="effectiveSeparationAt"
-                  type="datetime-local"
-                />
-                <p className="hint">
-                  Access removal is timed to this exact moment, not to end of day.
-                </p>
-              </div>
+                  label={
+                    profile.initiator === 'EMPLOYER'
+                      ? 'Effective Date (and Exact Time)'
+                      : 'Employment Ends (Date and Exact Time)'
+                  }
+                  required={requires('effectiveSeparationAt')}
+                  optional={!requires('effectiveSeparationAt')}
+                  hint="Access removal is timed to this exact moment, not to end of day."
+                >
+                  <input
+                    id="effectiveSeparationAt"
+                    name="effectiveSeparationAt"
+                    type="datetime-local"
+                    required={requires('effectiveSeparationAt')}
+                    defaultValue={instantInput(defaults.effectiveSeparationAt)}
+                  />
+                </Field>
+              ) : null}
+
+              <p className="hint" role="note">
+                Every date here can be backdated. A departure that already happened is recorded as
+                it happened; the platform keeps the date it was entered separately.
+              </p>
             </FormSection>
 
-            {/* Department and location come straight from the selected
-                employee's directory record (owner request, 2026-08-17) - no
-                re-selection of facts the platform already knows. BambooHR is
-                the source of truth; correct it there and re-sync if wrong. */}
+            {profile.requiresDetail || profile.authorizerExpected ? (
+              <FormSection
+                step={3}
+                // "About this other" reads as a typo; every other label works.
+                title={
+                  profile.type === 'OTHER'
+                    ? 'About this separation'
+                    : `About this ${profile.label.toLowerCase()}`
+                }
+              >
+                {profile.requiresDetail ? (
+                  <>
+                    <Field
+                      id="separationTypeDetail"
+                      label="What kind of separation is this?"
+                      required
+                      hint={'The platform cannot interpret "Other" - say what happened.'}
+                    >
+                      <input
+                        id="separationTypeDetail"
+                        name="separationTypeDetail"
+                        type="text"
+                        required
+                        maxLength={300}
+                      />
+                    </Field>
+                    <Field
+                      id="noticeApplicableOverride"
+                      label="Does employee notice apply?"
+                      required
+                      hint="Every other separation type answers this itself. This one cannot be inferred."
+                    >
+                      <select
+                        id="noticeApplicableOverride"
+                        name="noticeApplicableOverride"
+                        required
+                        defaultValue=""
+                      >
+                        <option value="" disabled>
+                          Choose...
+                        </option>
+                        <option value="true">Yes - the employee gave notice</option>
+                        <option value="false">No</option>
+                      </select>
+                    </Field>
+                  </>
+                ) : null}
+                {profile.authorizerExpected ? (
+                  <Field
+                    id="authorizedByName"
+                    label="Authorized or requested by"
+                    optional
+                    hint="Recorded on the case. Leave blank for a historical record where this is no longer known."
+                  >
+                    <input
+                      id="authorizedByName"
+                      name="authorizedByName"
+                      type="text"
+                      maxLength={160}
+                    />
+                  </Field>
+                ) : null}
+              </FormSection>
+            ) : null}
 
-            {/* Final-product surface (owner request, 2026-08-17): the
-                measurement-classification choice is gone - every case is a
-                real operational record in the active rollout; the server
-                action fixes the values. */}
-
-            <FormSection step={3} title="Reason for Leaving">
+            <FormSection
+              step={profile.requiresDetail || profile.authorizerExpected ? 4 : 3}
+              title="Reason for Leaving"
+            >
               {/* "Provided" was missing entirely, so a reason that HAD been
                   given could not be recorded (owner, 2026-08-18). The notes
                   box now appears only for that answer. */}
@@ -340,6 +549,25 @@ export default async function NewCasePage({
                 <p className="hint">Restricted HR information - visible only to HR on this case.</p>
               </div>
             </FormSection>
+
+            {/* An unusual date combination is questioned, not blocked: a
+                historical case is legitimate and has to be recordable
+                (section 25). The reason is audited with the dates. */}
+            <details className="action">
+              <summary>These dates are unusual but correct</summary>
+              <Field
+                id="dateOverrideReason"
+                label="Why are these dates correct?"
+                hint="Kept in the audit trail beside the dates it explains."
+              >
+                <textarea
+                  id="dateOverrideReason"
+                  name="dateOverrideReason"
+                  rows={2}
+                  maxLength={500}
+                />
+              </Field>
+            </details>
 
             {/* Notice tracking left the product surface entirely (owner,
                 2026-08-17). The days-given figure still derives silently

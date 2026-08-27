@@ -1052,6 +1052,39 @@ const V3_REDESIGN_NOTE =
 const withoutManagerTasks = (tasks: SeedTask[]): SeedTask[] =>
   tasks.filter((task) => task.department !== 'LINE_MANAGER');
 
+/**
+ * The four separation types added by the 2026-08-26 canonical model need a
+ * workflow of their own: without one, activation fails outright, and reusing
+ * the resignation workflow is exactly the accidental inheritance the
+ * directive forbids.
+ *
+ * They are built from the resignation spine - verify, confirm dates, action
+ * form, assets, acknowledgement, HRIS, clearance - with the parts that only
+ * belong to a resignation removed. Nothing new is invented: a retirement
+ * letter, a redundancy notice and their approval steps are HR's own
+ * documents and wording, which the platform must not author (CLAUDE.md rule
+ * 4). Where HR approves such a template, its preparation task is added to
+ * the relevant workflow as a normal versioned change.
+ */
+const RESIGNATION_ONLY_TASKS = ['HR_RESIGNATION_DOC'];
+
+/** The common offboarding spine, with resignation-specific work removed. */
+function commonSpine(retitle: Record<string, string> = {}): SeedTask[] {
+  return withoutManagerTasks(RESIGNATION_TASKS_V2)
+    .filter((task) => !RESIGNATION_ONLY_TASKS.includes(task.taskCode))
+    .map((task) => {
+      // A dependency on a task that no longer exists would never release.
+      const dependsOnCodes = task.dependsOnCodes?.filter(
+        (code) => !RESIGNATION_ONLY_TASKS.includes(code),
+      );
+      return {
+        ...task,
+        ...(dependsOnCodes ? { dependsOnCodes } : {}),
+        ...(retitle[task.taskCode] ? { title: retitle[task.taskCode]! } : {}),
+      };
+    });
+}
+
 const WORKFLOWS_V3 = [
   {
     workflowType: 'RESIGNATION_WITH_NOTICE' as const,
@@ -1067,6 +1100,59 @@ const WORKFLOWS_V3 = [
     workflowType: 'TERMINATION' as const,
     name: 'DEV Restricted termination workflow',
     tasks: withoutManagerTasks(TERMINATION_TASKS_V2),
+  },
+  {
+    workflowType: 'RETIREMENT' as const,
+    name: 'DEV Retirement workflow',
+    // Notified in advance like a resignation with notice, but nothing here
+    // calls it a resignation.
+    tasks: commonSpine({
+      HR_VERIFY_CASE: 'Verify the retirement notification and case information',
+      HR_CONFIRM_DATES: 'Confirm the retirement date and final working date',
+    }),
+  },
+  {
+    workflowType: 'CONTRACT_EXPIRY' as const,
+    name: 'DEV End of contract workflow',
+    // Nobody gave notice: the end date was agreed when the contract started,
+    // so the first task is confirming it rather than verifying a resignation.
+    tasks: commonSpine({
+      HR_VERIFY_CASE: 'Verify the contract end date and case information',
+      HR_CONFIRM_DATES: 'Confirm the contract end date and final working date',
+    }),
+  },
+  {
+    workflowType: 'REDUNDANCY' as const,
+    name: 'DEV Redundancy workflow',
+    // Employer-initiated and restricted by default, so it carries the same
+    // authorization step the termination workflow uses.
+    tasks: [
+      ...commonSpine({
+        HR_VERIFY_CASE: 'Verify the redundancy decision and case information',
+        HR_CONFIRM_DATES: 'Confirm the effective date and final working date',
+      }),
+      {
+        taskCode: 'HRM_AUTHORIZATION',
+        title: 'Authorized HR Manager approval',
+        description: 'HR Manager confirms authorization for the redundancy.',
+        department: 'HR' as const,
+        requiredRole: 'HR_MANAGER' as const,
+        priority: 'HIGH' as const,
+        confidential: true,
+        dueBasis: 'WORKFLOW_ACTIVATION' as const,
+        dueOffsetDays: 1,
+      },
+    ],
+  },
+  {
+    workflowType: 'OTHER' as const,
+    name: 'DEV Other separation workflow',
+    // The neutral baseline. HR has already described what happened on the
+    // case; the platform adds no work it cannot justify.
+    tasks: commonSpine({
+      HR_VERIFY_CASE: 'Verify the separation and case information',
+      HR_CONFIRM_DATES: 'Confirm the effective date and final working date',
+    }),
   },
 ];
 

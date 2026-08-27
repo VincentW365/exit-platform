@@ -53,6 +53,9 @@ async function gatherFacts(caseId: string): Promise<{
       departureType: c.departureType,
       classification: c.classification,
       effectiveSeparationAt: c.effectiveSeparationAt,
+      // The distinct separation dates recipients need named (directive 21, 24).
+      receivedAt: c.receivedAt,
+      confirmedLastDay: c.confirmedLastDay,
       groupHealthApplicability: c.groupHealthApplicability,
       groupLifeApplicability: c.groupLifeApplicability,
       otherProviderApplicability: c.otherProviderApplicability,

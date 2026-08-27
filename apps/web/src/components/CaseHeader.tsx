@@ -8,12 +8,13 @@
  *
  * Server component; every value comes from the case page.
  */
+import type { SeparationSummary } from '@exit/db';
 import Link from 'next/link';
 import { formatDateOnly, formatInstant } from '@exit/domain';
 import type { CaseNextAction, CaseStatus } from '@exit/domain';
 import type { ProgressStage } from '@exit/db';
 import { humanize } from '@/lib/text';
-import { Chip, initialsOf, ProgressBar } from './patterns';
+import { Chip, initialsOf, ProgressBar, type Tone } from './patterns';
 import { ClassificationBadge, PurposeBadge, StatusBadge } from './ui';
 
 export interface CaseHeaderData {
@@ -30,6 +31,12 @@ export interface CaseHeaderData {
   departureType: string;
   effectiveSeparationAt: Date | null;
   confirmedLastDay?: Date | null;
+  /**
+   * The derived separation summary (owner directive, 2026-08-26, section 28).
+   * Server-derived so the header cannot disagree with the workflow about how
+   * urgent a departure is - it reads the answer, it does not compute one.
+   */
+  separation?: SeparationSummary | null;
   ownerName: string;
   officerName: string | null;
   managerName: string | null;
@@ -55,11 +62,46 @@ function completion(stages: readonly ProgressStage[]): {
   return { percent: of === 0 ? 0 : Math.round((done / of) * 100), done, of };
 }
 
+/**
+ * Section 28: how the departure reads at a glance. Urgency comes from the
+ * server's derived summary, never from re-reading the dates here - two
+ * places deciding this independently is how a screen ends up disagreeing
+ * with the workflow it is describing.
+ */
+function urgencyFor(sep: SeparationSummary | null): { label: string; tone: Tone } | null {
+  if (!sep) return null;
+  const days = sep.daysUntilDeparture;
+  switch (sep.urgency) {
+    case 'IMMEDIATE':
+      return {
+        label: sep.initiator === 'EMPLOYER' ? 'High priority' : 'Immediate action required',
+        tone: 'critical',
+      };
+    case 'HISTORICAL':
+      return days === null
+        ? null
+        : {
+            label: `Departed ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago`,
+            tone: 'attention',
+          };
+    case 'SCHEDULED':
+    case 'PLANNED':
+      return days === null
+        ? null
+        : {
+            label: `${days} day${days === 1 ? '' : 's'} remaining`,
+            tone: days <= 7 ? 'attention' : 'info',
+          };
+  }
+}
+
 export function CaseHeader({ data }: { data: CaseHeaderData }) {
   const action = data.nextAction ?? null;
   const stages = data.stages ?? [];
   const progress = completion(stages);
   const lastDay = data.confirmedLastDay ?? null;
+  const sep = data.separation ?? null;
+  const urgencyChip = urgencyFor(sep);
 
   return (
     <header className="case-head" aria-label="Case summary">
@@ -85,8 +127,13 @@ export function CaseHeader({ data }: { data: CaseHeaderData }) {
               {data.location ? ` · ${data.location}` : ''}
             </p>
             <div className="case-head__chips">
-              <Chip>{humanize(data.departureType)}</Chip>
+              <Chip>{sep?.label ?? humanize(data.departureType)}</Chip>
               {lastDay ? <Chip>Last day {formatDateOnly(lastDay)}</Chip> : null}
+              {/* Section 28: the presentation reinforces the business logic.
+                  An immediate departure says so where it cannot be missed;
+                  a planned one says how long there is to work with. */}
+              {urgencyChip ? <Chip tone={urgencyChip.tone}>{urgencyChip.label}</Chip> : null}
+              {sep?.backdated ? <Chip tone="neutral">Historical record</Chip> : null}
               <StatusBadge status={data.status} />
               <ClassificationBadge classification={data.classification} />
               <PurposeBadge purpose={data.recordPurpose} cohort={data.measurementCohort} />

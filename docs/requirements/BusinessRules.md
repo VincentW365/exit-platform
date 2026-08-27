@@ -30,7 +30,11 @@ These rules convert the DMAIC and Decision Register into deterministic behaviour
 | BR-CASE-015 | Duplicates | The system warns on overlapping non-voided cases for the same employee; proceeding requires a reason. |
 | BR-WF-001 | Versioning | A workflow definition used by a case is immutable for that case. |
 | BR-WF-002 | Instantiation | Workflow instantiation is exactly-once and idempotent. |
-| BR-WF-003 | Separation | Resignation with notice, immediate resignation and termination use separate workflow definitions. |
+| BR-WF-003 | Separation | Every separation type has its own workflow definition; none inherits another's. (DEC-058 extends this from three types to seven.) |
+| BR-CASE-013 | Separation model | What a separation type implies - notice, required dates, defaults, urgency, classification, survey eligibility and wording - is defined once in the separation profile and read by every surface. Frontend presentation, backend validation and workflow generation use the same source. (DEC-058) |
+| BR-CASE-014 | Notice | Employee notice applies only where the separation type says so. A termination carries no notice concept; an immediate resignation carries a notice date with no period served. Neither is asked of HR - both are derived. (DEC-058) |
+| BR-CASE-015 | Dates | Notice received, last working day, separation effective and contract end are distinct concepts. Operational timing - access removal, asset deadlines, payroll and provider notification - is measured from the separation effective instant, never from the date notice arrived. (DEC-058) |
+| BR-CASE-016 | Backdating | Today is a default for separation dates, never a rule. Historical and future-dated separations are both supported; a departure already past is flagged as a historical record. Unusual date relationships are accepted with an audited reason rather than blocked. (DEC-058) |
 | BR-WF-004 | Dependencies | A task becomes READY only when its dependencies and conditions are satisfied. |
 | BR-WF-005 | Mandatory work | A mandatory task cannot be silently skipped. |
 | BR-WF-006 | Waiver | A waiver is allowed only for configured task types and roles and requires reason/evidence. |
@@ -50,7 +54,7 @@ These rules convert the DMAIC and Decision Register into deterministic behaviour
 | BR-DOC-003 | Validation | Missing or inconsistent required placeholders block generation or approval. |
 | BR-DOC-004 | Preview | The approver must be able to see the full rendered content and key field sources. |
 | BR-DOC-005 | Approval | Generation does not equal approval or issue. |
-| BR-DOC-006 | Separation | Termination cases may not use resignation-acceptance templates. |
+| BR-DOC-006 | Separation | Termination cases may not use resignation-acceptance templates. No separation type may borrow another's letter: a type with no approved template issues nothing. (DEC-058) |
 | BR-DOC-007 | Issue | Issued bytes, checksum, template version, data snapshot, approver and issue time are immutable. |
 | BR-DOC-008 | Correction | A correction supersedes rather than overwrites an issued document. |
 | BR-DOC-009 | Access | Restricted document views/downloads are authorized per request and audited. |

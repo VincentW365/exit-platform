@@ -79,15 +79,17 @@ describe('effective separation derives from the final working date (owner reques
       employeeSourceId: 'EMP-TEST-002',
       recordPurpose: 'TEST',
       measurementCohort: null,
-      confirmedLastDay: new Date(Date.now() + 6 * 86_400_000).toISOString(),
+      confirmedLastDay: new Date(Date.now() + 4 * 86_400_000).toISOString(),
       effectiveSeparationAt: chosen.toISOString(),
     });
     let c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: created.caseId } });
     expect(c.effectiveSeparationAt!.getTime()).toBe(chosen.getTime());
 
     // Moving the final working date must NOT overwrite a human decision.
+    // Moved BACK rather than forward: employment still ends on the chosen
+    // instant, so the last working day has to stay on or before it.
     await updateDraft(officer.actor, created.caseId, {
-      confirmedLastDay: new Date(Date.now() + 9 * 86_400_000).toISOString(),
+      confirmedLastDay: new Date(Date.now() + 3 * 86_400_000).toISOString(),
     });
     c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: created.caseId } });
     expect(c.effectiveSeparationAt!.getTime()).toBe(chosen.getTime());
@@ -112,7 +114,13 @@ describe('effective separation derives from the final working date (owner reques
     );
   });
 
-  it('immediate resignations derive nothing - the instant stays an explicit decision', async () => {
+  it('immediate resignations default the instant instead of leaving it empty', async () => {
+    // Superseded by the canonical separation model (owner directive,
+    // 2026-08-26, sections 3 and 6; DEC-058). The exact moment is still HR's
+    // decision and an entered value is never overwritten - but leaving it
+    // blank now gives close of business on the final working day rather
+    // than nothing, because a case with no effective instant cannot time
+    // access removal, and submitting one was blocked on it anyway.
     const created = await createDraft(officer.actor, {
       ...VALID_DRAFT,
       employeeSourceId: 'EMP-TEST-005',
@@ -123,7 +131,8 @@ describe('effective separation derives from the final working date (owner reques
       effectiveSeparationAt: null,
     });
     const c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: created.caseId } });
-    expect(c.effectiveSeparationAt).toBeNull();
+    expect(c.effectiveSeparationAt).not.toBeNull();
+    expect(formatInstant(c.effectiveSeparationAt!)).toContain('5:00 PM');
   });
 });
 

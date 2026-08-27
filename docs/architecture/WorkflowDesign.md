@@ -250,3 +250,46 @@ and audited, and win over re-derivation until removed. Material fact
 changes (dates, departure type, benefits confirmation) re-run derivation
 idempotently - rows update in place, nothing duplicates, superseded items
 are marked.
+
+## Separation types and their workflows (DEC-058, 2026-08-26)
+
+The platform recognises seven ways of leaving, and each has its own workflow
+definition. None inherits another's.
+
+| Separation | Workflow | Shape |
+| --- | --- | --- |
+| Resignation - with notice | `RESIGNATION_WITH_NOTICE` | The full planned spine, including the resignation-acceptance document. |
+| Resignation - immediate | `IMMEDIATE_RESIGNATION` | Urgent same-day HR review and exact-time access removal. |
+| Termination | `TERMINATION` | Restricted preparation, HR Manager authorization, confidential notification timing. |
+| Retirement | `RETIREMENT` | The planned spine with retirement wording; no resignation-acceptance document. |
+| End of contract | `CONTRACT_EXPIRY` | The planned spine, opening from the contract end date rather than a resignation. |
+| Redundancy | `REDUNDANCY` | The planned spine plus HR Manager authorization; restricted by default. |
+| Other | `OTHER` | The neutral spine. HR has described the separation on the case. |
+
+### What decides the shape
+
+Nothing in a workflow definition re-derives what a separation type means. The
+authoritative profile is `packages/domain/src/separation.ts`: it says whether
+notice applies, which dates are required, which default to today, how urgent
+the case is, whether it is restricted, and how the type is worded in a
+document or a message. The intake form draws its fields from that profile,
+the server validates against the same profile, and workflow generation reads
+it for urgency - so the form cannot offer something the server will reject,
+and a new separation type cannot quietly behave like a resignation.
+
+### What the workflows deliberately do NOT contain
+
+The four types added in 2026-08 carry no document-preparation task for an
+employee-facing letter. Retirement, redundancy, contract expiry and "other"
+each need HR's own approved wording, and the platform does not author HR
+documents (CLAUDE.md rule 4). Where HR approves such a template, its
+preparation task is added to that workflow as a normal versioned change.
+
+### Timing
+
+Due dates are measured from the separation effective instant or the final
+working day, never from the date notice arrived. In practice that means a
+resignation with a month of notice keeps its access for the month, an
+immediate resignation's deadlines are all today because its final working day
+is today, and a termination scheduled for next month does not fire its
+actions on the day the case was raised.

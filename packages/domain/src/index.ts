@@ -1,4 +1,5 @@
 export * from './roles.ts';
+export * from './separation.ts';
 export * from './caseStates.ts';
 export * from './caseNumber.ts';
 export * from './cohort.ts';

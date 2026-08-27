@@ -87,6 +87,13 @@ function composedReceiptSource(formData: FormData): string | null {
   return detail ? `${kind} - ${detail}` : kind;
 }
 
+/** Absent, yes or no - a checkbox cannot express "not answered". */
+function tri(formData: FormData, key: string): boolean | undefined {
+  const raw = formData.get(key);
+  if (typeof raw !== 'string' || raw === '') return undefined;
+  return raw === 'true';
+}
+
 export async function createCaseAction(formData: FormData): Promise<void> {
   const { actor } = await requireAuth();
   await touchSession();
@@ -104,6 +111,17 @@ export async function createCaseAction(formData: FormData): Promise<void> {
       receiptSource,
       confirmedLastDay: opt(formData, 'confirmedLastDay'),
       effectiveSeparationAt: opt(formData, 'effectiveSeparationAt'),
+      // Canonical separation model (owner directive, 2026-08-26). Each of
+      // these is offered only where the separation profile says it applies -
+      // and rejected by the server where it does not, so a crafted post
+      // cannot attach resignation notice to a termination.
+      contractEndDate: opt(formData, 'contractEndDate'),
+      separationTypeDetail: opt(formData, 'separationTypeDetail') ?? undefined,
+      authorizedByName: opt(formData, 'authorizedByName') ?? undefined,
+      dateOverrideReason: opt(formData, 'dateOverrideReason') ?? undefined,
+      // Only "Other" offers this control; anything else sends nothing and
+      // the profile answers for itself.
+      noticeApplicableOverride: tri(formData, 'noticeApplicableOverride'),
       department: opt(formData, 'department') ?? undefined,
       location: opt(formData, 'location') ?? undefined,
       // Final-product mode (owner request, 2026-08-17): the classification
@@ -161,6 +179,11 @@ export async function updateDraftAction(formData: FormData): Promise<void> {
       'receiptSource',
       'confirmedLastDay',
       'effectiveSeparationAt',
+      // Canonical separation model (DEC-058): the contract end date is a
+      // correctable fact, and an unusual date pairing is accepted with an
+      // audited reason rather than blocked.
+      'contractEndDate',
+      'dateOverrideReason',
       'department',
       'location',
       'measurementCohort',

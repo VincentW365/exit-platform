@@ -6,6 +6,7 @@
  * index); holds pause only eligible tasks; every change is audited.
  */
 import {
+  type DepartureType,
   activationConfirmationErrors,
   canActOnCase,
   checkTransition,
@@ -645,7 +646,7 @@ export async function reopenCase(actor: Actor, caseId: string, reason: string, p
 export async function changeDepartureTypeAfterActivation(
   actor: Actor,
   caseId: string,
-  newType: 'RESIGNATION_WITH_NOTICE' | 'IMMEDIATE_RESIGNATION' | 'TERMINATION',
+  newType: DepartureType,
   reason: string,
 ) {
   const { c, ctx } = await loadCaseAccess(actor, caseId);
