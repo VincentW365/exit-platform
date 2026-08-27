@@ -1842,3 +1842,273 @@ a.button:active:not([aria-disabled='true']),
     scroll-behavior: smooth;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   23. STEP ACCORDION - finishing a case, not filling a form
+
+   Three states that must never look alike: an ACTIVE step is the reader's
+   workspace and gets the accent edge and the elevation; a SETTLED step is
+   resolved and recedes to a line with a summary; an UPCOMING step stays
+   quiet until it is reached. State is carried by a word and a mark as well
+   as by colour, so it survives a monochrome screen (section 17).
+   ------------------------------------------------------------------------ */
+
+.steps {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+}
+
+.step {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  overflow: hidden;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+.step--settled {
+  background: var(--surface-well);
+}
+.step--attention {
+  border-color: var(--st-attention-border);
+  border-left-width: 4px;
+}
+.step--active {
+  border-color: var(--accent);
+  border-left-width: 4px;
+  box-shadow: var(--shadow-md);
+}
+
+/* The header is the control: one button, the whole row, keyboard reachable. */
+.step__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-4);
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.step__header:disabled {
+  cursor: default;
+  opacity: 1;
+}
+.step__header:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+.step__header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* The step's number, or its resolution. */
+.step__mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--panel);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.step--active .step__mark {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.step--settled .step__mark {
+  background: var(--st-done-bg);
+  border-color: var(--st-done);
+  color: var(--st-done);
+}
+.step--attention .step__mark {
+  background: var(--st-attention-bg);
+  border-color: var(--st-attention);
+  color: var(--st-attention);
+}
+
+.step__body {
+  flex: 1;
+  min-width: 0;
+}
+.step__title {
+  display: block;
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semi);
+  line-height: var(--lh-snug);
+}
+.step--active .step__title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+}
+.step__note {
+  display: block;
+  margin: 0.15rem 0 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  line-height: var(--lh-normal);
+}
+
+/* The collapsed summary: what was decided, in one quiet line that wraps. */
+.step__summary {
+  display: block;
+  margin: 0.3rem 0 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: var(--lh-normal);
+  overflow-wrap: anywhere;
+}
+.step__summary .sep {
+  color: var(--text-2);
+  padding: 0 0.35rem;
+}
+.step__summary .label {
+  display: inline;
+  margin: 0;
+}
+
+/* The state word sits beside the chevron so state is never colour alone. */
+.step__state {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.step--settled .step__state {
+  color: var(--st-done);
+}
+.step--attention .step__state {
+  color: var(--st-attention);
+}
+
+.step__chev {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.step--active .step__chev {
+  transform: rotate(90deg);
+}
+
+.step__content {
+  padding: 0 var(--space-4) var(--space-4);
+  border-top: 1px solid var(--border);
+  margin-top: -1px;
+}
+.step__content > :first-child {
+  margin-top: var(--space-4);
+}
+
+/* Within-step navigation: the way forward on the right, the way back left. */
+.step__nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.step__nav > .step__forward {
+  margin-left: auto;
+}
+
+/* Compact progress. Deliberately small: the accordion is the navigation. */
+.step-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+.step-progress__text {
+  flex: none;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.step-progress__bar {
+  flex: 1;
+  min-width: 4rem;
+}
+.step-progress__bar .progress-bar,
+.step-progress__bar .progress-bar__fill {
+  display: block;
+}
+
+@media (max-width: 40rem) {
+  .step__header {
+    flex-wrap: wrap;
+    padding: var(--space-3);
+  }
+  .step__state {
+    width: 100%;
+    justify-content: flex-start;
+    padding-left: calc(2rem + var(--space-3));
+  }
+  .step__content {
+    padding: 0 var(--space-3) var(--space-3);
+  }
+  .step__nav > .step__forward {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* The review step: what each earlier step decided, and the way back to it. */
+.review-groups {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.review-group {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-well);
+}
+.review-group__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.review-group__head .label {
+  margin: 0;
+}
+.review-group__line {
+  margin: 0.2rem 0 0;
+  font-size: var(--text-sm);
+  line-height: var(--lh-normal);
+  overflow-wrap: anywhere;
+}
+.review-group__line--missing {
+  color: var(--st-attention);
+  font-weight: var(--weight-semi);
+}

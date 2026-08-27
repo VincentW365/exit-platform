@@ -86,11 +86,14 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
   await page
     .locator(`input[name="type"][value=${JSON.stringify('RESIGNATION_WITH_NOTICE')}]`)
     .check();
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Use this separation type' }).click();
   await page.locator('input[name="receivedAt"]').fill('2026-07-20T09:30');
   // A resignation with notice ends at close of business on the final working
   // date, so the platform derives the instant and the field is not offered.
   await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
+  // The final action lives in the Review step (owner directive,
+  // 2026-08-27), so it is reached by opening that step.
+  await page.locator('.step:has([data-step="review"]) .step__header').click();
   await page.getByRole('button', { name: 'Create draft case' }).click();
   await expect(page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/)).toBeVisible();
   const caseUrl = page.url().split('?')[0]!;
@@ -129,10 +132,13 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
   await page.locator(`input[name="type"][value=${JSON.stringify('TERMINATION')}]`).check();
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Use this separation type' }).click();
   await page.locator('input[name="receivedAt"]').fill('2026-07-21T10:00');
   await page.locator('input[name="confirmedLastDay"]').fill('2026-08-01');
   await page.locator('input[name="effectiveSeparationAt"]').fill('2026-08-01T17:00');
+  // The final action lives in the Review step (owner directive,
+  // 2026-08-27), so it is reached by opening that step.
+  await page.locator('.step:has([data-step="review"]) .step__header').click();
   await page.getByRole('button', { name: 'Create draft case' }).click();
   const restrictedUrl = page.url().split('?')[0]!;
   await snap(page, '14a-restricted-authorized');

@@ -36,7 +36,7 @@ async function createTestCase(
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('link', { name: 'Select' }).first().click();
   await page.locator(`input[name="type"][value=${JSON.stringify(opts.type)}]`).check();
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Use this separation type' }).click();
   await page.locator('input[name="receivedAt"]').fill(opts.receivedAt ?? '2026-07-20T09:30');
   // A resignation with notice ends at close of business on the final working
   // date, so the platform derives the instant and the field is not offered.
@@ -52,6 +52,9 @@ async function createTestCase(
       .fill(opts.confirmedLastDay ? '2026-08-14' : effectiveAt.slice(0, 10));
     await page.locator('input[name="effectiveSeparationAt"]').fill(effectiveAt);
   }
+  // The final action lives in the Review step (owner directive,
+  // 2026-08-27), so it is reached by opening that step.
+  await page.locator('.step:has([data-step="review"]) .step__header').click();
   await page.getByRole('button', { name: 'Create draft case' }).click();
   const banner = page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/);
   await expect(banner).toBeVisible();

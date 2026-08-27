@@ -223,6 +223,7 @@ sections of the owner design directive.
 | Chart with table alternative | `components/ReportAnalytics.tsx` — CSS-drawn bars, `role="img"`, table beneath; styles §16 |
 | Loading/skeleton states | `components/Skeleton.tsx` plus `loading.tsx` per route segment; styles §21 |
 | Motion | design-system §22 — feedback only; the global `prefers-reduced-motion` rule in `globals.css` overrides all of it |
+| Progressive step accordion | `components/StepAccordion.tsx` — case creation as steps that resolve and recede; styles §23 |
 
 ### Rules the implementation is held to
 
@@ -248,3 +249,45 @@ sections of the owner design directive.
 - `e2e/confirm-dialog.spec.ts` — the destructive-action dialog states its
   consequence, can be dismissed by Escape or by an explicit way out, and
   still requires a reason.
+
+## 13. The step accordion
+
+Case creation is a sequence of decisions, not one long form. Each step
+resolves into a one-line summary and moves out of the way; the next one
+opens; nothing is ever hidden permanently.
+
+### The rules it is held to
+
+- **Collapsing is presentation only.** Every step's content stays mounted and
+  every field keeps its value. A closed step is hidden with the `hidden`
+  attribute, never unmounted, so collapsing can never cost a keystroke.
+- **Completion is earned, not claimed.** A step resolves because its required
+  fields hold values AND the reader has passed through it. Several fields
+  arrive prefilled from the separation profile; counting a step the reader
+  never opened would report progress they had not made. Empty a required
+  field on a settled step and it returns to needing attention.
+- **Active and attention are orthogonal.** "Active" says where the reader is;
+  "attention" says what is missing. A step can be both, so an open step that
+  has lost a required value still says so.
+- **The accordion is not a form.** The first steps carry their own GET forms
+  (choosing an employee, choosing a separation type) and a form cannot
+  contain another. Later steps' fields join one form rendered beside the
+  accordion through the HTML `form` attribute.
+- **The server remains the authority.** The accordion is the reader's running
+  account of where they are; whether the case is actually valid is decided by
+  `separationErrors` on the server at creation, exactly as before.
+
+### State, in three signals
+
+Each state is carried by a mark, a word and a colour, so none of them is
+load-bearing alone: a numbered circle and "Not started", a check and
+"Complete", an exclamation and "Needs attention". The active step additionally
+takes the accent edge and elevation so the reader can always answer "where am
+I".
+
+### Which steps exist
+
+The step list is built from the separation profile, so it changes with the
+way the employee is leaving: a termination has no notice step, "Other" gains
+a step asking what the separation is, and a type with no authorizer to record
+does not show that field at all. Covered by `e2e/case-wizard.spec.ts`.

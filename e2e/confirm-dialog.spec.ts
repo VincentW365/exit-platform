@@ -23,9 +23,12 @@ async function draftCase(page: Page): Promise<string> {
   await page
     .locator(`input[name="type"][value=${JSON.stringify('RESIGNATION_WITH_NOTICE')}]`)
     .check();
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Use this separation type' }).click();
   await page.locator('input[name="receivedAt"]').fill('2026-07-20T09:30');
   await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
+  // The final action lives in the Review step (owner directive,
+  // 2026-08-27), so it is reached by opening that step.
+  await page.locator('.step:has([data-step="review"]) .step__header').click();
   await page.getByRole('button', { name: 'Create draft case' }).click();
   await expect(page.getByText(/^Draft case OFF-/)).toBeVisible();
   return new URL(page.url()).pathname;
