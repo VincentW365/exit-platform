@@ -78,10 +78,28 @@ provider and the test-mode redirection are unaffected by where the browser
 is. A tester reads captured messages under **Development → Mailbox** from
 their own workstation, and the links inside open the host.
 
-## 5. Verification from a second workstation
+## 5. Verification from a second workstation - one action
 
-Do these from the tester's machine, not from the host - localhost working
-on the host proves nothing about LAN access.
+Copy `docs/operations/Test-ExitPlatformLAN.ps1` to the tester's computer and
+run it (right-click → *Run with PowerShell*). It needs no development tools.
+It finds the tester's own address, picks the host address on the same
+subnet, tests TCP, HTTP and the application's own health endpoint
+(`/api/health/lan`), prints a plain verdict such as
+
+```text
+PASS - Exit Platform reachable at http://192.168.236.10:3010
+```
+
+or `FAIL - TCP connection never reached the application`, says which layer
+it stopped at, and saves `ExitPlatformLAN-<timestamp>.json` and `.txt` on the
+tester's Desktop. Send both files back to the host owner; they are enough to
+finish the diagnosis without a second visit.
+
+A request from the host to its own address is **never** counted as a
+second-machine test - it is answered internally and proves nothing about the
+network, the firewall or endpoint security.
+
+The manual checklist below is what the script automates, kept for reference.
 
 | Check | Expected |
 | --- | --- |
@@ -116,3 +134,47 @@ on the host proves nothing about LAN access.
 - **This is not a deployment.** The host's workstation is the server; when
   it sleeps, locks its network or leaves the building, the platform is gone.
   Production hosting is a separate, gated decision (ProductionConfigurationChecklist.md).
+
+## 7. Diagnosing a failed LAN test
+
+Three scripts, each for one side of the problem. None changes anything
+unless you name the change.
+
+| Script | Where | What it does |
+| --- | --- | --- |
+| `scripts/diagnose-lan-access.ps1` | host, unelevated | PASS/WARN/FAIL report: listener and bind address, every IPv4 address with **adapter state** (a disconnected adapter's address is flagged dead), gateways and metrics, default-route count, host model, network profile, firewall profile state, rules for the port (needs elevation), `APP_BASE_URL`/`WEB_HOST`/`WEB_PORT`, local HTTP health, SentinelOne presence. Prints the only URLs safe to give a tester. |
+| `docs/operations/Test-ExitPlatformLAN.ps1` | tester's PC | The single tester action (section 5). Saves a JSON + text report. |
+| `scripts/firewall-lan-diagnostic.ps1` | host, **elevated** | `-Action Inspect` lists rules for the port and flags the classic mistakes (Private-only on a Domain machine, stale tester address, explicit Block, disabled). `-Action EnableDiagnostics` creates ONE clearly named TEMPORARY Allow rule (Domain, any remote) and turns on blocked-packet logging, recording the originals first. `-Action Revert` removes the rule and restores logging. `-Action CreateScopedRule -TesterIp <ip>` writes the permanent narrow rule. It never changes anything silently. |
+
+The launcher banner (`pnpm dev`) now asks Windows which adapters are
+actually connected and marks the rest as **dead**. Node reports every
+address a machine *holds*, including one left on a disconnected Wi-Fi radio
+by an old DHCP lease - the host can reach that address itself, and nobody
+else can. That is exactly how the first LAN attempt failed: the advertised
+address was on a Wi-Fi adapter that was not connected.
+
+### Reading the tester's report - which layer failed
+
+| Report says | Layer | Meaning | Next step |
+| --- | --- | --- | --- |
+| TCP never connected, tester on the **same** subnet | 2 or 5 | The packet reached the host's NIC and the host refused it: Windows Firewall scope, or SentinelOne Firewall Control | Elevated: `firewall-lan-diagnostic.ps1 -Action EnableDiagnostics`, rerun the tester script, read the log (below), then `-Action Revert` |
+| TCP never connected, tester on a **different** subnet | 3 or 4 | Routing between subnets, VLAN ACL, or Wi-Fi client isolation - the host may never see the packet | Tester's `tracert` in the report shows where it dies; involve IT with the two addresses and the port |
+| TCP connected, HTTP failed | 6 | Something answered the port but not as the app | Check `diagnose-lan-access.ps1` "Bind address" - is it *this* checkout? Read the host's `pnpm dev` output at that moment |
+| HTTP 200 but health endpoint missing, or the page never comes alive in the browser | 7 | Wrong build, dev-origin guard, CSP, cookies | Browser F12 → Console/Network on the tester's PC; host log line `Blocked cross-origin request … from "<host>"` names the origin to allow |
+
+**The decisive firewall test**, in the elevated diagnostic window: after the
+tester reruns their script,
+
+```powershell
+Get-Content "$env:SystemRoot\System32\LogFiles\Firewall\pfirewall.log" -Tail 300 | Select-String ' 3010 '
+```
+
+A `DROP` line naming the tester's address = Windows Firewall (fix the rule's
+profile or remote scope with `-Action CreateScopedRule`). **No line at all**
+while the temporary any-remote rule is active and the tester still fails =
+the packet never reached Windows: network segmentation, Wi-Fi isolation, or
+**SentinelOne Firewall Control**. Stop there; do not touch SentinelOne. Give
+IT: host address, tester address, TCP 3010 inbound, and that a Windows
+any-remote rule with logging showed nothing.
+
+Do not modify a higher layer while a lower one is failing.

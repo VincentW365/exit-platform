@@ -92,7 +92,10 @@
 | Operations | `docs/operations/TrainingGuide.md` | Role-based training modules with recorded completions. |
 | Operations | `docs/operations/ReleaseChecklist.md` | Per-release and pre-pilot promotion gates. |
 | Operations | `docs/operations/OwnerTestingGuide.md` | Owner's full-operation testing guide: sign-in, daily flow, exception paths, environment health. |
-| Operations | `docs/operations/LanAccessForInternalUAT.md` | LAN access for a tester on another workstation: start, Windows Firewall rule (manual, scoped), email-link base URL, second-machine verification checklist, remaining security considerations. |
+| Operations | `docs/operations/LanAccessForInternalUAT.md` | LAN access for a tester on another workstation: start, Windows Firewall rule (manual, scoped), email-link base URL, second-machine verification, layer-by-layer diagnosis, remaining security considerations. |
+| Operations | `docs/operations/Test-ExitPlatformLAN.ps1` | The tester's single action: run on their PC; picks the host address on their subnet, tests TCP/HTTP/app health, prints a verdict and the failing layer, saves a report to send back. No development tools needed. |
+| Operations | `scripts/diagnose-lan-access.ps1` | Host-side PASS/WARN/FAIL LAN diagnostic: bind, adapter state (dead addresses flagged), routes and metrics, profiles, firewall state, config, local health, endpoint security. Read-only. |
+| Operations | `scripts/firewall-lan-diagnostic.ps1` | Elevated Windows Firewall diagnostic for the port: inspect and flag misconfigured rules, temporary any-remote Domain rule with logging (recorded, revertible), permanent tester-scoped rule. Never silent. |
 | Templates | `docs/templates/TemplateCatalogue.md` | Controlled document/notification inventory. |
 | Templates | `docs/templates/ControlledCommunicationTemplates.md` | Sanitized draft templates and placeholders. |
 | Templates | `docs/templates/ExitSurveySpecification.md` | Survey questions, privacy and token flow. |

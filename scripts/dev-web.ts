@@ -14,11 +14,19 @@
  * lease can change between days and a stale address in a document is worse
  * than none.
  *
+ * Node reports every address a machine HOLDS, including one left on a
+ * disconnected Wi-Fi radio by an old DHCP lease - which the host itself can
+ * still reach, and nobody else can. On Windows the banner therefore asks the
+ * OS which adapters are actually connected and marks the rest as dead, so a
+ * dead address is never handed to a tester. That was the LAN failure of
+ * 2026-09-02, and it is the reason this file asks the OS instead of trusting
+ * the address list.
+ *
  * Nothing here touches authentication, sessions or the database. The
  * database stays loopback-only by its own configuration; other workstations
  * reach data only through this application.
  */
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { getConfig, isLoopbackHost, loadRootEnvFile } from '../packages/config/src/index.ts';
@@ -31,53 +39,165 @@ const host = loopbackOnly ? '127.0.0.1' : config.WEB_HOST;
 const port = config.WEB_PORT;
 const exposed = !isLoopbackHost(host);
 
-/** Every non-loopback IPv4 address this machine currently holds. */
-function lanAddresses(): string[] {
-  const out: string[] = [];
+interface Nic {
+  iface: string;
+  address: string;
+  /** null when the OS could not be asked (non-Windows). */
+  connected: boolean | null;
+  profile: string | null;
+}
+
+/**
+ * What Windows knows that Node does not: whether each adapter is actually
+ * connected, whether the address is still valid, and which firewall profile
+ * the network is on. One short PowerShell call; anything that goes wrong
+ * degrades to "unknown" rather than to a guess.
+ */
+function windowsAdapterFacts(): Map<
+  string,
+  { connected: boolean; preferred: boolean; profile: string | null }
+> {
+  const out = new Map<string, { connected: boolean; preferred: boolean; profile: string | null }>();
+  if (process.platform !== 'win32') return out;
+  const script = [
+    '$a = Get-NetAdapter | Select-Object ifIndex, Status, Name;',
+    '$p = Get-NetConnectionProfile | Select-Object InterfaceIndex, NetworkCategory;',
+    'Get-NetIPAddress -AddressFamily IPv4 | ForEach-Object {',
+    '  $ad = $a | Where-Object ifIndex -eq $_.InterfaceIndex;',
+    '  $pr = $p | Where-Object InterfaceIndex -eq $_.InterfaceIndex;',
+    '  "$($_.IPAddress)|$($ad.Status)|$($_.AddressState)|$($pr.NetworkCategory)"',
+    '}',
+  ].join(' ');
+  try {
+    const text = execFileSync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      {
+        encoding: 'utf8',
+        timeout: 8000,
+        windowsHide: true,
+      },
+    );
+    for (const line of text.split(/\r?\n/)) {
+      const [ip, status, state, profile] = line.trim().split('|');
+      if (!ip) continue;
+      out.set(ip, {
+        connected: status === 'Up',
+        preferred: state === 'Preferred',
+        profile: profile && profile !== '' ? profile : null,
+      });
+    }
+  } catch {
+    // Fall through: the banner will say the OS could not be asked.
+  }
+  return out;
+}
+
+/** Every non-loopback IPv4 address this machine holds, with the OS's view of it. */
+function lanAddresses(): Nic[] {
+  const facts = windowsAdapterFacts();
+  const nics: Nic[] = [];
   for (const [name, addrs] of Object.entries(networkInterfaces())) {
     for (const a of addrs ?? []) {
       if (a.family !== 'IPv4' || a.internal) continue;
       // Link-local means "no address was assigned"; nobody can dial it.
       if (a.address.startsWith('169.254.')) continue;
-      out.push(`${a.address}  (${name})`);
+      const f = facts.get(a.address);
+      nics.push({
+        iface: name,
+        address: a.address,
+        connected: f ? f.connected && f.preferred : null,
+        profile: f?.profile ?? null,
+      });
     }
   }
-  return out;
+  return nics;
 }
 
 const line = (s = '') => console.log(s);
+const pad = (label: string) => `  ${label.padEnd(17)}`;
 line();
-line('Employee Offboarding Platform - web');
-line(`  Listening on   http://${host}:${port}`);
-line(`  This machine   http://localhost:${port}`);
+line('EXIT PLATFORM - INTERNAL UAT');
+line();
+line(`${pad('Listening:')}${host}:${port}`);
+line(`${pad('This machine:')}http://localhost:${port}`);
+
+const nics = exposed ? lanAddresses() : [];
+const live = nics.filter((n) => n.connected !== false);
+const dead = nics.filter((n) => n.connected === false);
 if (exposed) {
-  const lan = lanAddresses();
-  if (lan.length === 0) {
-    line('  LAN            no network address assigned right now');
+  for (const n of live) {
+    const unsure = n.connected === null ? '  (adapter state unknown on this OS)' : '';
+    line(`${pad(`${n.iface} URL:`)}http://${n.address}:${port}${unsure}`);
+  }
+  for (const n of dead) {
+    line(
+      `${pad(`${n.iface}:`)}${n.address} is on a DISCONNECTED adapter - not reachable by anyone; do not give it out`,
+    );
+  }
+  if (nics.length === 0) line(`${pad('LAN:')}no network address assigned right now`);
+}
+line(`${pad('APP_BASE_URL:')}${config.APP_BASE_URL}`);
+const profiles = [...new Set(live.map((n) => n.profile).filter((p): p is string => !!p))];
+line(`${pad('Network profile:')}${profiles.length ? profiles.join(', ') : 'unknown'}`);
+line();
+
+// --- readiness -------------------------------------------------------------
+line('LAN readiness:');
+if (!exposed) {
+  line('  x  LAN ACCESS DISABLED - server is bound to loopback only.');
+  line(`     Set WEB_HOST=0.0.0.0 in .env (or drop --local) to accept other workstations.`);
+} else {
+  line('  ok Server accepts non-loopback connections');
+  line(`  ok Port ${port} will be listening (see "Ready" below)`);
+  if (live.length === 0) {
+    line(
+      '  x  No connected network adapter holds a usable address - nobody can reach this machine',
+    );
+  } else if (live.some((n) => n.connected === null)) {
+    line(
+      '  !  Adapter state could not be read from the OS - confirm the URL above is on a connected adapter',
+    );
+  }
+  if (dead.length > 0) {
+    line(
+      `  !  ${dead.length} address(es) above are dead (disconnected adapter) - use only the URL line(s)`,
+    );
+  }
+  if (profiles.some((p) => p === 'Public')) {
+    line(
+      '  !  A network is on the Public profile - Windows Firewall rules for Private/Domain will not apply there',
+    );
+  }
+  line(
+    '  !  Firewall access must be confirmed: run scripts/diagnose-lan-access.ps1 (rule contents need elevation)',
+  );
+  line(
+    '  !  Second-workstation validation not yet completed: run docs/operations/Test-ExitPlatformLAN.ps1 on the tester PC',
+  );
+  if (config.appBaseUrlIsLoopback) {
+    line(
+      `  !  APP_BASE_URL is ${config.APP_BASE_URL} - links in captured email will dead-end on another workstation`,
+    );
   } else {
-    for (const a of lan) {
-      const [ip, iface] = a.split('  ');
-      line(`  LAN            http://${ip}:${port}  ${iface}`);
+    const baseHost = (() => {
+      try {
+        return new URL(config.APP_BASE_URL).hostname;
+      } catch {
+        return '';
+      }
+    })();
+    if (baseHost && !live.some((n) => n.address === baseHost)) {
+      line(
+        `  !  APP_BASE_URL host ${baseHost} is not one of this machine's connected addresses - emailed links may dead-end`,
+      );
     }
   }
-  line();
-  line('  Other workstations on the same network can open the LAN address above');
-  line('  once Windows Firewall allows inbound TCP on this port for the Private/');
-  line('  Domain profile. See docs/operations/LanAccessForInternalUAT.md.');
-  line('  The addresses above are allowed through the dev-origin guard automatically.');
   if (config.devLoginEnabled) {
-    line();
-    line('  WARNING: the development role switcher is ON and reachable from the');
-    line('  network. Anyone who can open this address can sign in as any role');
-    line("  without a password. Scope the firewall rule to the tester's address");
-    line('  and stop the server when the session ends.');
-  }
-  if (config.appBaseUrlIsLoopback) {
-    line();
-    line(`  WARNING: APP_BASE_URL is ${config.APP_BASE_URL}. Links in captured email`);
-    line('  (checklist, acknowledgement) point at "localhost", which on another');
-    line('  workstation is THAT machine. For LAN testing set APP_BASE_URL to the');
-    line('  LAN address above and restart.');
+    line(
+      '  !  Development role switcher is ON and reachable from the network: no password. Scope the firewall',
+    );
+    line("     rule to the tester's address and stop the server when the session ends.");
   }
 }
 line();
