@@ -20,8 +20,11 @@ full operation.
 
 ## 2. Signing in
 
-Open http://localhost:3000 and use the development role switcher. Active
-accounts after the rebuild:
+Open http://localhost:3000 on the host, or - for a tester on another
+workstation - the LAN address printed by `pnpm dev` (it changes with the
+host's DHCP lease, so read it from the banner each time; see
+`LanAccessForInternalUAT.md` for the firewall rule that has to exist first).
+Use the development role switcher. Active accounts after the rebuild:
 
 | Account | Role | Use it for |
 | --- | --- | --- |
@@ -142,7 +145,10 @@ automated controlled emails and confirm through secure links (section 6).
 
 - **Status**: `pnpm exec tsx scripts/reset-environment.ts status`
 - **Restart web/worker**: ask Claude to start them, or run `pnpm dev` and
-  `pnpm worker` in two terminals.
+  `pnpm worker` in two terminals. `pnpm dev` prints the LAN address for a
+  tester on another workstation; `pnpm dev:local` keeps the app private to
+  this machine. Restarting never needs a code change to restore LAN access -
+  the host and port come from `.env` (`WEB_HOST`, `WEB_PORT`).
 - **Postgres** (port 5433, on demand): see DEVELOPMENT.md `pg_ctl` commands.
 - **Full reset, no cases**: `pnpm exec tsx scripts/reset-environment.ts fresh --yes`
   — since this build, a rebuild automatically reconnects the live directory

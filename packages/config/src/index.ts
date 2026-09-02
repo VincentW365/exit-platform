@@ -77,6 +77,14 @@ const envSchema = z.object({
   /// is derived from SESSION_SECRET (documented development fallback).
   DATA_KEY: z.string().min(32).optional(),
   APP_BASE_URL: z.string().min(1).default('http://localhost:3000'),
+  // LAN access for internal UAT (owner directive, 2026-09-02). Where the web
+  // server LISTENS. 0.0.0.0 accepts connections from other workstations on
+  // the same network; 127.0.0.1 keeps the app private to this machine. The
+  // database is never affected by this - it stays loopback-only by its own
+  // configuration (postgresql.conf listen_addresses), and every other
+  // workstation reaches data only through this application.
+  WEB_HOST: z.string().min(1).default('0.0.0.0'),
+  WEB_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   // Directive 5.1 (section A): local read-only BambooHR directory credential.
   // The VALUE is never logged, surfaced or committed; status reporting uses
   // bambooDirectoryStatus() which returns a category only. Production refuses
@@ -98,6 +106,19 @@ export type AppConfig = Readonly<
     isProduction: boolean;
     /** Resolved routing environment: development | test | production. */
     appEnvironment: 'development' | 'test' | 'production';
+    /**
+     * True when WEB_HOST accepts connections from other machines. Read by
+     * the sign-in page and the startup logs so that exposing the development
+     * role switcher to a network is never silent.
+     */
+    lanExposed: boolean;
+    /**
+     * True when APP_BASE_URL points at this machine's loopback. Links the
+     * platform puts in email (checklist, acknowledgement) are built from
+     * APP_BASE_URL, and "localhost" in a link opened on ANOTHER workstation
+     * points at that workstation, not at this server.
+     */
+    appBaseUrlIsLoopback: boolean;
   }
 >;
 
@@ -105,6 +126,24 @@ export class ConfigError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ConfigError';
+  }
+}
+
+/** Loopback in any of its spellings: nothing outside this machine can reach it. */
+export function isLoopbackHost(host: string): boolean {
+  const h = host
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '');
+  return h === 'localhost' || h === '::1' || /^127(\.\d{1,3}){3}$/.test(h);
+}
+
+/** The host part of a URL, or the raw value when it is not a URL at all. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
   }
 }
 
@@ -245,6 +284,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     isProduction,
     appEnvironment,
     devLoginEnabled: !isProduction && c.ALLOW_DEV_LOGIN,
+    lanExposed: !isLoopbackHost(c.WEB_HOST),
+    appBaseUrlIsLoopback: isLoopbackHost(hostOf(c.APP_BASE_URL)),
   });
 }
 

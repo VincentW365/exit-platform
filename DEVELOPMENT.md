@@ -98,9 +98,27 @@ pnpm db:seed      # synthetic users, disabled flags, TEST calendar/reasons
 ## Running
 
 ```powershell
-pnpm dev          # web app on http://localhost:3000
-pnpm worker       # background worker (heartbeat only in Stage 1)
+pnpm dev          # web app: listens per WEB_HOST/WEB_PORT (default 0.0.0.0:3000)
+pnpm dev:local    # web app: this machine only (127.0.0.1), whatever .env says
+pnpm worker       # background worker (outbox dispatch, sweeps, heartbeat)
 ```
+
+`pnpm dev` prints every address the app can be reached at, including the
+LAN address for another workstation. The LAN address is read from the live
+network interfaces at each start - a DHCP lease can change between days, so
+never copy it into a document; read it from the banner. Reaching the app from
+another workstation also needs a Windows Firewall rule on this host; the
+procedure, the verification checklist and the security considerations are in
+`docs/operations/LanAccessForInternalUAT.md`.
+
+If port 3000 is taken by another project on this workstation, set `WEB_PORT`
+in `.env` (Next honours the value; no code changes) and restart.
+
+The Next.js development server only serves its own scripts to browser
+origins it knows, so `next.config.ts` allows this machine's own network
+addresses automatically at each start (plus `DEV_ALLOWED_ORIGINS` for a
+hostname). Without that, a page opened from another workstation renders but
+never hydrates - a blank-looking accordion is the symptom.
 
 Sign in through the development role switcher (requires `NODE_ENV` not
 production AND `ALLOW_DEV_LOGIN=true`; the app refuses to start if that flag is

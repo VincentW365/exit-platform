@@ -221,7 +221,24 @@ async function stage4Sweep(): Promise<void> {
   }
 }
 
-log('started', { env: config.NODE_ENV, heartbeatMs: HEARTBEAT_MS });
+// The worker builds every emailed link (checklist, acknowledgement) from
+// APP_BASE_URL, so it states the value at startup: a "localhost" base while
+// the web app is exposed to the network means links that dead-end on the
+// tester's own machine (owner directive, 2026-09-02).
+log('started', {
+  env: config.NODE_ENV,
+  heartbeatMs: HEARTBEAT_MS,
+  appBaseUrl: config.APP_BASE_URL,
+  webLanExposed: config.lanExposed,
+  devLoginEnabled: config.devLoginEnabled,
+});
+if (config.lanExposed && config.appBaseUrlIsLoopback) {
+  log('warning', {
+    message:
+      'APP_BASE_URL is a loopback address while WEB_HOST accepts network connections; ' +
+      'links in captured email will not open from another workstation.',
+  });
+}
 await heartbeat();
 await stage2Sweep();
 await stage3Sweep();

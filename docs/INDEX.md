@@ -91,6 +91,8 @@
 | Operations | `docs/operations/UATPlan.md` | Synthetic user acceptance test plan and sign-off rules. |
 | Operations | `docs/operations/TrainingGuide.md` | Role-based training modules with recorded completions. |
 | Operations | `docs/operations/ReleaseChecklist.md` | Per-release and pre-pilot promotion gates. |
+| Operations | `docs/operations/OwnerTestingGuide.md` | Owner's full-operation testing guide: sign-in, daily flow, exception paths, environment health. |
+| Operations | `docs/operations/LanAccessForInternalUAT.md` | LAN access for a tester on another workstation: start, Windows Firewall rule (manual, scoped), email-link base URL, second-machine verification checklist, remaining security considerations. |
 | Templates | `docs/templates/TemplateCatalogue.md` | Controlled document/notification inventory. |
 | Templates | `docs/templates/ControlledCommunicationTemplates.md` | Sanitized draft templates and placeholders. |
 | Templates | `docs/templates/ExitSurveySpecification.md` | Survey questions, privacy and token flow. |

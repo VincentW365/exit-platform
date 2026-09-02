@@ -1,4 +1,5 @@
-﻿import path from 'node:path';
+﻿import { networkInterfaces } from 'node:os';
+import path from 'node:path';
 import type { NextConfig } from 'next';
 
 // Load the repository-root .env for local development (monorepo root, not the
@@ -22,7 +23,41 @@ const securityHeaders = [
     : []),
 ];
 
+/**
+ * LAN access for internal UAT (owner directive, 2026-09-02).
+ *
+ * The Next.js DEVELOPMENT server refuses requests for its own resources
+ * (/_next/*, the HMR socket) from any browser origin it has not been told
+ * about - so a page opened from another workstation renders but never
+ * hydrates. The only host it allows automatically is the one it was told to
+ * listen on, and that is 0.0.0.0 here, which matches nothing.
+ *
+ * The allow-list is therefore built from configuration, never typed in:
+ * every non-loopback IPv4 address this machine currently holds (read at
+ * start, so a changed DHCP lease needs no edit), plus DEV_ALLOWED_ORIGINS
+ * from .env for a hostname a tester might use instead. Development only -
+ * `next start` has no such guard, and production must never carry a
+ * development allow-list.
+ */
+function allowedDevOrigins(): string[] {
+  if (process.env.NODE_ENV === 'production') return [];
+  const fromEnv = (process.env.DEV_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const local: string[] = [];
+  for (const addrs of Object.values(networkInterfaces())) {
+    for (const a of addrs ?? []) {
+      if (a.family === 'IPv4' && !a.internal && !a.address.startsWith('169.254.')) {
+        local.push(a.address);
+      }
+    }
+  }
+  return [...new Set([...local, ...fromEnv])];
+}
+
 const nextConfig: NextConfig = {
+  allowedDevOrigins: allowedDevOrigins(),
   transpilePackages: ['@exit/config', '@exit/domain', '@exit/db'],
   // pdfkit must stay external: bundling breaks its runtime font-data paths.
   serverExternalPackages: ['@prisma/client', 'pdfkit'],

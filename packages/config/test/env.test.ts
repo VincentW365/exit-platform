@@ -76,3 +76,43 @@ describe('environment schema validation', () => {
     expect(() => loadConfig({ ...base, MAX_UPLOAD_MB: '9999' })).toThrow(ConfigError);
   });
 });
+
+describe('LAN access for internal UAT (owner directive, 2026-09-02)', () => {
+  it('listens on every interface by default and says so', () => {
+    const c = loadConfig(base);
+    expect(c.WEB_HOST).toBe('0.0.0.0');
+    expect(c.WEB_PORT).toBe(3000);
+    expect(c.lanExposed).toBe(true);
+  });
+
+  it('can be kept private to this machine by configuration alone', () => {
+    for (const host of ['127.0.0.1', 'localhost', '::1', '[::1]']) {
+      expect(loadConfig({ ...base, WEB_HOST: host }).lanExposed).toBe(false);
+    }
+  });
+
+  it('takes the port from configuration so a restart never needs a code change', () => {
+    expect(loadConfig({ ...base, WEB_PORT: '3010' }).WEB_PORT).toBe(3010);
+    expect(() => loadConfig({ ...base, WEB_PORT: '0' })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...base, WEB_PORT: '70000' })).toThrow(ConfigError);
+  });
+
+  it('knows when emailed links would dead-end on another workstation', () => {
+    // The default base URL is loopback: fine on the host, wrong on the LAN.
+    expect(loadConfig(base).appBaseUrlIsLoopback).toBe(true);
+    expect(
+      loadConfig({ ...base, APP_BASE_URL: 'http://192.168.1.20:3000' }).appBaseUrlIsLoopback,
+    ).toBe(false);
+    expect(
+      loadConfig({ ...base, APP_BASE_URL: 'http://127.0.0.1:3000/' }).appBaseUrlIsLoopback,
+    ).toBe(true);
+  });
+
+  it('never weakens the production safeguards to get there', () => {
+    // Exposure is a listener setting; the role switcher is still refused in
+    // production regardless of host.
+    expect(() =>
+      loadConfig({ ...base, NODE_ENV: 'production', WEB_HOST: '0.0.0.0', ALLOW_DEV_LOGIN: 'true' }),
+    ).toThrow(ConfigError);
+  });
+});

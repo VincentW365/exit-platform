@@ -99,6 +99,16 @@ deploy with `APP_ENVIRONMENT=test`, and:
 
 The audit trail and the email log keep masks throughout.
 
+### Links inside captured mail, when the tester is on another workstation
+
+The secure links in a message (exit checklist, acknowledgement) are built
+from `APP_BASE_URL`. If that is `http://localhost:3000` and the tester opens
+the captured message from their own workstation over the LAN, the link
+points at *their* machine and dead-ends. Set `APP_BASE_URL` to the host's LAN
+address before a LAN session and restart the web app **and** the worker; both
+warn at startup while the value is still loopback. See
+`LanAccessForInternalUAT.md`.
+
 ## Administration → Email Log
 
 One row per message the platform tried to send:

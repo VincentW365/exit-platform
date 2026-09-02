@@ -61,6 +61,17 @@ export default async function SignInPage({
                 switcher exists only because <code>NODE_ENV</code> is not production and{' '}
                 <code>ALLOW_DEV_LOGIN=true</code>.
               </p>
+              {/* Exposing a passwordless switcher to the network is a
+                  deliberate UAT choice (owner directive, 2026-09-02). It
+                  must never be a quiet one: the page says so where the
+                  buttons are, and the startup logs say so on the host. */}
+              {config.lanExposed ? (
+                <p className="banner-baseline" role="note">
+                  <strong>Reachable from the network.</strong> This server accepts connections from
+                  other workstations, and these buttons need no password. Only authorized testers
+                  should have this address; the host&apos;s firewall rule is the control.
+                </p>
+              ) : null}
               <DevUserList />
             </section>
           ) : (
