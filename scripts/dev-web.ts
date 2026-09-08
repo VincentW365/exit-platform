@@ -93,6 +93,101 @@ function windowsAdapterFacts(): Map<
   return out;
 }
 
+interface FirewallVerdict {
+  level: 'ok' | 'warn' | 'fail' | 'unknown';
+  text: string;
+}
+
+/**
+ * Whether Windows Firewall will let another computer reach this port - read
+ * from the rule registry, which a standard user can read.
+ *
+ * Two kinds of rule decide it: rules naming the PORT, and rules naming the
+ * PROGRAM that owns the port. The second kind is how Windows records a
+ * cancelled or dismissed "Windows Security Alert" for a new listening
+ * program - as an explicit inbound Block for that executable - and a Block
+ * beats every Allow. That rule is invisible to a port-only check, and it
+ * was the reason no other computer could connect on 2026-09-08. The banner
+ * therefore says so at startup rather than leaving it to be discovered.
+ */
+function windowsFirewallVerdict(exe: string, port: number): FirewallVerdict {
+  if (process.platform !== 'win32')
+    return { level: 'unknown', text: 'Windows Firewall: not applicable on this OS' };
+  const script = [
+    "$k='HKLM:\\SYSTEM\\CurrentControlSet\\Services\\SharedAccess\\Parameters\\FirewallPolicy\\FirewallRules';",
+    "(Get-ItemProperty $k).PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' } | ForEach-Object { $_.Value }",
+  ].join(' ');
+  let text: string;
+  try {
+    text = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+      encoding: 'utf8',
+      timeout: 8000,
+      windowsHide: true,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+  } catch {
+    return {
+      level: 'unknown',
+      text: 'Windows Firewall: rules could not be read - run scripts/diagnose-lan-access.ps1',
+    };
+  }
+  const exeLower = exe.toLowerCase();
+  const blocks: string[] = [];
+  const allows: string[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    if (!raw.includes('Dir=In')) continue;
+    const f = new Map<string, string>();
+    for (const tok of raw.split('|')) {
+      const eq = tok.indexOf('=');
+      if (eq < 0) continue;
+      const k = tok.slice(0, eq);
+      const v = tok.slice(eq + 1);
+      f.set(k, f.has(k) ? `${f.get(k)},${v}` : v);
+    }
+    if (f.get('Active') !== 'TRUE') continue;
+    const app = (f.get('App') ?? '')
+      .replace(/%SystemRoot%/i, process.env.SystemRoot ?? '')
+      .toLowerCase();
+    const byPort = f.get('LPort') === String(port);
+    const byApp = app !== '' && app === exeLower;
+    if (!byPort && !byApp) continue;
+    const profile = f.get('Profile') ?? 'Any';
+    const proto =
+      f.get('Protocol') === '6'
+        ? 'TCP'
+        : f.get('Protocol') === '17'
+          ? 'UDP'
+          : (f.get('Protocol') ?? '?');
+    const name = f.get('Name')?.startsWith('@') ? '(system rule)' : (f.get('Name') ?? '(unnamed)');
+    if (f.get('Action') === 'Block') blocks.push(`'${name}' ${proto} ${profile}`);
+    else if (
+      f.get('Action') === 'Allow' &&
+      proto === 'TCP' &&
+      (profile === 'Any' || profile.includes('Domain'))
+    )
+      allows.push(`'${name}' scope ${f.get('RA4') ?? 'Any'}`);
+  }
+  const exeName = path.basename(exe);
+  if (blocks.length > 0) {
+    return {
+      level: 'fail',
+      text:
+        `Windows Firewall BLOCKS ${exeName} inbound: ${blocks.join('; ')} - a Block beats every Allow.\n` +
+        '     This is a dismissed "Windows Security Alert". Fix (administrator): scripts/firewall-lan-diagnostic.ps1 -Action Fix',
+    };
+  }
+  if (allows.length === 0) {
+    return {
+      level: 'warn',
+      text: `No Windows Firewall Allow for TCP ${port} on the Domain profile - other computers are blocked by default. Fix (administrator): scripts/firewall-lan-diagnostic.ps1 -Action Fix`,
+    };
+  }
+  return {
+    level: 'ok',
+    text: `Windows Firewall admits TCP ${port} on Domain via ${allows.join(', ')}`,
+  };
+}
+
 /** Every non-loopback IPv4 address this machine holds, with the OS's view of it. */
 function lanAddresses(): Nic[] {
   const facts = windowsAdapterFacts();
@@ -169,9 +264,12 @@ if (!exposed) {
       '  !  A network is on the Public profile - Windows Firewall rules for Private/Domain will not apply there',
     );
   }
-  line(
-    '  !  Firewall access must be confirmed: run scripts/diagnose-lan-access.ps1 (rule contents need elevation)',
-  );
+  // The firewall verdict comes from the rule registry, which needs no
+  // elevation - so the one thing that actually stopped every other computer
+  // is a startup line, not a discovery.
+  const fw = windowsFirewallVerdict(process.execPath, port);
+  const mark = fw.level === 'ok' ? 'ok' : fw.level === 'fail' ? 'x ' : '! ';
+  line(`  ${mark} ${fw.text}`);
   line(
     '  !  Second-workstation validation not yet completed: run docs/operations/Test-ExitPlatformLAN.ps1 on the tester PC',
   );

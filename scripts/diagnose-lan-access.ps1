@@ -159,30 +159,51 @@ foreach ($fp in (Get-NetFirewallProfile -ErrorAction SilentlyContinue)) {
   Report 'PASS' 'Firewall profile' "$($fp.Name): enabled=$($fp.Enabled) defaultInbound=$inbound blockedPacketLogging=$($fp.LogBlocked)"
 }
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-$ruleErr = $null
+Report $(if ($isAdmin) { 'PASS' } else { 'WARN' }) 'Elevation' $(if ($isAdmin) { 'running as administrator' } else { "this shell is NOT elevated and account '$env:USERNAME' is $(if ((([ADSI]'WinNT://./Administrators,group').psbase.Invoke('Members') | ForEach-Object { $_.GetType().InvokeMember('Name','GetProperty',$null,$_,$null) }) -contains $env:USERNAME) { 'a local administrator (UAC prompt will work)' } else { 'NOT a local administrator - firewall changes need an administrator account (IT)' })" })
+
+# Rules are read straight from the registry, which a standard user can read.
+# Two kinds matter: rules that name the PORT, and rules that name the PROGRAM
+# that owns the port. The second kind is how Windows records a cancelled or
+# dismissed "Windows Security Alert" for a new listening program - as an
+# explicit inbound BLOCK for that executable - and a Block beats every Allow.
+$listenerExe = $null
+if ($listeners.Count -gt 0) { $listenerExe = (Get-CimInstance Win32_Process -Filter "ProcessId = $($listeners[0].OwningProcess)" -ErrorAction SilentlyContinue).ExecutablePath }
+if (-not $listenerExe) { $listenerExe = 'C:\Program Files\nodejs\node.exe' }
+$rulesKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules'
+$found = @(); $blocking = @(); $allowing = @()
 try {
-  $portFilters = Get-NetFirewallPortFilter -ErrorAction Stop | Where-Object { $_.Protocol -eq 'TCP' -and ($_.LocalPort -eq "$Port" -or $_.LocalPort -eq 'Any') }
-  $rules = @($portFilters | Get-NetFirewallRule -ErrorAction Stop | Where-Object { $_.Direction -eq 'Inbound' })
-  $specific = @($rules | Where-Object { ($_ | Get-NetFirewallPortFilter).LocalPort -eq "$Port" })
-  if ($specific.Count -eq 0) {
-    Report 'FAIL' 'Firewall rule' "no inbound rule names TCP $Port - Windows blocks other workstations by default. Run scripts/firewall-lan-diagnostic.ps1 elevated."
+  foreach ($p in ((Get-ItemProperty $rulesKey -ErrorAction Stop).PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' })) {
+    $f = @{}
+    foreach ($tok in ($p.Value -split '\|')) { if ($tok -match '^([^=]+)=(.*)$') { $k = $matches[1]; if ($f.ContainsKey($k)) { $f[$k] = "$($f[$k]),$($matches[2])" } else { $f[$k] = $matches[2] } } }
+    if ($f['Dir'] -ne 'In') { continue }
+    $app = if ($f['App']) { [Environment]::ExpandEnvironmentVariables($f['App']) } else { '' }
+    $byPort = $f['LPort'] -eq "$Port"; $byApp = $app -and ($app.ToLower() -eq $listenerExe.ToLower())
+    if (-not ($byPort -or $byApp)) { continue }
+    $prof = if ($f['Profile']) { $f['Profile'] } else { 'Any' }
+    $active = $f['Active'] -eq 'TRUE'
+    $proto = switch ($f['Protocol']) { '6' { 'TCP' } '17' { 'UDP' } default { $f['Protocol'] } }
+    $disp = if ($f['Name'] -and $f['Name'] -notmatch '^@') { $f['Name'] } else { $p.Name }
+    $why = @()
+    if ($f['Action'] -eq 'Block') { $why += 'EXPLICIT BLOCK - wins over every Allow' }
+    if (-not $active) { $why += 'disabled' }
+    if ($prof -ne 'Any' -and $prof -notmatch 'Domain') { $why += "profile '$prof' never applies here (the networks are Domain)" }
+    if ($f['RA4']) { $why += "remote scope $($f['RA4'])" }
+    $lvl = if ($f['Action'] -eq 'Block' -and $active) { 'FAIL' } elseif ($why.Count) { 'WARN' } else { 'PASS' }
+    $what = if ($byPort) { "port $Port" } else { "program $([IO.Path]::GetFileName($app))" }
+    Report $lvl 'Firewall rule' "[$what] '$disp' action=$($f['Action']) active=$active profile=$prof proto=$proto$(if ($why.Count) { ' -> ' + ($why -join '; ') })"
+    $found += 1
+    if ($active -and $f['Action'] -eq 'Block') { $blocking += $disp }
+    if ($active -and $f['Action'] -eq 'Allow' -and $proto -eq 'TCP' -and ($prof -eq 'Any' -or $prof -match 'Domain')) { $allowing += $disp }
   }
-  foreach ($r in $specific) {
-    $addr = ($r | Get-NetFirewallAddressFilter).RemoteAddress -join ','
-    $ifc = ($r | Get-NetFirewallInterfaceTypeFilter).InterfaceType
-    $lvl = 'PASS'; $why = @()
-    if ($r.Action -eq 'Block') { $lvl = 'FAIL'; $why += 'explicit BLOCK' }
-    if ($r.Enabled -ne 'True') { $lvl = 'WARN'; $why += 'disabled' }
-    if ($r.Profile -ne 'Any' -and $r.Profile -notmatch 'Domain') { $lvl = 'FAIL'; $why += "profile '$($r.Profile)' excludes Domain, which both NICs use" }
-    if ($addr -ne 'Any') { $why += "remote scope $addr - must be the tester's CURRENT address" }
-    if ($ifc -ne 'Any') { $why += "interface type restricted to $ifc" }
-    $flags = if ($why.Count) { ' [' + ($why -join '; ') + ']' } else { '' }
-    Report $lvl 'Firewall rule' "'$($r.DisplayName)' action=$($r.Action) enabled=$($r.Enabled) profile=$($r.Profile) remote=$addr$flags"
+  if ($blocking.Count -gt 0) {
+    Report 'FAIL' 'Firewall verdict' "$($blocking.Count) active inbound BLOCK rule(s) cover '$([IO.Path]::GetFileName($listenerExe))' - created when the Windows Security Alert for the program was cancelled or dismissed. No Allow rule can override a Block. THIS is why no other computer can connect. Fix (administrator): scripts/firewall-lan-diagnostic.ps1 -Action Fix"
+  } elseif ($allowing.Count -eq 0) {
+    Report 'FAIL' 'Firewall verdict' "no active inbound Allow admits TCP $Port on the Domain profile, and the profile blocks inbound by default. Fix (administrator): scripts/firewall-lan-diagnostic.ps1 -Action Fix"
+  } else {
+    Report 'PASS' 'Firewall verdict' "Windows Firewall admits TCP $Port on the Domain profile via: $($allowing -join ', ')"
   }
-} catch { $ruleErr = $_.Exception.Message }
-if ($ruleErr) {
-  if ($isAdmin) { Report 'WARN' 'Firewall rule' "could not read rules: $ruleErr" }
-  else { Report 'WARN' 'Firewall rule' "rule contents need an ELEVATED shell. Run: scripts/firewall-lan-diagnostic.ps1 -Action Inspect (as administrator)" }
+} catch {
+  Report 'WARN' 'Firewall rule' "could not read the rule registry: $($_.Exception.Message.Split([Environment]::NewLine)[0])"
 }
 
 # --- local HTTP health checks --------------------------------------------------

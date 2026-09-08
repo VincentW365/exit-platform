@@ -178,3 +178,62 @@ IT: host address, tester address, TCP 3010 inbound, and that a Windows
 any-remote rule with logging showed nothing.
 
 Do not modify a higher layer while a lower one is failing.
+
+### The failure that actually happened (2026-09-08): a program Block rule
+
+No other computer could connect, from any subnet, while every host-side
+check passed. The cause was four inbound **Block** rules for
+`C:\Program Files\nodejs\node.exe` (TCP and UDP, Domain and Public
+profiles), named *"Node.js JavaScript Runtime"* and prefixed `TCP Query
+User{…}` / `UDP Query User{…}`.
+
+Windows writes exactly that rule when the *Windows Security Alert* for a
+newly listening program is cancelled, dismissed, times out, or is shown to
+an account that cannot approve it. On this workstation the owner's account
+is **not a local administrator**, so every new listener - VS Code, Acrobat,
+Phone Link, and Node - has been recorded as a Block. The firewall event log
+shows the same service SID creating them, several per day.
+
+Two consequences that are easy to get wrong:
+
+- **A Block beats every Allow.** Adding an Allow rule for port 3010 - scoped
+  or any-remote - changes nothing while the program Block exists. The
+  temporary any-remote diagnostic rule would have produced a false "network
+  problem" verdict.
+- **Port-only inspection misses it.** The rule names the program, not a
+  port. `diagnose-lan-access.ps1` and `firewall-lan-diagnostic.ps1
+  -Action Inspect` now read the rule registry directly (no elevation needed)
+  and match rules against the executable that owns the port as well.
+
+**The fix** (one elevated action, administrator credentials):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/firewall-lan-diagnostic.ps1 -Action Fix
+```
+
+It records the Block rules to a state file, removes them, and creates one
+narrow Allow: inbound TCP 3010, **Domain profile only**, remote scope
+`LocalSubnet` - Windows' own keyword for this machine's directly connected
+subnets, kept current when the lease or the adapter changes, and never the
+internet. `-TesterIp <address>` narrows it to one workstation.
+`-Action UndoFix` restores the removed rules exactly.
+
+## 8. What to give IT when the host cannot be changed locally
+
+Firewall changes need a local administrator, and if remote TCP still fails
+after `-Action Fix` with a diagnostic session showing no packet reached
+Windows, the remaining suspects are SentinelOne Firewall Control and network
+segmentation - both IT's. Send this, filled in from the `pnpm dev` banner
+and the tester's report:
+
+| Item | Value |
+| --- | --- |
+| Purpose | Bert's Auto Parts HR Exit (Offboarding) Platform - internal UAT hosted on an HR workstation |
+| Destination | this workstation's current LAN address (from the `pnpm dev` banner, e.g. `10.88.122.134`) and hostname |
+| Port / protocol | **TCP 3010**, inbound |
+| Source scope | the tester workstations' addresses, or the corporate Wi-Fi/wired subnets the testers sit on - internal LAN only, Domain profile |
+| Process | `C:\Program Files\nodejs\node.exe` (the Next.js development server) |
+| Duration | temporary - for the UAT window; remove afterwards |
+| Not requested | no internet exposure, no port-forwarding, no change to PostgreSQL (loopback-only), no change to authentication |
+| Evidence | `scripts/diagnose-lan-access.ps1` output; the tester's `ExitPlatformLAN-*.txt`; if run, the diagnostic-session file from `%LOCALAPPDATA%\ExitPlatform` |
+| Asks | (1) an administrator to run `firewall-lan-diagnostic.ps1 -Action Fix`, or apply the equivalent rule; (2) if TCP still fails: confirm whether SentinelOne Firewall Control or a VLAN/AP policy blocks workstation-to-workstation TCP 3010 between the source and destination above |
