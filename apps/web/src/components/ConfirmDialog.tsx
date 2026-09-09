@@ -49,7 +49,23 @@ export function ConfirmDialog({
 
   return (
     <>
-      <button type="button" className={triggerClassName} onClick={() => ref.current?.showModal()}>
+      <button
+        type="button"
+        className={triggerClassName}
+        onClick={() => {
+          const dialog = ref.current;
+          if (!dialog) return;
+          dialog.showModal();
+          // The reader opened this to say WHY, so the cursor starts in the
+          // reason field rather than on the close button the browser would
+          // pick first (keyboard directive, 2026-09-09, section 14). Closing
+          // returns focus to this trigger - the native dialog does that.
+          const first = dialog.querySelector<HTMLElement>(
+            'textarea, input:not([type="hidden"]), select',
+          );
+          (first ?? dialog.querySelector<HTMLElement>('button.danger'))?.focus();
+        }}
+      >
         {trigger}
       </button>
       <dialog ref={ref} className="dialog" aria-labelledby={headingId}>

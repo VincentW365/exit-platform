@@ -219,36 +219,43 @@ export function StepAccordion({
     return done;
   }, [steps, values, touched]);
 
-  const [open, setOpen] = useState<string | null>(null);
+  // On arrival, the open step is the first one the reader has not been
+  // through, which on a fresh page is the first one the server has not
+  // already settled: returning to a partly-filled case should not mean
+  // scrolling past what is done (directive section 11).
+  //
+  // Deliberately NOT "the first step whose fields are empty": several steps
+  // arrive prefilled from the separation profile, and skipping them would
+  // land the reader on Review having never seen the dates the case is about
+  // to be created with.
+  //
+  // This is decided from the step list alone, so it is decided ONCE, on the
+  // server, and the page arrives with that step already open. Deciding it
+  // after hydration rendered every step hidden until JavaScript had run:
+  // the first keystrokes of a reader who started typing at once went to a
+  // field that was not there yet, and the search results a reader had just
+  // asked for were invisible for the same beat (keyboard directive,
+  // 2026-09-09, section 14).
+  const [open, setOpen] = useState<string | null>(
+    () => steps.find((s) => s.settledByServer !== true)?.id ?? steps[steps.length - 1]?.id ?? null,
+  );
 
-  // On arrival, open the first step that is not already finished: returning
-  // to a partly-filled case should not mean scrolling past what is done
-  // (directive section 11).
+  // Seed the field values from the live form once the page has painted.
   useEffect(() => {
     // Read on the next frame rather than during the effect: the form this
     // reads lives outside the accordion, so it is only guaranteed to be in
     // the document once the whole page has painted.
     const frame = requestAnimationFrame(() => {
       // The form only exists once the earlier steps have been answered, so
-      // its absence is normal - it must never stop the accordion opening.
+      // its absence is normal.
       const form = getForm();
+      if (!form) return;
       const seed: Record<string, string> = {};
-      if (form) {
-        for (const step of steps) {
-          for (const name of step.requiredFields ?? []) seed[name] = readField(form, name);
-          for (const s of step.summaryFields ?? []) seed[s.field] = readField(form, s.field);
-        }
-        setValues(seed);
+      for (const step of steps) {
+        for (const name of step.requiredFields ?? []) seed[name] = readField(form, name);
+        for (const s of step.summaryFields ?? []) seed[s.field] = readField(form, s.field);
       }
-      // Open the first step the reader has not been through, which on a
-      // fresh page is the first one the server has not already settled.
-      //
-      // Deliberately NOT "the first step whose fields are empty": several
-      // steps arrive prefilled from the separation profile, and skipping
-      // them would land the reader on Review having never seen the dates
-      // the case is about to be created with.
-      const firstOpen = steps.find((s) => s.settledByServer !== true);
-      setOpen(firstOpen?.id ?? steps[steps.length - 1]?.id ?? null);
+      setValues(seed);
     });
     return () => cancelAnimationFrame(frame);
     // The step list is stable for the life of the page; this runs once.
@@ -284,8 +291,17 @@ export function StepAccordion({
       // Native constraint validation first, so the browser reports a missing
       // or malformed field in its own words before anything collapses.
       const scope = rootRef.current?.querySelector<HTMLElement>(`[data-step="${step.id}"]`);
+      // Only the controls that belong to the accordion's OWN form are this
+      // step's business. A step can also host other forms - the employee
+      // search, the manual directory entry, the separation-type choice -
+      // and their required fields are theirs to enforce when THEY submit.
+      // Validating them here surfaced "Please fill out this field" from an
+      // empty manual-entry form nobody had opened (keyboard directive,
+      // 2026-09-09, section 2).
+      const own = getForm();
       for (const control of scope?.querySelectorAll<HTMLInputElement>('input, select, textarea') ??
         []) {
+        if (control.form !== own) continue;
         if (!control.checkValidity()) {
           control.reportValidity();
           return;
@@ -297,7 +313,7 @@ export function StepAccordion({
       if (next) openStep(next.id);
       else setOpen(null);
     },
-    [steps, refresh, openStep],
+    [steps, refresh, openStep, getForm],
   );
 
   const summaryFor = (step: StepSpec): ReactNode => {
@@ -343,6 +359,13 @@ export function StepAccordion({
     // A textarea takes newlines, and a button press is already explicit.
     if (target instanceof HTMLTextAreaElement || target instanceof HTMLButtonElement) return;
     if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+    // Enter means "submit the form that owns this field". Only fields of the
+    // accordion's own create form are redirected to "finish this step"; a
+    // field that belongs to another form - the employee search, the manual
+    // directory entry, the separation-type choice - is left to the browser,
+    // which submits THAT form. Intercepting those was the bug: Enter in the
+    // search box never searched (keyboard directive, 2026-09-09, section 1).
+    if (target.form !== getForm()) return;
     const stepId = target.closest<HTMLElement>('[data-step]')?.dataset.step;
     const index = steps.findIndex((s) => s.id === stepId);
     if (index < 0 || steps[index]!.finalStep) return;
@@ -458,7 +481,13 @@ export function StepAccordion({
                     })}
                   </div>
                 ) : null}
-                {step.content}
+                {/* The content is built on the server and held in a variable
+                    before it is handed over, so it arrives without the mark a
+                    JSX child gets - and can arrive lazily, after this element
+                    was created. Between siblings it would then be asked for a
+                    key it cannot have; in a keyed slot of its own it is a sole
+                    child and nothing asks. */}
+                <React.Fragment key="content">{step.content}</React.Fragment>
                 <div className="step__nav" hidden={step.finalStep && index === 0}>
                   {index > 0 ? (
                     <button

@@ -2112,3 +2112,17 @@ a.button:active:not([aria-disabled='true']),
   color: var(--st-attention);
   font-weight: var(--weight-semi);
 }
+
+/* A key the reader can press, named inline in a hint (keyboard directive,
+   2026-09-09). Set as a small keycap so it reads as a key, not as a word. */
+kbd {
+  display: inline-block;
+  padding: 0 0.4em;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-well);
+  font: inherit;
+  font-size: 0.85em;
+  line-height: 1.5;
+}

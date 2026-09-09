@@ -53,7 +53,10 @@ function allowedDevOrigins(): string[] {
       }
     }
   }
-  return [...new Set([...local, ...fromEnv])];
+  // 127.0.0.1 is not covered by Next's built-in "localhost" allowance, so a
+  // page opened at http://127.0.0.1:<port> rendered but never hydrated - the
+  // create-case accordion simply stayed collapsed. Loopback is this machine.
+  return [...new Set(['127.0.0.1', ...local, ...fromEnv])];
 }
 
 const nextConfig: NextConfig = {

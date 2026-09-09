@@ -20,6 +20,7 @@ import { createCaseAction, createManualEmployeeAction } from '../actions';
 import { EmptyState } from '@/components/EmptyState';
 import { FlowIcon, SearchIcon } from '@/components/icons';
 import { Chip, Row, Rows } from '@/components/patterns';
+import { ArrowKeyList, AutoFocus } from '@/components/keyboard';
 import { Field, FieldRow, FormActions } from '@/components/forms';
 import { StepAccordion, type StepSpec } from '@/components/StepAccordion';
 
@@ -46,6 +47,9 @@ export default async function NewCasePage({
   const sp = await searchParams;
   const q = sp.q ?? '';
   const selectedId = sp.employee ?? '';
+  // The search was submitted with nothing in it: `q` is present in the
+  // address but blank. Distinct from "no search yet", which has no `q`.
+  const emptySearch = 'q' in sp && q.trim() === '';
 
   const search = q ? await searchEmployees(actor, q) : null;
   const selected = search?.results.find((e) => e.sourceId === selectedId) ?? null;
@@ -78,51 +82,63 @@ export default async function NewCasePage({
 
   const resultsTable =
     search && search.results.length > 0 ? (
-      <div className="table-wrap" tabIndex={0}>
-        <table className="data">
-          <caption className={selected ? 'sr-only' : undefined}>
-            {`${search.results.length} ${search.results.length === 1 ? 'match' : 'matches'} for "${q}"`}
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Select</th>
-              <th scope="col">Employee</th>
-              <th scope="col">Job title</th>
-              <th scope="col">Department</th>
-              <th scope="col">Location</th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {search.results.map((e) => (
-              <tr key={`${e.sourceSystem}-${e.sourceId}`}>
-                <td>
-                  {e.sourceId === selected?.sourceId ? (
-                    <span className="badge badge--success">Selected</span>
-                  ) : (
-                    <a
-                      className="button secondary"
-                      href={`/cases/new?q=${encodeURIComponent(q)}&employee=${encodeURIComponent(e.sourceId)}`}
-                    >
-                      Select
-                    </a>
-                  )}
-                </td>
-                <td>
-                  {e.displayName}{' '}
-                  <span className="hint">
-                    {e.employeeNumber ? `#${e.employeeNumber}` : e.sourceId}
-                  </span>
-                </td>
-                <td>{e.jobTitle}</td>
-                <td>{e.department}</td>
-                <td>{e.location}</td>
-                <td>{e.active ? 'Active' : 'Inactive'}</td>
+      // Keyboard directive (2026-09-09, section 5): after a search the cursor
+      // lands on the first match, ↑ ↓ move between matches, Enter selects,
+      // Escape goes back to the search box. The links stay ordinary links -
+      // Tab reaches them too - so nothing is taken from anyone.
+      <ArrowKeyList escapeTo="#emp-q" focusFirst={!selected}>
+        <div className="table-wrap" tabIndex={0}>
+          <table className="data">
+            <caption className={selected ? 'sr-only' : undefined}>
+              {`${search.results.length} ${search.results.length === 1 ? 'match' : 'matches'} for "${q}"`}
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Select</th>
+                <th scope="col">Employee</th>
+                <th scope="col">Job title</th>
+                <th scope="col">Department</th>
+                <th scope="col">Location</th>
+                <th scope="col">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {search.results.map((e) => (
+                <tr key={`${e.sourceSystem}-${e.sourceId}`}>
+                  <td>
+                    {e.sourceId === selected?.sourceId ? (
+                      <span className="badge badge--success">Selected</span>
+                    ) : (
+                      <a
+                        className="button secondary"
+                        data-list-item
+                        aria-label={`Select ${e.displayName}`}
+                        href={`/cases/new?q=${encodeURIComponent(q)}&employee=${encodeURIComponent(e.sourceId)}`}
+                      >
+                        Select
+                      </a>
+                    )}
+                  </td>
+                  <td>
+                    {e.displayName}{' '}
+                    <span className="hint">
+                      {e.employeeNumber ? `#${e.employeeNumber}` : e.sourceId}
+                    </span>
+                  </td>
+                  <td>{e.jobTitle}</td>
+                  <td>{e.department}</td>
+                  <td>{e.location}</td>
+                  <td>{e.active ? 'Active' : 'Inactive'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="hint" style={{ marginTop: 'var(--space-2)' }}>
+          <kbd>↑</kbd> <kbd>↓</kbd> move between matches · <kbd>Enter</kbd> selects · <kbd>Esc</kbd>{' '}
+          returns to the search box
+        </p>
+      </ArrowKeyList>
     ) : null;
 
   const employeeContent = (
@@ -151,15 +167,32 @@ export default async function NewCasePage({
                 type="search"
                 name="q"
                 defaultValue={q}
-                required
                 placeholder="Name, employee number, department or location"
                 autoComplete="off"
+                aria-describedby={emptySearch ? 'emp-q-error' : undefined}
+                aria-invalid={emptySearch || undefined}
               />
             </div>
             <button type="submit">Search</button>
           </div>
+          {/* An empty search is answered by the search, in the search's own
+              words - not by the browser's generic bubble, and never by the
+              validation of some other form on the page (keyboard directive,
+              2026-09-09, section 4). */}
+          {emptySearch ? (
+            <p id="emp-q-error" className="field__error" role="alert">
+              Enter an employee name, employee number, department, job title or location to search.
+            </p>
+          ) : null}
         </div>
       </form>
+      {/* The cursor starts where the reader is about to type (section 14) -
+          only while no employee is chosen, so a returning reader is not
+          pulled back to step 1, and only while there are no matches to
+          choose from: once there are, the first match takes the cursor
+          instead (the results list asks for it), and two requests for focus
+          on one page would be a race the search box wins by being first. */}
+      {!selected && !(search && search.results.length > 0) ? <AutoFocus selector="#emp-q" /> : null}
 
       {search && search.results.length === 0 ? (
         <EmptyState

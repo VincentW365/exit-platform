@@ -285,6 +285,18 @@ Deployment-gap protection, permanent from this point on:
   dead page), plus every case tab on a live case.
 - `e2e/dark-mode.spec.ts` - theme toggle, persistence, dark-palette axe
   scans, and the topbar quick case search.
+- `e2e/keyboard.spec.ts` - the keyboard standards (DEC-059), driven with
+  no mouse at all: Enter in the employee search runs the search and
+  nothing else (the reported defect, asserted by counting browser
+  validation reports across the navigation), Enter and the Search button
+  are equivalent, an empty search is answered in its own words, arrow keys
+  and Escape work the results, Enter in a step field never creates the
+  case, a settled step reopens from its header, a confirmation dialog owns
+  and returns focus, a whole case is created keyboard-only, a submit
+  button cannot be pressed twice, and `/` reaches the case search. This is
+  the automated stand-in for the directive's keyboard-only walkthrough; a
+  human walkthrough on the UAT workstation is still owed and is recorded
+  in the UAT plan when done.
 
 UAT accounts are function-named (DEC-040): specs sign in as "HR Manager",
 "Second IT Responder", etc. The environment is rebuilt with

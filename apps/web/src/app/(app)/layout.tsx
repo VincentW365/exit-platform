@@ -7,6 +7,8 @@ import { logoutAction } from '@/app/signin/actions';
 import { ActiveLink, BackButton, Breadcrumbs, MobileMenu } from '@/components/chrome';
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { SubmitGuard } from '@/components/SubmitGuard';
+import { KeyboardShortcuts } from '@/components/KeyboardShortcuts';
 import type { ReactNode } from 'react';
 import { roleList } from '@/lib/text';
 import {
@@ -140,7 +142,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 id="topbar-q"
                 type="search"
                 name="q"
-                placeholder="Find case…"
+                placeholder="Find case…  /"
+                title="Press / anywhere to search"
+                aria-keyshortcuts="/"
                 autoComplete="off"
               />
             </form>
@@ -162,6 +166,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
+        {/* Keyboard directive (2026-09-09): one press, one submission; "/"
+            reaches the case search from anywhere. Both are page-wide
+            behaviours, so they live with the chrome rather than in any page. */}
+        <SubmitGuard />
+        <KeyboardShortcuts />
         <main id="main">{children}</main>
       </div>
     </div>

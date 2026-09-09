@@ -239,6 +239,38 @@ sections of the owner design directive.
 - Nothing animates on page load except a message that has just told the
   reader something.
 
+### Keyboard interaction standards (owner directive, 2026-09-09)
+
+The platform is operated with the mouse aside. The standards, and where each
+one is enforced:
+
+| Key | Standard | Where it lives |
+| --- | --- | --- |
+| **Enter** in a search or filter field | Runs that search. Every search and filter is a GET form with its own submit, so the browser's implicit submission does it - nothing intercepts it. | `cases/new` (employee), `cases`, `audit`, `exceptions`, `queue`, `admin/email-log`, topbar |
+| **Enter** in a field of the create-case form | Finishes the current step and opens the next. It never creates the case: the final action is the Review step's own submit. The accordion redirects Enter **only** for fields owned by its own form; a field belonging to another form on the page (employee search, manual entry, separation type) is left to the browser, which submits *that* form. | `components/StepAccordion.tsx` |
+| **Enter** / **Space** on a button | Native. Every `<button>` carries an explicit `type`; nothing is a `<div>` pretending. | whole app (`grep` count: 0 untyped buttons) |
+| **Enter** / **Space** on an accordion header | Expands or collapses; the header is a real `<button aria-expanded aria-controls>`. | `StepAccordion.tsx` |
+| **↑ ↓ Home End** in employee search results | Move between matches; **Enter** selects; **Esc** returns to the search box. The matches stay ordinary links, so Tab reaches them too. Not a listbox - the results are a table with columns a listbox would hide. | `components/keyboard.tsx` `ArrowKeyList` |
+| **Esc** in a dialog | Closes it; focus returns to the control that opened it (native `<dialog>`). | `components/ConfirmDialog.tsx` |
+| **Tab** / **Shift+Tab** in a dialog | Contained by `showModal()`'s inert background. | native |
+| **/** anywhere | Focuses the case search, unless the reader is typing in a field. The only app-wide shortcut; browser shortcuts are untouched. | `components/KeyboardShortcuts.tsx` |
+| Auto-focus | Employee search on a fresh Create Case; first match after a search; the reason field when a confirmation opens; a step's header when a step opens. Only when nothing else has focus, only once the element is visible. | `keyboard.tsx` `AutoFocus`, `ConfirmDialog.tsx`, `StepAccordion.tsx` |
+| Visible before JavaScript | The step accordion decides its open step from the step list alone, so the server renders that step open: the search box, and the matches a reader has just asked for, are on screen from the first paint rather than after hydration. A reader who types at once is not typing into a field that is not there yet. | `StepAccordion.tsx` |
+| Double submission | The instant a form submits (server actions only, not searches), its submit buttons are disabled and labelled busy; released on history-cache return or after 20 s. The server keeps its own idempotency. | `components/SubmitGuard.tsx` |
+| Empty search | Answered beside the search box in the search's own words, never by the browser bubble or another form's validation. | `cases/new` |
+| Focus visibility | One global `:focus-visible` ring (`--focus`, 3 px, offset 2 px) with a stronger accent ring on inputs; no `outline: none` anywhere. | `globals.css`, `design-system.css` |
+
+Not adopted, deliberately: **Ctrl+S**. A case page carries several
+independent server-action forms, and a "save" shortcut would have to guess
+which one the reader meant; guessing wrong on a record is worse than no
+shortcut.
+
+Evidence: `e2e/keyboard.spec.ts` - the reported defect (Enter in the
+employee search), same-handler equivalence, empty-search wording, arrow-key
+results, Enter-does-not-create-the-case, accordion reopen, dialog focus
+lifecycle, a whole case created without a mouse, double-submit lock, and
+the `/` shortcut.
+
 ### Responsive and accessibility evidence
 
 - `e2e/responsive-sweep.spec.ts` — every rebuilt surface at 390px, 768px and
