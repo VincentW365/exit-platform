@@ -170,7 +170,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         'FATAL: APP_ENVIRONMENT=test requires TEST_EMAIL - the single mailbox every message is redirected to.',
       );
     }
-    if (!/^[^s@]+@[^s@]+.[^s@]+$/.test(testEmail)) {
+    // One mailbox, plausibly shaped: no whitespace, one "@", a dotted host.
+    // (The earlier form of this check had lost its backslashes and refused
+    // any address containing the letter "s" - found 2026-09-09.)
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
       throw new ConfigError('FATAL: TEST_EMAIL must be a valid email address.');
     }
   }

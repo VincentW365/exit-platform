@@ -71,6 +71,7 @@
 | UX | `docs/ux/DesignSystemAndAccessibility.md` | Professional Bert's-style and WCAG requirements. |
 | Delivery | `docs/delivery/Roadmap.md` | Bounded delivery stages and gates. |
 | Delivery | `docs/delivery/TestStrategy.md` | Testing model and stage gates. |
+| Delivery | `docs/delivery/OffboardingRegressionSuite.md` | Full offboarding workflow regression suite and evidence pack: how to run it, email test mode, isolation, folder layout. |
 | Delivery | `docs/delivery/RiskRegister.md` | 35 product/project risks. |
 | Delivery | `docs/delivery/PilotAndRolloutPlan.md` | Baseline, pilot, rollout and adoption. |
 | Delivery | `docs/delivery/ChangeControl.md` | Scope and decision change process. |

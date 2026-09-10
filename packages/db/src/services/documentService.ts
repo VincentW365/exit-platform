@@ -10,6 +10,7 @@ import {
   docTransitionError,
   documentValidationErrors,
   hasMissingMarkers,
+  isoDateInZone,
   letterTypeForDeparture,
   maskDestination,
   substitute,
@@ -361,8 +362,17 @@ export async function submitDocument(actor: Actor, docId: string) {
   if (!d.template) throw ServiceError.conflict('Template missing for this document.');
   const snapshot = d.fieldSnapshot as DocumentFieldSnapshot;
   const errors = documentValidationErrors(d.documentType, d.template.contentBody, snapshot);
-  // Date-order check from live case values (C.5): confirmed >= received.
-  if (c.confirmedLastDay && c.receivedAt && c.confirmedLastDay < c.receivedAt)
+  // Date-order check from live case values (C.5): confirmed >= received,
+  // compared as CALENDAR DAYS in the business zone. The last working day is a
+  // date-only column (midnight UTC) and the received value is an instant, so
+  // comparing them raw called the platform's own defaults for an immediate
+  // resignation - received today, last day today - an error (found by the
+  // offboarding regression suite, 2026-09-09).
+  if (
+    c.confirmedLastDay &&
+    c.receivedAt &&
+    c.confirmedLastDay.toISOString().slice(0, 10) < isoDateInZone(c.receivedAt)
+  )
     errors.push('Confirmed last working date is before the resignation received date.');
   // Changed-case-data check (C.5): re-derive and compare material values.
   const fresh = await snapshotForCase(d.caseId, d.version, d.templateVersion ?? 0);

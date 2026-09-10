@@ -4,6 +4,10 @@ import { defineConfig } from '@playwright/test';
 // Requires: migrated + seeded database, .env with ALLOW_DEV_LOGIN=true.
 export default defineConfig({
   testDir: './e2e',
+  // Playwright empties its output directory before every run. Keep that to a
+  // folder of its own: test-results/offboarding-e2e/ holds the regression
+  // evidence packs and must survive every run of every config.
+  outputDir: './test-results/playwright',
   timeout: 60_000,
   // Dev-server cold compiles can exceed the 5s default on first navigation.
   expect: { timeout: 15_000 },

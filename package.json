@@ -26,6 +26,7 @@
     "test:unit": "vitest run --config vitest.config.ts",
     "test:int": "vitest run --config vitest.integration.config.ts",
     "e2e": "playwright test",
+    "regression:offboarding": "pnpm exec tsx scripts/offboarding-regression.ts",
     "build": "pnpm --filter web build && pnpm --filter worker typecheck",
     "dev": "pnpm exec tsx scripts/dev-web.ts",
     "dev:local": "pnpm exec tsx scripts/dev-web.ts --local",

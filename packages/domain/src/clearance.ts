@@ -110,6 +110,13 @@ const INTERNAL_EMAIL_TYPES = [
   'RETURN_ITEMS_CHECKLIST',
 ];
 
+/** Letter states that satisfy the documents condition (O.3). */
+export const LETTER_SATISFIES_CLEARANCE: readonly string[] = [
+  'RENDERED',
+  'MANUALLY_ISSUED',
+  'ISSUED_BY_EMAIL',
+];
+
 export function evaluateClearance(f: ClearanceFacts): ClearanceReadiness {
   const items: ClearanceItem[] = [];
   const hasItTasks = f.tasks.some((t) => (t.department ?? 'HR') === 'IT');
@@ -264,10 +271,15 @@ export function evaluateClearance(f: ClearanceFacts): ClearanceReadiness {
     key: 'documents',
     label: 'Resignation document',
     group: 'Documents',
-    ok: !f.letterRequired || f.letterStatus === 'RENDERED' || f.letterStatus === 'MANUALLY_ISSUED',
+    // A letter the platform itself sent by email (ISSUED_BY_EMAIL) is as
+    // issued as one handed over by hand; the gate used to know only the
+    // rendered and manually-issued states, so a case whose letter went out
+    // through the platform's own path could never clear (found by the
+    // offboarding regression suite, 2026-09-09).
+    ok: !f.letterRequired || LETTER_SATISFIES_CLEARANCE.includes(f.letterStatus ?? ''),
     detail: !f.letterRequired
       ? 'No letter is applicable for this departure type.'
-      : `Letter status: ${f.letterStatus ?? 'none'} (RENDERED or MANUALLY_ISSUED required).`,
+      : `Letter status: ${f.letterStatus ?? 'none'} (RENDERED, MANUALLY_ISSUED or ISSUED_BY_EMAIL required).`,
   });
 
   // O.4: action form complete (new model) or approved (legacy rows).

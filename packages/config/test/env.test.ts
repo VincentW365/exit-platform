@@ -116,3 +116,29 @@ describe('LAN access for internal UAT (owner directive, 2026-09-02)', () => {
     ).toThrow(ConfigError);
   });
 });
+
+describe('UAT redirect mailbox (APP_ENVIRONMENT=test)', () => {
+  it('accepts an ordinary mailbox address, whatever letters it contains', () => {
+    // Found by the offboarding regression suite (2026-09-09): the format
+    // check had lost its backslashes, so any address containing the letter
+    // "s" - uat@example.test, say - was refused and the UAT posture could
+    // not start at all.
+    for (const address of [
+      'uat-test-mailbox@example.test',
+      'hr.systems@bertsautoparts.test',
+      'a@b.co',
+    ]) {
+      const c = loadConfig({ ...base, APP_ENVIRONMENT: 'test', TEST_EMAIL: address });
+      expect(c.appEnvironment).toBe('test');
+      expect(c.TEST_EMAIL).toBe(address);
+    }
+  });
+
+  it('still refuses a value that is not an address', () => {
+    for (const bad of ['', 'not-an-address', 'missing@tld', '@example.test', 'a b@example.test']) {
+      expect(() => loadConfig({ ...base, APP_ENVIRONMENT: 'test', TEST_EMAIL: bad })).toThrow(
+        ConfigError,
+      );
+    }
+  });
+});

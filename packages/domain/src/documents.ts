@@ -203,7 +203,10 @@ export interface CaseFieldsForDocument {
 
 /** "Avery Brown" -> "Avery". The letter greets the employee by first name. */
 export function firstNameOf(fullName: string): string {
-  return fullName.trim().split(/s+/)[0] ?? '';
+  // Split on WHITESPACE. An earlier form of this line had lost its backslash
+  // and split on the letter "s", so a Brown was addressed as "Bro" (found by
+  // the offboarding regression suite, 2026-09-09).
+  return fullName.trim().split(/\s+/)[0] ?? '';
 }
 
 /**

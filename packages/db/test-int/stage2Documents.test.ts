@@ -254,3 +254,28 @@ describe('UAT-4 defect fix: submitter-based maker-checker (Directive 5)', () => 
     await approveDocument(manager2.actor, replacement.id);
   });
 });
+
+describe('date-order check compares calendar days (found by the offboarding regression suite, 2026-09-09)', () => {
+  it('a resignation received today with the last working day today can be submitted', async () => {
+    const { isoDateInZone, parseInstantInZone } = await import('@exit/domain');
+    const today = isoDateInZone(new Date());
+    // The platform's own defaults for an immediate departure: received now,
+    // last day today. The last working day is a date-only column (midnight
+    // UTC); compared raw with the received instant it read as "before".
+    const created = await createDraft(officer.actor, {
+      ...VALID_DRAFT,
+      recordPurpose: 'TEST',
+      measurementCohort: null,
+      receivedAt: new Date(Date.now() - 60_000).toISOString(),
+      confirmedLastDay: new Date(`${today}T12:00:00Z`).toISOString(),
+      effectiveSeparationAt: parseInstantInZone(`${today}T23:59`)!.toISOString(),
+    });
+    await setEmployeeAddress(officer.actor, created.caseId, {
+      employeeAddress: '14 Synthetic Avenue, Kingston 5',
+    });
+    const d = await createLetterDraft(officer.actor, created.caseId);
+    await expect(submitDocument(officer.actor, d.id)).resolves.not.toThrow();
+    const after = await prisma.documentInstance.findUniqueOrThrow({ where: { id: d.id } });
+    expect(after.status).toBe('PENDING_APPROVAL');
+  });
+});

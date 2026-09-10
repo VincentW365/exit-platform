@@ -34,6 +34,7 @@ const LIVE_DOC_STATUSES = [
   'RENDERING',
   'RENDERED',
   'MANUALLY_ISSUED',
+  'ISSUED_BY_EMAIL',
   'RENDER_FAILED',
 ] as const;
 

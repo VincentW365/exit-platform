@@ -297,6 +297,14 @@ Deployment-gap protection, permanent from this point on:
   the automated stand-in for the directive's keyboard-only walkthrough; a
   human walkthrough on the UAT workstation is still owed and is recorded
   in the UAT plan when done.
+- `pnpm regression:offboarding` (`e2e/offboarding-regression/`, its own
+  `playwright.regression.config.ts`) - the full offboarding workflow
+  regression and evidence pack: one controlled employee through every
+  separation type discovered from the platform's profiles, in the UAT email
+  posture, producing a per-run folder under `test-results/offboarding-e2e/`
+  with result.md/json per scenario, .eml routing evidence, PDFs, link
+  evidence, audit timelines and a summary.html with the exception list
+  first. See `docs/delivery/OffboardingRegressionSuite.md`.
 
 UAT accounts are function-named (DEC-040): specs sign in as "HR Manager",
 "Second IT Responder", etc. The environment is rebuilt with
