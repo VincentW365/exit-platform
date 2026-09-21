@@ -7,7 +7,14 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { getConfig, resolveFromRoot } from '@exit/config';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadBucketCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { getConfig, resolveFromRoot, resolveSecretRef, secretRefFormatError } from '@exit/config';
 
 export interface StorageAdapter {
   readonly name: string;
@@ -86,51 +93,164 @@ export class LocalStorageAdapter implements StorageAdapter {
 }
 
 /**
- * S3-compatible object-storage BOUNDARY (Directive 4 section G): private by
- * default, encryption in transit and at rest, signed short-lived access only
- * after server authorization. No credentials exist in this repository, so
- * every operation fails closed until the deployment provides configuration -
- * no network activity occurs here.
+ * S3-compatible object storage (Directive 4 section G): private bucket,
+ * encryption in transit, system-generated keys, server authorization before
+ * any read. Generic S3 - the endpoint, region and addressing style are all
+ * configuration, so this works against AWS S3 or any S3-compatible provider
+ * and depends on no particular host.
+ *
+ * Credentials arrive as REFERENCES (`env:NAME`) and are resolved only at the
+ * moment a client is built. They are never logged, never returned and never
+ * placed in an error (DEC-062).
  */
 export class S3StorageAdapter implements StorageAdapter {
-  readonly name = 's3-boundary';
+  readonly name = 's3';
+  private client?: S3Client;
+  private bucketName?: string;
 
+  /** Reports configuration problems WITHOUT resolving any secret value. */
   validateConfig(): string[] {
     const c = getConfig();
-    const missing = [
+    const errors = [
       ['S3_ENDPOINT', c.S3_ENDPOINT],
       ['S3_BUCKET', c.S3_BUCKET],
       ['S3_REGION', c.S3_REGION],
-      ['S3_ACCESS_KEY_REF', c.S3_ACCESS_KEY_REF],
-      ['S3_SECRET_KEY_REF', c.S3_SECRET_KEY_REF],
     ]
       .filter(([, v]) => !v)
       .map(([k]) => `${k} is not configured.`);
-    return missing;
+    for (const [label, ref] of [
+      ['S3_ACCESS_KEY_REF', c.S3_ACCESS_KEY_REF],
+      ['S3_SECRET_KEY_REF', c.S3_SECRET_KEY_REF],
+    ] as const) {
+      const problem = secretRefFormatError(ref, label);
+      if (problem) errors.push(problem);
+    }
+    return errors;
   }
 
+  /**
+   * Build the client on first use. Resolution failures surface as
+   * ConfigError, which carries the variable NAME and never its value.
+   */
+  private connection(): { client: S3Client; bucket: string } {
+    if (!this.client || !this.bucketName) {
+      const c = getConfig();
+      const errors = this.validateConfig();
+      if (errors.length) {
+        throw new Error(`S3 storage is not completely configured: ${errors.join(' ')}`);
+      }
+      this.client = new S3Client({
+        region: c.S3_REGION!,
+        endpoint: c.S3_ENDPOINT!,
+        // Provider addressing style, not a vendor assumption (see config).
+        forcePathStyle: c.S3_FORCE_PATH_STYLE,
+        credentials: {
+          accessKeyId: resolveSecretRef(c.S3_ACCESS_KEY_REF, 'S3_ACCESS_KEY_REF'),
+          secretAccessKey: resolveSecretRef(c.S3_SECRET_KEY_REF, 'S3_SECRET_KEY_REF'),
+        },
+      });
+      this.bucketName = c.S3_BUCKET!;
+    }
+    return { client: this.client, bucket: this.bucketName };
+  }
+
+  /** Keys are system-generated; anything else is refused, as locally. */
+  private assertKey(objectKey: string): string {
+    if (!KEY_PATTERN.test(objectKey)) throw new Error('Invalid object key.');
+    return objectKey;
+  }
+
+  /**
+   * Never overwrite. `IfNoneMatch: '*'` is the S3 equivalent of the local
+   * adapter's `flag: 'wx'`: the write succeeds only if no object exists at
+   * that key. A provider that does not honour conditional creation surfaces
+   * its refusal here rather than silently replacing a stored document.
+   */
+  async put(objectKey: string, bytes: Uint8Array): Promise<void> {
+    // Key first: an invalid request is refused before any credential is read.
+    const key = this.assertKey(objectKey);
+    const { client, bucket } = this.connection();
+    try {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: bytes,
+          ContentType: 'application/octet-stream',
+          IfNoneMatch: '*',
+        }),
+      );
+    } catch (e) {
+      if (isPreconditionFailed(e)) {
+        throw new Error('Object already exists; stored documents are never overwritten.');
+      }
+      throw e;
+    }
+  }
+
+  async get(objectKey: string): Promise<Buffer> {
+    const key = this.assertKey(objectKey);
+    const { client, bucket } = this.connection();
+    const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    if (!result.Body) throw new Error('Object has no readable body.');
+    return Buffer.from(await result.Body.transformToByteArray());
+  }
+
+  /**
+   * Deletion runs ONLY through the approved retention process. Absence is
+   * success - disposal is idempotent - but a genuine failure propagates, so
+   * retention evidence never claims a disposal that did not happen. (The
+   * local adapter swallows all errors; that is acceptable for a development
+   * directory and not for durable evidence.)
+   */
+  async deleteForRetention(objectKey: string): Promise<void> {
+    const key = this.assertKey(objectKey);
+    const { client, bucket } = this.connection();
+    try {
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+    } catch (e) {
+      if (isNotFound(e)) return;
+      throw e;
+    }
+  }
+
+  /** Non-mutating readiness probe: the bucket exists and is reachable. */
   async health(): Promise<{ ok: boolean; detail: string }> {
     const errors = this.validateConfig();
-    return errors.length
-      ? { ok: false, detail: `not configured: ${errors.length} item(s) missing` }
-      : { ok: true, detail: 'configuration present (live connectivity untested - no credentials)' };
+    if (errors.length) {
+      return { ok: false, detail: `not configured: ${errors.length} item(s) missing` };
+    }
+    try {
+      const { client, bucket } = this.connection();
+      await client.send(new HeadBucketCommand({ Bucket: bucket }));
+      return { ok: true, detail: 'bucket reachable' };
+    } catch (e) {
+      // Shape and status only - never a credential, never a bucket policy.
+      return { ok: false, detail: storageErrorDetail(e) };
+    }
   }
+}
 
-  private refuse(): never {
-    throw new Error(
-      'S3 storage is a configuration-gated boundary; credentials are not provisioned (fail closed).',
-    );
-  }
+/** True when the provider refused a conditional create (object exists). */
+function isPreconditionFailed(e: unknown): boolean {
+  const err = e as { name?: string; $metadata?: { httpStatusCode?: number } };
+  return err?.name === 'PreconditionFailed' || err?.$metadata?.httpStatusCode === 412;
+}
 
-  async put(): Promise<void> {
-    this.refuse();
-  }
-  async get(): Promise<Buffer> {
-    this.refuse();
-  }
-  async deleteForRetention(): Promise<void> {
-    this.refuse();
-  }
+/** True when the object or key does not exist. */
+function isNotFound(e: unknown): boolean {
+  const err = e as { name?: string; $metadata?: { httpStatusCode?: number } };
+  return (
+    err?.name === 'NoSuchKey' || err?.name === 'NotFound' || err?.$metadata?.httpStatusCode === 404
+  );
+}
+
+/** A safe, value-free description of a storage failure for health output. */
+function storageErrorDetail(e: unknown): string {
+  const err = e as { name?: string; $metadata?: { httpStatusCode?: number } };
+  const status = err?.$metadata?.httpStatusCode;
+  const name = typeof err?.name === 'string' ? err.name : 'StorageError';
+  return status ? `${name} (http ${status})` : name;
 }
 
 let adapter: StorageAdapter | undefined;

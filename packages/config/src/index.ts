@@ -79,6 +79,13 @@ const envSchema = z.object({
   S3_REGION: z.string().optional(),
   S3_ACCESS_KEY_REF: z.string().optional(),
   S3_SECRET_KEY_REF: z.string().optional(),
+  /**
+   * Address the bucket as a PATH (endpoint/bucket/key) rather than a virtual
+   * host (bucket.endpoint/key). Self-hosted and S3-compatible providers
+   * commonly require this; AWS S3 does not. Host-agnostic: it describes the
+   * provider's addressing style, never a particular vendor.
+   */
+  S3_FORCE_PATH_STYLE: boolString,
   // Stage 4 (section E): identity boundary.
   IDENTITY_MODE: z.enum(['dev', 'oidc']).default('dev'),
   OIDC_ISSUER: z.string().optional(),
@@ -153,6 +160,78 @@ export class ConfigError extends Error {
     super(message);
     this.name = 'ConfigError';
   }
+}
+
+/**
+ * Resolve a credential REFERENCE to its value (DEC-062).
+ *
+ * The `*_REF` configuration fields hold a reference to where a secret lives,
+ * never the secret itself - production refuses raw credential values, and this
+ * keeps that discipline while making the reference usable.
+ *
+ * Only `env:NAME` is implemented. Every other scheme fails closed, so a
+ * reference the deployment cannot honour stops the operation instead of
+ * silently falling back to an anonymous or default credential.
+ *
+ * Nothing about the resolved VALUE ever reaches an error message, and neither
+ * does the reference string: a raw secret mistakenly pasted into a `*_REF`
+ * field must not leak through the error it causes. The referenced variable
+ * NAME is named, because it is not a secret and it is what an operator needs.
+ *
+ * Deliberately generic: GRAPH_CLIENT_SECRET_REF and OIDC_CLIENT_SECRET_REF can
+ * adopt this unchanged when those boundaries are implemented. Wiring them is
+ * NOT part of the storage work.
+ */
+export function resolveSecretRef(
+  reference: string | undefined,
+  label: string,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const ref = (reference ?? '').trim();
+  if (!ref) {
+    throw new ConfigError(`${label} is not configured.`);
+  }
+  // A scheme is a leading token before the first colon. Anything else - most
+  // importantly a raw credential pasted into the field - has no scheme and is
+  // refused without being echoed.
+  const match = /^([a-z][a-z0-9+.-]*):(.*)$/.exec(ref);
+  if (!match) {
+    throw new ConfigError(
+      `${label} must be a reference such as env:VARIABLE_NAME. ` +
+        'A raw credential value is not accepted in a reference field.',
+    );
+  }
+  const scheme = match[1] ?? '';
+  if (scheme !== 'env') {
+    throw new ConfigError(
+      `${label} uses an unsupported reference scheme. Only env:VARIABLE_NAME is implemented.`,
+    );
+  }
+  const variableName = (match[2] ?? '').trim();
+  if (!variableName) {
+    throw new ConfigError(`${label} must name an environment variable, as env:VARIABLE_NAME.`);
+  }
+  const value = env[variableName];
+  if (value === undefined || value.trim() === '') {
+    throw new ConfigError(
+      `${label} points at environment variable ${variableName}, which is not set or is empty.`,
+    );
+  }
+  return value;
+}
+
+/**
+ * Whether a reference is well-formed, WITHOUT resolving it. Used by
+ * validateConfig() reporting, which must never touch a secret value.
+ */
+export function secretRefFormatError(reference: string | undefined, label: string): string | null {
+  const ref = (reference ?? '').trim();
+  if (!ref) return `${label} is not configured.`;
+  const match = /^([a-z][a-z0-9+.-]*):(.*)$/.exec(ref);
+  if (!match) return `${label} must be a reference such as env:VARIABLE_NAME.`;
+  if (match[1] !== 'env') return `${label} uses an unsupported reference scheme (only env: works).`;
+  if (!(match[2] ?? '').trim()) return `${label} must name an environment variable.`;
+  return null;
 }
 
 /** Loopback in any of its spellings: nothing outside this machine can reach it. */
