@@ -148,8 +148,12 @@ test('J.5 restricted termination: assignment-gated access; no discovery for othe
   await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
   await page.locator('details.action > summary', { hasText: 'Add participant' }).click();
+  // Options read "<name> (<roles>)", and the hosted-UAT seed adds two more
+  // HR Officer accounts; the list is ordered by name, so the first match is
+  // still the role-named account.
   const officerValue = await page
     .locator('#p-user option', { hasText: 'HR Officer' })
+    .first()
     .getAttribute('value');
   await page.getByLabel('User').selectOption(officerValue!);
   await page.locator('#p-reason').fill('Assigned to support preparation.');

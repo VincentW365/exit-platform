@@ -46,6 +46,36 @@ const DEV_USERS: ReadonlyArray<{ slug: string; name: string; email: string; role
     email: 'marley.thompson@example.test',
     roles: ['SYSTEM_ADMIN'],
   },
+  // Hosted UAT generic testers (owner directive, 2026-09-21): named synthetic
+  // accounts so HR ownership can be assigned and REASSIGNED between two
+  // officers, and so a tester can pick a person as well as a role. They
+  // mirror the UAT-000x directory records. Authorization stays role-driven;
+  // the names are test data. The role-named accounts above remain, because
+  // the end-to-end suites sign in through them.
+  {
+    slug: 'uat-admin',
+    name: 'Alex Admin',
+    email: 'alex.admin@example.test',
+    roles: ['SYSTEM_ADMIN'],
+  },
+  {
+    slug: 'uat-hr-manager',
+    name: 'Morgan HR',
+    email: 'morgan.hr@example.test',
+    roles: ['HR_MANAGER'],
+  },
+  {
+    slug: 'uat-officer-taylor',
+    name: 'Taylor Officer',
+    email: 'taylor.officer@example.test',
+    roles: ['HR_OFFICER'],
+  },
+  {
+    slug: 'uat-officer-jordan',
+    name: 'Jordan Officer',
+    email: 'jordan.officer@example.test',
+    roles: ['HR_OFFICER'],
+  },
 ];
 
 const FEATURE_FLAGS: ReadonlyArray<{ key: string; description: string }> = [

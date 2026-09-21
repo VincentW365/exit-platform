@@ -30,7 +30,10 @@ describe('synthetic employee source adapter (REQ-INT-017)', () => {
   const adapter = new SyntheticEmployeeSourceAdapter();
 
   it('finds fixtures by name, id and department; empty query returns nothing', async () => {
-    expect(await adapter.search('avery')).toHaveLength(1);
+    // Two Averys exist since the hosted-UAT population (Avery Brown, Avery
+    // Immediate); the full name is unambiguous.
+    expect(await adapter.search('avery brown')).toHaveLength(1);
+    expect(await adapter.search('avery')).toHaveLength(2);
     expect(await adapter.search('EMP-TEST-003')).toHaveLength(1);
     expect(await adapter.search('kingston')).toHaveLength(0); // location not searched
     expect(await adapter.search('')).toHaveLength(0);
@@ -43,7 +46,9 @@ describe('synthetic employee source adapter (REQ-INT-017)', () => {
 
   it('all fixture identities are clearly synthetic', () => {
     for (const e of SYNTHETIC_EMPLOYEES) {
-      expect(e.sourceId).toMatch(/^EMP-TEST-\d{3}$/);
+      // Two identifier families, both unmistakably synthetic: the original
+      // EMP-TEST fixtures and the hosted-UAT generic population (2026-09-21).
+      expect(e.sourceId).toMatch(/^(EMP-TEST-\d{3}|UAT-\d{4})$/);
       expect(e.workEmail.endsWith('@example.test')).toBe(true);
     }
   });

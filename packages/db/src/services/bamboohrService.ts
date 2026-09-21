@@ -121,6 +121,16 @@ class FixtureBambooAdapter implements BambooAdapter {
       managerSourceId: e.managerSourceId ?? null,
       division: e.division ?? null,
       employeeNumber: e.employeeNumber ?? null,
+      // Employee directory fields (2026-09-15) where a fixture carries them,
+      // so the fixture path exercises the same columns as the live one - and
+      // a fixture that leaves them out proves the "Not recorded" states.
+      firstName: e.firstName ?? null,
+      lastName: e.lastName ?? null,
+      preferredName: e.preferredName ?? null,
+      workPhone: e.workPhone ?? null,
+      workExtension: e.workExtension ?? null,
+      employmentStatus: e.employmentStatus ?? null,
+      hireDate: e.hireDate ?? null,
     }));
   }
   async getEmployees(sourceIds: string[]): Promise<BambooEmployee[]> {

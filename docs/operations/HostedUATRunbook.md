@@ -85,12 +85,34 @@ UAT cycle may legitimately want a real OIDC application against a UAT tenant.
 ## Synthetic data only
 
 No real employee name, address, employee number, personal email or HR export may
-enter this environment. The seeded fixture directory (`EMP-TEST-001` … `EMP-TEST-014`,
-`Avery Brown` and colleagues) is sufficient to test everything UAT asks for:
+enter this environment. The fixture directory holds two synthetic populations, both
+constants in `packages/domain/src/employeeSource.ts`, so every reset produces the
+same people and relationships:
+
+- **`EMP-TEST-001` … `EMP-TEST-014`** (`Avery Brown` and colleagues) — the original
+  fixtures the end-to-end suites and the stakeholder dataset depend on. Their
+  location labels are org-unit names (DEC-040), never people.
+- **`UAT-0001` … `UAT-1104`** — the generic hosted-UAT population (owner directive,
+  2026-09-21): named for their purpose, `example.test` mailboxes, generic locations
+  (Head Office, Branch A, Branch B, Warehouse, Service Centre), fictional `555`
+  phones. The employee number is the identifier, so `UAT-1002` is searchable as such.
+
+| Identity | Number | Purpose |
+| --- | --- | --- |
+| Alex Admin · Morgan HR · Taylor Officer · Jordan Officer | `UAT-0001` … `0004` | Also seeded as **sign-in accounts** (System Administrator, HR Manager, two HR Officers) so ownership can be assigned *and reassigned* between two officers |
+| Casey Manager → Riley Supervisor; Sam Finance; Drew IT | `UAT-0100`, `0101`, `0200`, `0300` | Reporting roots and a two-level chain |
+| Jamie Notice · Avery Immediate · Cameron Termination | `UAT-1001` … `1003` | One employee per separation workflow — never recycled |
+| Robin Unassigned | `UAT-1101` | No manager recorded |
+| Parker Employee → Quinn Former Manager (inactive) | `UAT-1102`, `1103` | Inactive manager, link preserved |
+| Skyler Minimal | `UAT-1104` | No hire date, no work phone → "Not recorded" |
+
+The role-named accounts (`HR Manager`, `HR Officer`, `System Administrator`) remain
+alongside the named ones; the e2e suites sign in through them, and testers may use
+either. Authorization is role-driven throughout — the names are test data.
 
 | UAT need | Fixture support |
 | --- | --- |
-| Directory list, first-name and last-name search | 14 employees; the engine derives `firstName`/`lastName` from the display name and search matches both, plus employee number, title, department, email and manager |
+| Directory list, first-name and last-name search | 29 employees across both populations; the engine derives `firstName`/`lastName` where a fixture leaves them out and search matches both, plus employee number, title, department, email and manager |
 | Employee detail | Every profile section renders; fields the fixtures do not carry (hire date, work phone) show "Not recorded" — an expected empty state, not a defect |
 | Organization hierarchy, managers and subordinates | Three reporting roots (Operations Manager, an HR lead, one unmanaged employee), a two-level chain, a manager with three reports, one **inactive** manager and one employee with **no** manager |
 | Department and location filtering | 7 departments, 4 locations |
@@ -341,6 +363,32 @@ freshness `CURRENT`); with it off, freshness moves to "delayed" after two hours 
 "stale" after six, which is cosmetic — a status note on directory pages and a failing
 "employee directory mirror" component on `/admin/health`. `/api/ready` is unaffected.
 
+## Recipient configuration and workflow assignments
+
+Group recipients are **not seeded**. An administrator configures them at runtime
+under **Administration → Recipients**, and dispatch uses a recipient only once it is
+active, approved and verified. In UAT every destination must be a reserved-domain
+address or a `capture://` channel — the `uat` environment refuses anything
+deliverable. Configure, approve and verify:
+
+| Recipient class | Destination |
+| --- | --- |
+| IT offboarding | `it-uat@example.test` |
+| Finance offboarding | `finance-uat@example.test` |
+| HR offboarding | `hr-uat@example.test` |
+
+Nothing is delivered anywhere: `EMAIL_MODE=dev-capture` writes every message to
+`notification_capture`, read at `/dev/mailbox`.
+
+Run the three separation workflows against their own employees, and never reuse
+these cases for destructive testing:
+
+| Workflow | Employee | Type | HR Officer |
+| --- | --- | --- | --- |
+| A | Jamie Notice (`UAT-1001`) | Resignation with notice | Taylor Officer |
+| B | Avery Immediate (`UAT-1002`) | Immediate resignation | Jordan Officer |
+| C | Cameron Termination (`UAT-1003`) | Termination | Taylor Officer |
+
 ## Running the worker
 
 Unchanged from the normal architecture. Preferred — the container that matches the
@@ -424,7 +472,7 @@ protection credentials.
 | 4 | Sign-in | Role switcher works; sign-in is audited; the page names the environment |
 | 5 | Production guard intact | `APP_ENVIRONMENT=production` with `ALLOW_DEV_LOGIN=true` **fails to start** |
 | 6 | Acknowledgement required | Removing `UAT_HOSTED_ACK` **fails to start** |
-| 7 | First synchronization | Refresh Directory Now completes `SUCCESS: checked 14`; `/directory` lists 14 employees |
+| 7 | First synchronization | Refresh Directory Now completes `SUCCESS: checked 29`; `/directory` lists the active employees of both populations, and `UAT-1103` appears only under "Inactive" |
 | 8 | Directory | First-name, last-name, employee-number search; department and location filters; a profile with manager and direct reports; the organization view |
 | 9 | Case creation | Resignation with notice, immediate resignation and termination each create correctly, with the manager pre-assigned and an alternate offered where none exists |
 | 10 | Documents persist | Generate a letter, redeploy, download it again — byte-identical |
