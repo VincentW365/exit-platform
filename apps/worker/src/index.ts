@@ -23,7 +23,8 @@ const {
   processOutbox,
   runDueSchedules,
   revokeExpiredRoles,
-  scheduledDirectorySyncIfEnabled,
+  directoryStartupCheck,
+  directorySyncTick,
 } = await import('@exit/db');
 const { randomUUID } = await import('node:crypto');
 
@@ -197,9 +198,21 @@ async function stage4Sweep(): Promise<void> {
     const expiredRoles = await revokeExpiredRoles(new Date());
     // Directive 5.1 D.2: prepared scheduled directory sync - a no-op unless
     // the bamboohr.scheduledSync configuration flag is explicitly enabled.
-    const directorySync = await scheduledDirectorySyncIfEnabled();
-    if (directorySync !== 'disabled' && directorySync !== 'fresh') {
-      log('directory_scheduled_sync', { outcome: directorySync }); // counts only, never names
+    // Employee directory (owner directive, 2026-09-15): queue the hourly and
+    // nightly reconciliations when due and run whatever is queued (webhook
+    // follow-ups, manual refreshes) - one run at a time under the lease.
+    const tick = await directorySyncTick(new Date());
+    if (tick.queued.length || tick.executed.length) {
+      log('directory_sync_tick', {
+        queued: tick.queued.join(',') || 'none',
+        // Counts and safe error codes only - never names.
+        executed: tick.executed
+          .map(
+            (r) =>
+              `${r.kind}:${r.status} checked=${r.checked} added=${r.added} updated=${r.updated} archived=${r.archived} failed=${r.failed}${r.errorCode ? ` error=${r.errorCode}` : ''}`,
+          )
+          .join('; '),
+      });
     }
     // PII-free heartbeat for readiness gates and the health dashboard.
     await prisma.systemConfig.upsert({
@@ -240,6 +253,22 @@ if (config.lanExposed && config.appBaseUrlIsLoopback) {
   });
 }
 await heartbeat();
+// Start-up staleness check (directive section 16): reconcile at once when the
+// directory is materially stale; never blocks the worker from starting.
+try {
+  const startup = await directoryStartupCheck(new Date());
+  if (startup.needed)
+    log('directory_startup_check', {
+      executed: startup.executed
+        .map((r) => `${r.kind}:${r.status} checked=${r.checked}`)
+        .join('; '),
+      skipped: startup.skipped ?? 'no',
+    });
+} catch (e) {
+  log('directory_startup_check_error', {
+    message: e instanceof Error ? e.message.slice(0, 200) : 'unknown',
+  });
+}
 await stage2Sweep();
 await stage3Sweep();
 await stage4Sweep();

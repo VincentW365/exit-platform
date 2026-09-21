@@ -22,6 +22,16 @@ export interface EmployeeSourceEmployee {
   readonly managerName?: string;
   readonly managerSourceId?: string;
   readonly active?: boolean;
+  // Employee directory (owner directive, 2026-09-15): optional extra fields
+  // the fixture may carry; the sync derives name parts from displayName when
+  // a fixture leaves them out.
+  readonly firstName?: string;
+  readonly lastName?: string;
+  readonly preferredName?: string;
+  readonly workPhone?: string;
+  readonly workExtension?: string;
+  readonly employmentStatus?: string;
+  readonly hireDate?: string;
 }
 
 export interface EmployeeSourceAdapter {

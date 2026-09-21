@@ -113,6 +113,14 @@ export const createDraftSchema = z.object({
     .default('PENDING'),
   reasonCategoryId: z.uuid().nullable().optional(),
   reasonNotes: shortText(2000).optional(),
+  /**
+   * Existing-case protection (owner directive, 2026-09-15, section 24): when
+   * the employee already has a LIVE case the intake shows it, and creating
+   * another needs this explicit confirmation - so a duplicate can never be
+   * made by accident. Still not a block (REQ-CASE-020 warns). The intake
+   * sends true or false; undefined means "not an interactive intake".
+   */
+  duplicateAcknowledged: z.boolean().optional(),
 });
 export type CreateDraftInput = z.infer<typeof createDraftSchema>;
 
@@ -316,6 +324,13 @@ export async function searchEmployees(actor: Actor, query: string) {
             { department: { contains: q, mode: 'insensitive' } },
             { jobTitle: { contains: q, mode: 'insensitive' } },
             { location: { contains: q, mode: 'insensitive' } },
+            // Employee directory (2026-09-15): first, last and preferred
+            // names, work email and manager are searchable too - all local.
+            { firstName: { contains: q, mode: 'insensitive' } },
+            { lastName: { contains: q, mode: 'insensitive' } },
+            { preferredName: { contains: q, mode: 'insensitive' } },
+            { workEmail: { contains: q, mode: 'insensitive' } },
+            { managerName: { contains: q, mode: 'insensitive' } },
           ],
         },
         orderBy: { displayName: 'asc' },
@@ -336,7 +351,9 @@ export async function searchEmployees(actor: Actor, query: string) {
     active: r.active,
     lastSyncedAt: r.retrievedAt,
   }));
-  // Synthetic fixtures not yet cached in the database stay findable.
+  // Synthetic fixtures not yet cached in the database stay findable. This
+  // is the in-memory fixture list, never a network call: the directory is
+  // read from the local mirror alone (owner directive, 2026-09-15, section 39).
   const known = new Set(results.map((r) => r.sourceId));
   for (const e of await employeeSource.search(q)) {
     if (known.has(e.sourceId)) continue;
@@ -546,6 +563,17 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
     },
     select: { caseNumber: true, status: true },
   });
+  const liveDuplicates = duplicates.filter((d) => d.status !== 'COMPLETED');
+  // The intake always says whether the confirmation was given (true/false);
+  // a caller that does not take part in the intake at all - seeds, fixtures,
+  // the regression bridge - leaves it undefined and is not asked (DEC-061).
+  if (liveDuplicates.length > 0 && input.duplicateAcknowledged === false) {
+    throw ServiceError.validation([
+      `An active offboarding case already exists for this employee (${liveDuplicates
+        .map((d) => d.caseNumber)
+        .join(', ')}). Open it, or confirm that this is a separate separation event.`,
+    ]);
+  }
 
   const correlationId = newCorrelationId();
   const created = await prisma.$transaction(async (tx) => {

@@ -126,6 +126,15 @@ export default async function AdminPage({
       ? [{ href: '/admin/privacy', label: 'Privacy and Retention', kind: 'business' as const }]
       : []),
     { href: '/continuity', label: 'Business Continuity', kind: 'business' },
+    ...(can(actor, 'directory.viewSync')
+      ? [
+          {
+            href: '/admin/directory-sync',
+            label: 'Directory Synchronization Log',
+            kind: 'technical' as const,
+          },
+        ]
+      : []),
     ...(can(actor, 'admin.system')
       ? [
           {

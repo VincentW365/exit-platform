@@ -197,6 +197,12 @@ export const AUDIT_EVENT_TYPES = [
   'IDENTITY_ACCESS_REVIEW',
   'ROLE_EXPIRED_REVOKED',
   'SYNC_RUN_COMPLETED',
+  // Employee directory synchronization (owner directive, 2026-09-15).
+  'DIRECTORY_SYNC_REQUESTED',
+  'DIRECTORY_SYNC_COMPLETED',
+  'DIRECTORY_SYNC_FAILED',
+  'DIRECTORY_WEBHOOK_RECEIVED',
+  'DIRECTORY_WEBHOOK_REJECTED',
   // Directive 5.1: live read-only directory (searches audited without
   // content; purge/deactivation and manual source entry are audited actions)
   'EMPLOYEE_DIRECTORY_SEARCHED',

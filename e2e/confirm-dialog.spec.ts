@@ -29,6 +29,13 @@ async function draftCase(page: Page): Promise<string> {
   // The final action lives in the Review step (owner directive,
   // 2026-08-27), so it is reached by opening that step.
   await page.locator('.step:has([data-step="review"]) .step__header').click();
+  // DEC-061: a fixture employee may already have a live case; confirm the deliberate
+  // second one. The confirmation lives in the Review step, so make sure it is open.
+  if (await page.getByLabel(/I confirm this is a separate separation event/).count()) {
+    const reviewHeader = page.locator('.step:has([data-step="review"]) .step__header');
+    if ((await reviewHeader.getAttribute('aria-expanded')) !== 'true') await reviewHeader.click();
+    await page.getByLabel(/I confirm this is a separate separation event/).check();
+  }
   await page.getByRole('button', { name: 'Create draft case' }).click();
   await expect(page.getByText(/^Draft case OFF-/)).toBeVisible();
   return new URL(page.url()).pathname;

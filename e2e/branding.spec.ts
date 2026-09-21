@@ -72,7 +72,9 @@ test('directory page is HR-scoped and the employee selector shows provenance', a
   await page.getByRole('button', { name: 'Sign in as HR Officer' }).click();
   await page.waitForURL('**/');
   await page.goto('/directory');
-  await expect(page.getByText('Organization Directory')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Employee Directory' })).toBeVisible();
+  await page.goto('/directory/organization');
+  await expect(page.getByRole('heading', { name: 'Organization Overview' })).toBeVisible();
   await page.goto('/cases/new?q=avery');
   // Final-product surface (owner request, 2026-08-17): no cache/provenance
   // chrome in the selector - plain results with a match count.
@@ -93,7 +95,7 @@ test('directory page is HR-scoped and the employee selector shows provenance', a
   await page.waitForURL('**/');
   await page.goto('/directory');
   await expect(
-    page.getByText('The organization directory is limited to authorized HR roles.'),
+    page.getByText('The employee directory is limited to authorized HR roles.'),
   ).toBeVisible();
   await page.goto('/admin/system');
   await expect(page.getByText('Credential status:')).toBeVisible();

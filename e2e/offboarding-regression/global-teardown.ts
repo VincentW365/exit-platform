@@ -15,6 +15,7 @@ export default async function globalTeardown(): Promise<void> {
   if (ex) {
     ex.completedAt = new Date().toISOString();
     for (const s of ex.scenarios) if (s.result === 'RUNNING') s.result = 'FAIL';
+    if (ex.directory?.result === 'RUNNING') ex.directory.result = 'FAIL';
     writeExecution(run.runDir, ex);
   }
   buildSummary(run.runDir);

@@ -59,6 +59,13 @@ export default defineConfig({
       APP_BASE_URL: baseUrl,
       WEB_PORT: String(port),
       STORAGE_DIR: storageDir,
+      // BambooHR directory proofs (2026-09-15): the runner generates a
+      // per-run webhook private key so the signed-webhook path is exercised
+      // end to end. Without one the endpoint stays closed and the proof is
+      // recorded as skipped. The value is never written to the evidence.
+      ...(process.env['OFFBOARDING_E2E_WEBHOOK_KEY']
+        ? { BAMBOOHR_WEBHOOK_PRIVATE_KEY: process.env['OFFBOARDING_E2E_WEBHOOK_KEY'] }
+        : {}),
     },
   },
 });

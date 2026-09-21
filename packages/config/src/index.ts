@@ -115,6 +115,12 @@ const envSchema = z.object({
   // there), so the existing fail-closed posture is unchanged.
   BAMBOOHR_API_KEY: z.string().optional(),
   BAMBOOHR_SUBDOMAIN: z.string().optional(),
+  /**
+   * Private key BambooHR issued for the API-created employee webhook; used
+   * only to verify webhook signatures (owner directive, 2026-09-15). Never
+   * logged, rendered or returned. Absent = the webhook endpoint is closed.
+   */
+  BAMBOOHR_WEBHOOK_PRIVATE_KEY: z.string().optional(),
   // Directive 5.1 (section H.13/H.14): controlled branding configuration. The
   // logo can be replaced by pointing this at a new asset without touching
   // document templates; when the file is unreadable, rendering falls back to

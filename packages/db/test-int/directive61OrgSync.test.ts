@@ -120,6 +120,9 @@ describe('sync persists the approved organization columns (AM 1, 4)', () => {
     ]);
     await syncEmployees(manager.actor);
     setBambooFixtureForTests(null);
+    // The engine archives records absent from a full feed; restore the full
+    // fixture organization for the tests that follow.
+    await syncEmployees(manager.actor);
     const resolved = await prisma.employeeSourceRecord.findUniqueOrThrow({
       where: { sourceSystem_sourceId: { sourceSystem: 'SYNTHETIC', sourceId: 'NAME-1' } },
     });
@@ -243,6 +246,9 @@ describe('post-activation hierarchy change is flagged, never auto-applied (AM 19
       }),
     ).toBe(1);
     setBambooFixtureForTests(null);
+    // The engine treats every full read as the whole directory: records absent
+    // from a feed are archived. Restore the full fixture organization.
+    await syncEmployees(manager.actor);
     // HR review: re-derivation clears the flag.
     await refreshManagerFromDirectory(manager.actor, created.caseId);
     c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: created.caseId } });

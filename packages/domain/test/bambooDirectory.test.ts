@@ -55,6 +55,18 @@ describe('BambooHR directory field policy (C)', () => {
       managerSourceId: null,
       employeeNumber: 'EMP-TEST-001',
       active: true,
+      // Employee directory minimum (owner directive, 2026-09-15): name parts,
+      // work phone, employment status, hire date and the source's own
+      // last-changed instant. Still nothing personal.
+      firstName: 'Avery',
+      middleName: null,
+      lastName: 'Brown',
+      preferredName: 'Avery',
+      workPhone: null,
+      workExtension: null,
+      employmentStatus: 'Active',
+      hireDate: null,
+      sourceUpdatedAt: null,
     });
     const serialized = JSON.stringify(mapped);
     for (const forbidden of [
@@ -113,5 +125,46 @@ describe('approved branding configuration (H)', () => {
     expect(BRAND.logoSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(BRAND.logoWebPath).toBe('/brand/berts-auto-parts.png');
     expect(BRAND.logoWidth / BRAND.logoHeight).toBeCloseTo(1184 / 880, 5);
+  });
+});
+
+describe('employee directory fields (2026-09-15)', () => {
+  it('maps hire date, extension, phone, middle name and the source change stamp', () => {
+    const mapped = mapBambooDirectoryEmployee({
+      id: 9002,
+      displayName: 'Blake Carter',
+      firstName: 'Blake',
+      lastName: 'Carter',
+      middleName: 'J',
+      workEmail: 'blake.carter@example.test',
+      jobTitle: 'Parts Clerk',
+      department: 'Sales',
+      location: 'Kingston',
+      supervisorEId: 9007,
+      status: 'Active',
+      workPhone: '876-555-0101',
+      workPhoneExtension: '204',
+      hireDate: '2020-01-06',
+      lastChanged: '2026-09-01T10:00:00+00:00',
+    })!;
+    expect(mapped.hireDate).toBe('2020-01-06');
+    expect(mapped.workExtension).toBe('204');
+    expect(mapped.workPhone).toBe('876-555-0101');
+    expect(mapped.middleName).toBe('J');
+    expect(mapped.managerSourceId).toBe('9007');
+    expect(mapped.sourceUpdatedAt).toBe('2026-09-01T10:00:00.000Z');
+  });
+  it('rejects BambooHR placeholder dates and garbage', () => {
+    const base = {
+      id: '1',
+      displayName: 'Avery Brown',
+      workEmail: 'a@example.test',
+      status: 'Active',
+    };
+    expect(mapBambooDirectoryEmployee({ ...base, hireDate: '0000-00-00' })!.hireDate).toBeNull();
+    expect(mapBambooDirectoryEmployee({ ...base, hireDate: 'yesterday' })!.hireDate).toBeNull();
+    expect(
+      mapBambooDirectoryEmployee({ ...base, lastChanged: 'never' })!.sourceUpdatedAt,
+    ).toBeNull();
   });
 });

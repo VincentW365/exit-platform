@@ -11,6 +11,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import type { DirectorySummary } from './directoryEvidence';
 
 export const ENV_RUN_DIR = 'OFFBOARDING_E2E_RUN_DIR';
 export const ENV_EMPLOYEE = 'OFFBOARDING_E2E_EMPLOYEE';
@@ -75,6 +76,8 @@ export interface Execution {
     href?: string;
   }>;
   notes: string[];
+  /** BambooHR directory proofs (owner directive, 2026-09-15). */
+  directory?: DirectorySummary;
 }
 
 function stamp(now = new Date()): string {

@@ -240,10 +240,72 @@ model EmployeeSourceRecord {
   /// this rather than asking HR to retype a date that already exists.
   contractEndDate DateTime?
   lastSyncedAt    DateTime?
+  // Employee directory (owner directive, 2026-09-15): the minimum extra
+  // fields a directory needs. Every one is BambooHR-owned and read-only here;
+  // the platform never writes employee data back.
+  firstName        String?
+  middleName       String?
+  lastName         String?
+  preferredName    String?
+  workPhone        String?
+  workExtension    String?
+  employmentStatus String?
+  hireDate         DateTime?
+  /// When the source system last changed this record, where it says.
+  sourceUpdatedAt  DateTime?
+  /// Set when a full reconciliation no longer finds the record in the source
+  /// feed. The record stays: cases, snapshots and audit events point at it.
+  archivedAt       DateTime?
+  /// The manager as a directory record - by identifier, never by name.
+  managerDirectoryId String?                @db.Uuid
+  manager            EmployeeSourceRecord?  @relation("DirectoryManager", fields: [managerDirectoryId], references: [id])
+  reports            EmployeeSourceRecord[] @relation("DirectoryManager")
 
   @@unique([sourceSystem, sourceId])
   @@index([sourceSystem, managerSourceId])
+  @@index([sourceSystem, active])
+  @@index([sourceSystem, displayName])
+  @@index([sourceSystem, lastName])
+  @@index([sourceSystem, workEmail])
+  @@index([sourceSystem, department])
+  @@index([sourceSystem, employmentStatus])
+  @@index([sourceSystem, employeeNumber])
+  @@index([managerDirectoryId])
   @@map("employee_source_record")
+}
+
+/// One synchronization run of the employee directory (owner directive,
+/// 2026-09-15): a webhook event, the hourly or nightly reconciliation, the
+/// start-up staleness check or an administrator's manual refresh. A run is
+/// created QUEUED, moves to RUNNING and ends SUCCESS, PARTIAL or FAILED.
+/// Counts and field NAMES only - never employee values.
+model DirectorySyncRun {
+  id               String    @id @default(uuid()) @db.Uuid
+  kind             String
+  status           String    @default("QUEUED")
+  sourceSystem     String?
+  requestedAt      DateTime  @default(now())
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  requestedById    String?   @db.Uuid
+  /// The employee a webhook run targets (source id), where it targets one.
+  employeeSourceId String?
+  changedFields    String[]  @default([])
+  checked          Int       @default(0)
+  added            Int       @default(0)
+  updated          Int       @default(0)
+  unchanged        Int       @default(0)
+  archived         Int       @default(0)
+  failed           Int       @default(0)
+  errorCode        String?
+  errorDetail      String?
+  correlationId    String
+
+  @@index([requestedAt])
+  @@index([kind, requestedAt])
+  @@index([status])
+  @@index([employeeSourceId])
+  @@map("directory_sync_run")
 }
 
 // --- Case --------------------------------------------------------------------

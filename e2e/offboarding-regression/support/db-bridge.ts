@@ -316,6 +316,83 @@ async function main(): Promise<void> {
       });
       break;
     }
+    // --- BambooHR directory (owner directive, 2026-09-15) -------------------
+    // Reads are the product's own directory services; synchronizations are the
+    // product's own engine. Nothing here touches the mirror directly.
+    case 'directory-status': {
+      value = await db.directorySyncStatus();
+      break;
+    }
+    case 'directory-profile': {
+      const employee = String(arg['employee']);
+      const mode =
+        (await db.getSystemConfigValue('bamboohr.mode')) === 'live' ? 'BAMBOOHR' : 'SYNTHETIC';
+      const row =
+        (await prisma.employeeSourceRecord.findFirst({
+          where: { displayName: employee, sourceSystem: mode },
+          orderBy: { active: 'desc' },
+        })) ??
+        (await prisma.employeeSourceRecord.findFirst({
+          where: { displayName: employee },
+          orderBy: { active: 'desc' },
+        }));
+      value = row ? await db.getDirectoryProfile(await managerActor(), row.id) : null;
+      break;
+    }
+    case 'directory-refresh': {
+      value = await db.runDirectorySyncNow({
+        kind: 'MANUAL',
+        actor: await adminActor(),
+        waitMs: 180_000,
+      });
+      break;
+    }
+    case 'directory-hourly': {
+      const scheduledSyncEnabled =
+        (await db.getSystemConfigValue('bamboohr.scheduledSync')) === true;
+      const tick = await db.directorySyncTick(new Date());
+      const forced = await db.runDirectorySyncNow({ kind: 'HOURLY', waitMs: 180_000 });
+      value = { scheduledSyncEnabled, tick, forced };
+      break;
+    }
+    case 'directory-outage': {
+      const on = Boolean(arg['on']);
+      await db.setSystemConfig(
+        await adminActor(),
+        'bamboohr.simulateOutage',
+        on,
+        `Offboarding regression: simulated BambooHR outage ${on ? 'ON' : 'OFF'}`,
+      );
+      value = { on };
+      break;
+    }
+    case 'directory-runs': {
+      value = await db.listDirectorySyncRuns(await managerActor(), {
+        kind: arg['kind'] ? String(arg['kind']) : undefined,
+        limit: Number(arg['limit'] ?? 20),
+      });
+      break;
+    }
+    case 'directory-search': {
+      const r = await db.listDirectory(await managerActor(), {
+        q: String(arg['q']),
+        status: 'all',
+      });
+      value = {
+        total: r.total,
+        rows: r.rows.slice(0, 5).map((x) => ({
+          sourceId: x.sourceId,
+          displayName: x.displayName,
+          jobTitle: x.jobTitle,
+          department: x.department,
+          managerName: x.managerName,
+          employeeNumber: x.employeeNumber,
+          status: x.status,
+        })),
+        freshness: r.sync.freshness,
+      };
+      break;
+    }
     case 'profiles': {
       value = {
         types: domain.DEPARTURE_TYPES.map((t: string) => ({

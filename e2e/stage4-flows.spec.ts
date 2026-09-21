@@ -67,6 +67,13 @@ async function createTestCase(
   // The final action lives in the Review step (owner directive,
   // 2026-08-27), so it is reached by opening that step.
   await page.locator('.step:has([data-step="review"]) .step__header').click();
+  // DEC-061: a fixture employee may already have a live case; confirm the deliberate
+  // second one. The confirmation lives in the Review step, so make sure it is open.
+  if (await page.getByLabel(/I confirm this is a separate separation event/).count()) {
+    const reviewHeader = page.locator('.step:has([data-step="review"]) .step__header');
+    if ((await reviewHeader.getAttribute('aria-expanded')) !== 'true') await reviewHeader.click();
+    await page.getByLabel(/I confirm this is a separate separation event/).check();
+  }
   await page.getByRole('button', { name: 'Create draft case' }).click();
   const banner = page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/);
   await expect(banner).toBeVisible();
@@ -206,6 +213,12 @@ test('Scenario 4 - employee directory sync and reconciliation', async ({ page })
   test.setTimeout(240_000);
   await signInAs(page, 'System Administrator');
   await page.goto('/admin/system');
+  // Employee directory (2026-09-15): the manual refresh is queued and runs
+  // after the response; the page follows its progress and the health panel
+  // reports the result. The legacy synchronous action stays too.
+  await page.getByRole('button', { name: 'Refresh Directory Now' }).click();
+  await expect(page.getByText(/Directory refresh started|already queued or running/)).toBeVisible();
+  await expect(page.locator('[data-directory-health]')).toBeVisible();
   await page.getByRole('button', { name: 'Synchronize the directory now' }).click();
   await expect(page.getByText(/Employee sync \((fixture|live) adapter\)/)).toBeVisible();
   await page.getByRole('button', { name: 'Run reconciliation report' }).click();

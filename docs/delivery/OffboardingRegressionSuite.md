@@ -118,6 +118,29 @@ Every check is `AUTOMATED PASS/FAIL/WARN` or `HUMAN REVIEW REQUIRED`
 scenario continues; a broken step is recorded under `failures/` with the
 error, log and screenshot, and the remaining scenarios still run.
 
+## BambooHR Directory proofs (added 2026-09-15)
+
+After the separation scenarios, one more test - `DIR BambooHR Directory`
+(select it alone with `--grep DIR`) - records the directory proofs the
+BambooHR directory directive asks for, in `BambooHR Directory/`:
+
+| Folder                   | What it proves                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| `initial-sync/`          | The controlled employee's profile after synchronization, with last-sync time and freshness       |
+| `manager-resolution/`    | The manager linked by BambooHR identifier, and the employee listed among the manager's reports   |
+| `manual-refresh/`        | Refresh Directory Now: accepted at once, progress followed, result in the health panel           |
+| `webhook-update/`        | An unsigned and a forged delivery refused (401); a correctly signed one accepted (202) and run    |
+| `hourly-reconciliation/` | The worker tick queues nothing while fresh; an hourly reconciliation run completes                |
+| `offline-cache/`         | A simulated BambooHR outage: sync fails safely, cache untouched, HR directory and intake search still work, then recovery |
+
+Each folder holds numbered screenshots, the platform's own JSON (counts,
+statuses, field names) and a `notes.md`; `BambooHR Directory/result.md`
+lists every check, and `summary.html` gets a "BambooHR Directory" section.
+The runner generates a per-run webhook private key for the web server so the
+signed path is real; the key is never written to the evidence. When the suite
+is started without the runner the signed-webhook proof is recorded as
+skipped.
+
 ## Findings from the first runs (2026-09-09)
 
 Recorded here so the next reader does not rediscover them; the evidence is in

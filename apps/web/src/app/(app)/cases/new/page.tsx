@@ -2,7 +2,12 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { can } from '@exit/domain';
-import { searchEmployees } from '@exit/db';
+import {
+  casesForEmployee,
+  findDirectoryRecordBySourceId,
+  searchEmployees,
+  type EmployeeSearchRow,
+} from '@exit/db';
 import {
   DEPARTURE_TYPES,
   defaultDates,
@@ -52,7 +57,33 @@ export default async function NewCasePage({
   const emptySearch = 'q' in sp && q.trim() === '';
 
   const search = q ? await searchEmployees(actor, q) : null;
-  const selected = search?.results.find((e) => e.sourceId === selectedId) ?? null;
+  let selected: EmployeeSearchRow | null =
+    search?.results.find((e) => e.sourceId === selectedId) ?? null;
+  // "Start offboarding" on a directory profile arrives with the employee's
+  // id (and a name that may match several people): the record is resolved
+  // from the LOCAL directory, never from BambooHR (owner directive,
+  // 2026-09-15, section 22).
+  if (!selected && selectedId) {
+    const rec = await findDirectoryRecordBySourceId(actor, selectedId);
+    if (rec)
+      selected = {
+        sourceSystem: rec.sourceSystem,
+        sourceId: rec.sourceId,
+        displayName: rec.displayName,
+        workEmail: rec.workEmail,
+        jobTitle: rec.jobTitle,
+        department: rec.department,
+        location: rec.location,
+        employeeNumber: rec.employeeNumber,
+        contractEndDate: rec.contractEndDate,
+        managerName: rec.managerName,
+        active: rec.active,
+        lastSyncedAt: rec.lastSyncedAt,
+      };
+  }
+  // Existing-case protection (section 24): a live case for this employee is
+  // shown before anything else is asked, with the way to open it.
+  const liveCases = selected ? (await casesForEmployee(actor, selected.sourceId)).live : [];
 
   // Section 15/29 of the separation directive: the type is chosen first and
   // the rest of the form is drawn from its profile. Reading it from the query
@@ -98,6 +129,7 @@ export default async function NewCasePage({
                 <th scope="col">Employee</th>
                 <th scope="col">Job title</th>
                 <th scope="col">Department</th>
+                <th scope="col">Manager</th>
                 <th scope="col">Location</th>
                 <th scope="col">Status</th>
               </tr>
@@ -127,6 +159,7 @@ export default async function NewCasePage({
                   </td>
                   <td>{e.jobTitle}</td>
                   <td>{e.department}</td>
+                  <td>{e.managerName ?? <span className="hint">None recorded</span>}</td>
                   <td>{e.location}</td>
                   <td>{e.active ? 'Active' : 'Inactive'}</td>
                 </tr>
@@ -717,6 +750,35 @@ export default async function NewCasePage({
             approved and activated - the workflow, documents and notifications for a{' '}
             {profile.label.toLowerCase()} are prepared then.
           </p>
+          {liveCases.length > 0 ? (
+            <div
+              className="panel panel--edge panel--edge-attention"
+              role="group"
+              aria-labelledby="dup-ack-h"
+            >
+              <p id="dup-ack-h" style={{ marginTop: 0 }}>
+                <strong>An active case already exists</strong> for {selected.displayName}:{' '}
+                {liveCases.map((c) => (
+                  <Link key={c.id} href={`/cases/${c.id}`}>
+                    {c.caseNumber}
+                  </Link>
+                ))}
+                . The platform will not create another without your confirmation.
+              </p>
+              <div className="field field--check">
+                <label htmlFor="dup-ack">
+                  <input
+                    id="dup-ack"
+                    type="checkbox"
+                    name="duplicateAcknowledged"
+                    value="true"
+                    form={FORM_ID}
+                  />
+                  I confirm this is a separate separation event, not a duplicate of the case above
+                </label>
+              </div>
+            </div>
+          ) : null}
           <div className="form-actions">
             <button type="submit" form={FORM_ID} data-final-submit="true">
               Create draft case
@@ -734,6 +796,30 @@ export default async function NewCasePage({
     <>
       <h1 className="page-title">Create Offboarding Case</h1>
       <Feedback err={sp.err} />
+
+      {/* Existing-case protection (owner directive, 2026-09-15, section 24;
+          DEC-061): shown above the steps, so it is read before anything else
+          is asked and stays in view while the employee step is collapsed. */}
+      {selected && liveCases.length > 0 ? (
+        <div className="panel panel--edge panel--edge-attention" role="status" data-existing-case>
+          <p style={{ marginTop: 0 }}>
+            <strong>{selected.displayName}</strong> already has an active offboarding case
+            {liveCases.length > 1 ? 's' : ''}: {liveCases.map((c) => c.caseNumber).join(', ')}. Open
+            it rather than creating a duplicate.
+          </p>
+          <div className="actions-row">
+            {liveCases.map((c) => (
+              <Link key={c.id} className="button" href={`/cases/${c.id}`}>
+                Open existing case{liveCases.length > 1 ? ` ${c.caseNumber}` : ''}
+              </Link>
+            ))}
+          </div>
+          <p className="hint" style={{ marginBottom: 0 }}>
+            A genuinely separate separation event can still be recorded: continue below and confirm
+            it at the review step.
+          </p>
+        </div>
+      ) : null}
 
       {/* The form lives beside the accordion, not around it: the first steps
           carry their own GET forms and a form cannot contain another. Every

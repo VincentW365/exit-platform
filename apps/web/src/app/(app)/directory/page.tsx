@@ -1,227 +1,255 @@
+import Link from 'next/link';
 import type { Metadata } from 'next';
-import { formatInstant } from '@exit/domain';
-import { Suspense } from 'react';
-import { ServiceError, directoryOverview, organizationTree, type OrgTreeNode } from '@exit/db';
-import type { Actor } from '@exit/domain';
-import { SkeletonPanel } from '@/components/Skeleton';
+import { ServiceError, listDirectory } from '@exit/db';
+import { can } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
-import { countOf, humanize } from '@/lib/text';
+import { DirectoryFreshnessNote } from '@/components/DirectoryFreshness';
+import { EmptyState } from '@/components/EmptyState';
+import { DirectoryIcon, SearchIcon } from '@/components/icons';
+import { AutoFocus } from '@/components/keyboard';
+import { Avatar, Chip, Row, Rows, type Tone } from '@/components/patterns';
+import { countOf } from '@/lib/text';
 
-export const metadata: Metadata = { title: 'Organization Directory' };
+export const metadata: Metadata = { title: 'Employee Directory' };
 export const dynamic = 'force-dynamic';
 
+const STATUS_TONE: Record<string, Tone> = {
+  Active: 'done',
+  Inactive: 'neutral',
+  Terminated: 'attention',
+  Archived: 'neutral',
+};
+
+type Sp = Record<string, string | undefined>;
+
 /**
- * One person in the reporting tree. Managers are expandable branches
- * (nested <details> - native keyboard support, no JavaScript); individual
- * contributors are leaves. The top two levels open by default so the shape
- * of the organization is visible immediately.
+ * The Employee Directory (owner directive, 2026-09-15, sections 4 and 21):
+ * a read-only mirror of BambooHR, searched and filtered from LOCAL data
+ * only - no request here ever calls BambooHR. Active employees by default;
+ * the status filter reaches inactive and archived people, who are kept
+ * because cases and history point at them.
  */
-function OrgNode({ node, depth }: { node: OrgTreeNode; depth: number }) {
-  const meta = [node.jobTitle, node.department].filter(Boolean).join(' · ');
-  const person = (
-    <>
-      <span className="org-node__name">{node.displayName}</span>
-      {meta ? <span className="org-node__meta">{meta}</span> : null}
-      {!node.active ? <span className="badge badge--neutral">Inactive</span> : null}
-    </>
-  );
-  if (node.reports.length === 0) {
-    return (
-      <li className="org-node org-node--leaf">
-        <span className="org-node__row">{person}</span>
-      </li>
-    );
-  }
-  return (
-    <li className="org-node">
-      <details open={depth < 2}>
-        <summary className="org-node__row">
-          {person}
-          <span className="org-node__count">
-            {node.reports.length} direct
-            {node.totalBelow > node.reports.length ? ` · ${node.totalBelow} total` : ''}
-          </span>
-        </summary>
-        <ul className="org-branch">
-          {node.reports.map((child) => (
-            <OrgNode key={child.sourceId} node={child} depth={depth + 1} />
-          ))}
-        </ul>
-      </details>
-    </li>
-  );
-}
-
-/** The reporting tree, streamed in after the rest of the page. */
-async function ReportingStructure({ actor }: { actor: Actor }) {
-  const tree = await organizationTree(actor);
-  if (tree.roots.length === 0 && tree.unattached.length === 0) return null;
-  return (
-    <section className="panel" aria-labelledby="dir-tree-h">
-      <h2 id="dir-tree-h" style={{ marginTop: 0 }}>
-        Reporting Structure
-      </h2>
-      <p className="hint">
-        {tree.totalPeople} people, {tree.maxDepth} level(s) deep. Select a manager to expand or
-        collapse their team.
-      </p>
-      <ul className="org-tree">
-        {tree.roots.map((root) => (
-          <OrgNode key={root.sourceId} node={root} depth={0} />
-        ))}
-      </ul>
-      {tree.unattached.length > 0 ? (
-        <details className="action" style={{ marginTop: '0.75rem' }}>
-          <summary>
-            {countOf(tree.unattached.length, 'person', 'people')} whose manager is not in the
-            directory
-          </summary>
-          <ul className="org-tree">
-            {tree.unattached.map((node) => (
-              <OrgNode key={node.sourceId} node={node} depth={1} />
-            ))}
-          </ul>
-        </details>
-      ) : null}
-    </section>
-  );
-}
-
-export default async function DirectoryPage() {
+export default async function DirectoryPage({ searchParams }: { searchParams: Promise<Sp> }) {
   const { actor } = await requireAuth();
-  let data: Awaited<ReturnType<typeof directoryOverview>>;
+  const sp = await searchParams;
+  if (!can(actor, 'employeeSource.search'))
+    return (
+      <>
+        <h1 className="page-title">Access Restricted</h1>
+        <p className="panel">The employee directory is limited to authorized HR roles.</p>
+      </>
+    );
+  const status = sp.status === 'inactive' || sp.status === 'all' ? sp.status : 'active';
+  const filters = {
+    q: sp.q ?? '',
+    department: sp.department || undefined,
+    location: sp.location || undefined,
+    division: sp.division || undefined,
+    managerId: sp.manager || undefined,
+    status,
+  } as const;
+  let data: Awaited<ReturnType<typeof listDirectory>>;
   try {
-    data = await directoryOverview(actor);
+    data = await listDirectory(actor, filters);
   } catch (e) {
     if (e instanceof ServiceError)
       return (
         <>
-          <h1>Access Restricted</h1>
-          <p className="panel">The organization directory is limited to authorized HR roles.</p>
+          <h1 className="page-title">Access Restricted</h1>
+          <p className="panel">The employee directory is limited to authorized HR roles.</p>
         </>
       );
     throw e;
   }
+  const filtering = Boolean(
+    filters.q || filters.department || filters.location || filters.division || filters.managerId,
+  );
+  const applied = [
+    filters.q ? `Matching "${filters.q}"` : null,
+    filters.department ?? null,
+    filters.location ?? null,
+    filters.division ?? null,
+    filters.managerId
+      ? `Reports to ${data.facets.managers.find((m) => m.id === filters.managerId)?.displayName ?? 'manager'}`
+      : null,
+    status === 'inactive' ? 'Inactive only' : status === 'all' ? 'All statuses' : null,
+  ].filter((x): x is string => !!x);
 
   return (
     <>
-      <h1>Organization Directory</h1>
-      <p className="hint" role="note">
-        Reference view of the company directory for HR case preparation. This is not an employee
-        self-service directory, and email addresses are deliberately not shown. Use &quot;New
-        case&quot; to start an offboarding for someone.
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Employee Directory</h1>
+          <p className="page-lede">
+            Everyone in the company directory, mirrored from BambooHR and kept in step by continuous
+            synchronization. Search by name, employee number, title, department, work email or
+            manager, then open a profile to start an offboarding.
+          </p>
+        </div>
+        <div className="actions-row">
+          <Link className="button secondary" href="/directory/organization">
+            Reporting structure
+          </Link>
+          {can(actor, 'case.create') ? (
+            <Link className="button" href="/cases/new">
+              New case
+            </Link>
+          ) : null}
+        </div>
+      </div>
+
+      <DirectoryFreshnessNote
+        freshness={data.sync.freshness}
+        lastSuccessfulAt={data.sync.lastSuccessfulAt}
+        admin={can(actor, 'admin.system')}
+      />
+
+      <form method="get" className="panel" aria-label="Search the directory" role="search">
+        <div className="filter-toolbar">
+          <div className="field field--lg">
+            <label htmlFor="dir-q">Name, employee number, title or email</label>
+            <input
+              id="dir-q"
+              type="search"
+              name="q"
+              defaultValue={filters.q}
+              placeholder="Search employees…"
+              autoComplete="off"
+            />
+          </div>
+          <div className="field field--md">
+            <label htmlFor="dir-dept">Department</label>
+            <select id="dir-dept" name="department" defaultValue={filters.department ?? ''}>
+              <option value="">Any</option>
+              {data.facets.departments.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field field--md">
+            <label htmlFor="dir-loc">Location</label>
+            <select id="dir-loc" name="location" defaultValue={filters.location ?? ''}>
+              <option value="">Any</option>
+              {data.facets.locations.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </div>
+          {data.facets.divisions.length > 0 ? (
+            <div className="field field--md">
+              <label htmlFor="dir-div">Division</label>
+              <select id="dir-div" name="division" defaultValue={filters.division ?? ''}>
+                <option value="">Any</option>
+                {data.facets.divisions.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          <div className="field field--md">
+            <label htmlFor="dir-mgr">Manager</label>
+            <select id="dir-mgr" name="manager" defaultValue={filters.managerId ?? ''}>
+              <option value="">Any</option>
+              {data.facets.managers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field field--sm">
+            <label htmlFor="dir-status">Status</label>
+            <select id="dir-status" name="status" defaultValue={status}>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          <button type="submit">Search</button>
+          {filtering || status !== 'active' ? (
+            <Link className="button secondary" href="/directory">
+              Clear
+            </Link>
+          ) : null}
+        </div>
+        {applied.length ? (
+          <p className="filter-applied" aria-live="polite">
+            {applied.join(' · ')}
+          </p>
+        ) : null}
+      </form>
+      {!filtering ? <AutoFocus selector="#dir-q" /> : null}
+
+      <p className="hint" aria-live="polite">
+        {data.total === data.rows.length
+          ? countOf(data.total, 'employee')
+          : `Showing ${data.rows.length} of ${countOf(data.total, 'employee')}`}
+        {status === 'active' ? ' (active)' : status === 'inactive' ? ' (inactive)' : ''}
+        {' · '}
+        {countOf(data.sync.employees, 'active employee')} in the directory.
       </p>
 
-      <section className="panel" aria-labelledby="dir-totals-h">
-        <h2 id="dir-totals-h" style={{ marginTop: 0 }}>
-          Coverage
-        </h2>
-        <ul>
-          <li>
-            {countOf(data.totals.records, 'directory record')}: {data.totals.active} active,{' '}
-            {data.totals.inactive} inactive
-            {data.totals.purged > 0 ? `, ${data.totals.purged} purged` : ''}.
-          </li>
-          <li>{countOf(data.positions, 'distinct position')}.</li>
-          <li>{countOf(data.withManager, 'record')} with manager data.</li>
-          <li>
-            Sources:{' '}
-            {data.bySource.map((s) => `${humanize(s.sourceSystem)} (${s.records})`).join(', ') ||
-              'none yet'}
-            .
-          </li>
-        </ul>
-      </section>
-
-      {/* Section 21: the reporting structure walks every directory record
-          and is the slow half of this page. It streams in behind a
-          placeholder so the coverage figures are readable immediately. The
-          boundary sits below the authorization check by construction - this
-          branch is only reached once the actor has been admitted. */}
-      <Suspense fallback={<SkeletonPanel rows={8} />}>
-        <ReportingStructure actor={actor} />
-      </Suspense>
-
-      <section className="panel" aria-labelledby="dir-dept-h">
-        <h2 id="dir-dept-h" style={{ marginTop: 0 }}>
-          Departments and Locations
-        </h2>
-        <div className="table-wrap" tabIndex={0}>
-          <table className="data">
-            <caption className="visually-hidden">Records per department</caption>
-            <thead>
-              <tr>
-                <th scope="col">Department</th>
-                <th scope="col">Records</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.byDepartment.map((d) => (
-                <tr key={d.department}>
-                  <td>{d.department}</td>
-                  <td>{d.records}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="hint">
-          Locations:{' '}
-          {data.byLocation.map((l) => `${l.location} (${l.records})`).join(', ') || 'None recorded'}
-          .
-        </p>
-      </section>
-
-      {/* Exception-first (owner request, 2026-08-18): the panel exists only
-          when there is actually something to resolve. */}
-      {data.gaps.missingDepartment.length > 0 ||
-      data.gaps.missingManager.length > 0 ||
-      data.gaps.missingPosition.length > 0 ? (
-        <section className="panel" aria-labelledby="dir-gaps-h">
-          <h2 id="dir-gaps-h" style={{ marginTop: 0 }}>
-            Data Gaps to Resolve Before Case Work
-          </h2>
-          <ul>
-            {data.gaps.missingDepartment.map((e) => (
-              <li key={`d-${e.sourceId}`}>
-                {e.displayName} ({e.sourceId}) - missing department
-              </li>
-            ))}
-            {data.gaps.missingPosition.map((e) => (
-              <li key={`p-${e.sourceId}`}>
-                {e.displayName} ({e.sourceId}) - missing position
-              </li>
-            ))}
-            {data.gaps.missingManager.map((e) => (
-              <li key={`m-${e.sourceId}`}>
-                {e.displayName} ({e.sourceId}) - missing manager data
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <section className="panel" aria-labelledby="dir-sync-h">
-        <h2 id="dir-sync-h" style={{ marginTop: 0 }}>
-          Synchronization History
-        </h2>
-        {data.lastSyncs.length === 0 ? (
-          <p className="meta">
-            The directory has never been synchronized. Run a sync to pull the current employee
-            records from the company directory.
-          </p>
+      {data.rows.length === 0 ? (
+        data.sync.freshness.state === 'NEVER' ? (
+          <EmptyState
+            icon={<DirectoryIcon />}
+            title="The directory is empty"
+            body="No employee records have been synchronized yet. Once the first synchronization completes, every employee appears here."
+            tone="attention"
+          />
         ) : (
-          <ul>
-            {data.lastSyncs.map((s, i) => (
-              <li key={i}>
-                {humanize(s.mode)} - started {formatInstant(s.startedAt)}
-                {s.finishedAt ? `, finished ${formatInstant(s.finishedAt)}` : ''} - {s.created}{' '}
-                created, {s.updated} updated.
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          <EmptyState
+            icon={<SearchIcon />}
+            title="No matching employee"
+            body={
+              filtering
+                ? 'Nothing in the directory matches these filters. Try a different spelling or fewer filters - or include inactive employees.'
+                : 'No employees match the selected status.'
+            }
+            action={{ href: '/directory?status=all', label: 'Include inactive employees' }}
+          />
+        )
+      ) : (
+        <Rows label="Employees">
+          {data.rows.map((e) => (
+            <Row
+              key={e.id}
+              mark={<Avatar name={e.displayName} />}
+              title={
+                <Link href={`/directory/${e.id}`} data-directory-card>
+                  {e.displayName}
+                  {e.preferredName && e.preferredName !== e.firstName
+                    ? ` (${e.preferredName})`
+                    : ''}
+                </Link>
+              }
+              sub={[e.jobTitle, e.department, e.location].filter(Boolean).join(' · ') || '-'}
+              facts={
+                <>
+                  <span className="hint">
+                    {e.managerName ? `Manager: ${e.managerName}` : 'No manager recorded'}
+                  </span>
+                  <span className="hint">{e.employeeNumber ? `#${e.employeeNumber}` : ''}</span>
+                  <span className="hint">{e.workEmail ?? ''}</span>
+                  <Chip tone={STATUS_TONE[e.status] ?? 'neutral'}>{e.status}</Chip>
+                </>
+              }
+              action={
+                <Link className="button secondary" href={`/directory/${e.id}`}>
+                  View profile
+                </Link>
+              }
+              muted={!e.active}
+            />
+          ))}
+        </Rows>
+      )}
     </>
   );
 }

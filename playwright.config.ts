@@ -4,6 +4,10 @@ import { defineConfig } from '@playwright/test';
 // Requires: migrated + seeded database, .env with ALLOW_DEV_LOGIN=true.
 export default defineConfig({
   testDir: './e2e',
+  // The offboarding regression and evidence suite has its own configuration
+  // (playwright.regression.config.ts) with the global setup that creates its
+  // run folder; picked up here it can only fail.
+  testIgnore: /offboarding-regression/,
   // Playwright empties its output directory before every run. Keep that to a
   // folder of its own: test-results/offboarding-e2e/ holds the regression
   // evidence packs and must survive every run of every config.

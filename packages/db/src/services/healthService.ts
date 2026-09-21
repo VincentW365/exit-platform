@@ -72,6 +72,17 @@ export async function collectHealth(): Promise<{
     const bamboo = await getBambooAdapter();
     const bambooHealth = await bamboo.health();
     components.push({ component: `bamboohr (${bamboo.mode})`, ...bambooHealth });
+    // Employee directory mirror (owner directive, 2026-09-15): how current
+    // the cached directory is, judged by the last successful synchronization.
+    // Counts and ages only. A source outage does not make the mirror DOWN
+    // until the data is materially stale.
+    const { directorySyncStatus } = await import('./directorySyncService.ts');
+    const mirror = await directorySyncStatus();
+    components.push({
+      component: 'employee directory mirror',
+      ok: mirror.freshness.state === 'CURRENT' || mirror.freshness.state === 'DELAYED',
+      detail: `${mirror.employees} active employee record(s) cached; ${mirror.freshness.message}`,
+    });
   } catch (e) {
     components.push({
       component: 'bamboohr (live)',

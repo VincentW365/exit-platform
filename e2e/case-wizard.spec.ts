@@ -135,6 +135,13 @@ test('the wizard creates the case, and only from the final action', async ({ pag
   expect(page.url()).toContain('/cases/new');
 
   await step(page, 'review').getByRole('button').first().click();
+  // DEC-061: a fixture employee may already have a live case; confirm the deliberate
+  // second one. The confirmation lives in the Review step, so make sure it is open.
+  if (await page.getByLabel(/I confirm this is a separate separation event/).count()) {
+    const reviewHeader = page.locator('.step:has([data-step="review"]) .step__header');
+    if ((await reviewHeader.getAttribute('aria-expanded')) !== 'true') await reviewHeader.click();
+    await page.getByLabel(/I confirm this is a separate separation event/).check();
+  }
   await page.getByRole('button', { name: 'Create draft case' }).click();
   // Assert on the confirmation banner itself: by the time the whole suite has
   // run, this employee has several open cases and the banner carries a

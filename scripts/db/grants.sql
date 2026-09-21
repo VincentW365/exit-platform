@@ -70,7 +70,8 @@ GRANT SELECT, INSERT, UPDATE ON
   case_required_action,
   action_token,
   return_items_checklist,
-  return_items_checklist_entry
+  return_items_checklist_entry,
+  directory_sync_run
 TO exit_app;
 
 -- Attestations: insert + read + update (update restricted by trigger to the

@@ -72,6 +72,8 @@
 | Delivery | `docs/delivery/Roadmap.md` | Bounded delivery stages and gates. |
 | Delivery | `docs/delivery/TestStrategy.md` | Testing model and stage gates. |
 | Delivery | `docs/delivery/OffboardingRegressionSuite.md` | Full offboarding workflow regression suite and evidence pack: how to run it, email test mode, isolation, folder layout. |
+| Delivery | `docs/delivery/EmployeeDirectorySyncBuildRecord.md` | BambooHR internal employee directory and continuous synchronization (2026-09-15): directory pages, sync engine, webhooks, reconciliation, outage behaviour, evidence. |
+| Operations | `docs/operations/BambooHRDirectorySynchronization.md` | Runbook: BambooHR webhook setup, schedule and freshness settings, health panel, synchronization log, outage and recovery. |
 | Operations | `docs/operations/HostedUATRunbook.md` | DEC-062: temporary hosted UAT deployment (`APP_ENVIRONMENT=uat`), worker as a separate process, synthetic directory. Not the production architecture. |
 | Delivery | `docs/delivery/RiskRegister.md` | 35 product/project risks. |
 | Delivery | `docs/delivery/PilotAndRolloutPlan.md` | Baseline, pilot, rollout and adoption. |

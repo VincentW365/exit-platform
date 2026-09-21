@@ -18,6 +18,7 @@
  * employee and the designated test mailbox on the command line.
  */
 import { spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -106,6 +107,10 @@ async function main(): Promise<void> {
       OFFBOARDING_E2E_TEST_MAILBOX: mailbox,
       OFFBOARDING_E2E_BASE_URL: `http://localhost:${port}`,
       WEB_PORT_REGRESSION: String(port),
+      // A fresh webhook private key for this run only (BambooHR directory
+      // proofs): the web server verifies with it, the suite signs with it,
+      // and neither prints it.
+      OFFBOARDING_E2E_WEBHOOK_KEY: randomBytes(32).toString('hex'),
     },
   });
 

@@ -125,6 +125,21 @@ export function buildSummary(runDir: string): void {
     );
   }
   md.push('');
+  if (ex.directory) {
+    const d = ex.directory;
+    md.push('## BambooHR Directory');
+    md.push('');
+    md.push(
+      `${MARK[d.result] ?? '?'} **${d.result}** - ${d.checks.pass} pass / ${d.checks.fail} fail / ${d.checks.warn} warn. ${d.headline}`,
+    );
+    md.push('');
+    for (const sec of d.sections)
+      md.push(
+        `- [${sec.name}](${d.dir}/${sec.name}/notes.md) - ${sec.screenshots} screenshot(s), ${sec.files} file(s)${sec.headline ? ` - ${sec.headline}` : ''}`,
+      );
+    if (d.result !== 'SKIPPED') md.push(`- [result.md](${d.dir}/result.md)`);
+    md.push('');
+  }
   md.push('## Run notes');
   md.push('');
   for (const n of ex.notes) md.push(`- ${n}`);
@@ -285,6 +300,29 @@ export function buildSummary(runDir: string): void {
   }
   h.push('</div>');
 
+  if (ex.directory) {
+    const d = ex.directory;
+    h.push(
+      `<h2>BambooHR Directory</h2><div class="card"><div><span class="mark">${esc(MARK[d.result] ?? '?')}</span><b>Employee directory synchronization proofs</b> <span class="badge ${esc(d.result)}">${esc(d.result)}</span></div>`,
+    );
+    h.push(
+      `<div class="kv" style="margin-top:8px"><b>Checks</b><span>${d.checks.pass} pass · ${d.checks.fail} fail · ${d.checks.warn} warn</span><b>Started / completed</b><span>${esc(d.startedAt || '-')} / ${esc(d.completedAt ?? 'not completed')}</span></div>`,
+    );
+    if (d.headline) h.push(`<p>${esc(d.headline)}</p>`);
+    if (d.sections.length) {
+      h.push('<ul class="tight">');
+      for (const sec of d.sections)
+        h.push(
+          `<li><a href="${esc(d.dir)}/${esc(sec.name)}/notes.md">${esc(sec.name)}</a> - ${sec.screenshots} screenshot(s), ${sec.files} file(s)${sec.headline ? ` - ${esc(sec.headline)}` : ''} · <a href="${esc(d.dir)}/${esc(sec.name)}/">folder</a></li>`,
+        );
+      h.push('</ul>');
+    }
+    if (d.result !== 'SKIPPED')
+      h.push(
+        `<p><a href="${esc(d.dir)}/result.md">Directory result (result.md)</a> · <a href="${esc(d.dir)}/result.json">result.json</a></p>`,
+      );
+    h.push('</div>');
+  }
   h.push('<h2>Run notes</h2><div class="card"><ul class="tight">');
   for (const n of ex.notes) h.push(`<li>${esc(n)}</li>`);
   h.push('</ul></div>');

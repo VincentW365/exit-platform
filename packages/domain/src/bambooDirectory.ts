@@ -26,6 +26,15 @@ export const BAMBOO_ALLOWED_SOURCE_FIELDS = [
   'supervisorId',
   'supervisorEId',
   'status',
+  // Employee directory (owner directive, 2026-09-15): the remaining minimum
+  // fields a directory needs - name parts for search, work phone and
+  // extension for contact, hire date and employment status, and the source
+  // system's own change stamp. Still no home, personal or pay data.
+  'middleName',
+  'workPhone',
+  'workPhoneExtension',
+  'hireDate',
+  'lastChanged',
 ] as const;
 
 /**
@@ -59,12 +68,38 @@ export interface DirectoryEmployee {
   managerSourceId: string | null;
   employeeNumber: string | null;
   active: boolean;
+  firstName: string | null;
+  middleName: string | null;
+  lastName: string | null;
+  preferredName: string | null;
+  workPhone: string | null;
+  workExtension: string | null;
+  /** BambooHR employment status text (e.g. Active, Terminated) where returned. */
+  employmentStatus: string | null;
+  /** ISO date (yyyy-mm-dd) where returned. */
+  hireDate: string | null;
+  /** ISO instant where the API reports when the record last changed. */
+  sourceUpdatedAt: string | null;
 }
 
 const str = (v: unknown): string | null => {
   if (typeof v !== 'string') return null;
   const t = v.trim();
   return t.length ? t : null;
+};
+
+// A date the API gives as yyyy-mm-dd (or a longer ISO string); "0000-00-00" is
+// how BambooHR spells "none".
+const isoDate = (v: unknown): string | null => {
+  const s = str(v);
+  if (!s || !/^\d{4}-\d{2}-\d{2}/.test(s) || s.startsWith('0000')) return null;
+  return s.slice(0, 10);
+};
+const isoInstant = (v: unknown): string | null => {
+  const s = str(v);
+  if (!s) return null;
+  const t = Date.parse(s);
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
 };
 
 // BambooHR renders an unset list field as the literal string "None"; treat it
@@ -109,6 +144,15 @@ export function mapBambooDirectoryEmployee(raw: Record<string, unknown>): Direct
     // The public directory returns active employees; honour an explicit
     // status field when present.
     active: status === null ? true : status.toLowerCase() === 'active',
+    firstName: str(raw['firstName']),
+    middleName: str(raw['middleName']),
+    lastName: str(raw['lastName']),
+    preferredName: str(raw['preferredName']),
+    workPhone: str(raw['workPhone']),
+    workExtension: str(raw['workPhoneExtension']),
+    employmentStatus: status,
+    hireDate: isoDate(raw['hireDate']),
+    sourceUpdatedAt: isoInstant(raw['lastChanged']),
   };
 }
 

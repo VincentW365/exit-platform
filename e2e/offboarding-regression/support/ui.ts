@@ -229,6 +229,13 @@ export interface CreatedDraft {
 
 export async function createDraft(page: Page): Promise<CreatedDraft> {
   if (!(await stepExpanded(page, 'review'))) await toggleStepWithKeyboard(page, 'review');
+  // DEC-061: a fixture employee may already have a live case; confirm the deliberate
+  // second one. The confirmation lives in the Review step, so make sure it is open.
+  if (await page.getByLabel(/I confirm this is a separate separation event/).count()) {
+    const reviewHeader = page.locator('.step:has([data-step="review"]) .step__header');
+    if ((await reviewHeader.getAttribute('aria-expanded')) !== 'true') await reviewHeader.click();
+    await page.getByLabel(/I confirm this is a separate separation event/).check();
+  }
   await reach(page.getByRole('button', { name: 'Create draft case' }));
   await page.keyboard.press('Enter');
   const banner = page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/);

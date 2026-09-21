@@ -6,7 +6,8 @@
  * FIXTURE ADAPTER ONLY (G.1/G.2): no live BambooHR data appears anywhere in
  * automated tests; rows labelled BAMBOOHR below carry synthetic identities.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { BAMBOO_ALLOWED_SOURCE_FIELDS } from '@exit/domain';
 import { getPrisma } from '../src/client.ts';
 import {
   getBambooAdapter,
@@ -255,5 +256,100 @@ describe('employee search by HR-assigned Employee #', () => {
     const byRecordId = await searchEmployees(officer.actor, '900001');
     expect(byRecordId.results.map((r) => r.sourceId)).toContain('900001');
     expect(hit?.employeeNumber).not.toBe(hit?.sourceId);
+  });
+});
+
+/**
+ * Employee directory (2026-09-15): the stand-alone per-employee read that a
+ * webhook follow-up uses. Proven against a stubbed HTTP layer - no network -
+ * because the first live evidence run showed the read asking for detail
+ * fields only, the mapper finding no name, and a live employee being archived
+ * as "no longer returned".
+ */
+describe('live per-employee read (webhook follow-up) - stubbed HTTP', () => {
+  const adapter = Object.create(LiveBambooDirectoryAdapter.prototype) as LiveBambooDirectoryAdapter;
+  Object.assign(adapter, { subdomain: 'synthetic', authHeader: 'Basic c3ludGhldGljOng=' });
+  const originalFetch = globalThis.fetch;
+  const requested: string[] = [];
+  const respond = (handler: (url: string) => { status: number; body: unknown }) => {
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      requested.push(url);
+      const r = handler(url);
+      return new Response(JSON.stringify(r.body), {
+        status: r.status,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+  };
+  afterAll(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('asks for the whole approved field set and maps a complete row', async () => {
+    requested.length = 0;
+    respond(() => ({
+      status: 200,
+      body: {
+        id: '9001',
+        displayName: 'Avery Brown',
+        firstName: 'Avery',
+        lastName: 'Brown',
+        workEmail: 'avery.brown@example.test',
+        jobTitle: 'Parts Sales Associate',
+        department: 'Sales',
+        location: 'Kingston',
+        supervisor: 'Operations Manager',
+        supervisorEId: '9007',
+        status: 'Active',
+        employeeNumber: '1001',
+        hireDate: '2020-01-06',
+        workPhoneExtension: '12',
+        lastChanged: '2026-09-01T10:00:00+00:00',
+      },
+    }));
+    const rows = await adapter.getEmployees(['9001']);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      sourceId: '9001',
+      displayName: 'Avery Brown',
+      managerSourceId: '9007',
+      employeeNumber: '1001',
+      hireDate: '2020-01-06',
+      workExtension: '12',
+      active: true,
+    });
+    const url = new URL(requested[0]!);
+    const fields = (url.searchParams.get('fields') ?? '').split(',');
+    for (const f of [
+      'displayName',
+      'firstName',
+      'lastName',
+      'workEmail',
+      'jobTitle',
+      'supervisor',
+      'status',
+      'employeeNumber',
+      'hireDate',
+    ])
+      expect(fields).toContain(f);
+    for (const f of fields) expect(BAMBOO_ALLOWED_SOURCE_FIELDS as readonly string[]).toContain(f);
+    expect(fields).not.toContain('id');
+  });
+
+  it('a row the mapper cannot use is a BAD_RESPONSE failure, never a departure', async () => {
+    respond(() => ({ status: 200, body: { id: '9001', employeeNumber: '1001' } }));
+    await expect(adapter.getEmployees(['9001'])).rejects.toMatchObject({
+      details: ['BambooHR request failed: BAD_RESPONSE.'],
+    });
+  });
+
+  it('only a genuine 404 means the source no longer returns the employee', async () => {
+    respond(() => ({ status: 404, body: {} }));
+    expect(await adapter.getEmployees(['9999'])).toEqual([]);
+    respond(() => ({ status: 503, body: {} }));
+    await expect(adapter.getEmployees(['9001'])).rejects.toMatchObject({
+      details: ['BambooHR request failed: UPSTREAM_ERROR.'],
+    });
   });
 });

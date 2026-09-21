@@ -222,6 +222,13 @@ test('a confirmation dialog owns focus, closes on Escape and hands focus back', 
   await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
   await reach(page.locator('.step:has([data-step="review"]) .step__header'));
   await page.keyboard.press('Enter');
+  // DEC-061: a fixture employee may already have a live case; confirm the deliberate
+  // second one. The confirmation lives in the Review step, so make sure it is open.
+  if (await page.getByLabel(/I confirm this is a separate separation event/).count()) {
+    const reviewHeader = page.locator('.step:has([data-step="review"]) .step__header');
+    if ((await reviewHeader.getAttribute('aria-expanded')) !== 'true') await reviewHeader.click();
+    await page.getByLabel(/I confirm this is a separate separation event/).check();
+  }
   await reach(page.getByRole('button', { name: 'Create draft case' }));
   await page.keyboard.press('Enter');
   await expect(page.getByText(/Draft case OFF-/)).toBeVisible();
@@ -279,6 +286,13 @@ test('the whole case is created without a mouse', async ({ page }) => {
   await reach(page.locator('select[name="reasonCaptureStatus"]'));
   await page.keyboard.press('Enter');
   // Review step is open now; Tab to Create, Enter.
+  // DEC-061: a fixture employee may already have a live case; confirm the deliberate
+  // second one. The confirmation lives in the Review step, so make sure it is open.
+  if (await page.getByLabel(/I confirm this is a separate separation event/).count()) {
+    const reviewHeader = page.locator('.step:has([data-step="review"]) .step__header');
+    if ((await reviewHeader.getAttribute('aria-expanded')) !== 'true') await reviewHeader.click();
+    await page.getByLabel(/I confirm this is a separate separation event/).check();
+  }
   await reach(page.getByRole('button', { name: 'Create draft case' }));
   await page.keyboard.press('Enter');
   await expect(page.getByText(/Draft case OFF-/)).toBeVisible();
@@ -301,6 +315,13 @@ test('a submit button cannot be pressed twice', async ({ page }) => {
   await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
   await reach(page.locator('.step:has([data-step="review"]) .step__header'));
   await page.keyboard.press('Enter');
+  // DEC-061: a fixture employee may already have a live case; confirm the deliberate
+  // second one. The confirmation lives in the Review step, so make sure it is open.
+  if (await page.getByLabel(/I confirm this is a separate separation event/).count()) {
+    const reviewHeader = page.locator('.step:has([data-step="review"]) .step__header');
+    if ((await reviewHeader.getAttribute('aria-expanded')) !== 'true') await reviewHeader.click();
+    await page.getByLabel(/I confirm this is a separate separation event/).check();
+  }
   const create = page.getByRole('button', { name: 'Create draft case' });
   await reach(create);
   await page.keyboard.press('Enter');

@@ -12,6 +12,7 @@
  */
 import { test, type Browser, type Page } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
+import { runDirectoryEvidence } from './directory';
 import { DbBridge } from './support/db';
 import { dateOf, datePlanFor, wallClock } from './support/dates';
 import { recordEmails } from './support/emails';
@@ -38,6 +39,13 @@ for (const [i, x] of expectations.entries()) {
     await runScenario(page, browser, code, slug, x, i);
   });
 }
+
+// BambooHR directory proofs (owner directive, 2026-09-15, section 36): the
+// same controlled employee, after the separation scenarios, in its own
+// evidence folder. Select it alone with `--grep DIR`.
+test('DIR BambooHR Directory', async ({ page, request }) => {
+  await runDirectoryEvidence(page, request, run, bridge);
+});
 
 // ---------------------------------------------------------------------------
 

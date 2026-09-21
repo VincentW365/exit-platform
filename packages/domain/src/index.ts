@@ -23,6 +23,7 @@ export * from './outbox.ts';
 export * from './pilot.ts';
 export * from './operations.ts';
 export * from './bambooDirectory.ts';
+export * from './directorySync.ts';
 export * from './branding.ts';
 export * from './auditCategories.ts';
 export * from './auditHumanize.ts';

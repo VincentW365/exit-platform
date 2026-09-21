@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 import {
   ServiceError,
   createBackup,
@@ -9,7 +10,9 @@ import {
   generateAccessReview,
   purgeLiveDirectory,
   reconciliationReport,
+  requestManualDirectoryRefresh,
   restoreAndVerify,
+  runQueuedDirectorySyncs,
   setSystemConfig,
   syncEmployees,
   testDirectoryConnection,
@@ -75,6 +78,39 @@ export async function accessReviewAction(): Promise<void> {
     await generateAccessReview(actor);
     revalidatePath('/admin/system');
     back({ ok: 'Access review snapshot generated (append-only evidence).' });
+  } catch (e) {
+    if (e instanceof ServiceError) back({ err: errText(e) });
+    throw e;
+  }
+}
+
+/**
+ * "Refresh Directory Now" (owner directive, 2026-09-15, section 17): queues
+ * a manual full synchronization and runs it after this response is sent, so
+ * the screen comes back at once and shows the run's progress. A refresh
+ * requested while one is already queued or running joins that run instead
+ * of duplicating it.
+ */
+export async function refreshDirectoryAction(): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  try {
+    const { runId, reused } = await requestManualDirectoryRefresh(actor);
+    if (!reused) {
+      after(async () => {
+        try {
+          await runQueuedDirectorySyncs({ holder: `web-manual:${process.pid}:${runId}` });
+        } catch {
+          // The outcome is on the run row; the page shows it.
+        }
+      });
+    }
+    revalidatePath('/admin/system');
+    back({
+      ok: reused
+        ? 'A directory synchronization is already queued or running; this page follows its progress.'
+        : 'Directory refresh started. This page updates itself as the synchronization proceeds.',
+    });
   } catch (e) {
     if (e instanceof ServiceError) back({ err: errText(e) });
     throw e;

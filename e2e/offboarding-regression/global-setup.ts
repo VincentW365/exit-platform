@@ -64,6 +64,22 @@ export default async function globalSetup(): Promise<void> {
   execution.notes.push(
     `Separation types discovered from the platform: ${catalogue.types.map((t) => t.type).join(', ')}`,
   );
+  // The directory proofs are planned too, so a run that never reaches them
+  // reports them as not run rather than silently absent.
+  execution.directory = {
+    result: 'SKIPPED',
+    dir: 'BambooHR Directory',
+    checks: { pass: 0, fail: 0, warn: 0, humanReview: 0 },
+    sections: [],
+    startedAt: '',
+    completedAt: null,
+    headline: 'Not run.',
+  };
+  execution.notes.push(
+    process.env['OFFBOARDING_E2E_WEBHOOK_KEY']
+      ? 'BambooHR webhook: a per-run private key was generated for the web server (value never recorded).'
+      : 'BambooHR webhook: no per-run key set; the signed-webhook proof is skipped (run through pnpm regression:offboarding).',
+  );
 
   try {
     const res = await fetch(`${run.baseUrl}/api/health/lan`);

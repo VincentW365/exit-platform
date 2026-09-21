@@ -301,6 +301,7 @@ export type GlobalAction =
   | 'identity.admin'
   | 'identity.accessReview'
   | 'sync.run'
+  | 'directory.viewSync'
   | 'pilot.view'
   | 'pilot.manage'
   | 'pilot.hrApprove'
@@ -376,6 +377,8 @@ const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   'identity.admin': ['SYSTEM_ADMIN'],
   'identity.accessReview': ['SYSTEM_ADMIN'],
   'sync.run': ['SYSTEM_ADMIN', 'HR_MANAGER'],
+  // Employee directory synchronization health and history (2026-09-15).
+  'directory.viewSync': ['SYSTEM_ADMIN', 'HR_MANAGER'],
   'pilot.view': ['HR_MANAGER', 'SYSTEM_ADMIN'],
   'pilot.manage': ['HR_MANAGER', 'SYSTEM_ADMIN'],
   'pilot.hrApprove': ['HR_MANAGER'],

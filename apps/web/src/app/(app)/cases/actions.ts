@@ -132,6 +132,10 @@ export async function createCaseAction(formData: FormData): Promise<void> {
       recordPurpose: 'OPERATIONAL',
       reasonCaptureStatus: str(formData, 'reasonCaptureStatus') || 'PENDING',
       reasonNotes: opt(formData, 'reasonNotes') ?? undefined,
+      // Existing-case protection (owner directive, 2026-09-15, section 24):
+      // the review step asks for this only when a live case already exists,
+      // and the server refuses without it.
+      duplicateAcknowledged: str(formData, 'duplicateAcknowledged') === 'true',
     });
     revalidatePath('/cases');
     const dup = result.duplicateWarnings.length

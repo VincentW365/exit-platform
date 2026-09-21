@@ -211,6 +211,16 @@ function sentence(e: HumanizableEvent): string {
       return `An exception was opened: ${words(str(m, 'exceptionType')) ?? 'unspecified'} (${(words(str(m, 'severity')) ?? '-').toLowerCase()})`;
     case 'EXCEPTION_RESOLVED':
       return `The exception was resolved: ${words(str(m, 'exceptionType')) ?? 'unspecified'}`;
+    case 'DIRECTORY_SYNC_REQUESTED':
+      return `${who} requested a ${words(str(m, 'kind')) ?? 'directory'} synchronization of the employee directory.`;
+    case 'DIRECTORY_SYNC_COMPLETED':
+      return `${who} synchronized the employee directory (${words(str(m, 'kind')) ?? 'sync'}): ${String(m['checked'] ?? 0)} checked, ${String(m['added'] ?? 0)} added, ${String(m['updated'] ?? 0)} updated, ${String(m['archived'] ?? 0)} archived, ${String(m['failed'] ?? 0)} failed.`;
+    case 'DIRECTORY_SYNC_FAILED':
+      return `${who} could not synchronize the employee directory (${words(str(m, 'kind')) ?? 'sync'}): ${str(m, 'errorCode') ?? 'error'}. Cached data stays in use.`;
+    case 'DIRECTORY_WEBHOOK_RECEIVED':
+      return `BambooHR reported ${String(m['employees'] ?? 0)} employee change(s); the affected records were refreshed from BambooHR.`;
+    case 'DIRECTORY_WEBHOOK_REJECTED':
+      return `A request claiming to be a BambooHR webhook was refused (${str(m, 'reason') ?? 'invalid'}).`;
     case 'SYNC_RUN_COMPLETED':
       return `${who} completed a directory synchronization (${str(m, 'created') ?? '0'} created, ${str(m, 'updated') ?? '0'} updated)`;
     case 'AUDIT_EXPORTED':

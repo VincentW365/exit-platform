@@ -177,4 +177,122 @@ export class DbBridge {
   voidCase(caseNumber: string, reason: string): { status: string } {
     return this.call('void-case', { caseNumber, reason });
   }
+
+  // --- BambooHR directory (owner directive, 2026-09-15) ---------------------
+
+  directoryStatus(): DirectoryStatus {
+    return this.call('directory-status', {});
+  }
+  directoryProfile(employee: string): DirectoryProfileFacts | null {
+    return this.call('directory-profile', { employee });
+  }
+  directoryRefresh(): DirectoryRunResult {
+    return this.call('directory-refresh', {});
+  }
+  directoryHourly(): {
+    scheduledSyncEnabled: boolean;
+    tick: { queued: string[]; executed: DirectoryRunResult[]; skipped: string | null };
+    forced: DirectoryRunResult;
+  } {
+    return this.call('directory-hourly', {});
+  }
+  directoryOutage(on: boolean): { on: boolean } {
+    return this.call('directory-outage', { on });
+  }
+  directoryRuns(filter: { kind?: string; limit?: number }): DirectoryRunRow[] {
+    return this.call('directory-runs', filter);
+  }
+  directorySearch(q: string): {
+    total: number;
+    rows: Array<{
+      sourceId: string;
+      displayName: string;
+      jobTitle: string | null;
+      department: string | null;
+      managerName: string | null;
+      employeeNumber: string | null;
+      status: string;
+    }>;
+    freshness: { state: string; message: string };
+  } {
+    return this.call('directory-search', { q });
+  }
+}
+
+export interface DirectoryStatus {
+  mode: string;
+  sourceSystem: string;
+  scheduledSyncEnabled: boolean;
+  webhookConfigured: boolean;
+  simulatedOutage: boolean;
+  employees: number;
+  totalRecords: number;
+  archived: number;
+  lastEventAt: string | null;
+  lastIncrementalAt: string | null;
+  lastFullAt: string | null;
+  lastSuccessfulAt: string | null;
+  lastRun: Record<string, unknown> | null;
+  activeRun: Record<string, unknown> | null;
+  connection: 'HEALTHY' | 'FAILING' | 'UNKNOWN';
+  freshness: { state: string; label: string; message: string; audience: string };
+}
+
+export interface DirectoryPerson {
+  id: string;
+  sourceId: string;
+  displayName: string;
+  jobTitle: string | null;
+  department: string | null;
+  location: string | null;
+  managerName: string | null;
+  managerDirectoryId: string | null;
+  employeeNumber: string | null;
+  status: string;
+  active: boolean;
+}
+
+export interface DirectoryProfileFacts {
+  record: DirectoryPerson & { lastSyncedAt: string | null };
+  manager: (DirectoryPerson & { reportsCount: number }) | null;
+  reports: DirectoryPerson[];
+  reportsTotal: number;
+  cases: {
+    live: Array<{ caseNumber: string; status: string }>;
+    history: Array<{ caseNumber: string; status: string }>;
+  };
+}
+
+export interface DirectoryRunResult {
+  runId: string;
+  kind: string;
+  status: string;
+  mode: string;
+  errorCode: string | null;
+  checked: number;
+  added: number;
+  updated: number;
+  unchanged: number;
+  archived: number;
+  failed: number;
+}
+
+export interface DirectoryRunRow {
+  id: string;
+  kind: string;
+  status: string;
+  requestedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  employeeSourceId: string | null;
+  employee: { displayName: string; id: string } | null;
+  checked: number;
+  added: number;
+  updated: number;
+  unchanged: number;
+  archived: number;
+  failed: number;
+  errorCode: string | null;
+  errorDetail: string | null;
+  changedFields: string[];
 }

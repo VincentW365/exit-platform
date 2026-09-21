@@ -63,6 +63,14 @@ Legend: **[ENFORCED]** = the config loader refuses to start;
       the Decision Register; sync remains source-record-only (never case
       snapshots); scheduled sync enabled only by recorded configuration
       decision.
+- [ ] [MANUAL] Employee directory synchronization (2026-09-15): the BambooHR
+      employee-change webhook is created against `/api/bamboohr/webhook`
+      and its private key is set as `BAMBOOHR_WEBHOOK_PRIVATE_KEY` (secret
+      store, never a file in Git); `bamboohr.scheduledSync` is true so the
+      hourly and nightly (02:00 Jamaica) reconciliations run; the worker is
+      running (it executes queued runs and the start-up staleness check);
+      `bamboohr.simulateOutage` is absent or false (ignored in production
+      anyway). See `docs/operations/BambooHRDirectorySynchronization.md`.
 
 ## Operations
 

@@ -1,5 +1,9 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { RefreshWatcher } from '@/components/RefreshWatcher';
+import { DirectoryFreshnessNote } from '@/components/DirectoryFreshness';
+import { Kpi } from '@/components/patterns';
 import {
   breakGlassStatus,
   directoryTechnicalCounts,
@@ -10,6 +14,7 @@ import {
   listSystemConfig,
   reconciliationReport,
   ServiceError,
+  directorySyncStatus,
 } from '@exit/db';
 import { bambooDirectoryStatus } from '@exit/config';
 import { can, formatInstant } from '@exit/domain';
@@ -21,6 +26,7 @@ import {
   disableUserAction,
   purgeDirectoryAction,
   reconciliationAction,
+  refreshDirectoryAction,
   restoreVerifyAction,
   setConfigAction,
   syncEmployeesAction,
@@ -58,6 +64,7 @@ export default async function SystemAdminPage({
   let breakGlass = { enabled: false, note: '' };
   let recon: Awaited<ReturnType<typeof reconciliationReport>> | null = null;
   let directory: Awaited<ReturnType<typeof directoryTechnicalCounts>> | null = null;
+  let sync: Awaited<ReturnType<typeof directorySyncStatus>> | null = null;
   let adapterMode = 'fixture';
   try {
     [config, users, reviews, backups, breakGlass, directory] = await Promise.all([
@@ -71,6 +78,7 @@ export default async function SystemAdminPage({
     adapterMode =
       ((await getSystemConfigValue('bamboohr.mode')) as string) === 'live' ? 'live' : 'fixture';
     recon = await reconciliationReport(actor);
+    sync = await directorySyncStatus();
   } catch (e) {
     if (!(e instanceof ServiceError)) throw e;
   }
@@ -152,10 +160,90 @@ export default async function SystemAdminPage({
         </details>
       </section>
 
-      <section className="panel" aria-labelledby="sync-h">
+      <section className="panel" aria-labelledby="sync-h" id="directory-h">
         <h2 id="sync-h" style={{ marginTop: 0 }}>
           Employee Directory
         </h2>
+        {/* Integration health (owner directive, 2026-09-15, section 26):
+            counts and instants only - never employee values. */}
+        {sync ? (
+          <>
+            <DirectoryFreshnessNote
+              freshness={sync.freshness}
+              lastSuccessfulAt={sync.lastSuccessfulAt}
+              admin
+            />
+            <RefreshWatcher active={Boolean(sync.activeRun)} />
+            <div className="kpi-grid" data-directory-health>
+              <Kpi
+                label="Connection"
+                value={
+                  sync.connection === 'HEALTHY'
+                    ? 'Healthy'
+                    : sync.connection === 'FAILING'
+                      ? 'Failing'
+                      : 'Unknown'
+                }
+                tone={
+                  sync.connection === 'HEALTHY'
+                    ? 'done'
+                    : sync.connection === 'FAILING'
+                      ? 'critical'
+                      : 'pending'
+                }
+                note={`${sync.mode} adapter${sync.simulatedOutage ? ' · SIMULATED OUTAGE' : ''}${sync.webhookConfigured ? ' · webhook enabled' : ' · webhook key not set'}`}
+              />
+              <Kpi
+                label="Local employees"
+                value={sync.employees}
+                note={`${sync.totalRecords} records · ${sync.archived} archived`}
+              />
+              <Kpi
+                label="Last event"
+                value={sync.lastEventAt ? formatInstant(sync.lastEventAt) : 'None yet'}
+                note="BambooHR webhook"
+              />
+              <Kpi
+                label="Last incremental"
+                value={sync.lastIncrementalAt ? formatInstant(sync.lastIncrementalAt) : 'None yet'}
+                note={`Hourly (every ${sync.settings.hourlyMinutes} min)`}
+              />
+              <Kpi
+                label="Last full"
+                value={sync.lastFullAt ? formatInstant(sync.lastFullAt) : 'None yet'}
+                note={`Nightly at ${String(sync.settings.nightlyHour).padStart(2, '0')}:${String(sync.settings.nightlyMinute).padStart(2, '0')} Jamaica`}
+              />
+              <Kpi
+                label="Last result"
+                value={sync.lastRun ? humanize(sync.lastRun.status) : 'None yet'}
+                tone={
+                  !sync.lastRun
+                    ? 'pending'
+                    : sync.lastRun.status === 'SUCCESS'
+                      ? 'done'
+                      : sync.lastRun.status === 'PARTIAL'
+                        ? 'attention'
+                        : 'critical'
+                }
+                note={
+                  sync.lastRun
+                    ? `${humanize(sync.lastRun.kind)}: ${sync.lastRun.added} added, ${sync.lastRun.updated} updated, ${sync.lastRun.archived} archived, ${sync.lastRun.failed} failed${sync.lastRun.errorCode ? ` · ${sync.lastRun.errorCode}` : ''}`
+                    : 'No run recorded'
+                }
+              />
+            </div>
+            <div className="actions-row">
+              <form action={refreshDirectoryAction} style={{ display: 'inline-block' }}>
+                <button type="submit" disabled={Boolean(sync.activeRun)}>
+                  Refresh Directory Now
+                </button>
+              </form>
+              <Link className="button secondary" href="/admin/directory-sync">
+                Synchronization log
+              </Link>
+            </div>
+          </>
+        ) : null}
         <p>
           Credential status:{' '}
           <span
