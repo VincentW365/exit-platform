@@ -36,9 +36,23 @@ describe('environment schema validation', () => {
   });
 
   it('REFUSES TO START when dev login is enabled in production (CLAUDE.md safeguard)', () => {
+    // NODE_ENV=production with no APP_ENVIRONMENT is still a production
+    // DEPLOYMENT, so the switcher is refused exactly as before. The message
+    // now names APP_ENVIRONMENT, because that is what the guard tests.
     expect(() => loadConfig({ ...base, NODE_ENV: 'production', ALLOW_DEV_LOGIN: 'true' })).toThrow(
-      /not permitted when NODE_ENV=production/,
+      /not permitted when APP_ENVIRONMENT=production/,
     );
+    // Naming production explicitly is refused the same way, and neither the
+    // hosted-UAT acknowledgement nor anything else can unlock it.
+    expect(() =>
+      loadConfig({
+        ...base,
+        NODE_ENV: 'production',
+        APP_ENVIRONMENT: 'production',
+        ALLOW_DEV_LOGIN: 'true',
+        UAT_HOSTED_ACK: 'true',
+      }),
+    ).toThrow(ConfigError);
   });
 
   it('production starts only with complete provider configuration (Stage 4 fail-closed)', () => {

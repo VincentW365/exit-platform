@@ -37,16 +37,32 @@ const envSchema = z.object({
   // the production boundary; 'disabled' runs without email entirely.
   EMAIL_MODE: z.enum(['disabled', 'sink', 'dev-capture', 'graph']).default('dev-capture'),
   /**
-   * Deployment environment for ROUTING purposes (email routing directive).
-   * Distinct from NODE_ENV, which governs how the app is built and run:
+   * What this DEPLOYMENT is for. Distinct from NODE_ENV, which says only how
+   * Node and Next were built and run - a hosted test environment is still a
+   * production BUILD. Every provider and policy guard keys off this value,
+   * never off NODE_ENV (owner directive, 2026-09-21).
+   *
    *   development - local work; recipients must be non-deliverable.
-   *   test        - UAT against real configuration; recipients are calculated
-   *                 exactly as in production but delivery is redirected to
-   *                 TEST_EMAIL, so a real mailbox can never be reached.
+   *   test        - real configuration; recipients are calculated exactly as
+   *                 in production but delivery is redirected to TEST_EMAIL,
+   *                 so a real mailbox can never be reached.
+   *   uat         - a hosted testing deployment on any host (container,
+   *                 cloud, temporary web host). Non-production providers are
+   *                 permitted; production-CAPABLE providers are also
+   *                 permitted, but never pointed at production RESOURCES.
    *   production  - real recipients, real delivery.
-   * Defaults from NODE_ENV so nothing has to be set to keep working.
+   *
+   * Defaults from NODE_ENV so nothing has to be set to keep working, and so
+   * that an absent value on a production build still means production.
    */
-  APP_ENVIRONMENT: z.enum(['development', 'test', 'production']).optional(),
+  APP_ENVIRONMENT: z.enum(['development', 'test', 'uat', 'production']).optional(),
+  /**
+   * Explicit acknowledgement that this is a deliberately-chosen hosted
+   * testing deployment. Required for APP_ENVIRONMENT=uat, and for any
+   * non-production environment running on a production Node build. A hosted
+   * test environment is never inferred: it must be asked for twice.
+   */
+  UAT_HOSTED_ACK: boolString,
   /** The one mailbox every message is redirected to while testing. */
   TEST_EMAIL: z.string().optional(),
   GRAPH_TENANT_ID: z.string().optional(),
@@ -103,9 +119,19 @@ export type AppConfig = Readonly<
   z.infer<typeof envSchema> & {
     /** True only when BOTH safeguards hold (never in production). */
     devLoginEnabled: boolean;
+    /**
+     * True when this is a production DEPLOYMENT (APP_ENVIRONMENT=production).
+     * This is what every provider and policy guard means by "production".
+     */
     isProduction: boolean;
-    /** Resolved routing environment: development | test | production. */
-    appEnvironment: 'development' | 'test' | 'production';
+    /**
+     * True when the process was BUILT for production (NODE_ENV=production).
+     * A hosted UAT deployment is normally both a production build and a
+     * non-production environment. Diagnostics and startup logs only.
+     */
+    nodeEnvIsProduction: boolean;
+    /** Resolved deployment environment. */
+    appEnvironment: 'development' | 'test' | 'uat' | 'production';
     /**
      * True when WEB_HOST accepts connections from other machines. Read by
      * the sign-in page and the startup logs so that exposing the development
@@ -157,8 +183,19 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     throw new ConfigError(`Invalid environment configuration: ${issues}`);
   }
   const c = parsed.data;
-  const isProduction = c.NODE_ENV === 'production';
-  const appEnvironment = c.APP_ENVIRONMENT ?? (isProduction ? 'production' : 'development');
+  // How the process was BUILT. Used for diagnostics only - never to decide
+  // which providers or safeguards apply.
+  const nodeEnvIsProduction = c.NODE_ENV === 'production';
+  // What this deployment is FOR. The only source is an explicit
+  // APP_ENVIRONMENT, or the NODE_ENV-derived default. There is deliberately
+  // no other path to this value: a production configuration that fails
+  // validation throws below, it never degrades into a weaker environment.
+  const appEnvironment = c.APP_ENVIRONMENT ?? (nodeEnvIsProduction ? 'production' : 'development');
+  // Every provider and policy guard in this file, and every isProduction
+  // reader elsewhere, means "is this a production DEPLOYMENT". With
+  // APP_ENVIRONMENT absent this is identical to the previous NODE_ENV test,
+  // so existing development and production deployments are unchanged.
+  const isProduction = appEnvironment === 'production';
 
   // A test/UAT deployment exists to exercise real routing without reaching a
   // real mailbox. Without somewhere to redirect to, that promise cannot be
@@ -177,17 +214,33 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       throw new ConfigError('FATAL: TEST_EMAIL must be a valid email address.');
     }
   }
-  // Production must never quietly run as a redirected environment.
-  if (isProduction && appEnvironment !== 'production') {
+  // A hosted testing deployment is never inferred - it is asked for twice.
+  // APP_ENVIRONMENT=uat names the intent; UAT_HOSTED_ACK confirms it, so a
+  // single stray or mistyped variable cannot turn production into UAT.
+  if (appEnvironment === 'uat' && !c.UAT_HOSTED_ACK) {
     throw new ConfigError(
-      `FATAL: NODE_ENV=production cannot run with APP_ENVIRONMENT=${appEnvironment}; production delivers to real recipients.`,
+      'FATAL: APP_ENVIRONMENT=uat requires UAT_HOSTED_ACK=true. A hosted testing ' +
+        'environment must be selected deliberately, never inherited or inferred.',
+    );
+  }
+  // A production BUILD running as anything other than production is legitimate
+  // (a hosted test environment is still built for production), but it must be
+  // deliberate. This replaces the former blanket refusal, which could not tell
+  // "hosted UAT" apart from "production accidentally redirected".
+  if (nodeEnvIsProduction && appEnvironment !== 'production' && !c.UAT_HOSTED_ACK) {
+    throw new ConfigError(
+      `FATAL: NODE_ENV=production with APP_ENVIRONMENT=${appEnvironment} requires ` +
+        'UAT_HOSTED_ACK=true. Production delivers to real recipients; a non-production ' +
+        'environment on a production build must be acknowledged explicitly.',
     );
   }
 
   // CLAUDE.md authentication safeguard: refuse to start, do not merely disable.
+  // Keyed on the deployment environment, not the build mode - a production
+  // deployment can never enable the switcher, whatever NODE_ENV says.
   if (isProduction && c.ALLOW_DEV_LOGIN) {
     throw new ConfigError(
-      'FATAL: ALLOW_DEV_LOGIN=true is not permitted when NODE_ENV=production. ' +
+      'FATAL: ALLOW_DEV_LOGIN=true is not permitted when APP_ENVIRONMENT=production. ' +
         'The development role switcher is a non-production feature (REQ-SEC-003).',
     );
   }
@@ -285,6 +338,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   return Object.freeze({
     ...c,
     isProduction,
+    nodeEnvIsProduction,
     appEnvironment,
     devLoginEnabled: !isProduction && c.ALLOW_DEV_LOGIN,
     lanExposed: !isLoopbackHost(c.WEB_HOST),

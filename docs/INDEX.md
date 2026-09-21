@@ -72,6 +72,7 @@
 | Delivery | `docs/delivery/Roadmap.md` | Bounded delivery stages and gates. |
 | Delivery | `docs/delivery/TestStrategy.md` | Testing model and stage gates. |
 | Delivery | `docs/delivery/OffboardingRegressionSuite.md` | Full offboarding workflow regression suite and evidence pack: how to run it, email test mode, isolation, folder layout. |
+| Operations | `docs/operations/HostedUATRunbook.md` | DEC-062: temporary hosted UAT deployment (`APP_ENVIRONMENT=uat`), worker as a separate process, synthetic directory. Not the production architecture. |
 | Delivery | `docs/delivery/RiskRegister.md` | 35 product/project risks. |
 | Delivery | `docs/delivery/PilotAndRolloutPlan.md` | Baseline, pilot, rollout and adoption. |
 | Delivery | `docs/delivery/ChangeControl.md` | Scope and decision change process. |

@@ -54,12 +54,33 @@ When sources conflict, stop and record the conflict. Do not choose the most conv
 
 Package versions must be selected from the actual environment and official documentation at implementation time. Do not pin versions from memory.
 
+## Runtime mode versus deployment environment
+
+`NODE_ENV` says how the process was **built**. `APP_ENVIRONMENT` says what the
+deployment is **for**. They are not the same thing: a hosted testing deployment is
+normally a production build running as a non-production environment.
+
+Every provider and policy guard keys off `APP_ENVIRONMENT`
+(`development` | `test` | `uat` | `production`). `NODE_ENV` remains available as
+`nodeEnvIsProduction` for diagnostics and startup logs only.
+
+When `APP_ENVIRONMENT` is absent, a `NODE_ENV=production` process resolves to
+`production`, so production behaviour is unchanged. A broken production
+configuration throws; it never degrades into a weaker environment.
+
+`APP_ENVIRONMENT=uat` requires `UAT_HOSTED_ACK=true`. A hosted testing environment
+is never inferred. See DEC-062.
+
+UAT prohibits production **resources**, not production-capable **implementations**:
+a separate UAT bucket, OIDC application or test email provider is legitimate; the
+production database, BambooHR credential or storage bucket is not.
+
 ## Authentication safeguard
 
 A development role switcher is permitted only when BOTH conditions are true:
 
 ```text
-NODE_ENV is not production
+APP_ENVIRONMENT is not production
 ALLOW_DEV_LOGIN=true
 ```
 

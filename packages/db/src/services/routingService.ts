@@ -459,7 +459,14 @@ export function routeMasks(resolution: RouteResolution): {
   };
 }
 
-/** The routing environment this deployment is running as. */
-export function routingEnvironment(): 'development' | 'test' | 'production' {
+/**
+ * The routing environment this deployment is running as.
+ *
+ * 'uat' is deliberately NOT given its own branch in destinationErrors: it
+ * falls into the strict development rule, so a hosted test deployment can
+ * only ever address capture:// channels, reserved .test/.invalid domains or
+ * localhost - never a deliverable mailbox.
+ */
+export function routingEnvironment(): 'development' | 'test' | 'uat' | 'production' {
   return getConfig().appEnvironment;
 }

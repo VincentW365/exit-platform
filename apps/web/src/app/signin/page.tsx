@@ -58,7 +58,8 @@ export default async function SignInPage({
               </h2>
               <p className="hint">
                 Pick the function you are testing as. Accounts are synthetic and named by role; this
-                switcher exists only because <code>NODE_ENV</code> is not production and{' '}
+                switcher exists only because <code>APP_ENVIRONMENT</code> is{' '}
+                <code>{config.appEnvironment}</code> rather than production, and{' '}
                 <code>ALLOW_DEV_LOGIN=true</code>.
               </p>
               {/* Exposing a passwordless switcher to the network is a
