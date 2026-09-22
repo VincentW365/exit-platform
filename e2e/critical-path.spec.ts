@@ -57,8 +57,10 @@ test('HR officer creates and submits; HR manager approves with snapshot; line ma
   await expect(
     page.getByRole('heading', { name: /OFF-\d{4}-\d{4,}(?:-\d)? - Avery Brown/ }),
   ).toBeVisible();
+  // A draft says so in the header; the snapshot is captured at approval
+  // (the provenance line was retired from the overview, owner 2026-09-22).
   await expect(
-    page.getByText('No snapshot yet - one is captured when the case is approved.'),
+    page.getByText('Draft: this case has been created but has not yet entered', { exact: false }),
   ).toBeVisible();
 
   // --- submit for review --------------------------------------------------

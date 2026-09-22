@@ -435,20 +435,6 @@ export default async function CaseDetailPage({
             <Fact label="Location">{c.location || 'Not recorded'}</Fact>
             <Fact label="Reporting manager">{c.managerName ?? 'Not recorded'}</Fact>
           </Facts>
-          {/* Provenance is reference material, not headline information:
-              one quiet line rather than a box inside the card. */}
-          <p className="meta" style={{ margin: 'var(--space-4) 0 0' }}>
-            {humanize(c.employeeSourceSystem)} directory record {c.employeeSourceId}.{' '}
-            {c.snapshot ? (
-              <>
-                Snapshot captured {formatInstant(c.snapshot.capturedAt)} (checksum{' '}
-                <code>{c.snapshot.checksum.slice(0, 12)}...</code>, source retrieved{' '}
-                {formatInstant(c.snapshot.retrievedAt)}) and held unchanged from then on.
-              </>
-            ) : (
-              'No snapshot yet - one is captured when the case is approved.'
-            )}
-          </p>
         </section>
       </div>
 
@@ -636,12 +622,7 @@ export default async function CaseDetailPage({
 
       {(cap.canSubmit || cap.canApprove || cap.canReturn || cap.canCancel || cap.canVoid) && (
         <section aria-labelledby="actions-h" className="panel">
-          <SectionHead
-            id="actions-h"
-            icon={<FlowIcon />}
-            title="Move this case"
-            description="Where the case goes next in its lifecycle. Cases are never deleted - cancelling or voiding preserves the full history."
-          />
+          <SectionHead id="actions-h" icon={<FlowIcon />} title="Move this case" />
           <div className="actions-row">
             {'canApproveDraft' in cap && cap.canApproveDraft ? (
               <form action={transitionAction}>
@@ -986,12 +967,7 @@ export default async function CaseDetailPage({
 
       {cap.canAddNote || notes.length > 0 ? (
         <section aria-labelledby="notes-h" className="panel">
-          <SectionHead
-            id="notes-h"
-            icon={<BookIcon />}
-            title="Internal notes"
-            description="Visible to HR on this case and part of the permanent record."
-          />
+          <SectionHead id="notes-h" icon={<BookIcon />} title="Internal notes" />
           {notes.length ? (
             <ul className="timeline">
               {notes.map((n) => (
