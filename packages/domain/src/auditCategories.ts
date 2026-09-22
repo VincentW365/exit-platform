@@ -38,6 +38,7 @@ const OVERRIDES: Partial<Record<AuditEventType, AuditCategory>> = {
   // Approvals are their own investigative lens (M/N).
   CASE_APPROVED: 'APPROVAL',
   DOC_APPROVED: 'APPROVAL',
+  DOC_FINALIZED: 'DOCUMENT',
   DOC_APPROVAL_INVALIDATED: 'APPROVAL',
   FORM_MANAGER_APPROVED: 'APPROVAL',
   FORM_HR_APPROVED: 'APPROVAL',

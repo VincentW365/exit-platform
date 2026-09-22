@@ -239,8 +239,11 @@ async function main(): Promise<void> {
     where: { key: 'notifications.sendControl.restrictedOverride' },
     create: {
       key: 'notifications.sendControl.restrictedOverride',
-      value: 'HR_MANAGER_APPROVAL_REQUIRED',
-      reason: 'Directive 6.3 S defaults',
+      // DEC-066: never automatic on a restricted case, released by the HR
+      // person executing the approved case. A stored legacy
+      // HR_MANAGER_APPROVAL_REQUIRED reads the same way.
+      value: 'HR_REVIEW_THEN_SEND',
+      reason: 'Directive 6.3 S defaults; DEC-066 single authorization gate',
     },
     update: {},
   });

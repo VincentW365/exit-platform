@@ -183,6 +183,12 @@ model User {
   deactivatedAt         DateTime?
   /// Sessions issued before this instant are rejected (immediate revocation).
   sessionsInvalidatedAt DateTime?
+  /// DEC-066 section 8: a short signature banner (name/title lines, phone,
+  /// tagline) the user maintains under My Settings. Appended beneath the HR
+  /// sender block of every outgoing email that carries this user as sender.
+  /// Plain text only - the email pipeline is text-only by design.
+  emailBanner          String?
+  emailBannerUpdatedAt DateTime?
 
   roleAssignments RoleAssignment[]  @relation("assignee")
   ownedCases      OffboardingCase[] @relation("caseOwner")
@@ -754,6 +760,9 @@ enum AttestationKind {
   MANAGER_HANDOVER_ATTESTATION
   /// Directive 6.3 F: the assigned HR Officer completes the form (attested).
   HR_FORM_COMPLETION
+  /// DEC-066: the HR person executing the approved case finalizes the exact
+  /// document version for release (the case approval is the authorization).
+  HR_DOCUMENT_FINALIZATION
 }
 
 enum ActionFormStatus {

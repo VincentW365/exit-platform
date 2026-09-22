@@ -7,6 +7,7 @@ import {
   RETURN_ITEM_STATUS_LABEL,
 } from '@exit/domain';
 import { humanize } from '@/lib/text';
+import { BrandMark } from '@/components/BrandMark';
 import { submitChecklistAction } from './actions';
 
 export const metadata: Metadata = {
@@ -165,6 +166,9 @@ export default async function PublicChecklistPage({
 
         <div className="paper">
           <header className="paper__letterhead">
+            {/* The company logo on every form the employee is handed
+                (owner directive 2026-09-22, section 8). */}
+            <BrandMark size="lg" />
             <div className="paper__org">Bert&apos;s Auto Parts Limited</div>
             <p className="paper__title">Exit Checklist for Return Items</p>
             <p className="paper__ref">Case reference: {c.caseNumber}</p>

@@ -137,14 +137,26 @@ The preview must show:
 - scheduled send time;
 - fields omitted due to minimization.
 
-## 8. Approval model
+## 8. Approval model (revised by DEC-066, 2026-09-22)
 
-### Human approval required in MVP
+### One approval: the case
+
+The HR Manager approves the offboarding case once, on a Case Approval
+Summary that shows the communication plan (every audience with its resolved
+destination and readiness), the documents and forms the case will produce,
+the benefits and providers selected at intake and the workflow that follows.
+That approval authorizes the assigned HR Officer to execute all of it. No
+per-document or per-notification HR Manager approval exists.
+
+### Human release required (never automatic)
+
+The HR person executing the approved case - the assigned HR Officer or the
+HR Manager - releases each of these by hand, under the case approval:
 
 - employee-facing messages;
 - NCB/Sagicor/external providers;
-- termination-related messages;
-- letters/documents;
+- termination-related messages (restricted cases are also timing-held);
+- letters/documents (finalized in one attested step, then issued);
 - corrected/resend messages;
 - any manual free-form exception.
 

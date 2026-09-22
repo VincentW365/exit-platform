@@ -250,12 +250,15 @@ export async function createDraft(page: Page): Promise<CreatedDraft> {
 
 // --- approval, assignment, activation ------------------------------------
 
+/**
+ * DEC-066: the one HR Manager decision is taken on the Case Approval
+ * Summary, after the whole plan (recipients, documents, benefits) is shown.
+ */
 export async function approveCase(page: Page, caseUrl: string): Promise<string> {
-  await page.goto(caseUrl);
-  const fb = await act(
-    page,
-    page.getByRole('button', { name: 'Approve case and capture snapshot' }),
-  );
+  await page.goto(`${caseUrl}/approve`);
+  await expect(page.getByRole('heading', { name: /Notifications & Recipients/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Approve Case', exact: true }).click();
+  const fb = await act(page, page.getByRole('button', { name: 'Confirm approval' }));
   if (!fb.ok || !/Case approved/.test(fb.ok))
     throw new Error(`approve: ${fb.err ?? fb.ok ?? 'no feedback'}`);
   return fb.ok;
@@ -394,6 +397,11 @@ export async function activateCase(page: Page, caseUrl: string): Promise<string>
 
 // --- benefits, assets, email actions ---------------------------------------
 
+/**
+ * DEC-066: benefits are selected at intake and approved with the case. This
+ * post-approval correction is the HR Manager's (audited); the officer has no
+ * such control once the case is approved.
+ */
 export async function confirmBenefits(
   page: Page,
   caseUrl: string,
@@ -403,7 +411,9 @@ export async function confirmBenefits(
   await page.goto(caseUrl);
   const details = page
     .locator('details')
-    .filter({ has: page.locator('summary', { hasText: 'Confirm which benefits apply' }) })
+    .filter({
+      has: page.locator('summary', { hasText: 'Correct the approved benefits selection' }),
+    })
     .first();
   await expect(details).toBeVisible();
   const isOpen = await details.evaluate((d) => (d as HTMLDetailsElement).open);
@@ -533,21 +543,24 @@ export async function createResignationLetter(
     fb = await act(page, refresh);
     log.push(`refresh: ${fb.ok ?? fb.err}`);
   }
-  fb = await act(page, page.getByRole('button', { name: 'Validate and submit for approval' }));
+  fb = await act(page, page.getByRole('button', { name: 'Validate and finalize (attested)' }));
   log.push(`submit: ${fb.ok ?? fb.err}`);
   return log;
 }
 
+/**
+ * DEC-066: there is no second, per-document approval. The assigned officer
+ * finalizes the letter (validate + attest + render) under the case approval;
+ * this helper only re-reads the page and confirms the letter rendered.
+ */
 export async function approveDocument(page: Page, caseUrl: string): Promise<string> {
   await page.goto(`${caseUrl}/documents`);
-  const fb = await act(
-    page,
-    page.getByRole('button', { name: 'Approve exact version (attested)' }),
-    60_000,
+  await expect(page.getByRole('button', { name: 'Approve exact version (attested)' })).toHaveCount(
+    0,
   );
-  if (!fb.ok || !/approved/i.test(fb.ok))
-    throw new Error(`approve document: ${fb.err ?? fb.ok ?? 'no feedback'}`);
-  return fb.ok;
+  const rendered = page.locator('.badge', { hasText: /Rendered|Issued/ }).first();
+  await expect(rendered).toBeVisible({ timeout: 60_000 });
+  return `Letter finalized by the assigned HR Officer under the case approval (${(await rendered.textContent())?.trim()})`;
 }
 
 export async function documentPdfHrefs(page: Page, caseUrl: string): Promise<string[]> {

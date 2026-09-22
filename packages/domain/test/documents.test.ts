@@ -143,10 +143,15 @@ describe('lifecycles', () => {
     ).toBeNull();
   });
 
-  it('document transitions enforce state and reasons', () => {
-    expect(docTransitionError('approve', 'PENDING_APPROVAL')).toBeNull();
-    expect(docTransitionError('approve', 'DRAFT')).toContain('not allowed');
-    expect(docTransitionError('return', 'PENDING_APPROVAL', '')).toContain('requires a reason');
+  it('document transitions enforce state and reasons (single authorization gate, DEC-066)', () => {
+    // One step from draft to finalized: no submit/approve/return pair exists.
+    expect(docTransitionError('finalize', 'DRAFT')).toBeNull();
+    expect(docTransitionError('finalize', 'VALIDATION_FAILED')).toBeNull();
+    // Legacy rows from the retired maker-checker model finalize like drafts.
+    expect(docTransitionError('finalize', 'PENDING_APPROVAL')).toBeNull();
+    expect(docTransitionError('finalize', 'RETURNED')).toBeNull();
+    expect(docTransitionError('finalize', 'APPROVED')).toContain('not allowed');
+    expect(docTransitionError('finalize', 'RENDERED')).toContain('not allowed');
     expect(docTransitionError('markIssued', 'RENDERED')).toBeNull();
     expect(docTransitionError('markIssued', 'APPROVED')).toContain('not allowed');
     expect(docTransitionError('void', 'MANUALLY_ISSUED', 'x')).toContain('not allowed'); // issued docs supersede, never void

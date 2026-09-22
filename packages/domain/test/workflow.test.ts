@@ -21,7 +21,6 @@ import {
 import {
   notificationIdempotencyKey,
   notificationTransitionError,
-  requiresManagerApproval,
   NOTIFICATION_RECIPIENT_CLASS,
 } from '../src/notifications.ts';
 import {
@@ -415,11 +414,13 @@ describe('notification rules (K)', () => {
     );
   });
 
-  it('external and employee-facing notifications need HR_MANAGER approval (K.2)', () => {
-    expect(requiresManagerApproval('EXTERNAL_PROVIDER')).toBe(true);
-    expect(requiresManagerApproval('EMPLOYEE')).toBe(true);
-    expect(requiresManagerApproval('INTERNAL_DEPARTMENT')).toBe(false);
+  it('recipient classes still name who a notification reaches (minimum data), not who approves it (DEC-066)', () => {
+    // The class drives the field allow-list and routing. Since the single
+    // authorization gate, it no longer selects a second approver: the case
+    // approval covered every audience shown on the approval summary.
     expect(NOTIFICATION_RECIPIENT_CLASS.SAGICOR_GROUP_HEALTH_REMOVAL).toBe('EXTERNAL_PROVIDER');
+    expect(NOTIFICATION_RECIPIENT_CLASS.RESIGNATION_ACCEPTANCE_LETTER).toBe('EMPLOYEE');
+    expect(NOTIFICATION_RECIPIENT_CLASS.IT_ACCESS_REMOVAL).toBe('INTERNAL_DEPARTMENT');
   });
 
   it('lifecycle transitions enforce order and reasons', () => {

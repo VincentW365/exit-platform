@@ -116,13 +116,16 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
   await axeCheck(page, 'baseline');
 
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Submit for review' }).click();
+  await page.getByRole('button', { name: 'Submit for approval' }).click();
   await signOut(page);
 
   // HR manager: approve, attachments area, audit timeline, admin.
   await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
+  // DEC-066: the one HR Manager decision is taken on the Case Approval Summary.
+  await page.goto(`${caseUrl}/approve`);
+  await page.getByRole('button', { name: 'Approve Case', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
   await expect(page.getByText(/snapshot has been captured/)).toBeVisible();
   await snap(page, '06-case-overview-approved');
   await axeCheck(page, 'case-overview');

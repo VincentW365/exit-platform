@@ -99,9 +99,11 @@ test('stage 2 surfaces: visual + axe sweep', async ({ page }) => {
   await expect(page.getByText(/Draft case OFF-\d{4}-\d{4,}(?:-\d)? created/)).toBeVisible();
   const caseUrl = page.url().split('?')[0]!;
 
+  // DEC-066: on a draft case the letter can be drafted but not finalized;
+  // the capture shows the draft with the case-approval gate explained.
   await page.goto(`${caseUrl}/documents`);
   await page.getByRole('button', { name: 'Create resignation document draft' }).click();
-  await page.getByRole('button', { name: 'Validate and submit for approval' }).click();
+  await expect(page.getByText(/has not been approved yet/)).toBeVisible();
   await snap(page, '03-document-preview-approval', true);
   await axeCheck(page, 'document-preview');
 

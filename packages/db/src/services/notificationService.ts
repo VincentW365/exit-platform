@@ -20,11 +20,11 @@ import {
   notificationIdempotencyKey,
   notificationTransitionError,
   recipientEmailErrors,
-  requiresManagerApproval,
   resolveSendControl,
   substitute,
   templateContentErrors,
   hasMissingMarkers,
+  withEmailBanner,
   APPLICABILITY_GATED_TYPES,
   DEFAULT_SEND_CONTROL,
   MANUAL_SEND_METHODS,
@@ -90,7 +90,11 @@ export async function listNotificationTemplates(actor: Actor) {
   });
 }
 
-/** HR signature block for a case: assigned officer, else the case owner. */
+/**
+ * HR signature block for a case: assigned officer, else the case owner. The
+ * title carries the user-maintained email banner beneath it (DEC-066
+ * section 8) so every template keeps its existing placeholders.
+ */
 async function hrSenderFor(caseId: string): Promise<{ name: string; title: string }> {
   const prisma = getPrisma();
   const c = await prisma.offboardingCase.findUnique({
@@ -101,7 +105,7 @@ async function hrSenderFor(caseId: string): Promise<{ name: string; title: strin
   if (!userId) return { name: '', title: '' };
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { displayName: true, workEmail: true },
+    select: { displayName: true, workEmail: true, emailBanner: true },
   });
   if (!user) return { name: '', title: '' };
   const directory = user.workEmail
@@ -110,7 +114,10 @@ async function hrSenderFor(caseId: string): Promise<{ name: string; title: strin
         select: { jobTitle: true },
       })
     : null;
-  return { name: user.displayName, title: directory?.jobTitle ?? 'Human Resources' };
+  return {
+    name: user.displayName,
+    title: withEmailBanner(directory?.jobTitle ?? 'Human Resources', user.emailBanner),
+  };
 }
 
 // --- per-case notification records -------------------------------------------
@@ -526,8 +533,8 @@ export async function prepareDerivedNotification(args: {
   }
 
   if (controlLevel !== 'AUTO_SEND') {
-    // HR_REVIEW_THEN_SEND / HR_MANAGER_APPROVAL_REQUIRED: waits in
-    // "Needs your review" - approval releases it to the outbox.
+    // HR_REVIEW_THEN_SEND: waits in "Needs your review" - the HR person
+    // executing the approved case releases it to the outbox (DEC-066).
     return { recordId: record.id, state: 'AWAITING_REVIEW' };
   }
 
@@ -793,22 +800,14 @@ export async function transitionNotification(
   if (action === 'markSent' || action === 'acknowledge' || action === 'confirmComplete')
     throw ServiceError.validation(['This transition is recorded by the system, not manually.']);
 
-  // K.2/K.3: approval authority depends on the recipient class. Directive
-  // 6.3 S (correction 2): DERIVED records follow their snapshotted control
-  // level instead - HR_REVIEW_THEN_SEND is ordinary HR case work, only
-  // HR_MANAGER_APPROVAL_REQUIRED demands management authority.
-  const derivedApprovalPermission =
-    record.origin === 'DERIVED' && isSendControlLevel(record.controlLevel)
-      ? record.controlLevel === 'HR_MANAGER_APPROVAL_REQUIRED'
-        ? ('notification.approveExternal' as const)
-        : ('notification.approveInternal' as const)
-      : null;
+  // DEC-066 (single authorization gate): the HR Manager approved the case,
+  // and that approval covered every communication the plan showed -
+  // external providers and the employee included. Releasing one is the
+  // operational work of the HR person executing the case, whatever the
+  // recipient class or the (possibly legacy) control level says.
   const permission =
     action === 'approve' || action === 'return'
-      ? (derivedApprovalPermission ??
-        (requiresManagerApproval(record.recipientClass)
-          ? ('notification.approveExternal' as const)
-          : ('notification.approveInternal' as const)))
+      ? ('notification.approveInternal' as const)
       : action === 'recordManualSend' || action === 'markReady'
         ? ('notification.recordSend' as const)
         : ('notification.prepare' as const);
@@ -1013,7 +1012,6 @@ export async function listCaseNotifications(actor: Actor, caseId: string) {
       canActOnCase(actor, 'notification.prepare', ctx) &&
       ['ACTIVE', 'ON_HOLD', 'CLEARANCE_REVIEW'].includes(c.status),
     canApproveInternal: canActOnCase(actor, 'notification.approveInternal', ctx),
-    canApproveExternal: canActOnCase(actor, 'notification.approveExternal', ctx),
     canRecordSend: canActOnCase(actor, 'notification.recordSend', ctx),
   };
 }

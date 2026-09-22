@@ -22,16 +22,14 @@ import {
   requestClearance,
 } from '../src/services/clearanceService.ts';
 import { resolveException } from '../src/services/exceptionService.ts';
-import { confirmBenefits } from '../src/services/derivedActionService.ts';
 import { transitionNotification } from '../src/services/notificationService.ts';
 import { processOutbox } from '../src/services/outboxService.ts';
 import { recordManualEvidence } from '../src/services/ackTokenService.ts';
 import { activateTemplate, createDraftTemplate } from '../src/services/templateService.ts';
 import {
-  approveDocument,
   createLetterDraft,
+  finalizeDocument,
   refreshDraftFields,
-  submitDocument,
 } from '../src/services/documentService.ts';
 import { setEmployeeAddress } from '../src/services/letterDeliveryService.ts';
 import {
@@ -200,27 +198,28 @@ async function finishCase(caseId: string): Promise<void> {
 
 describe('every seeded workflow type completes end-to-end (gap-proofing)', () => {
   it('RESIGNATION_WITH_NOTICE reaches COMPLETED', async () => {
-    const created = await createDraft(officer.actor, { ...BASE, employeeSourceId: 'EMP-TEST-001' });
+    // DEC-066: benefits and providers are selected at intake, approved with
+    // the case, and executed by the officer with no further manager step.
+    const created = await createDraft(officer.actor, {
+      ...BASE,
+      employeeSourceId: 'EMP-TEST-001',
+      groupHealth: 'NO',
+      groupLife: 'NO',
+    });
     const caseId = created.caseId;
     await transitionCase(officer.actor, caseId, 'submit');
     await transitionCase(manager.actor, caseId, 'approve');
     await readyAssignment(caseId, manager.actor, officer.userId, lineMgr.userId);
     await activateCase(manager.actor, caseId);
-    await confirmBenefits(officer.actor, caseId, {
-      groupHealth: 'NO',
-      groupLife: 'NO',
-      otherProvider: 'NO',
-    });
 
     const doc = await createLetterDraft(officer.actor, caseId);
     // The acceptance letter is addressed, so HR records the address from the
-    // resignation scan before it can be submitted (DEC-054).
+    // resignation scan before it can be finalized (DEC-054).
     await setEmployeeAddress(officer.actor, caseId, {
       employeeAddress: '12 Synthetic Avenue, Kingston 5',
     });
     await refreshDraftFields(officer.actor, doc.id);
-    await submitDocument(officer.actor, doc.id);
-    await approveDocument(manager.actor, doc.id);
+    await finalizeDocument(officer.actor, doc.id);
 
     const form = await createActionForm(officer.actor, caseId);
     await updateActionFormHr(officer.actor, form.id, {
@@ -245,25 +244,21 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
       departureType: 'IMMEDIATE_RESIGNATION',
       // Historical record: they stopped work when employment ended.
       confirmedLastDay: BASE.effectiveSeparationAt,
+      groupHealth: 'NO',
+      groupLife: 'NO',
     });
     const caseId = created.caseId;
     await transitionCase(officer.actor, caseId, 'submit');
     await transitionCase(manager.actor, caseId, 'approve');
     await readyAssignment(caseId, manager.actor, officer.userId, lineMgr.userId);
     await activateCase(manager.actor, caseId);
-    await confirmBenefits(officer.actor, caseId, {
-      groupHealth: 'NO',
-      groupLife: 'NO',
-      otherProvider: 'NO',
-    });
 
     const doc = await createLetterDraft(officer.actor, caseId);
     await setEmployeeAddress(officer.actor, caseId, {
       employeeAddress: '12 Synthetic Avenue, Kingston 5',
     });
     await refreshDraftFields(officer.actor, doc.id);
-    await submitDocument(officer.actor, doc.id);
-    await approveDocument(manager.actor, doc.id);
+    await finalizeDocument(officer.actor, doc.id);
 
     const form = await createActionForm(officer.actor, caseId);
     await updateActionFormHr(officer.actor, form.id, {
@@ -287,6 +282,8 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
       departureType: 'TERMINATION',
       // Historical record: the last working day was the effective date.
       confirmedLastDay: BASE.effectiveSeparationAt,
+      groupHealth: 'NO',
+      groupLife: 'NO',
     });
     const caseId = created.caseId;
     await transitionCase(manager.actor, caseId, 'submit');
@@ -295,11 +292,9 @@ describe('every seeded workflow type completes end-to-end (gap-proofing)', () =>
     // officer (HR officers cannot see restricted cases by default).
     await readyAssignment(caseId, manager.actor, manager.userId, lineMgr.userId);
     await activateCase(manager.actor, caseId);
-    await confirmBenefits(manager.actor, caseId, {
-      groupHealth: 'NO',
-      groupLife: 'NO',
-      otherProvider: 'NO',
-    });
+    // DEC-066: the restricted workflow no longer carries a second
+    // "Authorized HR Manager approval" task - the case approval was it.
+    expect((await tasksOf(caseId)).some((t) => t.taskCode === 'HRM_AUTHORIZATION')).toBe(false);
 
     // Restricted action form processed by the HR Manager; the manager
     // approval step is attempted but never required to be reachable by a

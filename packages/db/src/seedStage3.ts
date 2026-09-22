@@ -1156,6 +1156,47 @@ const WORKFLOWS_V3 = [
   },
 ];
 
+/**
+ * v4 (owner directive 2026-09-22, DEC-066): the HR Manager approves the CASE
+ * once, on the Case Approval Summary. The "Authorized HR Manager approval"
+ * task that the restricted termination and redundancy workflows carried was
+ * the same authorization asked for a second time, so it is removed and the
+ * work that waited on it now waits on the restricted preparation instead.
+ * Every other task is unchanged. Instances already running stay pinned to
+ * the version they started on.
+ */
+const V4_SINGLE_APPROVAL_NOTE =
+  'Single authorization gate v4 (DEC-066): the HR Manager approval of the case is the only ' +
+  'management approval; the duplicate "Authorized HR Manager approval" task is removed.';
+
+const REDUNDANT_APPROVAL_TASKS = ['HRM_AUTHORIZATION'];
+
+/** Remove the duplicate approval task and re-point anything that waited on it. */
+function withoutRedundantApproval(tasks: SeedTask[]): SeedTask[] {
+  const removed = tasks.filter((t) => REDUNDANT_APPROVAL_TASKS.includes(t.taskCode));
+  return tasks
+    .filter((t) => !REDUNDANT_APPROVAL_TASKS.includes(t.taskCode))
+    .map((task) => {
+      if (!task.dependsOnCodes?.some((c) => REDUNDANT_APPROVAL_TASKS.includes(c))) return task;
+      // A task that waited on the removed approval now waits on whatever the
+      // approval itself waited on (the restricted preparation), so the chain
+      // keeps its order without the duplicate step.
+      const inherited = removed.flatMap((r) => r.dependsOnCodes ?? []);
+      const dependsOnCodes = [
+        ...task.dependsOnCodes.filter((c) => !REDUNDANT_APPROVAL_TASKS.includes(c)),
+        ...inherited.filter((c) => !task.dependsOnCodes!.includes(c)),
+      ];
+      return { ...task, ...(dependsOnCodes.length ? { dependsOnCodes } : {}) };
+    })
+    .map(({ dependsOnCodes, ...rest }) =>
+      dependsOnCodes && dependsOnCodes.length ? { ...rest, dependsOnCodes } : rest,
+    );
+}
+
+const WORKFLOWS_V4 = WORKFLOWS_V3.filter((wf) =>
+  wf.tasks.some((t) => REDUNDANT_APPROVAL_TASKS.includes(t.taskCode)),
+).map((wf) => ({ ...wf, tasks: withoutRedundantApproval(wf.tasks) }));
+
 /** Section K: deterministic development notification templates. */
 const NOTIFICATION_TEMPLATES = [
   {
@@ -1642,6 +1683,51 @@ export async function seedStage3(db: Db): Promise<void> {
     });
     await db.workflowDefinition.updateMany({
       where: { workflowType: wf.workflowType, version: 2, status: 'ACTIVE' },
+      data: { status: 'SUPERSEDED', supersededAt: new Date() },
+    });
+    await db.workflowDefinition.update({
+      where: { id: def.id },
+      data: { status: 'ACTIVE', activatedById: hrManager.id, activatedAt: new Date() },
+    });
+  }
+
+  // DEC-066 (owner directive 2026-09-22): v4 for the workflows that carried
+  // the duplicate "Authorized HR Manager approval" task. Same non-destructive
+  // lifecycle: create v4, supersede the ACTIVE v3, activate v4. Running
+  // instances stay pinned to their own version.
+  for (const wf of WORKFLOWS_V4) {
+    const existing = await db.workflowDefinition.findFirst({
+      where: { workflowType: wf.workflowType, version: 4 },
+    });
+    if (existing) continue;
+    const tasks = taskDefCreateInputs(wf.tasks);
+    const checksum = workflowConfigChecksum({
+      workflowType: wf.workflowType,
+      name: wf.name,
+      version: 4,
+      description: '',
+      activationConditions: '',
+      tasks: tasks.map((t) => ({ ...t })),
+    });
+    const def = await db.workflowDefinition.create({
+      data: {
+        workflowType: wf.workflowType,
+        name: wf.name,
+        version: 4,
+        status: 'DRAFT',
+        description: `${DEV_WORKFLOW_MARK}. ${V4_SINGLE_APPROVAL_NOTE}`,
+        activationConditions:
+          'Case APPROVED with an exact effective separation time; TRAINING/TEST records always; ' +
+          `OPERATIONAL records only with the automation.workflowEngine flag. ${V4_SINGLE_APPROVAL_NOTE}`,
+        changeReason:
+          'Owner directive 2026-09-22 (DEC-066): one HR Manager approval of the case; the duplicate authorization task is removed.',
+        configChecksum: checksum,
+        createdById: hrManager.id,
+        taskDefs: { create: tasks },
+      },
+    });
+    await db.workflowDefinition.updateMany({
+      where: { workflowType: wf.workflowType, version: 3, status: 'ACTIVE' },
       data: { status: 'SUPERSEDED', supersededAt: new Date() },
     });
     await db.workflowDefinition.update({

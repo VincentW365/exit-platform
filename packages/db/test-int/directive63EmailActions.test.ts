@@ -118,7 +118,9 @@ describe('deterministic derivation at activation (B/C; AC 5-7, 11-12)', () => {
 
   it('confirming benefits YES prepares the provider notification; NO never does (V; AC 7, 20)', async () => {
     const caseId = await activeCase({ employeeSourceId: 'EMP-TEST-002' });
-    await confirmBenefits(officer.actor, caseId, {
+    // DEC-066: on an approved case the selection is an approved fact; the HR
+    // Manager amends it (the officer selects it at intake before approval).
+    await confirmBenefits(manager.actor, caseId, {
       groupHealth: 'YES',
       groupLife: 'NO',
       otherProvider: 'NO',

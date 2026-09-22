@@ -21,7 +21,17 @@ DRAFT -> IN_REVIEW -> APPROVED -> ACTIVE -> SUPERSEDED
 
 Template versions are immutable once APPROVED; every change is a new version. Cases pin the version used at generation (existing REQ/BR baseline).
 
-## 2. Document-instance lifecycle (proposed)
+## 2. Document-instance lifecycle (proposed; revised by DEC-066)
+
+> **DEC-066 (2026-09-22).** The maker-checker chain below (submit →
+> PENDING_APPROVAL → HR Manager approve / return) is retired. The HR Manager
+> approves the CASE once; the HR person executing it then **finalizes** a
+> document in one attested, checksum-bound step (`finalizeDocument`, attestation
+> kind `HR_DOCUMENT_FINALIZATION`, audit `DOC_FINALIZED`), which renders the PDF.
+> Finalizing and issuing require the case to be APPROVED, ACTIVE,
+> CLEARANCE_REVIEW or REOPENED. `PENDING_APPROVAL` and `RETURNED` remain as
+> legacy statuses for historical rows only. The table is kept as the record of
+> the earlier design; `StateMachines.md` section 3 is the current statement.
 
 ```text
 DRAFT -> VALIDATION_FAILED (-> DRAFT)

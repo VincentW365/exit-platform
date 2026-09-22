@@ -188,6 +188,22 @@ export default async function CaseDetailPage({
       ) : null}
       {c.classification === 'RESTRICTED' ? <RestrictedBanner /> : null}
       <CaseNav caseId={id} active="overview" />
+      {/* DEC-066 section 23: a returned draft says why, where the officer
+          will read it - not three screens away in the audit trail. */}
+      {data.lastReturn ? (
+        <div className="panel panel--edge panel--edge-attention" role="status">
+          <p style={{ margin: 0 }}>
+            <strong>Returned to draft</strong> by{' '}
+            {nameOf(data.lastReturn.returnedById) ?? 'the HR Manager'} on{' '}
+            {formatInstant(data.lastReturn.returnedAt)}
+            {data.lastReturn.reason ? `: ${data.lastReturn.reason}` : '.'}
+          </p>
+          <p className="hint" style={{ margin: 'var(--space-2) 0 0' }}>
+            Correct the case below and submit it for approval again. Nothing is sent while it is a
+            draft.
+          </p>
+        </div>
+      ) : null}
       {progress.length > 0 ? <ProgressStrip stages={progress} /> : null}
 
       {required && requiredTotal > 0 ? (
@@ -324,7 +340,7 @@ export default async function CaseDetailPage({
             request, 2026-08-19): one disclosure inside the card instead of
             a second full-width section repeating the same fields. */}
           {cap.canEditDraft ? (
-            <details className="action" style={{ marginTop: 'var(--space-4)' }}>
+            <details className="action" id="edit-draft" style={{ marginTop: 'var(--space-4)' }}>
               <summary>Edit these details</summary>
               <form action={updateDraftAction} className="stack">
                 <input type="hidden" name="caseId" value={c.id} />
@@ -419,6 +435,28 @@ export default async function CaseDetailPage({
                     />
                   </div>
                 ) : null}
+                {/* DEC-066 section 9: the benefits chosen at intake are
+                    corrected here while the case is a draft. */}
+                <fieldset className="stack">
+                  <legend>Benefits and providers</legend>
+                  <input type="hidden" name="benefitsSelected" value="true" />
+                  <div className="choice-cards">
+                    {BENEFIT_PROVIDERS.map((b) => (
+                      <label key={b.field} className="choice-card">
+                        <input
+                          type="checkbox"
+                          name={b.field}
+                          value="YES"
+                          defaultChecked={required?.benefits[b.field] === 'YES'}
+                        />
+                        <span className="choice-card__body">
+                          <strong>{b.provider}</strong>
+                          <span className="meta">{b.benefit} - tick if it applies</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
                 <button type="submit">Save draft changes</button>
               </form>
             </details>
@@ -505,7 +543,7 @@ export default async function CaseDetailPage({
           correction control left the UI with the classification choice; the
           audited service path remains for legacy-record housekeeping. */}
 
-      {required?.canConfirmBenefits ? (
+      {required ? (
         <section aria-labelledby="benefits-h">
           <SectionHead
             id="benefits-h"
@@ -513,15 +551,104 @@ export default async function CaseDetailPage({
             tone={benefitsTone(required.benefits)}
             title="Benefits and providers"
             aside={
-              required.benefits.confirmedAt ? (
-                <Chip tone="done">Confirmed</Chip>
-              ) : (
-                <Chip tone="attention">Awaiting confirmation</Chip>
-              )
+              <>
+                {required.benefits.confirmedAt ? (
+                  <Chip tone="done">
+                    {required.benefits.source === 'INTAKE' ? 'Selected at intake' : 'Confirmed'}
+                  </Chip>
+                ) : (
+                  <Chip tone="attention">Not yet decided</Chip>
+                )}
+                {c.status === 'DRAFT' && cap.canEditDraft ? (
+                  // DEC-066 section 9: the selection was made at intake; a
+                  // draft corrects it from the same edit experience as the dates.
+                  <a href="#edit-draft" className="button secondary compact">
+                    Edit selections
+                  </a>
+                ) : null}
+              </>
             }
           />
 
-          {required.canConfirmBenefits ? (
+          {BENEFIT_PROVIDERS.map((b) => {
+            const applies = required.benefits[b.field];
+            return (
+              <ProviderPanel
+                key={b.field}
+                monogram={b.monogram}
+                name={b.provider}
+                subtitle={b.benefit}
+                status={
+                  applies === 'YES' ? (
+                    <Chip tone="progress">Included</Chip>
+                  ) : applies === 'NO' ? (
+                    <Chip tone="done">Not applicable</Chip>
+                  ) : (
+                    <Chip tone="attention">Not yet decided</Chip>
+                  )
+                }
+                footer={
+                  <span className="meta">
+                    {applies === 'YES'
+                      ? c.status === 'DRAFT'
+                        ? 'The provider notification is prepared once the case is approved and active.'
+                        : 'The removal email is prepared for this case and appears under Email actions.'
+                      : applies === 'NO'
+                        ? 'No provider notification is raised for this employee.'
+                        : 'Nothing is sent until this benefit is decided.'}
+                  </span>
+                }
+              >
+                {/* The provider's own progression, so it is obvious how far
+                    this one benefit has travelled rather than the case as a
+                    whole. */}
+                <Rail
+                  label={`${b.provider} progress`}
+                  steps={[
+                    {
+                      name: 'Benefit selected',
+                      state: applies === 'UNKNOWN' ? 'current' : 'done',
+                      meta: required.benefits.confirmedAt
+                        ? formatInstant(required.benefits.confirmedAt)
+                        : 'Awaiting HR',
+                    },
+                    {
+                      name: 'Removal prepared',
+                      // Prepared only once the case is approved and active
+                      // (DEC-066): before that the selection is a plan.
+                      state:
+                        applies === 'YES' && !['DRAFT', 'PENDING_HR_REVIEW'].includes(c.status)
+                          ? 'done'
+                          : 'todo',
+                      meta:
+                        applies === 'NO'
+                          ? 'Not applicable'
+                          : applies === 'YES' && ['DRAFT', 'PENDING_HR_REVIEW'].includes(c.status)
+                            ? 'After approval'
+                            : undefined,
+                    },
+                    {
+                      name: 'Sent to provider',
+                      state:
+                        applies === 'YES' && !['DRAFT', 'PENDING_HR_REVIEW'].includes(c.status)
+                          ? 'current'
+                          : 'todo',
+                      meta:
+                        applies === 'YES' && !['DRAFT', 'PENDING_HR_REVIEW'].includes(c.status)
+                          ? 'See Email actions'
+                          : undefined,
+                    },
+                    { name: 'Provider confirmed', state: 'todo' },
+                  ]}
+                />
+              </ProviderPanel>
+            );
+          })}
+
+          {/* DEC-066 section 5: once the case leaves DRAFT the selection is an
+              approved fact. Only the HR Manager amends it, and the amendment
+              is an audited post-approval correction. */}
+          {required.canConfirmBenefits && c.status !== 'DRAFT' ? (
             <details
               className="action"
               open={
@@ -529,7 +656,7 @@ export default async function CaseDetailPage({
                 required.benefits.groupLife === 'UNKNOWN'
               }
             >
-              <summary>Confirm which benefits apply</summary>
+              <summary>Correct the approved benefits selection (HR Manager, audited)</summary>
               <form action={confirmBenefitsAction} className="stack">
                 <input type="hidden" name="caseId" value={c.id} />
                 <div className="field">
@@ -553,115 +680,34 @@ export default async function CaseDetailPage({
                   </select>
                 </div>
                 <p className="hint">
-                  Confirming &quot;Yes&quot; prepares the matching provider notification;
-                  &quot;No&quot; removes it. Anything left unknown stays on the attention list until
-                  confirmed.
+                  &quot;Yes&quot; prepares the matching provider notification for the assigned HR
+                  Officer to send; &quot;No&quot; removes it. The change is recorded against the
+                  approved case.
                 </p>
                 <button type="submit">Confirm applicability</button>
               </form>
             </details>
           ) : null}
-
-          {BENEFIT_PROVIDERS.map((b) => {
-            const applies = required.benefits[b.field];
-            return (
-              <ProviderPanel
-                key={b.field}
-                monogram={b.monogram}
-                name={b.provider}
-                subtitle={b.benefit}
-                status={
-                  applies === 'YES' ? (
-                    <Chip tone="progress">Notification required</Chip>
-                  ) : applies === 'NO' ? (
-                    <Chip tone="done">Not applicable</Chip>
-                  ) : (
-                    <Chip tone="attention">Applicability unknown</Chip>
-                  )
-                }
-                footer={
-                  <span className="meta">
-                    {applies === 'YES'
-                      ? 'The removal email is prepared for this case and appears under Email actions.'
-                      : applies === 'NO'
-                        ? 'No provider notification is raised for this employee.'
-                        : 'Nothing is sent until HR confirms whether this benefit applies.'}
-                  </span>
-                }
-              >
-                {/* The provider's own progression, so it is obvious how far
-                    this one benefit has travelled rather than the case as a
-                    whole. */}
-                <Rail
-                  label={`${b.provider} progress`}
-                  steps={[
-                    {
-                      name: 'Benefit confirmed',
-                      state: applies === 'UNKNOWN' ? 'current' : 'done',
-                      meta: required.benefits.confirmedAt
-                        ? formatInstant(required.benefits.confirmedAt)
-                        : 'Awaiting HR',
-                    },
-                    {
-                      name: 'Removal prepared',
-                      state: applies === 'NO' ? 'todo' : applies === 'YES' ? 'done' : 'todo',
-                      meta: applies === 'NO' ? 'Not applicable' : undefined,
-                    },
-                    {
-                      name: 'Sent to provider',
-                      state: applies === 'YES' ? 'current' : 'todo',
-                      meta: applies === 'YES' ? 'See Email actions' : undefined,
-                    },
-                    { name: 'Provider confirmed', state: 'todo' },
-                  ]}
-                />
-              </ProviderPanel>
-            );
-          })}
         </section>
       ) : null}
 
-      {(cap.canSubmit || cap.canApprove || cap.canReturn || cap.canCancel || cap.canVoid) && (
+      {(cap.canSubmit || cap.canDecideApproval || cap.canCancel || cap.canVoid) && (
         <section aria-labelledby="actions-h" className="panel">
           <SectionHead id="actions-h" icon={<FlowIcon />} title="Move this case" />
           <div className="actions-row">
-            {'canApproveDraft' in cap && cap.canApproveDraft ? (
-              <form action={transitionAction}>
-                <input type="hidden" name="caseId" value={c.id} />
-                <input type="hidden" name="action" value="submitAndApprove" />
-                {/* The reviewer never asks themselves for review: one click
-                    runs submit and approve in order, fully audited. */}
-                <button type="submit">Approve case and capture snapshot</button>
-              </form>
+            {/* DEC-066: the one HR Manager decision lives on the Case Approval
+                Summary, where the whole plan is in view - never as a bare
+                button among unrelated actions. */}
+            {cap.canDecideApproval ? (
+              <Link href={`/cases/${c.id}/approve`} className="button button--primary">
+                Review and approve
+              </Link>
             ) : cap.canSubmit ? (
               <form action={transitionAction}>
                 <input type="hidden" name="caseId" value={c.id} />
                 <input type="hidden" name="action" value="submit" />
-                <button type="submit">Submit for review</button>
+                <button type="submit">Submit for approval</button>
               </form>
-            ) : null}
-            {cap.canApprove ? (
-              <form action={transitionAction}>
-                <input type="hidden" name="caseId" value={c.id} />
-                <input type="hidden" name="action" value="approve" />
-                <button type="submit">Approve case and capture snapshot</button>
-              </form>
-            ) : null}
-            {cap.canReturn ? (
-              <details className="action">
-                <summary>Return for correction</summary>
-                <form action={transitionAction} className="stack">
-                  <input type="hidden" name="caseId" value={c.id} />
-                  <input type="hidden" name="action" value="return" />
-                  <div className="field">
-                    <label htmlFor="return-reason">Reason (Required)</label>
-                    <textarea id="return-reason" name="reason" rows={2} required />
-                  </div>
-                  <button type="submit" className="secondary">
-                    Return to draft
-                  </button>
-                </form>
-              </details>
             ) : null}
             {cap.canCancel ? (
               <ConfirmDialog

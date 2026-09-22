@@ -118,6 +118,12 @@ function sentence(e: HumanizableEvent): string {
       return `${who} created a document draft`;
     case 'DOC_APPROVED':
       return `${who} approved the exact document version (attested)`;
+    case 'DOC_FINALIZED':
+      return `${who} finalized the exact document version under the approved case (attested) and released it for rendering`;
+    case 'USER_EMAIL_BANNER_CHANGED':
+      return str(m, 'cleared') === 'true' || m.cleared === true
+        ? `${who} removed their email banner`
+        : `${who} updated their email banner`;
     case 'DOC_APPROVAL_INVALIDATED':
       return `A material case change invalidated the document approval`;
     case 'NOTIFICATION_APPROVED':

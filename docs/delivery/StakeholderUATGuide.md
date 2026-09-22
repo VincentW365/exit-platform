@@ -51,7 +51,7 @@ production-readiness state instead; `... status` is a read-only check.)
 | OFF-2026-0001 | S1 - resignation with notice, ACTIVE: work the full journey across every role. |
 | OFF-2026-0002 | S2 - immediate resignation: exact-time access removal is OVERDUE with a CRITICAL escalation. |
 | OFF-2026-0003 | S3 - restricted termination (HR Manager only): verify non-disclosure everywhere else. |
-| OFF-2026-0004 | S4 - approved letter INVALIDATED by an audited correction: re-submit (officer) and re-approve (manager) the corrected draft. |
+| OFF-2026-0004 | S4 - finalized letter INVALIDATED by an audited correction: the officer refreshes and re-finalizes the corrected draft (DEC-066: no manager re-approval). |
 | OFF-2026-0005 | S5 - departmental tasks overdue: review escalations in queues and exceptions. |
 | OFF-2026-0006 | S6 - LOST asset: review the exception; confirm NO payroll figure exists anywhere. |
 | OFF-2026-0007 | S8/S10-journey - blocked clearance: a recorded task blocker plus unmet gate conditions; unblock, finish, clear. |

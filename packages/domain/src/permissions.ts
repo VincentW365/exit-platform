@@ -112,9 +112,12 @@ export type CaseAction =
   | 'audit.viewCase'
   | 'doc.create'
   | 'doc.edit'
-  | 'doc.submit'
-  | 'doc.approve'
-  | 'doc.return'
+  /**
+   * DEC-066: validate + attest + render in one step by the HR person
+   * executing the approved case. Replaces the retired `doc.submit`,
+   * `doc.approve` and `doc.return` of the maker-checker model.
+   */
+  | 'doc.finalize'
   | 'doc.void'
   | 'doc.markIssued'
   | 'doc.supersede'
@@ -148,8 +151,12 @@ export type CaseAction =
   | 'clearance.approve'
   | 'notification.view'
   | 'notification.prepare'
+  /**
+   * Release a notification waiting on HR review. Since DEC-066 this is the
+   * only release authority: the case approval already authorized the
+   * external, employee-facing and provider communications the plan showed.
+   */
   | 'notification.approveInternal'
-  | 'notification.approveExternal'
   | 'notification.recordSend'
   | 'asset.view'
   | 'asset.manage'
@@ -182,7 +189,15 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
   switch (action) {
     case 'doc.create':
     case 'doc.edit':
-    case 'doc.submit':
+    // DEC-066 (single authorization gate): the HR Manager approves the CASE
+    // once. Finalizing, issuing, superseding and voiding the case's documents
+    // is then the operational work of the assigned HR Officer (or the HR
+    // Manager intervening) - no per-document manager approval exists. The
+    // SERVICE additionally requires the case to be in an execution status.
+    case 'doc.finalize':
+    case 'doc.void':
+    case 'doc.markIssued':
+    case 'doc.supersede':
     // Directive 6.3 corrections 1-2: the assigned HR Officer prepares,
     // reviews, RETURNS-for-correction and COMPLETES ordinary action forms -
     // completion is operational HR work, not a management approval.
@@ -197,13 +212,10 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
     case 'survey.manage':
     case 'survey.recordVerbal':
       return hrEdit;
-    case 'doc.approve':
-    case 'doc.return':
-    case 'doc.void':
-    case 'doc.markIssued':
-    case 'doc.supersede':
-    // Optional configuration-gated oversight review + voiding stay
-    // management-grade (Directive 6.3 correction 1).
+    // Optional configuration-gated oversight review + voiding a completed
+    // form stay management-grade (Directive 6.3 correction 1; retained by
+    // DEC-066 as distinct controls - the review is off by default and the
+    // void is a correction of an attested record, not a routine step).
     case 'form.hrReview':
     case 'form.void':
       return hrManager && (c.classification !== 'RESTRICTED' || isHrParticipant(actor, c));
@@ -244,7 +256,6 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
     case 'task.hrManage':
     case 'task.correct':
     case 'clearance.approve':
-    case 'notification.approveExternal':
     case 'asset.waiveWriteOff':
     case 'handover.waive':
     case 'exception.approveSecurity':

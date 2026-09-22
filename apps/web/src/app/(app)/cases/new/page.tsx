@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { can } from '@exit/domain';
+import { can, hasRole } from '@exit/domain';
 import {
   casesForEmployee,
   findDirectoryRecordBySourceId,
+  listActiveUsers,
   searchEmployees,
   type EmployeeSearchRow,
 } from '@exit/db';
@@ -41,6 +42,26 @@ const REASON_STATUS_LABEL: Record<string, string> = {
   NOT_PROVIDED: 'Preferred not to say',
   NOT_APPLICABLE: 'Not applicable',
 };
+
+/**
+ * The benefits and providers the HR Manager is asked to approve (DEC-066
+ * sections 6-7). Presentation only: the provider directory addresses the
+ * email; the rules engine derives the notification from the answer.
+ */
+const BENEFIT_CHOICES = [
+  {
+    field: 'groupHealth',
+    provider: 'Group health provider',
+    benefit: 'Group health cover',
+    hint: 'Tick if the employee is on the group health plan - the removal notice is prepared for the provider.',
+  },
+  {
+    field: 'groupLife',
+    provider: 'Group life provider',
+    benefit: 'Group life cover',
+    hint: 'Tick if the employee is on the group life plan - the removal notice is prepared for the provider.',
+  },
+] as const;
 
 export default async function NewCasePage({
   searchParams,
@@ -84,6 +105,15 @@ export default async function NewCasePage({
   // Existing-case protection (section 24): a live case for this employee is
   // shown before anything else is asked, with the way to open it.
   const liveCases = selected ? (await casesForEmployee(actor, selected.sourceId)).live : [];
+  // DEC-066 section 34: an HR Manager creating a case names the officer who
+  // will execute it; an HR Officer owns what they create (DEC-065).
+  const isManager = hasRole(actor, 'HR_MANAGER');
+  const officers = isManager
+    ? (await listActiveUsers()).filter(
+        (u) => u.roles.includes('HR_OFFICER') || u.roles.includes('HR_MANAGER'),
+      )
+    : [];
+  const officerNames = Object.fromEntries(officers.map((u) => [u.userId, u.displayName]));
 
   // Section 15/29 of the separation directive: the type is chosen first and
   // the rest of the form is drawn from its profile. Reading it from the query
@@ -601,6 +631,68 @@ export default async function NewCasePage({
     </div>
   );
 
+  // --- step 6: benefits and providers (DEC-066 sections 6-7, 34) ------------
+
+  const benefitsContent = (
+    <div className="stack">
+      {/* The marker tells the server this step was shown, so an unticked
+          box means "not applicable" and never "not asked". */}
+      <input type="hidden" form={FORM_ID} name="benefitsSelected" value="true" />
+      <div className="choice-cards">
+        {BENEFIT_CHOICES.map((b) => (
+          <label key={b.field} className="choice-card" htmlFor={`ben-${b.field}`}>
+            <input
+              id={`ben-${b.field}`}
+              type="checkbox"
+              form={FORM_ID}
+              name={b.field}
+              value="YES"
+            />
+            <span className="choice-card__body">
+              <strong>{b.provider}</strong>
+              <span>{b.benefit}</span>
+              <span className="hint">{b.hint}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <p className="hint" role="note">
+        Leave a provider unticked when the employee is not on that plan. The HR Manager sees exactly
+        this selection when approving the case, and the provider notices are prepared for you to
+        send once it is approved.
+      </p>
+    </div>
+  );
+
+  // --- step 7: HR ownership ---------------------------------------------------
+
+  const ownershipContent = isManager ? (
+    <div className="stack">
+      <Field
+        id="assignedOfficerId"
+        label="Assigned HR Officer"
+        optional
+        hint="The officer who will carry out the approved workflow. Leave unassigned to decide on the Assignment tab later."
+      >
+        <select id="assignedOfficerId" form={FORM_ID} name="assignedOfficerId" defaultValue="">
+          <option value="">Unassigned for now</option>
+          {officers.map((u) => (
+            <option key={u.userId} value={u.userId}>
+              {u.displayName}
+              {u.roles.includes('HR_MANAGER') ? ' - HR Manager' : ' - HR Officer'}
+            </option>
+          ))}
+        </select>
+      </Field>
+    </div>
+  ) : (
+    <p className="hint" role="note">
+      You will be the assigned HR Officer for this case: it appears in your My Work at once, and
+      once the HR Manager approves it you carry out the offboarding workflow without further
+      approvals. The HR Manager can reassign it at any time.
+    </p>
+  );
+
   // --- the steps -------------------------------------------------------------
 
   const steps: StepSpec[] = [
@@ -699,6 +791,38 @@ export default async function NewCasePage({
     });
 
     steps.push({
+      id: 'benefits',
+      title: 'Benefits & Providers',
+      note: 'Which benefit providers must be told. The HR Manager approves this selection with the case.',
+      summaryFields: BENEFIT_CHOICES.map((b) => ({
+        field: b.field,
+        label: b.provider,
+        display: { YES: 'Included', '': 'Not applicable' },
+      })),
+      content: benefitsContent,
+    });
+
+    steps.push({
+      id: 'ownership',
+      title: 'HR Ownership',
+      note: isManager
+        ? 'Who will carry out the approved workflow.'
+        : 'Who owns this case once it is created.',
+      ...(isManager
+        ? {
+            summaryFields: [
+              {
+                field: 'assignedOfficerId',
+                label: 'Assigned HR Officer',
+                display: { '': 'Unassigned for now', ...officerNames },
+              },
+            ],
+          }
+        : { settledByServer: true, staticSummary: <>You are the assigned HR Officer</> }),
+      content: ownershipContent,
+    });
+
+    steps.push({
       id: 'review',
       title: 'Review and create',
       note: 'What will be recorded, and what the platform will do next.',
@@ -716,13 +840,19 @@ export default async function NewCasePage({
         { stepId: 'dates', heading: 'Dates' },
         ...(needsAbout ? [{ stepId: 'about', heading: 'About this separation' }] : []),
         { stepId: 'reason', heading: 'Reason' },
+        { stepId: 'benefits', heading: 'Benefits & Providers' },
+        {
+          stepId: 'ownership',
+          heading: 'HR Ownership',
+          ...(isManager ? {} : { staticLines: ['You are the assigned HR Officer'] }),
+        },
       ],
       content: (
         <>
           <p className="hint" role="note">
-            Creating the case records a DRAFT. Nothing is sent and no task is created until it is
-            approved and activated - the workflow, documents and notifications for a{' '}
-            {profile.label.toLowerCase()} are prepared then.
+            Creating the case records a DRAFT. Nothing is sent and no task is created until the HR
+            Manager approves it - that one approval authorizes the assigned HR Officer to carry out
+            the whole {profile.label.toLowerCase()} workflow: documents, forms and notifications.
           </p>
           {liveCases.length > 0 ? (
             <div

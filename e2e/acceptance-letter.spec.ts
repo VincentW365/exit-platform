@@ -38,8 +38,9 @@ test('the acceptance letter is addressed, approved and emailed with HR copied', 
     [],
   );
 
-  // Drive the letter to RENDERED so the email route exists. Maker-checker
-  // holds: the officer who submits is never the manager who approves.
+  // Drive the letter to RENDERED so the email route exists. DEC-066: the
+  // assigned officer finalizes it under the case approval - there is no
+  // manager approval of the letter and nobody has to swap seats.
   const create = page.getByRole('button', { name: 'Create resignation document draft' });
   if ((await create.count()) > 0) await create.first().click();
   await signOut(page);
@@ -49,14 +50,11 @@ test('the acceptance letter is addressed, approved and emailed with HR copied', 
   const refresh = page.getByRole('button', { name: 'Refresh fields from case' });
   await expect(refresh.first()).toBeVisible();
   await refresh.first().click();
-  await page.getByRole('button', { name: 'Validate and submit for approval' }).first().click();
-  await expect(page.getByText('Pending Approval').first()).toBeVisible();
-  await signOut(page);
-
-  await signInAs(page, 'HR Manager');
-  await page.goto(`${caseUrl}/documents`);
-  await page.getByRole('button', { name: 'Approve exact version (attested)' }).first().click();
+  await page.getByRole('button', { name: 'Validate and finalize (attested)' }).first().click();
   await expect(page.getByText('Rendered').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Approve exact version (attested)' })).toHaveCount(
+    0,
+  );
 
   const sendBlock = page.locator('details.action > summary', {
     hasText: 'Send to the employee by email',

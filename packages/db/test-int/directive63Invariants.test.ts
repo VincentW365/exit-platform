@@ -155,7 +155,9 @@ describe('Directive 6.3 AC invariants', () => {
     });
     try {
       const caseId = await activeCase({ employeeSourceId: 'EMP-TEST-002' });
-      await confirmBenefits(officer.actor, caseId, {
+      // DEC-066: post-approval amendment of the benefits selection is the HR
+      // Manager's; the officer selects benefits at intake.
+      await confirmBenefits(manager.actor, caseId, {
         groupHealth: 'YES',
         groupLife: 'NO',
         otherProvider: 'NO',

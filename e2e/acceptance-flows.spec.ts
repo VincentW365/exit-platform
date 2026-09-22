@@ -51,27 +51,30 @@ test('J.3 return with reason -> correction -> resubmit; history preserved', asyn
     employeeQuery: 'jordan',
     type: 'IMMEDIATE_RESIGNATION',
   });
-  await page.getByRole('button', { name: 'Submit for review' }).click();
-  await expect(page.getByText('Case submitted for review.')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit for approval' }).click();
+  await expect(page.getByText('Case submitted for HR Manager approval.')).toBeVisible();
   await signOut(page);
 
+  // DEC-066: the manager returns the case from the Case Approval Summary,
+  // with a reason the officer then reads on the draft itself.
   await signInAs(page, 'HR Manager');
-  await page.goto(caseUrl);
-  await page.getByText('Return for correction').click();
-  await page.getByLabel('Reason (required)').first().fill('Effective time must be end of shift.');
+  await page.goto(`${caseUrl}/approve`);
+  await page.locator('details.action > summary', { hasText: 'Return to Draft' }).click();
+  await page.getByLabel('What needs to change?').fill('Effective time must be end of shift.');
   await page.getByRole('button', { name: 'Return to draft' }).click();
   await expect(page.getByText('Case returned to draft for correction.')).toBeVisible();
   await signOut(page);
 
   await signInAs(page, 'HR Officer');
   await page.goto(caseUrl);
+  await expect(page.getByText('Effective time must be end of shift.').first()).toBeVisible();
   // Draft editing now lives as a disclosure under the case summary.
   await page.locator('details.action > summary', { hasText: 'Edit these details' }).click();
   await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
   await page.getByRole('button', { name: 'Save draft changes' }).click();
   await expect(page.getByText('Draft updated.')).toBeVisible();
-  await page.getByRole('button', { name: 'Submit for review' }).click();
-  await expect(page.getByText('Case submitted for review.')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit for approval' }).click();
+  await expect(page.getByText('Case submitted for HR Manager approval.')).toBeVisible();
 
   // Original history remains: two submissions and one return in the timeline.
   const timeline = page.locator('ol.activity').last();

@@ -62,12 +62,15 @@ async function createTestCase(
 
 async function submitAndApprove(page: Page, caseUrl: string): Promise<void> {
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Submit for review' }).click();
-  await expect(page.getByText('Case submitted for review.')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit for approval' }).click();
+  await expect(page.getByText('Case submitted for HR Manager approval.')).toBeVisible();
   await signOut(page);
   await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
+  // DEC-066: the one HR Manager decision is taken on the Case Approval Summary.
+  await page.goto(`${caseUrl}/approve`);
+  await page.getByRole('button', { name: 'Approve Case', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
 }
 
@@ -230,25 +233,17 @@ test('Scenario 1 - resignation with notice: activate, HR journey, email evidence
   await page.getByRole('button', { name: 'Save address' }).click();
   await expect(page.getByText(/Address recorded/)).toBeVisible();
   await page.getByRole('button', { name: 'Refresh fields from case' }).click();
-  await page.getByRole('button', { name: 'Validate and submit for approval' }).click();
-  await expect(page.getByText('Document submitted for HR Manager approval.')).toBeVisible();
+  await page.getByRole('button', { name: 'Validate and finalize (attested)' }).click();
+  await expect(
+    page.getByText('Document finalized; the final PDF has been rendered.'),
+  ).toBeVisible();
 
-  // Directive 6.3 V: one benefits confirmation feeds the provider rules.
+  // DEC-066: benefits were selected at intake (nothing ticked = not
+  // applicable) and approved with the case; the officer only records the
+  // confirmation task - no Overview form, no second decision.
   await page.goto(caseUrl);
-  // The confirm form opens itself while a benefit is undecided; toggle it
-  // open only when it is not already.
-  {
-    const benefitsDetails = page.locator('details.action', {
-      has: page.locator('summary', { hasText: 'Confirm which benefits apply' }),
-    });
-    if (!(await benefitsDetails.evaluate((el) => (el as HTMLDetailsElement).open))) {
-      await benefitsDetails.locator('summary').click();
-    }
-  }
-  await page.locator('#ben-health').selectOption('NO');
-  await page.locator('#ben-life').selectOption('NO');
-  await page.getByRole('button', { name: 'Confirm applicability' }).click();
-  await expect(page.getByText(/Benefits applicability confirmed/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Benefits and providers' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirm applicability' })).toHaveCount(0);
   await completeTaskFromWorkflow(page, caseUrl, 'Confirm benefits and provider applicability');
 
   // Action form: the officer prepares, finishes and completes it (attested) -
@@ -281,13 +276,15 @@ test('Scenario 1 - resignation with notice: activate, HR journey, email evidence
   await completeTaskFromWorkflow(page, caseUrl, 'Complete employee action form HR section');
   await signOut(page);
 
-  // HR Manager approves the letter (renders the controlled PDF), then runs
-  // the outbox pass: the internal emails are CAPTURED locally, never
-  // represented as delivered.
+  // The letter was finalized by the officer above (DEC-066: no manager
+  // approval of the document). The HR Manager runs the outbox pass: the
+  // internal emails are CAPTURED locally, never represented as delivered.
   await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/documents`);
-  await page.getByRole('button', { name: 'Approve exact version (attested)' }).click();
-  await expect(page.getByText('Document approved; the final PDF has been rendered.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Approve exact version (attested)' })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText('Rendered').first()).toBeVisible();
   // The background worker may legitimately drain the queue first, so the
   // manual pass can submit 0; the capture evidence for THIS case is the
   // invariant (CAPTURED locally, never DELIVERED).
@@ -431,7 +428,10 @@ test('Scenario 3 - restricted termination: undiscoverable, minimum-data IT email
   await page.goto(caseUrl);
   // The reviewer approves her own draft in one audited step - no
   // submit-to-self detour (owner, 2026-08-25).
-  await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
+  // DEC-066: the one HR Manager decision is taken on the Case Approval Summary.
+  await page.goto(`${caseUrl}/approve`);
+  await page.getByRole('button', { name: 'Approve Case', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
   // Restricted case: the manager keeps operational ownership herself so the
   // non-participant discovery assertions below stay meaningful.
@@ -449,8 +449,10 @@ test('Scenario 3 - restricted termination: undiscoverable, minimum-data IT email
   );
 
   // Complete the restricted HR chain (all tasks are confidential HR work).
+  // DEC-066: the duplicate "Authorized HR Manager approval" task is gone -
+  // the case approval was that authorization.
+  await expect(page.getByText('Authorized HR Manager approval')).toHaveCount(0);
   await completeTaskFromWorkflow(page, caseUrl, 'Restricted HR preparation');
-  await completeTaskFromWorkflow(page, caseUrl, 'Authorized HR Manager approval');
   await completeTaskFromWorkflow(page, caseUrl, 'Confirm exact effective separation date and time');
 
   // Directive 6.3 H.4/U: IT is reached ONLY by the derived minimum-data email

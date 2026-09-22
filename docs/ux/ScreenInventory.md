@@ -38,6 +38,9 @@
 | UX-034 | Retention/Legal Hold | Privacy role | Manage approved policies, dry runs and holds | Restricted; maker-checker; disposal evidence. |
 | UX-035 | Manual Fallback Record | HR/assigned role | Record work completed outside platform | Reason, method, evidence, reconciliation. |
 | UX-036 | Help/Runbooks | All roles | Find role-specific SOP and fallback guidance | No sensitive examples. |
+| UX-037 | Create Case — Benefits & Providers / HR Ownership | HR | Select the benefit providers to be told, and (HR Manager) name the executing officer, before the case is created | Selectable cards, not dropdowns; unticked = not applicable; the officer owns what they create (DEC-065/066). |
+| UX-038 | Case Approval Summary | HR Manager (officers read it) | Approve the case once, or return it with a reason, after seeing the employee record, exit details, ownership, benefits, every recipient with its resolved destination and readiness, the planned documents and forms and the workflow | Two-column cards; addresses full for the HR Manager and masked for others; "Recipient not configured" is explicit; approval text states what it authorizes (DEC-066). |
+| UX-039 | My Settings | All roles | Keep the plain-text email banner appended beneath the user's sender block on outgoing email | Own account only; audited; preview of the signature. |
 
 ## Screen acceptance pattern
 

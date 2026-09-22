@@ -136,6 +136,17 @@ export async function createCaseAction(formData: FormData): Promise<void> {
       // the review step asks for this only when a live case already exists,
       // and the server refuses without it.
       duplicateAcknowledged: str(formData, 'duplicateAcknowledged') === 'true',
+      // DEC-066 sections 6-7: benefits and providers are chosen here. The
+      // step posts a marker so an unticked box means "not applicable" rather
+      // than "not asked" (a caller that skips the step keeps UNKNOWN).
+      ...(formData.has('benefitsSelected')
+        ? {
+            groupHealth: str(formData, 'groupHealth') === 'YES' ? 'YES' : 'NO',
+            groupLife: str(formData, 'groupLife') === 'YES' ? 'YES' : 'NO',
+          }
+        : {}),
+      // DEC-066 section 34: the HR Manager may name the executing officer.
+      assignedOfficerId: opt(formData, 'assignedOfficerId') ?? undefined,
     });
     revalidatePath('/cases');
     const dup = result.duplicateWarnings.length
@@ -196,6 +207,12 @@ export async function updateDraftAction(formData: FormData): Promise<void> {
       putIfFilled(k);
     // Free-text fields may be cleared deliberately by submitting them empty.
     for (const k of ['reasonNotes']) putIfPresent(k);
+    // Benefits (DEC-066 section 9): correctable while drafting, from the same
+    // edit form. The marker distinguishes "unticked" from "not on this form".
+    if (formData.has('benefitsSelected')) {
+      patch['groupHealth'] = str(formData, 'groupHealth') === 'YES' ? 'YES' : 'NO';
+      patch['groupLife'] = str(formData, 'groupLife') === 'YES' ? 'YES' : 'NO';
+    }
     await updateDraft(actor, caseId, patch);
     revalidatePath(`/cases/${caseId}`);
     feedbackRedirect(`/cases/${caseId}`, { ok: 'Draft updated.' });
@@ -227,10 +244,12 @@ export async function transitionAction(formData: FormData): Promise<void> {
     revalidatePath(`/cases/${caseId}`);
     revalidatePath('/cases');
     const okText: Record<string, string> = {
-      submit: 'Case submitted for review.',
-      submitAndApprove: 'Case approved. The employee snapshot has been captured.',
+      submit: 'Case submitted for HR Manager approval.',
+      submitAndApprove:
+        'Case approved. The employee snapshot has been captured. The assigned HR Officer is authorized to carry out the offboarding workflow.',
       return: 'Case returned to draft for correction.',
-      approve: 'Case approved. The employee snapshot has been captured.',
+      approve:
+        'Case approved. The employee snapshot has been captured. The assigned HR Officer is authorized to carry out the offboarding workflow.',
       cancel: 'Case cancelled.',
       void: 'Case voided.',
     };

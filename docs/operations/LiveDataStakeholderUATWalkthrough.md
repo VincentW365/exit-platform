@@ -86,7 +86,9 @@ As the HR Manager:
    sample values (Avery Brown / EMP-TEST-001), never a real person.
 2. Review the send control levels: internal departments (IT, Finance,
    manager notice) = sent automatically; external providers = need HR
-   review; restricted cases always escalate to HR-Manager approval.
+   review; restricted cases are never sent automatically. Since DEC-066 the
+   HR person executing the approved case releases every held notification -
+   there is no HR-Manager release.
 3. Administration → Recipients: verify the provider directory (purpose,
    organization, contact, masked address) and deliberately leave ONE
    provider recipient missing - Part 12 demonstrates the handling.
@@ -200,12 +202,12 @@ The mapped real manager signs in as themselves:
 2. Open the case's Handover page, work the sections, complete it.
 3. Verify they cannot see other cases, reasons, or the Audit centre.
 
-## Part 14 - HR documents (unchanged maker-checker)
+## Part 14 - HR documents (finalized by the officer, DEC-066)
 
 As the HR Officer: create the resignation acknowledgement draft → validate
-→ submit. As the HR Manager: approve and download the PDF - the real
-organizational details appear correctly. A termination letter remains
-impossible.
+and finalize (attested) → download the PDF - the real organizational details
+appear correctly. No HR Manager approval of the document exists; the HR
+Manager approved the case once. A termination letter remains impossible.
 
 ## Part 15 - Action Form: the officer completes it
 
@@ -269,8 +271,9 @@ purpose TEST and confirm UAT cases stay out of operational KPIs.
   acknowledgement treatment with the standard reason.
 - **Restricted termination**: the seeded TERMINATION case - invisible
   outside participating HR; the IT email is HELD until one hour before the
-  effective instant and Finance until the effective instant; sends require
-  HR-Manager approval; no letter, no survey without an explicit decision.
+  effective instant and Finance until the effective instant; sends are
+  released by the assigned HR Officer under the case approval (DEC-066); no
+  letter, no survey without an explicit decision.
 - **Unconfirmed IT action**: let the effective instant pass without using
   the IT link (or expire it) - a CRITICAL attention item appears: verify
   with IT and record evidence, or approve a security exception. Delivery is

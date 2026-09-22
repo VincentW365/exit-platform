@@ -77,6 +77,8 @@ Audit events provide evidence of who did what, to which object, when, under whic
 | DOCUMENT_ISSUED | Document | Immutable document issued | document, file/hash, approver, issued time |
 | DOCUMENT_SUPERSEDED | Document | Issued document superseded | old/new document, reason, actor |
 | DOCUMENT_VOIDED | Document | Draft/non-issued document voided | document, actor, reason |
+| DOC_FINALIZED | Document | Validated, attested and released for rendering by the HR person executing the approved case (DEC-066) | document type/version, content checksum, `authority: CASE_APPROVAL`, case approver and approval instant, case status |
+| USER_EMAIL_BANNER_CHANGED | Identity | A user set or cleared their own outgoing-email banner (DEC-066 section 8) | user, cleared flag, line count (never the text) |
 | NOTIFICATION_PREPARED | Notification | Notification draft created | case, notification, type, template/version |
 | NOTIFICATION_RECIPIENTS_RESOLVED | Notification | Final recipient set resolved | notification, recipient count/types, config versions |
 | NOTIFICATION_SUBMITTED_FOR_APPROVAL | Notification | Notification submitted | notification, actor |
@@ -140,7 +142,7 @@ notification body content.
 | --- | --- | --- | --- |
 | DERIVED_ACTIONS_COMPUTED | Derived actions | The rules engine derived/refreshed the case's required actions | case, rules version, derived/not-applicable/requires-review counts |
 | DERIVED_ACTION_OVERRIDDEN | Derived actions | Authorized override of a derived action | action key/title, applicable flag, actor, reason |
-| BENEFITS_APPLICABILITY_SET | Case | HR confirmed benefits applicability | case, group health/group life/other values, actor |
+| BENEFITS_APPLICABILITY_SET | Case | Benefits and providers selected at intake, corrected while drafting, or amended by the HR Manager after submission (DEC-066) | case, group health/group life/other values, previous values, source (INTAKE / HR_CONFIRMED / HR_MANAGER_CORRECTION), case status, post-approval-amendment flag, actor |
 | NOTIFICATION_AUTO_PREPARED | Notification | Derived notification prepared by the system | notification, type, template version, control level, scheduled send |
 | NOTIFICATION_AUTO_APPROVED | Notification | AUTO_SEND release: system approval + outbox enqueue | notification, type, control level, scheduled send |
 | NOTIFICATION_SENT | Notification | Automated dispatch recorded (capture provider outside production) | notification, correlation; masked destination only |

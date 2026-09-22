@@ -4,15 +4,13 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import {
   ServiceError,
-  approveDocument,
   createLetterDraft,
   createManualExceptionDraft,
+  finalizeDocument,
   issueDocumentByEmail,
   markManuallyIssued,
   refreshDraftFields,
-  returnDocument,
   setEmployeeAddress,
-  submitDocument,
   supersedeAndRecreate,
   voidDocument,
 } from '@exit/db';
@@ -74,24 +72,14 @@ export async function refreshFieldsAction(formData: FormData): Promise<void> {
   });
 }
 
-export async function submitDocAction(formData: FormData): Promise<void> {
+/**
+ * DEC-066: validate, attest and render in one step. The HR Manager approved
+ * the case; the person executing it finalizes the document.
+ */
+export async function finalizeDocAction(formData: FormData): Promise<void> {
   await run(formData, async (actor, fd) => {
-    await submitDocument(actor as never, str(fd, 'docId'));
-    return 'Document submitted for HR Manager approval.';
-  });
-}
-
-export async function approveDocAction(formData: FormData): Promise<void> {
-  await run(formData, async (actor, fd) => {
-    await approveDocument(actor as never, str(fd, 'docId'));
-    return 'Document approved; the final PDF has been rendered.';
-  });
-}
-
-export async function returnDocAction(formData: FormData): Promise<void> {
-  await run(formData, async (actor, fd) => {
-    await returnDocument(actor as never, str(fd, 'docId'), str(fd, 'reason'));
-    return 'Document returned for correction.';
+    await finalizeDocument(actor as never, str(fd, 'docId'));
+    return 'Document finalized; the final PDF has been rendered.';
   });
 }
 

@@ -191,7 +191,11 @@ test('a completed accordion step reopens from the keyboard', async ({ page }) =>
   const header = page.locator('.step__header').first();
   await expect(header).toHaveAttribute('aria-expanded', 'false');
   await page.locator('body').press('Tab');
-  for (let i = 0; i < 30; i++) {
+  // The chrome (navigation, search, settings, sign-out) and the existing-case
+  // notice - one "Open existing case" button per live case for this
+  // employee, which grows as the suite runs - all sit before the first step
+  // header, so the budget is generous; the assertion below is what matters.
+  for (let i = 0; i < 80; i++) {
     if (await header.evaluate((el) => el === document.activeElement)) break;
     await page.keyboard.press('Tab');
   }

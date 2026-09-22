@@ -49,10 +49,10 @@ async function createTestCase(
   return page.url().split('?')[0]!;
 }
 
-test('Scenario 1 - resignation document: draft, approve, render, authorized download', async ({
+test('Scenario 1 - resignation document: draft, finalize under the case approval, render, authorized download', async ({
   page,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   await signInAs(page, 'HR Officer');
   const caseUrl = await createTestCase(page, {
     employeeQuery: 'avery',
@@ -60,9 +60,31 @@ test('Scenario 1 - resignation document: draft, approve, render, authorized down
     confirmedLastDay: true,
   });
 
+  // DEC-066: a letter can be drafted on a draft case, but nothing finalizes
+  // until the HR Manager has approved the case - once.
   await page.goto(`${caseUrl}/documents`);
   await page.getByRole('button', { name: 'Create resignation document draft' }).click();
   await expect(page.getByText('Draft document created')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Validate and finalize (attested)' })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText(/has not been approved yet/)).toBeVisible();
+  await page.goto(caseUrl);
+  await page.getByRole('button', { name: 'Submit for approval' }).click();
+  await expect(page.getByText('Case submitted for HR Manager approval.')).toBeVisible();
+  await signOut(page);
+
+  await signInAs(page, 'HR Manager');
+  await page.goto(`${caseUrl}/approve`);
+  await expect(page.getByRole('heading', { name: 'Documents & Forms' })).toBeVisible();
+  await page.getByRole('button', { name: 'Approve Case', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
+  await expect(page.getByText(/Case approved/)).toBeVisible();
+  await signOut(page);
+
+  // The assigned officer finalizes the letter alone: attested, rendered.
+  await signInAs(page, 'HR Officer');
+  await page.goto(`${caseUrl}/documents`);
   // The acceptance letter is addressed, so HR types the address from the
   // resignation letter scan before submitting (DEC-054).
   await page
@@ -71,16 +93,16 @@ test('Scenario 1 - resignation document: draft, approve, render, authorized down
   await page.getByRole('button', { name: 'Save address' }).click();
   await expect(page.getByText(/Address recorded/)).toBeVisible();
   await page.getByRole('button', { name: 'Refresh fields from case' }).click();
-  await page.getByRole('button', { name: 'Validate and submit for approval' }).click();
-  await expect(page.getByText('Document submitted for HR Manager approval.')).toBeVisible();
+  await page.getByRole('button', { name: 'Validate and finalize (attested)' }).click();
+  await expect(
+    page.getByText('Document finalized; the final PDF has been rendered.'),
+  ).toBeVisible();
   await expect(page.getByText('Avery Brown').first()).toBeVisible(); // preview shows exact content
-  await signOut(page);
-
-  await signInAs(page, 'HR Manager');
-  await page.goto(`${caseUrl}/documents`);
-  await page.getByRole('button', { name: 'Approve exact version (attested)' }).click();
-  await expect(page.getByText('Document approved; the final PDF has been rendered.')).toBeVisible();
-  await expect(page.getByText('RENDERED').first()).toBeVisible();
+  await expect(page.getByText('Rendered').first()).toBeVisible();
+  // No manager approval control ever appears for the document.
+  await expect(page.getByRole('button', { name: 'Approve exact version (attested)' })).toHaveCount(
+    0,
+  );
 
   const pdfHref = await page
     .getByRole('link', { name: 'Download PDF' })

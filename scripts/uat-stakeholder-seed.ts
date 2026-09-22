@@ -40,7 +40,13 @@ async function main(): Promise<void> {
   const draft = async (
     employee: string,
     type: string,
-    opts: { receivedDaysAgo?: number; effectiveInDays?: number; purpose?: string } = {},
+    opts: {
+      receivedDaysAgo?: number;
+      effectiveInDays?: number;
+      purpose?: string;
+      /** DEC-066: benefits are chosen at intake and approved with the case. */
+      benefits?: { groupHealth: 'YES' | 'NO'; groupLife: 'YES' | 'NO' };
+    } = {},
   ) => {
     const received = new Date(Date.now() - (opts.receivedDaysAgo ?? 2) * 86_400_000);
     const effective = new Date(Date.now() + (opts.effectiveInDays ?? 14) * 86_400_000);
@@ -54,6 +60,7 @@ async function main(): Promise<void> {
       effectiveSeparationAt: effective.toISOString(),
       measurementCohort: null,
       recordPurpose: (opts.purpose ?? 'TEST') as never,
+      ...(opts.benefits ?? {}),
     });
   };
 
@@ -104,16 +111,13 @@ async function main(): Promise<void> {
 
   const summary: string[] = [];
 
-  // 1. Resignation with notice - ACTIVE, mid-journey. Benefits confirmed
-  //    YES/YES so the derived provider notifications (Sagicor/NCB) exist for
-  //    review (Directive 6.3 V: HR confirms once, the rules engine derives).
-  const s1 = await draft('EMP-TEST-001', 'RESIGNATION_WITH_NOTICE');
-  await approveAndActivate(s1.caseId);
-  await db.confirmBenefits(officer as never, s1.caseId, {
-    groupHealth: 'YES',
-    groupLife: 'YES',
-    otherProvider: 'NO',
+  // 1. Resignation with notice - ACTIVE, mid-journey. Benefits selected at
+  //    intake YES/YES (DEC-066) so the derived provider notifications
+  //    (Sagicor/NCB) exist for the officer to release.
+  const s1 = await draft('EMP-TEST-001', 'RESIGNATION_WITH_NOTICE', {
+    benefits: { groupHealth: 'YES', groupLife: 'YES' },
   });
+  await approveAndActivate(s1.caseId);
   await note(
     officer as never,
     s1.caseId,
@@ -128,13 +132,9 @@ async function main(): Promise<void> {
   const s2 = await draft('EMP-TEST-002', 'IMMEDIATE_RESIGNATION', {
     receivedDaysAgo: 1,
     effectiveInDays: -1,
+    benefits: { groupHealth: 'NO', groupLife: 'NO' },
   });
   await approveAndActivate(s2.caseId);
-  await db.confirmBenefits(officer as never, s2.caseId, {
-    groupHealth: 'NO',
-    groupLife: 'NO',
-    otherProvider: 'NO',
-  });
   await note(
     officer as never,
     s2.caseId,
@@ -160,8 +160,8 @@ async function main(): Promise<void> {
   );
   summary.push(`S3 ${s3.caseNumber} restricted-termination DRAFT`);
 
-  // 4. Approved document invalidated by an audited correction; corrected
-  //    draft awaits re-submission and re-approval.
+  // 4. Finalized document invalidated by an audited correction; the corrected
+  //    draft awaits re-finalization by the officer (DEC-066: no re-approval).
   const s4 = await draft('EMP-TEST-004', 'RESIGNATION_WITH_NOTICE');
   await db.transitionCase(officer as never, s4.caseId, 'submit');
   await db.transitionCase(manager as never, s4.caseId, 'approve');
@@ -170,8 +170,7 @@ async function main(): Promise<void> {
     employeeAddress: '12 Synthetic Avenue, Kingston 5',
   });
   await db.refreshDraftFields(officer as never, s4doc.id);
-  await db.submitDocument(officer as never, s4doc.id);
-  await db.approveDocument(manager as never, s4doc.id);
+  await db.finalizeDocument(officer as never, s4doc.id);
   const newEffective = new Date(Date.now() + 16 * 86_400_000);
   newEffective.setHours(17, 0, 0, 0);
   await db.changeEffectiveTime(
@@ -185,7 +184,7 @@ async function main(): Promise<void> {
     s4.caseId,
     'Scenario 4: the approved letter shows INVALIDATED/superseded; re-submit and re-approve the corrected draft.',
   );
-  summary.push(`S4 ${s4.caseNumber} document-correction pending re-approval`);
+  summary.push(`S4 ${s4.caseNumber} document-correction pending re-finalization`);
 
   // 5. Overdue departmental work - received long ago, tasks past due.
   const s5 = await draft('EMP-TEST-005', 'RESIGNATION_WITH_NOTICE', {
@@ -249,7 +248,8 @@ async function main(): Promise<void> {
     where: { caseId: s10.caseId, notificationType: 'IT_ACCESS_REMOVAL' },
   });
   if (s10n.status === 'PENDING_APPROVAL') {
-    await db.transitionNotification(manager as never, s10n.id, 'approve');
+    // DEC-066: the assigned officer releases it under the case approval.
+    await db.transitionNotification(officer as never, s10n.id, 'approve');
   }
   // Demonstration state for the outbox monitor: mark the enqueued row as a
   // retryable provider failure (synthetic; retry stays a week away so the

@@ -23,9 +23,30 @@ import type { NotificationStatus, NotificationType } from './notifications.ts';
 export const SEND_CONTROL_LEVELS = [
   'AUTO_SEND',
   'HR_REVIEW_THEN_SEND',
+  /**
+   * LEGACY (DEC-066). Records and configuration written before the single
+   * authorization gate may still carry this value; it now MEANS
+   * HR_REVIEW_THEN_SEND - the HR person executing the approved case releases
+   * it. Nothing new is written with this level. See normalizeSendControl.
+   */
   'HR_MANAGER_APPROVAL_REQUIRED',
 ] as const;
 export type SendControlLevel = (typeof SEND_CONTROL_LEVELS)[number];
+
+/** The levels a NEW record or configuration can take (the legacy one excluded). */
+export const CURRENT_SEND_CONTROL_LEVELS: readonly SendControlLevel[] = [
+  'AUTO_SEND',
+  'HR_REVIEW_THEN_SEND',
+];
+
+/**
+ * DEC-066: the HR Manager approves the case once; a stored
+ * HR_MANAGER_APPROVAL_REQUIRED reads as "held for HR review" - the assigned
+ * HR Officer (or the HR Manager) releases it under the case approval.
+ */
+export function normalizeSendControl(level: SendControlLevel): 'AUTO_SEND' | 'HR_REVIEW_THEN_SEND' {
+  return level === 'AUTO_SEND' ? 'AUTO_SEND' : 'HR_REVIEW_THEN_SEND';
+}
 
 /**
  * Directive S defaults: internal departments AUTO_SEND; external providers
@@ -42,7 +63,9 @@ export const DEFAULT_SEND_CONTROL: Readonly<Record<NotificationType, SendControl
   SAGICOR_GROUP_HEALTH_REMOVAL: 'HR_REVIEW_THEN_SEND',
   NCB_GROUP_LIFE_REMOVAL: 'HR_REVIEW_THEN_SEND',
   SURVEY_INVITATION_REFERENCE: 'HR_REVIEW_THEN_SEND',
-  MANUAL_EXCEPTION_NOTIFICATION: 'HR_MANAGER_APPROVAL_REQUIRED',
+  // DEC-066: reviewed and released by the HR person executing the approved
+  // case; the case approval is the management authorization.
+  MANUAL_EXCEPTION_NOTIFICATION: 'HR_REVIEW_THEN_SEND',
   PAYROLL_OR_BANK_NOTIFICATION: 'HR_REVIEW_THEN_SEND',
   OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION: 'HR_REVIEW_THEN_SEND',
 };
@@ -53,23 +76,26 @@ export function isSendControlLevel(v: unknown): v is SendControlLevel {
 
 /**
  * Resolve the control level for one notification on one case.
- * Restricted (termination) cases are never sent below
- * HR_MANAGER_APPROVAL_REQUIRED when the configured restricted override says so
- * (Directive S: "Restricted termination: use explicit confidentiality/timing
- * controls").
+ * Restricted (termination) cases are never sent automatically: the
+ * configured restricted override (HR_REVIEW_THEN_SEND by default) makes a
+ * human release each one at the right moment (Directive S: "Restricted
+ * termination: use explicit confidentiality/timing controls"). That is a
+ * confidentiality and timing control, not a second approval: since DEC-066
+ * the HR person executing the approved case releases it, and a stored
+ * HR_MANAGER_APPROVAL_REQUIRED resolves to HR_REVIEW_THEN_SEND.
  */
 export function resolveSendControl(args: {
   notificationType: NotificationType;
   configured: Partial<Record<string, string>> | null;
   caseClassification: 'CONFIDENTIAL' | 'RESTRICTED';
   restrictedOverride?: string | null;
-}): SendControlLevel {
+}): 'AUTO_SEND' | 'HR_REVIEW_THEN_SEND' {
   const configuredLevel = args.configured?.[args.notificationType];
   const base = isSendControlLevel(configuredLevel)
     ? configuredLevel
     : DEFAULT_SEND_CONTROL[args.notificationType];
   if (args.caseClassification === 'RESTRICTED') {
-    const override = args.restrictedOverride ?? 'HR_MANAGER_APPROVAL_REQUIRED';
+    const override = args.restrictedOverride ?? 'HR_REVIEW_THEN_SEND';
     if (isSendControlLevel(override)) {
       // The stricter of the two applies; ordering below is weakest-first.
       const rank: Record<SendControlLevel, number> = {
@@ -77,10 +103,10 @@ export function resolveSendControl(args: {
         HR_REVIEW_THEN_SEND: 1,
         HR_MANAGER_APPROVAL_REQUIRED: 2,
       };
-      return rank[override] > rank[base] ? override : base;
+      return normalizeSendControl(rank[override] > rank[base] ? override : base);
     }
   }
-  return base;
+  return normalizeSendControl(base);
 }
 
 /**

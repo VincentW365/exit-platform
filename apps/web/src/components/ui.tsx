@@ -6,7 +6,7 @@ import { humanize } from '@/lib/text';
 
 const STATUS_STYLE: Record<CaseStatus, { cls: string; label: string }> = {
   DRAFT: { cls: 'badge--neutral', label: 'Draft' },
-  PENDING_HR_REVIEW: { cls: 'badge--warning', label: 'Pending HR Review' },
+  PENDING_HR_REVIEW: { cls: 'badge--warning', label: 'Awaiting Approval' },
   APPROVED: { cls: 'badge--info', label: 'Approved' },
   ACTIVE: { cls: 'badge--info', label: 'Active' },
   CLEARANCE_REVIEW: { cls: 'badge--warning', label: 'Clearance Review' },

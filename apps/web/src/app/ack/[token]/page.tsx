@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { getActionByToken } from '@exit/db';
+import { BrandMark } from '@/components/BrandMark';
 import { redeemAckAction } from './actions';
 
 export const metadata: Metadata = {
@@ -18,6 +19,11 @@ export const dynamic = 'force-dynamic';
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main id="main" style={{ maxWidth: '38rem', margin: '2rem auto', padding: '0 1rem 3rem' }}>
+      {/* The company logo on every page a recipient is handed (owner
+          directive 2026-09-22, section 8). */}
+      <div className="public-brand">
+        <BrandMark size="lg" />
+      </div>
       {children}
     </main>
   );

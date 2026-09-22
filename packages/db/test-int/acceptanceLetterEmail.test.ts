@@ -18,10 +18,9 @@ import { activateTemplate, createDraftTemplate } from '../src/services/templateS
 import { createDraft, transitionCase } from '../src/services/caseService.ts';
 import { activateCase } from '../src/services/workflowService.ts';
 import {
-  approveDocument,
   createLetterDraft,
+  finalizeDocument,
   refreshDraftFields,
-  submitDocument,
 } from '../src/services/documentService.ts';
 import {
   issueDocumentByEmail,
@@ -42,6 +41,7 @@ import {
 const prisma = getPrisma();
 
 let officer: Awaited<ReturnType<typeof createUser>>;
+let otherOfficer: Awaited<ReturnType<typeof createUser>>;
 let manager: Awaited<ReturnType<typeof createUser>>;
 let lineMgr: Awaited<ReturnType<typeof createUser>>;
 
@@ -66,13 +66,16 @@ async function activeCase(): Promise<string> {
   return created.caseId;
 }
 
-/** Draft, address, approve and render the acceptance letter. */
+/**
+ * Draft, address, finalize and render the acceptance letter. The assigned
+ * HR Officer does all of it under the case approval (DEC-066) - no manager
+ * approval of the letter exists.
+ */
 async function renderedLetter(caseId: string): Promise<string> {
   const draft = await createLetterDraft(officer.actor, caseId);
   await setEmployeeAddress(officer.actor, caseId, { employeeAddress: ADDRESS });
   await refreshDraftFields(officer.actor, draft.id);
-  await submitDocument(officer.actor, draft.id);
-  await approveDocument(manager.actor, draft.id);
+  await finalizeDocument(officer.actor, draft.id);
   return draft.id;
 }
 
@@ -81,6 +84,7 @@ beforeAll(async () => {
   await seedStage3Fixtures();
   setStorageForTests(new LocalStorageAdapter(mkdtempSync(path.join(tmpdir(), 'exit-letter-'))));
   officer = await createUser('Letter Officer', 'HR_OFFICER');
+  otherOfficer = await createUser('Letter Other Officer', 'HR_OFFICER');
   manager = await createUser('Letter Manager', 'HR_MANAGER');
   lineMgr = await createUser('Letter Line Manager');
 
@@ -94,18 +98,18 @@ beforeAll(async () => {
 });
 
 describe('the letter is addressed from the resignation scan', () => {
-  it('cannot be submitted until HR records the address', async () => {
+  it('cannot be finalized until HR records the address', async () => {
     const caseId = await activeCase();
     const draft = await createLetterDraft(officer.actor, caseId);
-    await expect(submitDocument(officer.actor, draft.id)).rejects.toMatchObject({
+    await expect(finalizeDocument(officer.actor, draft.id)).rejects.toMatchObject({
       code: 'VALIDATION',
     });
 
     await setEmployeeAddress(officer.actor, caseId, { employeeAddress: ADDRESS });
     await refreshDraftFields(officer.actor, draft.id);
-    await submitDocument(officer.actor, draft.id);
+    await finalizeDocument(officer.actor, draft.id);
     const after = await prisma.documentInstance.findUniqueOrThrow({ where: { id: draft.id } });
-    expect(after.status).toBe('PENDING_APPROVAL');
+    expect(['APPROVED', 'RENDERING', 'RENDERED']).toContain(after.status);
     expect(after.contentSnapshot).toContain('St. Andrew');
   });
 
@@ -261,14 +265,20 @@ describe('issuing the letter by email', () => {
     ).rejects.toMatchObject({ code: 'VALIDATION' });
   });
 
-  it('refuses the officer who drafted it - issuing stays management-grade', async () => {
+  it('the assigned officer issues it under the case approval; a non-owning officer is refused (DEC-066)', async () => {
     const caseId = await activeCase();
     const docId = await renderedLetter(caseId);
-    await expect(issueDocumentByEmail(officer.actor, docId, { ccIds: [] })).rejects.toMatchObject({
+    await expect(
+      issueDocumentByEmail(otherOfficer.actor, docId, { ccIds: [] }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(listHrCcContacts(otherOfficer.actor, caseId)).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
-    await expect(listHrCcContacts(officer.actor, caseId)).rejects.toMatchObject({
-      code: 'FORBIDDEN',
-    });
+    await expect(listHrCcContacts(officer.actor, caseId)).resolves.toBeDefined();
+    const outcome = await issueDocumentByEmail(officer.actor, docId, { ccIds: [] });
+    expect(outcome.destinationMask).toContain('*');
+    const issued = await prisma.documentInstance.findUniqueOrThrow({ where: { id: docId } });
+    expect(issued.status).toBe('ISSUED_BY_EMAIL');
+    expect(issued.issuedById).toBe(officer.userId);
   });
 });

@@ -116,7 +116,10 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
 
   await page.goto(caseUrl);
   // The manager approves her own draft in one audited step.
-  await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
+  // DEC-066: the one HR Manager decision is taken on the Case Approval Summary.
+  await page.goto(`${caseUrl}/approve`);
+  await page.getByRole('button', { name: 'Approve Case', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
 
   // Directive 6.1: complete the assignment plan (officer + manager + confirm).

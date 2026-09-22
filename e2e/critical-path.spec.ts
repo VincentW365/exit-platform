@@ -73,9 +73,9 @@ test('HR officer creates and submits; HR manager approves with snapshot; line ma
   await page.goto(caseUrl);
 
   // --- submit for review --------------------------------------------------
-  await page.getByRole('button', { name: 'Submit for review' }).click();
-  await expect(page.getByText('Case submitted for review.')).toBeVisible();
-  await expect(page.getByText('Pending HR Review').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Submit for approval' }).click();
+  await expect(page.getByText('Case submitted for HR Manager approval.')).toBeVisible();
+  await expect(page.getByText('Awaiting Approval').first()).toBeVisible();
 
   // The officer must not see an approval control (maker-checker).
   await expect(page.getByRole('button', { name: /Approve case/ })).toHaveCount(0);
@@ -84,7 +84,10 @@ test('HR officer creates and submits; HR manager approves with snapshot; line ma
   // --- HR manager: approve ------------------------------------------------
   await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
+  // DEC-066: the one HR Manager decision is taken on the Case Approval Summary.
+  await page.goto(`${caseUrl}/approve`);
+  await page.getByRole('button', { name: 'Approve Case', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
   await expect(
     page.getByText('Case approved. The employee snapshot has been captured.'),
   ).toBeVisible();

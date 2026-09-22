@@ -5,7 +5,6 @@ import {
   formatInstant,
   formatScheduledFor,
   isSendControlLevel,
-  requiresManagerApproval,
   EVIDENCE_CHANNELS,
   MANUAL_SEND_METHODS,
   NOTIFICATION_STATUS_LABELS,
@@ -66,7 +65,8 @@ const BADGE: Readonly<Record<NotificationStatus, string>> = {
 const CONTROL_HINT: Readonly<Record<SendControlLevel, string>> = {
   AUTO_SEND: 'Sends automatically once everything it needs is in place.',
   HR_REVIEW_THEN_SEND: 'Needs your review before it is sent.',
-  HR_MANAGER_APPROVAL_REQUIRED: 'Needs an HR Manager release before it is sent.',
+  // Legacy level (DEC-066): released by the HR person executing the case.
+  HR_MANAGER_APPROVAL_REQUIRED: 'Needs your review before it is sent.',
 };
 
 const EVIDENCE_CHANNEL_LABELS: Readonly<Record<EvidenceChannel, string>> = {
@@ -134,14 +134,11 @@ export default async function CaseNotificationsPage({
         const typeLabel = TYPE_LABELS[r.notificationType] ?? 'Notification';
         const recipientMissing = !r.recipientConfigId && !r.caseRecipientMask;
         const live = LIVE_STATUSES.includes(r.status);
-        // Who may release a waiting item: derived records follow their
-        // snapshotted control level; manually prepared ones follow the
-        // recipient class (the service enforces the same rule).
-        const managerRelease =
-          r.origin === 'DERIVED' && isSendControlLevel(r.controlLevel)
-            ? r.controlLevel === 'HR_MANAGER_APPROVAL_REQUIRED'
-            : requiresManagerApproval(r.recipientClass);
-        const canRelease = managerRelease ? data.canApproveExternal : data.canApproveInternal;
+        // Who may release a waiting item (DEC-066): the HR person executing
+        // the approved case - the assigned HR Officer or the HR Manager. The
+        // case approval already covered every recipient the plan showed, so
+        // no recipient class or control level asks for a second approver.
+        const canRelease = data.canApproveInternal;
 
         const recipientDisplay = (() => {
           const who = [r.recipientName, r.recipientOrg].filter(Boolean).join(', ');
@@ -285,9 +282,7 @@ export default async function CaseNotificationsPage({
               <form action={approveEmailAction} style={{ display: 'inline-block' }}>
                 <input type="hidden" name="caseId" value={id} />
                 <input type="hidden" name="recordId" value={r.id} />
-                <button type="submit">
-                  Review and release{managerRelease ? ' (HR Manager authority)' : ''}
-                </button>
+                <button type="submit">Review and release</button>
               </form>
             ) : null}
 

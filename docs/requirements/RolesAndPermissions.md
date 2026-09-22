@@ -103,6 +103,33 @@ Rules:
 | Add case to My Work | Via assignment | Automatic through assignment |
 | Remove case from officer My Work | Via reassignment or case state | No |
 
+## Single authorization gate (DEC-066, 2026-09-22)
+
+The HR Manager approves the offboarding case **once**, on the Case Approval
+Summary (`/cases/{id}/approve`), which shows what the approval authorizes:
+the employee record, the exit details, who will execute the case, the
+benefits and providers selected at intake, who will be contacted (with the
+resolved destination and a readiness state), the documents and forms the
+case will produce, and the workflow that follows. That approval authorizes
+the assigned HR Officer to execute the downstream workflow without coming
+back for approval of routine documents, forms or communications.
+
+| Action | Before DEC-066 | Since DEC-066 |
+| --- | --- | --- |
+| Finalize a document (`doc.finalize`) | officer submits, HR Manager approves (`doc.approve`) | assigned officer or HR Manager, on an approved case |
+| Issue a document (`doc.markIssued`, email or manual) | HR Manager | assigned officer or HR Manager, on an approved case |
+| Supersede / void a document | HR Manager | assigned officer or HR Manager |
+| Release an external, employee-facing or restricted notification | HR Manager (`notification.approveExternal`) | assigned officer or HR Manager (`notification.approveInternal`) |
+| Amend benefits and providers | any HR on the case, any time | officer while drafting; HR Manager only after submission (audited) |
+| Workflow task "Authorized HR Manager approval" | termination and redundancy workflows | removed (definition v4) |
+
+Retained as distinct controls: the case approval itself; the final
+clearance decision; the optional configuration-gated Action Form HR review
+and form voiding; recipient-directory approval and verification; waivers,
+overrides, holds, reopening and security exceptions; template and workflow
+activation; employee and external acknowledgements. Ownership (DEC-065)
+still decides *who* executes: another HR Officer reads the case only.
+
 ## Capability matrix
 
 Legend: `Full` means within approved record scope, not unrestricted database access.
@@ -110,10 +137,11 @@ Legend: `Full` means within approved record scope, not unrestricted database acc
 | Capability | HR Manager | HR Officer | Everyone else (no login) |
 | --- | --- | --- | --- |
 | Case creation/edit | Full | Create/edit assigned | None |
-| Case approval/closure | Approve/close/reopen/void | Prepare only | None |
+| Case approval/closure | Approve once on the Case Approval Summary, return to draft, close/reopen/void | Prepare and submit | None |
 | Termination preparation | Explicit assigned access | Only if explicitly assigned | None |
-| Documents | Prepare/approve/issue | Prepare/submit/complete ordinary forms | Recipient of issued documents only |
-| Notifications | Approve, configure recipients and routing, oversee the outbox | Prepare, manage routine, enter a recipient for one case | Receive; acknowledge through secure links |
+| Documents | Finalize/issue/supersede/void on any case (intervention); no per-document approval | Finalize, issue, supersede and void on the assigned case under the case approval; complete ordinary forms | Recipient of issued documents only |
+| Notifications | Release on any case, configure recipients and routing, oversee the outbox | Prepare, release every waiting notification on the assigned case (internal, external, employee-facing, restricted), enter a recipient for one case | Receive; acknowledge through secure links |
+| Benefits and providers | Select at intake; amend after submission (audited) | Select at intake; correct while the case is a draft | None |
 | Assets and return items | Approve exception/waiver | Manage checklist | Confirm through secure link |
 | Exit responses | Identifiable access | Identifiable access if authorized | Respond through the survey link only |
 | Reports/exports | HR reports, controlled export, scheduling | Operational reports and exports | None |
@@ -147,7 +175,7 @@ Legend: `Full` means within approved record scope, not unrestricted database acc
 
 The product should support:
 
-- HR Officer prepares; HR Manager approves sensitive document/notification.
+- HR Officer prepares and submits the case; HR Manager approves it once, on a summary of everything the approval authorizes (DEC-066). After that, the assigned officer executes and the manager intervenes; there is no per-document or per-notification second approver.
 - role grant requester is not the sole approver; nobody grants a role to themself.
 - template/workflow author is not the sole activator.
 - break-glass user cannot approve their own access.
@@ -236,11 +264,12 @@ formal policy/legal approval.
   `asset.view` to see it on the case, `asset.manage` to record or correct it.
   The recipient needs no permission at all - the secure single-use link is the
   authorization, under the DEC-048 token discipline.
-- **Issuing the acceptance letter by email (DEC-054)** is `doc.markIssued`,
-  the same management-grade authority that already covered recording a manual
-  issue. Maker-checker on employee-facing documents is unchanged: the officer
-  drafts and addresses, the HR Manager approves and issues. Typing the address
-  from the resignation scan is officer work (`doc.edit`).
+- **Issuing the acceptance letter by email (DEC-054)** is `doc.markIssued`.
+  Since DEC-066 this is edit authority on the case: the assigned HR Officer
+  (or the HR Manager intervening) finalizes the letter (`doc.finalize`) and
+  issues it under the HR Manager approval of the case. The per-document
+  maker-checker this note originally described is retired. Typing the
+  address from the resignation scan remains officer work (`doc.edit`).
 - **`notifications.routing`** edits the routing table (DEC-056) and
   **`notifications.testMode`** turns rehearsal mode on and off (DEC-055).
   Both were held by the HR Manager and the System Administrator; since

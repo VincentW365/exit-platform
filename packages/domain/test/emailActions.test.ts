@@ -9,7 +9,9 @@ import {
   isPlausibleActionToken,
   itEmailScheduledAt,
   recipientEmailErrors,
+  normalizeSendControl,
   resolveSendControl,
+  CURRENT_SEND_CONTROL_LEVELS,
   DEFAULT_SEND_CONTROL,
 } from '../src/emailActions.ts';
 
@@ -40,23 +42,49 @@ describe('send control levels (Directive 6.3 R/S)', () => {
     ).toBe('AUTO_SEND');
   });
 
-  it('restricted cases escalate to the stricter level (S: termination controls)', () => {
+  it('restricted cases are never sent automatically (S: termination timing controls)', () => {
     expect(
       resolveSendControl({
         notificationType: 'IT_ACCESS_REMOVAL',
         configured: null,
         caseClassification: 'RESTRICTED',
       }),
-    ).toBe('HR_MANAGER_APPROVAL_REQUIRED');
+    ).toBe('HR_REVIEW_THEN_SEND');
     // The override can never WEAKEN a stricter configured level.
     expect(
       resolveSendControl({
-        notificationType: 'MANUAL_EXCEPTION_NOTIFICATION',
+        notificationType: 'SAGICOR_GROUP_HEALTH_REMOVAL',
+        configured: { SAGICOR_GROUP_HEALTH_REMOVAL: 'HR_REVIEW_THEN_SEND' },
+        caseClassification: 'RESTRICTED',
+        restrictedOverride: 'AUTO_SEND',
+      }),
+    ).toBe('HR_REVIEW_THEN_SEND');
+  });
+
+  it('a legacy HR_MANAGER_APPROVAL_REQUIRED resolves to HR review under the single authorization gate (DEC-066)', () => {
+    // Stored before the change: configuration or a restricted override that
+    // still says "manager approval". The case approval is that approval now,
+    // so the record waits for the HR person executing the case - nobody else.
+    expect(normalizeSendControl('HR_MANAGER_APPROVAL_REQUIRED')).toBe('HR_REVIEW_THEN_SEND');
+    expect(normalizeSendControl('AUTO_SEND')).toBe('AUTO_SEND');
+    expect(
+      resolveSendControl({
+        notificationType: 'IT_ACCESS_REMOVAL',
+        configured: { IT_ACCESS_REMOVAL: 'HR_MANAGER_APPROVAL_REQUIRED' },
+        caseClassification: 'CONFIDENTIAL',
+      }),
+    ).toBe('HR_REVIEW_THEN_SEND');
+    expect(
+      resolveSendControl({
+        notificationType: 'IT_ACCESS_REMOVAL',
         configured: null,
         caseClassification: 'RESTRICTED',
-        restrictedOverride: 'HR_REVIEW_THEN_SEND',
+        restrictedOverride: 'HR_MANAGER_APPROVAL_REQUIRED',
       }),
-    ).toBe('HR_MANAGER_APPROVAL_REQUIRED');
+    ).toBe('HR_REVIEW_THEN_SEND');
+    // Nothing new is written with the legacy level.
+    expect(DEFAULT_SEND_CONTROL.MANUAL_EXCEPTION_NOTIFICATION).toBe('HR_REVIEW_THEN_SEND');
+    expect(CURRENT_SEND_CONTROL_LEVELS).not.toContain('HR_MANAGER_APPROVAL_REQUIRED');
   });
 });
 

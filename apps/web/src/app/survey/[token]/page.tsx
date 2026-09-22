@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { ServiceError, getSurveyByToken } from '@exit/db';
 import { SurveyQuestions } from '@/components/SurveyQuestions';
+import { BrandMark } from '@/components/BrandMark';
 import { submitSurveyAction } from './actions';
 
 export const metadata: Metadata = { title: 'Exit survey', robots: { index: false, follow: false } };
@@ -39,6 +40,11 @@ export default async function PublicSurveyPage({
 
   return (
     <main id="main" style={{ maxWidth: '38rem', margin: '1.5rem auto', padding: '0 1rem 3rem' }}>
+      {/* The company logo on every form the employee is handed (owner
+          directive 2026-09-22, section 8). */}
+      <div className="public-brand">
+        <BrandMark size="lg" />
+      </div>
       <h1>{survey.title}</h1>
       <p>{survey.introText}</p>
       <p className="banner-baseline">{survey.privacyNotice}</p>

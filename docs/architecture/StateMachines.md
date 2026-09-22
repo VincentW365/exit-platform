@@ -37,9 +37,9 @@ stateDiagram-v2
 
 | From | To | Actor/authority | Preconditions | Effects |
 | --- | --- | --- | --- | --- |
-| DRAFT | PENDING_HR_REVIEW | HR Officer/Manager | Required intake fields valid; source files clean | status history and review task |
-| PENDING_HR_REVIEW | DRAFT | HR Manager/reviewer | Return reason | review comments; no workflow |
-| PENDING_HR_REVIEW | APPROVED | HR Manager | Employee/date/type/classification validated | immutable snapshot; approval |
+| DRAFT | PENDING_HR_REVIEW | HR Officer/Manager | Required intake fields valid; source files clean; benefits and providers selected at intake (DEC-066) | status history; submission audited with the case version and approved facts |
+| PENDING_HR_REVIEW | DRAFT | HR Manager | Return reason (shown to the officer on the draft) | review comments; no workflow; nothing downstream executes |
+| PENDING_HR_REVIEW | APPROVED | HR Manager, on the Case Approval Summary | Employee/date/type/classification validated; the summary shows recipients, documents/forms and the workflow | immutable snapshot; approval audited with version and snapshot checksum; **the single authorization gate**: the assigned HR Officer may now finalize and issue documents, complete forms and release notifications without further HR Manager approval (DEC-066) |
 | APPROVED | ACTIVE | System | workflow instantiated exactly once | tasks and schedules created |
 | ACTIVE | CLEARANCE_REVIEW | HR Officer/system command | mandatory tasks terminal or validly waived; assets have final dispositions; effective-time rules satisfied | closure report generated |
 | CLEARANCE_REVIEW | COMPLETED | HR Manager | closure integrity passes; no unresolved blocking exception | completion timestamp/event |
@@ -95,28 +95,43 @@ Rules:
 - reassignment does not change task state.
 - completion/waiver/cancellation is terminal unless the case is reopened through a controlled action that creates a new task or explicit reactivation history.
 
-## 3. Document state machine
+## 3. Document state machine (DEC-066: single authorization gate)
 
 ```mermaid
 stateDiagram-v2
     [*] --> DRAFT
-    DRAFT --> GENERATED: render succeeds
-    GENERATED --> PENDING_APPROVAL: submit
-    PENDING_APPROVAL --> GENERATED: return/reject for correction
-    PENDING_APPROVAL --> APPROVED: approve
-    APPROVED --> ISSUED: issue and store immutable bytes
-    GENERATED --> VOIDED: abandon invalid draft
-    PENDING_APPROVAL --> VOIDED: cancel
-    ISSUED --> SUPERSEDED: replacement issued
+    DRAFT --> VALIDATION_FAILED: validation fails (fields stale or missing)
+    VALIDATION_FAILED --> DRAFT: fields refreshed
+    DRAFT --> APPROVED: finalize (attested, checksum-bound; case must be in an execution status)
+    APPROVED --> RENDERING: render
+    RENDERING --> RENDERED: final bytes stored
+    RENDERING --> RENDER_FAILED: worker retries
+    RENDERED --> MANUALLY_ISSUED: record manual issue
+    RENDERED --> ISSUED_BY_EMAIL: send with PDF attached
+    RENDERED --> SUPERSEDED: material case correction or manual supersede
+    MANUALLY_ISSUED --> SUPERSEDED: replacement issued
+    ISSUED_BY_EMAIL --> SUPERSEDED: replacement issued
     DRAFT --> VOIDED
-    ISSUED --> [*]
+    APPROVED --> VOIDED
+    RENDERED --> VOIDED
     SUPERSEDED --> [*]
     VOIDED --> [*]
 ```
 
+`PENDING_APPROVAL` and `RETURNED` are legacy statuses of the retired
+per-document approval (submit → HR Manager approve → return); a historical row
+still in one is editable and finalizes like a draft. No new document enters
+them.
+
 Rules:
 
-- `GENERATED` is not sent/issued.
+- finalization is ONE step by the HR person executing the approved case (the
+  assigned HR Officer, or the HR Manager intervening): validation, attestation
+  (`HR_DOCUMENT_FINALIZATION`), checksum and render. The HR Manager approval of
+  the case is the authorization; the audit event `DOC_FINALIZED` names it.
+- nothing is finalized or issued unless the case is APPROVED, ACTIVE,
+  CLEARANCE_REVIEW or REOPENED.
+- `DRAFT` / `APPROVED` (finalized, not yet rendered) are not sent/issued.
 - issued content cannot be edited.
 - correction creates a new document linked to the old one.
 - the old document becomes `SUPERSEDED` only after the replacement is issued.

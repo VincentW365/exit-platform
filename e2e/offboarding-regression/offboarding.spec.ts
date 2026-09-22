@@ -690,7 +690,9 @@ async function runScenario(
 
   // --- 12. Officer: benefits, assets, email release ---------------------------------------------
   await ev.step('benefits and providers', page, async () => {
-    await ui.switchTo(page, 'HR Officer');
+    // DEC-066: on an approved case the selection is an approved fact; only
+    // the HR Manager corrects it (audited). The officer chose it at intake.
+    await ui.switchTo(page, 'HR Manager');
     const msg = await ui.confirmBenefits(page, caseUrl, x.benefits.health, x.benefits.life);
     bridge.sweep();
     await page.goto(caseUrl);
@@ -804,15 +806,14 @@ async function runScenario(
       ev.fact('Letter preparation', log);
       ev.expect(
         'documents',
-        'Letter draft created, address saved, fields refreshed, validated and submitted',
-        log.some((l) => /submit: .*submitted/i.test(l)),
+        'Letter draft created, address saved, fields refreshed, validated and finalized',
+        log.some((l) => /submit: .*(submitted|finalized)/i.test(l)),
         log.join(' | '),
       );
-      await ui.switchTo(page, 'HR Manager');
       const msg = await ui.approveDocument(page, caseUrl);
       ev.pass(
         'documents',
-        'Letter approved (attested, maker-checker) and PDF rendered',
+        'Letter finalized by the assigned HR Officer under the case approval (attested) and PDF rendered',
         msg.slice(0, 100),
       );
       const hrefs = await ui.documentPdfHrefs(page, caseUrl);

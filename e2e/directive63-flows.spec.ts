@@ -47,10 +47,12 @@ test('HR manager reviews an active case: required actions, benefits, email actio
       .first(),
   ).toBeVisible();
 
-  // Benefits and providers confirmation section (Directive 6.3 V).
+  // Benefits and providers summary (Directive 6.3 V; DEC-066: selected at
+  // intake, shown as a summary, amended after approval only by the manager).
   await expect(page.getByRole('heading', { name: 'Benefits and Providers' })).toBeVisible();
-  await expect(page.getByText('Group Health').first()).toBeVisible();
-  await expect(page.getByText('Group Life').first()).toBeVisible();
+  await expect(page.locator('section[aria-label="Group health provider"]')).toBeVisible();
+  await expect(page.locator('section[aria-label="Group life provider"]')).toBeVisible();
+  await expect(page.getByText('Correct the approved benefits selection')).toBeVisible();
 
   // The Email actions tab (CaseNav link "Notifications") lists the automated
   // department/provider emails in business language - never enum names.

@@ -87,12 +87,15 @@ test('Scenario 1 - notification delivery through development capture', async ({ 
     type: 'RESIGNATION_WITH_NOTICE',
   });
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Submit for review' }).click();
-  await expect(page.getByText('Case submitted for review.')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit for approval' }).click();
+  await expect(page.getByText('Case submitted for HR Manager approval.')).toBeVisible();
   await signOut(page);
   await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
+  // DEC-066: the one HR Manager decision is taken on the Case Approval Summary.
+  await page.goto(`${caseUrl}/approve`);
+  await page.getByRole('button', { name: 'Approve Case', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
   await completeAssignmentPlan(page, caseUrl);
   await page.goto(`${caseUrl}/workflow`);

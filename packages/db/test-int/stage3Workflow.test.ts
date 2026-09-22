@@ -428,7 +428,7 @@ describe('notification control (T.9, T.10, T.11, K)', () => {
     ).rejects.toMatchObject({ code: 'CONFLICT' });
   });
 
-  it('external providers require confirmed applicability + HR_MANAGER approval (T.10, K.2/K.9)', async () => {
+  it('external providers require confirmed applicability; the officer executing the approved case releases them (T.10, K.9; DEC-066)', async () => {
     await expect(
       prepareNotification(officer.actor, caseId, {
         notificationType: 'SAGICOR_GROUP_HEALTH_REMOVAL',
@@ -442,14 +442,13 @@ describe('notification control (T.9, T.10, T.11, K)', () => {
     // Minimum data: no departure wording in the external body (K.16).
     expect(record.bodySnapshot!.toLowerCase()).not.toContain('resignation');
     await transitionNotification(officer.actor, record.id, 'submit');
-    await expect(transitionNotification(officer.actor, record.id, 'approve')).rejects.toMatchObject(
-      { code: 'FORBIDDEN' },
-    ); // officer cannot approve external
-    await transitionNotification(manager.actor, record.id, 'approve');
+    // DEC-066: the case approval already authorized the provider
+    // communication; the assigned officer releases it - no manager step.
+    await transitionNotification(officer.actor, record.id, 'approve');
     const approved = await prisma.notificationRecord.findUniqueOrThrow({
       where: { id: record.id },
     });
-    expect(approved.approvedById).toBe(manager.userId);
+    expect(approved.approvedById).toBe(officer.userId);
   });
 });
 
@@ -507,6 +506,9 @@ describe('restricted termination non-discovery on the legacy v1 workflow (T.23, 
 
   it('the released restricted access task surfaces only to participant HR (H.4, Directive 6.3 I)', async () => {
     // Complete the restricted HR chain to satisfy the access dependencies.
+    // This instance is pinned to the LEGACY v1 definition, which still carries
+    // the "Authorized HR Manager approval" task; v4 (DEC-066) drops it, and
+    // running instances keep the version they started on.
     for (const code of ['HR_RESTRICTED_PREP', 'HRM_AUTHORIZATION', 'HR_CONFIRM_EFFECTIVE_TIME']) {
       const t = (await tasksOf(termCaseId)).find((x) => x.taskCode === code)!;
       await completeTask(manager.actor, t.id, `${code} recorded.`);

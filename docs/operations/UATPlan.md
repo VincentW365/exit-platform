@@ -58,15 +58,25 @@ sign-off.
 
 ### UAT-1 Case lifecycle (HR)
 
-1. **Create a TEST resignation case from a synthetic employee; submit;
-   approve with snapshot; activate workflow.**
+1. **Create a TEST resignation case from a synthetic employee, selecting the
+   benefits and providers in the Benefits & Providers step; verify the Draft
+   Overview shows them as a summary with "Edit selections"; submit; as the HR
+   Manager open "Review and approve" (the Case Approval Summary), verify the
+   Employee Record, Exit Details, HR Ownership, Benefits & Providers,
+   Notifications & Recipients (each audience with a resolved destination and a
+   readiness state), Documents & Forms and Workflow Summary sections, then
+   Approve Case; activate workflow.** (DEC-066)
 2. Hold and resume the case with reasons; verify audit entries.
-3. Attempt to approve a case you submitted yourself (must be refused where
-   the rule applies).
+3. Attempt to approve a case as the HR Officer (must be refused).
+4. Return a submitted case to draft with a reason; verify the officer sees the
+   reason on the draft and that no document can be finalized while returned.
 
 ### UAT-2 Documents and surveys (HR)
 
-1. **Generate, approve and attest the resignation acknowledgement.**
+1. **As the assigned HR Officer, generate, validate and finalize (attested)
+   the resignation acknowledgement under the case approval; verify the PDF
+   renders and that no "approve document" control exists for the HR
+   Manager; send it to the employee by email as the officer.** (DEC-066)
 2. Verify a termination letter remains impossible.
 3. Issue an exit survey token; complete the survey; confirm responses appear
    only in aggregate reporting.
@@ -88,9 +98,13 @@ sign-off.
 
 ### UAT-3b Benefits confirmation and recipient handling (6.3)
 
-1. **Confirm benefits (group health YES, group life NO, other NO); verify
-   the Sagicor notification is prepared for review, no NCB record exists,
-   and the UNKNOWN attention item clears.**
+1. **Select benefits at intake (group health included, group life not);
+   verify the approval summary lists the group health provider as Ready and
+   the group life provider as Not required, that after activation the Sagicor
+   notification is prepared for review and no NCB record exists, and that the
+   assigned HR Officer releases it without an HR Manager step. Verify the
+   officer cannot amend the selection after submission and the HR Manager can
+   (audited).** (DEC-066)
 2. **Remove/omit a provider recipient first: verify the "Recipient
    required" exception appears (never a silent skip), enter a case-only
    recipient as the HR Officer, and watch the notification proceed.**
@@ -101,7 +115,8 @@ sign-off.
 
 ### UAT-4 Notification review, outbox and templates (HR Officer + HR Manager)
 
-1. **Approve a provider notification from "Needs your review"; run the
+1. **As the assigned HR Officer, release a provider notification from "Needs
+   your review" (no HR Manager release exists since DEC-066); run the
    outbox; confirm CAPTURED in the development mailbox; confirm a repeat
    run sends nothing twice.**
 2. Record a manual send and confirm pending dispatch is cancelled.

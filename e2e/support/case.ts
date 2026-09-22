@@ -54,7 +54,10 @@ export async function openActiveHrValidatedCase(page: Page): Promise<string> {
 
   // Approval: the signed-in HR Manager approves her own draft in one
   // audited step (owner, 2026-08-25) - no submit-to-self detour.
-  await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
+  // DEC-066: the one HR Manager decision is taken on the Case Approval Summary.
+  await page.goto(`${caseUrl}/approve`);
+  await page.getByRole('button', { name: 'Approve Case', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
 
   // Assignment routing.

@@ -1,6 +1,9 @@
 ﻿/**
- * Document instance workflow (Directive 2 sections C-E).
- * Maker-checker with checksum-bound attestations; deterministic idempotent
+ * Document instance workflow (Directive 2 sections C-E; DEC-066).
+ *
+ * The HR Manager approves the CASE once. The HR person executing the
+ * approved case then finalizes each document in one attested, checksum-bound
+ * step - there is no per-document manager approval. Deterministic idempotent
  * rendering; strict no-hard-delete; restricted-case inheritance.
  */
 import {
@@ -9,12 +12,15 @@ import {
   contentChecksum,
   docTransitionError,
   documentValidationErrors,
+  executionBlockedReason,
   hasMissingMarkers,
+  hasRole,
   isoDateInZone,
   letterTypeForDeparture,
   maskDestination,
   substitute,
   DOWNLOADABLE_DOC_STATUSES,
+  EDITABLE_DOC_STATUSES,
   LIVE_DOC_STATUSES,
   type Actor,
   type DocumentFieldSnapshot,
@@ -204,7 +210,9 @@ export async function getCaseDocuments(actor: Actor, caseId: string) {
   const docs = await getPrisma().documentInstance.findMany({
     where: { caseId },
     orderBy: [{ documentType: 'asc' }, { version: 'desc' }],
-    include: { template: { select: { name: true } } },
+    // The template body lets the page show a draft's content BEFORE it is
+    // finalized (DEC-066: the officer reviews, then finalizes).
+    include: { template: { select: { name: true, contentBody: true } } },
   });
   const attestations = await getPrisma().attestation.findMany({
     where: { subjectType: 'DOCUMENT', subjectId: { in: docs.map((x) => x.id) } },
@@ -214,7 +222,7 @@ export async function getCaseDocuments(actor: Actor, caseId: string) {
   // masked because nothing on a page needs the whole address.
   const c = await getPrisma().offboardingCase.findUniqueOrThrow({
     where: { id: caseId },
-    select: { employeeAddress: true, employeeWorkEmail: true },
+    select: { employeeAddress: true, employeeWorkEmail: true, status: true },
   });
   return {
     docs,
@@ -223,17 +231,26 @@ export async function getCaseDocuments(actor: Actor, caseId: string) {
       employeeAddress: c.employeeAddress,
       employeeEmailMask: c.employeeWorkEmail ? maskDestination(c.employeeWorkEmail) : null,
     },
+    /**
+     * DEC-066: finalizing and issuing are gated on the CASE approval being in
+     * force, not on a second document approval. Null means execution is
+     * authorized; otherwise the sentence the page shows instead of the
+     * finalize and send controls.
+     */
+    executionBlockedReason: executionBlockedReason(c.status),
     capabilities: {
       canCreate: canActOnCase(actor, 'doc.create', ctx),
-      canApprove: canActOnCase(actor, 'doc.approve', ctx),
+      canFinalize: canActOnCase(actor, 'doc.finalize', ctx),
       canDownload: canActOnCase(actor, 'doc.download', ctx),
       canEdit: canActOnCase(actor, 'doc.edit', ctx),
       canIssue: canActOnCase(actor, 'doc.markIssued', ctx),
+      canSupersede: canActOnCase(actor, 'doc.supersede', ctx),
+      canVoid: canActOnCase(actor, 'doc.void', ctx),
     },
   };
 }
 
-/** Preview body: substituted content with approver placeholders labelled. */
+/** Preview body: substituted content with the signatory placeholders labelled. */
 export function previewContent(
   templateBody: string,
   fieldSnapshot: DocumentFieldSnapshot,
@@ -241,8 +258,8 @@ export function previewContent(
 ): string {
   const snap: DocumentFieldSnapshot = {
     ...fieldSnapshot,
-    HR_APPROVER_NAME: approver?.name ?? '(approver name - completed at approval)',
-    HR_APPROVER_TITLE: approver?.title ?? '(approver title - completed at approval)',
+    HR_APPROVER_NAME: approver?.name ?? '(signatory name - completed when finalized)',
+    HR_APPROVER_TITLE: approver?.title ?? '(signatory title - completed when finalized)',
   };
   return substitute(templateBody, snap);
 }
@@ -263,9 +280,7 @@ export async function getDocumentForView(actor: Actor, docId: string) {
         : null),
     capabilities: {
       canEdit: canActOnCase(actor, 'doc.edit', ctx),
-      canSubmit: canActOnCase(actor, 'doc.submit', ctx),
-      canApprove: canActOnCase(actor, 'doc.approve', ctx),
-      canReturn: canActOnCase(actor, 'doc.return', ctx),
+      canFinalize: canActOnCase(actor, 'doc.finalize', ctx),
       canVoid: canActOnCase(actor, 'doc.void', ctx),
       canMarkIssued: canActOnCase(actor, 'doc.markIssued', ctx),
       canSupersede: canActOnCase(actor, 'doc.supersede', ctx),
@@ -280,8 +295,8 @@ export async function getDocumentForView(actor: Actor, docId: string) {
 export async function refreshDraftFields(actor: Actor, docId: string) {
   const { d, ctx } = await loadDoc(actor, docId);
   if (!canActOnCase(actor, 'doc.edit', ctx)) throw ServiceError.forbidden();
-  if (!['DRAFT', 'RETURNED', 'VALIDATION_FAILED'].includes(d.status))
-    throw ServiceError.conflict('Only draft/returned documents can be edited.');
+  if (!EDITABLE_DOC_STATUSES.includes(d.status as never))
+    throw ServiceError.conflict('Only draft documents can be edited.');
   if (d.documentType === 'MANUAL_EXCEPTION_DOCUMENT')
     throw ServiceError.conflict('Manual-exception documents have no generated fields.');
 
@@ -321,157 +336,6 @@ export async function refreshDraftFields(actor: Actor, docId: string) {
 
 // --- transitions -------------------------------------------------------------
 
-export async function submitDocument(actor: Actor, docId: string) {
-  const { d, c, ctx } = await loadDoc(actor, docId);
-  if (!canActOnCase(actor, 'doc.submit', ctx)) throw ServiceError.forbidden();
-  const guard = docTransitionError('submit', d.status);
-  if (guard) throw ServiceError.validation([guard]);
-
-  const correlationId = newCorrelationId();
-  const prisma = getPrisma();
-
-  if (d.documentType === 'MANUAL_EXCEPTION_DOCUMENT') {
-    if (!d.exceptionAttachmentId)
-      throw ServiceError.validation(['The exception document upload is missing.']);
-    return prisma.$transaction(async (tx) => {
-      const u = await tx.documentInstance.updateMany({
-        where: { id: docId, rowVersion: d.rowVersion },
-        data: {
-          status: 'PENDING_APPROVAL',
-          submittedAt: new Date(),
-          submittedById: actor.userId,
-          rowVersion: { increment: 1 },
-        },
-      });
-      if (u.count === 0) throw ServiceError.conflict('The document changed; reload and retry.');
-      await appendAudit(tx, {
-        eventType: 'DOC_SUBMITTED',
-        actorType: 'USER',
-        actorId: actor.userId,
-        effectiveRoles: actor.roles,
-        objectType: 'DocumentInstance',
-        objectId: docId,
-        caseId: d.caseId,
-        result: 'SUCCESS',
-        correlationId,
-        metadata: { documentType: d.documentType, documentVersion: d.version },
-      });
-    });
-  }
-
-  if (!d.template) throw ServiceError.conflict('Template missing for this document.');
-  const snapshot = d.fieldSnapshot as DocumentFieldSnapshot;
-  const errors = documentValidationErrors(d.documentType, d.template.contentBody, snapshot);
-  // Date-order check from live case values (C.5): confirmed >= received,
-  // compared as CALENDAR DAYS in the business zone. The last working day is a
-  // date-only column (midnight UTC) and the received value is an instant, so
-  // comparing them raw called the platform's own defaults for an immediate
-  // resignation - received today, last day today - an error (found by the
-  // offboarding regression suite, 2026-09-09).
-  if (
-    c.confirmedLastDay &&
-    c.receivedAt &&
-    c.confirmedLastDay.toISOString().slice(0, 10) < isoDateInZone(c.receivedAt)
-  )
-    errors.push('Confirmed last working date is before the resignation received date.');
-  // Changed-case-data check (C.5): re-derive and compare material values.
-  const fresh = await snapshotForCase(d.caseId, d.version, d.templateVersion ?? 0);
-  for (const key of [
-    'EMPLOYEE_LEGAL_NAME',
-    'RESIGNATION_RECEIVED_DATE',
-    'CONFIRMED_LAST_WORKING_DATE',
-    'EFFECTIVE_SEPARATION_DATE',
-    'EFFECTIVE_SEPARATION_TIME',
-  ] as const) {
-    if ((snapshot[key] ?? '') !== (fresh[key] ?? ''))
-      errors.push(
-        `Case data changed since this draft captured ${key}; edit the draft to refresh fields.`,
-      );
-  }
-
-  return prisma.$transaction(async (tx) => {
-    if (errors.length) {
-      await tx.documentInstance.updateMany({
-        where: { id: docId, rowVersion: d.rowVersion },
-        data: {
-          status: 'VALIDATION_FAILED',
-          validationErrors: errors,
-          rowVersion: { increment: 1 },
-        },
-      });
-      await appendAudit(tx, {
-        eventType: 'DOC_VALIDATION_FAILED',
-        actorType: 'USER',
-        actorId: actor.userId,
-        effectiveRoles: actor.roles,
-        objectType: 'DocumentInstance',
-        objectId: docId,
-        caseId: d.caseId,
-        result: 'FAILURE',
-        correlationId,
-        metadata: {
-          documentType: d.documentType,
-          documentVersion: d.version,
-          errorCount: errors.length,
-        },
-      });
-      throw ServiceError.validation(errors);
-    }
-    const content = previewContent(d.template!.contentBody, snapshot);
-    const u = await tx.documentInstance.updateMany({
-      where: { id: docId, rowVersion: d.rowVersion },
-      data: {
-        status: 'PENDING_APPROVAL',
-        contentSnapshot: content,
-        validationErrors: undefined,
-        submittedAt: new Date(),
-        submittedById: actor.userId,
-        rowVersion: { increment: 1 },
-      },
-    });
-    if (u.count === 0) throw ServiceError.conflict('The document changed; reload and retry.');
-    await appendAudit(tx, {
-      eventType: 'DOC_SUBMITTED',
-      actorType: 'USER',
-      actorId: actor.userId,
-      effectiveRoles: actor.roles,
-      objectType: 'DocumentInstance',
-      objectId: docId,
-      caseId: d.caseId,
-      result: 'SUCCESS',
-      correlationId,
-      metadata: { documentType: d.documentType, documentVersion: d.version },
-    });
-  });
-}
-
-export async function returnDocument(actor: Actor, docId: string, reason: string) {
-  const { d, ctx } = await loadDoc(actor, docId);
-  if (!canActOnCase(actor, 'doc.return', ctx)) throw ServiceError.forbidden();
-  const guard = docTransitionError('return', d.status, reason);
-  if (guard) throw ServiceError.validation([guard]);
-  const correlationId = newCorrelationId();
-  await getPrisma().$transaction(async (tx) => {
-    const u = await tx.documentInstance.updateMany({
-      where: { id: docId, rowVersion: d.rowVersion },
-      data: { status: 'RETURNED', returnReason: reason.trim(), rowVersion: { increment: 1 } },
-    });
-    if (u.count === 0) throw ServiceError.conflict('The document changed; reload and retry.');
-    await appendAudit(tx, {
-      eventType: 'DOC_RETURNED',
-      actorType: 'USER',
-      actorId: actor.userId,
-      effectiveRoles: actor.roles,
-      objectType: 'DocumentInstance',
-      objectId: docId,
-      caseId: d.caseId,
-      result: 'SUCCESS',
-      correlationId,
-      metadata: { documentType: d.documentType, documentVersion: d.version, reason },
-    });
-  });
-}
-
 export async function voidDocument(actor: Actor, docId: string, reason: string) {
   const { d, ctx } = await loadDoc(actor, docId);
   if (!canActOnCase(actor, 'doc.void', ctx)) throw ServiceError.forbidden();
@@ -499,67 +363,153 @@ export async function voidDocument(actor: Actor, docId: string, reason: string) 
   });
 }
 
-/** Maker-checker approval bound to exact content checksum (D.7/D.8). */
-export async function approveDocument(actor: Actor, docId: string) {
-  const { d, ctx } = await loadDoc(actor, docId);
-  if (!canActOnCase(actor, 'doc.approve', ctx)) {
+/**
+ * DEC-066: the case approval is the only management authorization a document
+ * needs. Who approved the case, and when, travels with every finalization so
+ * the attestation says under whose authority the document was released.
+ */
+async function caseApprovalAuthority(caseId: string): Promise<{
+  approvedById: string;
+  approvedAt: Date;
+} | null> {
+  const row = await getPrisma().caseStatusHistory.findFirst({
+    where: { caseId, toStatus: 'APPROVED' },
+    orderBy: { occurredAt: 'desc' },
+    select: { actorId: true, occurredAt: true },
+  });
+  return row ? { approvedById: row.actorId, approvedAt: row.occurredAt } : null;
+}
+
+/**
+ * Validate, attest and release a document for rendering in ONE step (owner
+ * directive 2026-09-22, DEC-066). The HR Manager approved the case; the HR
+ * person executing it - the assigned HR Officer, or the HR Manager stepping
+ * in - finalizes the document. No second, per-document manager approval.
+ *
+ * The gate that matters is the CASE: nothing finalizes while the case is a
+ * draft, awaiting approval, on hold or closed. Validation is unchanged from
+ * the retired submit step (placeholders, date order, changed-case data),
+ * because those checks protect the employee, not a management signature.
+ */
+export async function finalizeDocument(actor: Actor, docId: string) {
+  const { d, c, ctx } = await loadDoc(actor, docId);
+  if (!canActOnCase(actor, 'doc.finalize', ctx)) {
     await auditDenied(actor, 'ACCESS_DENIED', 'DocumentInstance', docId, d.caseId);
     throw ServiceError.forbidden();
   }
-  // Maker-checker (UAT-4 finding): the human who VALIDATED AND SUBMITTED this
-  // version is the maker; they can never also be the approver. The mechanical
-  // creator is used only as a fallback for legacy rows submitted before the
-  // submitter was recorded. This keeps supersede-and-recreate workable in a
-  // single-HR-Manager organization (the manager's auto-created corrected
-  // draft is reviewed and submitted by an HR officer, then manager-approved)
-  // without ever allowing one person to both submit and approve.
-  const makerId = d.submittedById ?? d.createdById;
-  if (makerId === actor.userId)
-    throw ServiceError.forbidden(
-      'The user who submitted this document for approval cannot also approve it (maker-checker).',
-    );
-  const guard = docTransitionError('approve', d.status);
+  const blocked = executionBlockedReason(c.status);
+  if (blocked) throw ServiceError.validation([blocked]);
+  const guard = docTransitionError('finalize', d.status);
   if (guard) throw ServiceError.validation([guard]);
 
+  const authority = await caseApprovalAuthority(d.caseId);
+  if (!authority)
+    throw ServiceError.conflict('No case approval is recorded; the case must be approved first.');
+
   const prisma = getPrisma();
-  const approverUser = await prisma.user.findUniqueOrThrow({ where: { id: actor.userId } });
-  const approverTitle = actor.roles.includes('HR_MANAGER') ? 'HR Manager' : actor.roles.join(', ');
+  const finalizer = await prisma.user.findUniqueOrThrow({ where: { id: actor.userId } });
+  const finalizerTitle = hasRole(actor, 'HR_MANAGER') ? 'HR Manager' : 'HR Officer';
   const correlationId = newCorrelationId();
+  const now = new Date();
 
   let finalContent: string | null = null;
   let checksum: string;
+  let fieldSnapshot: object = d.fieldSnapshot as object;
+
   if (d.documentType === 'MANUAL_EXCEPTION_DOCUMENT') {
+    if (!d.exceptionAttachmentId)
+      throw ServiceError.validation(['The exception document upload is missing.']);
     const att = await prisma.attachment.findUniqueOrThrow({
-      where: { id: d.exceptionAttachmentId! },
+      where: { id: d.exceptionAttachmentId },
     });
     checksum = att.checksum;
   } else {
-    const snapshot = {
-      ...(d.fieldSnapshot as DocumentFieldSnapshot),
-      HR_APPROVER_NAME: approverUser.displayName,
-      HR_APPROVER_TITLE: approverTitle,
+    if (!d.template) throw ServiceError.conflict('Template missing for this document.');
+    const snapshot = d.fieldSnapshot as DocumentFieldSnapshot;
+    const errors = documentValidationErrors(d.documentType, d.template.contentBody, snapshot);
+    // Date-order check from live case values (C.5): confirmed >= received,
+    // compared as CALENDAR DAYS in the business zone. The last working day is a
+    // date-only column (midnight UTC) and the received value is an instant, so
+    // comparing them raw called the platform's own defaults for an immediate
+    // resignation - received today, last day today - an error (found by the
+    // offboarding regression suite, 2026-09-09).
+    if (
+      c.confirmedLastDay &&
+      c.receivedAt &&
+      c.confirmedLastDay.toISOString().slice(0, 10) < isoDateInZone(c.receivedAt)
+    )
+      errors.push('Confirmed last working date is before the resignation received date.');
+    // Changed-case-data check (C.5): re-derive and compare material values.
+    // This is the officer-executes-what-was-approved safeguard for letters:
+    // a draft captured before a correction cannot be finalized against it.
+    const fresh = await snapshotForCase(d.caseId, d.version, d.templateVersion ?? 0);
+    for (const key of [
+      'EMPLOYEE_LEGAL_NAME',
+      'RESIGNATION_RECEIVED_DATE',
+      'CONFIRMED_LAST_WORKING_DATE',
+      'EFFECTIVE_SEPARATION_DATE',
+      'EFFECTIVE_SEPARATION_TIME',
+    ] as const) {
+      if ((snapshot[key] ?? '') !== (fresh[key] ?? ''))
+        errors.push(
+          `Case data changed since this draft captured ${key}; edit the draft to refresh fields.`,
+        );
+    }
+    if (errors.length) {
+      await prisma.$transaction(async (tx) => {
+        await tx.documentInstance.updateMany({
+          where: { id: docId, rowVersion: d.rowVersion },
+          data: {
+            status: 'VALIDATION_FAILED',
+            validationErrors: errors,
+            rowVersion: { increment: 1 },
+          },
+        });
+        await appendAudit(tx, {
+          eventType: 'DOC_VALIDATION_FAILED',
+          actorType: 'USER',
+          actorId: actor.userId,
+          effectiveRoles: actor.roles,
+          objectType: 'DocumentInstance',
+          objectId: docId,
+          caseId: d.caseId,
+          result: 'FAILURE',
+          correlationId,
+          metadata: {
+            documentType: d.documentType,
+            documentVersion: d.version,
+            errorCount: errors.length,
+          },
+        });
+      });
+      throw ServiceError.validation(errors);
+    }
+    const signed = {
+      ...snapshot,
+      HR_APPROVER_NAME: finalizer.displayName,
+      HR_APPROVER_TITLE: finalizerTitle,
     };
-    finalContent = substitute(d.template!.contentBody, snapshot);
+    finalContent = substitute(d.template.contentBody, signed);
     if (hasMissingMarkers(finalContent))
       throw ServiceError.validation([
-        'The document still contains unresolved fields; return it for correction.',
+        'The document still contains unresolved fields; refresh the draft from the case and try again.',
       ]);
     checksum = contentChecksum(finalContent);
+    fieldSnapshot = signed;
   }
 
   await prisma.$transaction(async (tx) => {
     const u = await tx.documentInstance.updateMany({
-      where: { id: docId, rowVersion: d.rowVersion, status: 'PENDING_APPROVAL' },
+      where: { id: docId, rowVersion: d.rowVersion },
       data: {
         status: 'APPROVED',
         contentSnapshot: finalContent ?? undefined,
         contentChecksum: checksum,
-        fieldSnapshot: {
-          ...(d.fieldSnapshot as object),
-          HR_APPROVER_NAME: approverUser.displayName,
-          HR_APPROVER_TITLE: approverTitle,
-        },
-        approvedAt: new Date(),
+        fieldSnapshot,
+        validationErrors: undefined,
+        submittedAt: now,
+        submittedById: actor.userId,
+        approvedAt: now,
         rowVersion: { increment: 1 },
       },
     });
@@ -570,19 +520,19 @@ export async function approveDocument(actor: Actor, docId: string) {
         subjectType: 'DOCUMENT',
         subjectId: docId,
         subjectVersion: d.version,
-        kind: 'HR_DOCUMENT_APPROVAL',
+        kind: 'HR_DOCUMENT_FINALIZATION',
         caseId: d.caseId,
         actorId: actor.userId,
-        actorDisplayName: approverUser.displayName,
-        actorRole: approverTitle,
+        actorDisplayName: finalizer.displayName,
+        actorRole: finalizerTitle,
         meaning:
-          'I approve this exact document version and content for release as the final employee-facing document.',
+          'I confirm this exact document version and content for release as the final employee-facing document, under the HR Manager approval of this case.',
         contentChecksum: checksum,
         correlationId,
       },
     });
     await appendAudit(tx, {
-      eventType: 'DOC_APPROVED',
+      eventType: 'DOC_FINALIZED',
       actorType: 'USER',
       actorId: actor.userId,
       effectiveRoles: actor.roles,
@@ -595,11 +545,15 @@ export async function approveDocument(actor: Actor, docId: string) {
         documentType: d.documentType,
         documentVersion: d.version,
         checksum,
+        authority: 'CASE_APPROVAL',
+        caseApprovedById: authority.approvedById,
+        caseApprovedAt: authority.approvedAt.toISOString(),
+        caseStatus: c.status,
       },
     });
   });
 
-  // Approval invokes rendering (D.9); failures fall to the worker retry job.
+  // Finalization invokes rendering (D.9); failures fall to the worker retry job.
   await renderApprovedDocument(docId, correlationId);
 }
 
@@ -705,8 +659,12 @@ export async function markManuallyIssued(
     note?: string;
   },
 ) {
-  const { d, ctx } = await loadDoc(actor, docId);
+  const { d, c, ctx } = await loadDoc(actor, docId);
   if (!canActOnCase(actor, 'doc.markIssued', ctx)) throw ServiceError.forbidden();
+  // DEC-066: issuing executes the approved case; a returned or held case
+  // cannot issue anything, whoever is asking.
+  const blocked = executionBlockedReason(c.status);
+  if (blocked) throw ServiceError.validation([blocked]);
   const guard = docTransitionError('markIssued', d.status);
   if (guard) throw ServiceError.validation([guard]);
   if (input.note && input.note.length > 300)
@@ -842,10 +800,12 @@ export async function downloadDocumentPdf(actor: Actor, docId: string) {
 // --- material case corrections (D.12) ----------------------------------------
 
 /**
- * Called after a material case correction: pre-approval versions fall back to
- * VALIDATION_FAILED (stale fields), approved/rendered-but-unissued versions
+ * Called after a material case correction: unfinalized versions fall back to
+ * VALIDATION_FAILED (stale fields), finalized/rendered-but-unissued versions
  * are superseded with their attestations invalidated. Issued documents are
- * never touched.
+ * never touched. This is the "officer executes what was approved" safeguard
+ * for documents (DEC-066 section 32): a corrected case never carries a
+ * letter finalized against the old facts.
  */
 export async function outdateDocumentsForCaseChange(caseId: string, reason: string): Promise<void> {
   const prisma = getPrisma();

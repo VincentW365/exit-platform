@@ -147,6 +147,37 @@ describe('case action authorization', () => {
     }
   });
 
+  it('post-approval execution is the assigned officer authority - no second manager approval (DEC-066)', () => {
+    // Everything the approved plan authorizes: finalize and issue documents,
+    // complete forms, release provider and employee-facing notifications.
+    for (const action of [
+      'doc.finalize',
+      'doc.markIssued',
+      'doc.supersede',
+      'doc.void',
+      'form.submit',
+      'form.complete',
+      'notification.prepare',
+      'notification.approveInternal',
+      'notification.recordSend',
+      'notification.enterRecipient',
+    ] as const) {
+      expect(canActOnCase(actor('m', 'HR_MANAGER'), action, normalCase), action).toBe(true);
+      expect(canActOnCase(actor('hr-officer-1', 'HR_OFFICER'), action, normalCase), action).toBe(
+        true,
+      );
+      // Another officer can read the case (below) but not work it.
+      expect(canActOnCase(actor('hr-officer-9', 'HR_OFFICER'), action, normalCase), action).toBe(
+        false,
+      );
+      expect(
+        canActOnCase(actor('hr-officer-9', 'HR_OFFICER'), action, unassignedCase),
+        action,
+      ).toBe(false);
+      expect(canActOnCase(noActiveRole, action, normalCase), action).toBe(false);
+    }
+  });
+
   it('read surfaces stay open to every HR viewer regardless of ownership', () => {
     for (const action of [
       'workflow.view',

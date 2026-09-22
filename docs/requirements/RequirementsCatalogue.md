@@ -59,6 +59,8 @@
 | REQ-CASE-023 | Case-capture SLA evidence | The system shall preserve timestamps needed to compute case capture compliance without relying on mutable UI fields. | MUST | 1 | PROVISIONAL |
 | REQ-CASE-024 | Field source display | The case UI shall display the source and last synchronized time for key employee fields. | SHOULD | 1 | PROVISIONAL |
 | REQ-CASE-025 | Date-change impact preview | Before confirming a changed effective date/time, the system shall show impacted tasks, documents, and notifications. | MUST | 3 | PROVISIONAL |
+| REQ-CASE-027 | Single authorization gate | HR Manager approval of the case shall be taken on a Case Approval Summary showing the employee record, exit details, HR ownership, the benefits and providers selected at intake, the communication plan grouped by audience with resolved destinations and a readiness state, the planned documents and forms, and the workflow that follows; that one approval shall authorize the assigned HR Officer to execute the downstream workflow without further HR Manager approval of routine documents, forms or communications; the alternative decision shall be a return to draft with a reason shown to the officer. (DEC-066) | MUST | 1 | APPROVED |
+| REQ-CASE-028 | Benefits at intake | Benefits and providers shall be selected during case creation, correctable while the case is a draft, displayed as a summary on the Draft Overview, and treated as an approved fact after submission that only the HR Manager may amend (audited). (DEC-066) | MUST | 1 | APPROVED |
 | REQ-CASE-026 | Sensitive field masking | Sensitive fields such as rehire eligibility and restricted reasons shall be masked from roles without explicit permission. | MUST | 1 | PROVISIONAL |
 
 ## Workflow and tasks
@@ -108,12 +110,12 @@
 | REQ-DOC-002 | Template placeholder schema | Every template version shall declare required and optional placeholders, data types, source fields, formatting rules, and validation messages. | MUST | 2 | PROVISIONAL |
 | REQ-DOC-003 | Pre-generation validation | The system shall block generation when required source fields are missing or inconsistent and show the fields requiring correction. | MUST | 2 | PROVISIONAL |
 | REQ-DOC-004 | Employee snapshot source | Generated documents shall use the approved case snapshot and case-specific approved fields rather than live mutable source data. | MUST | 2 | PROVISIONAL |
-| REQ-DOC-005 | Preview | Authorized users shall be able to preview the fully rendered document before submitting it for approval. | MUST | 2 | PROVISIONAL |
-| REQ-DOC-006 | Approval state machine | Documents shall follow DRAFT/GENERATED/PENDING_APPROVAL/APPROVED/ISSUED/REJECTED/SUPERSEDED/VOIDED states as applicable. | MUST | 2 | PROVISIONAL |
-| REQ-DOC-007 | Separation of duties | The system shall support a rule preventing an HR Officer from approving the same restricted document they prepared. | SHOULD | 2 | PROVISIONAL |
+| REQ-DOC-005 | Preview | Authorized users shall be able to preview the fully rendered document before finalizing it. | MUST | 2 | PROVISIONAL |
+| REQ-DOC-006 | Document state machine | Documents shall follow DRAFT/VALIDATION_FAILED → APPROVED (finalized) → RENDERED → ISSUED / SUPERSEDED / VOIDED states as applicable. PENDING_APPROVAL and RETURNED are legacy statuses of the retired per-document approval (DEC-066); a historical row in one still finalizes like a draft. | MUST | 2 | PROVISIONAL |
+| REQ-DOC-007 | Authorization gate | The system shall refuse to finalize or issue any document unless the case is in an execution status (APPROVED, ACTIVE, CLEARANCE_REVIEW, REOPENED) and the actor is the assigned HR Officer or the HR Manager. The HR Manager approval of the case is the separation of duties; no per-document second approver exists (DEC-066, supersedes the earlier maker-checker reading). | MUST | 2 | PROVISIONAL |
 | REQ-DOC-008 | PDF output | Issued documents shall be stored in a stable PDF representation. | MUST | 2 | PROVISIONAL |
 | REQ-DOC-009 | Editable output | Where policy requires an editable version, the system shall generate a controlled DOCX and record its checksum and template version. | SHOULD | 2 | OPEN |
-| REQ-DOC-010 | Immutable issued snapshot | The exact issued bytes, content hash, template version, data snapshot, approver, and issue timestamp shall be retained. | MUST | 2 | PROVISIONAL |
+| REQ-DOC-010 | Immutable issued snapshot | The exact issued bytes, content hash, template version, data snapshot, finalizer attestation, and issue timestamp shall be retained. | MUST | 2 | PROVISIONAL |
 | REQ-DOC-011 | Supersession | Corrections shall create a new document version linked to the superseded document; the prior version shall remain retrievable by authorized users. | MUST | 2 | PROVISIONAL |
 | REQ-DOC-012 | Secure storage | Documents shall be stored outside the public web root with authorization enforced on every access. | MUST | 1 | PROVISIONAL |
 | REQ-DOC-013 | Download audit | Viewing or downloading restricted documents shall create an access audit event. | MUST | 2 | PROVISIONAL |
@@ -136,7 +138,7 @@
 | REQ-NOTIFY-004 | Notification state machine | Notifications shall support DRAFT, PENDING_APPROVAL, APPROVED, SCHEDULED, QUEUED, SUBMITTED, DELIVERED_IF_KNOWN, FAILED, CANCELLED, and BOUNCED states. | MUST | 5 | PROVISIONAL |
 | REQ-NOTIFY-005 | Recipient model | Each notification shall store To/CC/BCC recipients, recipient type, source, approval status, and final resolved address. | MUST | 5 | PROVISIONAL |
 | REQ-NOTIFY-006 | Minimum necessary data | Templates and payloads shall include only the fields approved for the recipient and purpose. | MUST | 5 | PROVISIONAL |
-| REQ-NOTIFY-007 | Approval before external send | Employee-facing, external-provider, and termination notifications shall require human approval in MVP. | MUST | 5 | PROVISIONAL |
+| REQ-NOTIFY-007 | Human release before external send | Employee-facing, external-provider, and termination notifications shall never be sent automatically: the HR person executing the approved case (the assigned HR Officer or the HR Manager) releases each one, under the HR Manager approval of the case (DEC-066). | MUST | 5 | PROVISIONAL |
 | REQ-NOTIFY-008 | Scheduled dispatch | Approved notifications shall support scheduled dispatch relative to approval or exact effective separation time. | MUST | 5 | PROVISIONAL |
 | REQ-NOTIFY-009 | Urgent IT notification | Immediate and termination workflows shall support urgent IT notification and task creation without waiting for the general 24-hour SLA. | MUST | 5 | PROVISIONAL |
 | REQ-NOTIFY-010 | Retry policy | Transient failures shall be retried with bounded exponential backoff and jitter; permanent failures shall not loop indefinitely. | MUST | 5 | PROVISIONAL |

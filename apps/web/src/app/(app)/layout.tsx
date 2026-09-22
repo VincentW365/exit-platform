@@ -158,6 +158,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <span className="topbar__roles">{roleList(user.roles)}</span>
             </span>
             <ThemeToggle initial={theme} />
+            {/* DEC-066 section 8: every user keeps their own email banner. */}
+            <Link href="/settings" className="button secondary compact">
+              My settings
+            </Link>
             <form action={logoutAction}>
               <button type="submit" className="secondary compact">
                 Sign out

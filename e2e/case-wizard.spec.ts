@@ -154,8 +154,10 @@ test('progress counts steps that are genuinely complete', async ({ page }) => {
   await openWizard(page, 'RESIGNATION_WITH_NOTICE');
 
   const progress = page.locator('.step-progress__text');
-  // Employee and separation type are settled by the server; the date step
-  // opens prefilled with the notice date, so it counts too.
-  await expect(progress).toContainText('of 4 steps complete');
+  // Employee, separation type and (for an officer) HR ownership are settled
+  // by the server; the date step opens prefilled with the notice date, so it
+  // counts too. Six steps collect something since DEC-066 added Benefits &
+  // Providers and HR Ownership; the review step is the destination.
+  await expect(progress).toContainText('of 6 steps complete');
   await expect(progress).not.toContainText('0 of');
 });

@@ -127,6 +127,20 @@ export const createDraftSchema = z.object({
    * sends true or false; undefined means "not an interactive intake".
    */
   duplicateAcknowledged: z.boolean().optional(),
+  /**
+   * Benefits and providers chosen DURING Create Offboarding Case (owner
+   * directive 2026-09-22, DEC-066 sections 6-7): what the HR Manager will be
+   * asked to approve. Absent means "not asked" (fixtures, the regression
+   * bridge) and the historical UNKNOWN default applies.
+   */
+  groupHealth: z.enum(['YES', 'NO', 'UNKNOWN']).optional(),
+  groupLife: z.enum(['YES', 'NO', 'UNKNOWN']).optional(),
+  /**
+   * DEC-066 section 34: an HR Manager creating a case may name the HR Officer
+   * who will execute it. An HR Officer never sends this - they own what they
+   * create (DEC-065).
+   */
+  assignedOfficerId: z.uuid().optional(),
 });
 export type CreateDraftInput = z.infer<typeof createDraftSchema>;
 
@@ -144,7 +158,12 @@ export type CreateDraftInput = z.infer<typeof createDraftSchema>;
  */
 export const updateDraftSchema = createDraftSchema
   .partial()
-  .omit({ employeeSourceId: true, recordPurpose: true, measurementCohort: true })
+  .omit({
+    employeeSourceId: true,
+    recordPurpose: true,
+    measurementCohort: true,
+    assignedOfficerId: true,
+  })
   .extend({
     reasonCaptureStatus: z
       .enum(['PENDING', 'PROVIDED', 'NOT_PROVIDED', 'NOT_APPLICABLE'])
@@ -513,6 +532,32 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
     throw ServiceError.validation(['Receipt time cannot be in the future.']);
   }
 
+  // DEC-066 section 34: only the HR Manager names another person as the
+  // executing officer; the named account must be an active HR Officer (or
+  // HR Manager). The same rule assignOfficer enforces, applied at creation.
+  const isManager = hasRole(actor, 'HR_MANAGER');
+  const namedOfficerId =
+    input.assignedOfficerId && input.assignedOfficerId !== actor.userId
+      ? input.assignedOfficerId
+      : null;
+  if (namedOfficerId && !isManager)
+    throw ServiceError.forbidden('Only the HR Manager can assign a case to another HR Officer.');
+  let namedOfficerName: string | null = null;
+  if (namedOfficerId) {
+    const target = await getPrisma().user.findUnique({
+      where: { id: namedOfficerId },
+      include: { roleAssignments: { where: { revokedAt: null }, select: { role: true } } },
+    });
+    if (!target || !target.isActive)
+      throw ServiceError.validation(['The selected HR Officer does not exist or is inactive.']);
+    const roles = target.roleAssignments.map((r) => r.role as string);
+    if (!roles.includes('HR_OFFICER') && !roles.includes('HR_MANAGER'))
+      throw ServiceError.validation([
+        'The operational owner must hold the HR_OFFICER (or HR_MANAGER) role.',
+      ]);
+    namedOfficerName = target.displayName;
+  }
+
   // Which separation this is decides everything below. Termination cases are
   // RESTRICTED by default and cannot be downgraded (DEC-035 / IC-S1-011);
   // the profile now carries that, along with redundancy.
@@ -674,7 +719,20 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
         // until the manager assigns an officer. `createdById` above is the
         // immutable audit fact; this is the mutable operational owner.
         assignedOfficerId:
-          hasRole(actor, 'HR_OFFICER') && !hasRole(actor, 'HR_MANAGER') ? actor.userId : null,
+          namedOfficerId ??
+          (hasRole(actor, 'HR_OFFICER') && !hasRole(actor, 'HR_MANAGER') ? actor.userId : null),
+        // DEC-066 sections 6-7: the benefits and providers the HR Manager is
+        // asked to approve are chosen at intake and persisted on the draft.
+        ...(input.groupHealth !== undefined || input.groupLife !== undefined
+          ? {
+              groupHealthApplicability: input.groupHealth ?? 'UNKNOWN',
+              groupLifeApplicability: input.groupLife ?? 'UNKNOWN',
+              otherProviderApplicability: 'NO' as const,
+              benefitsConfirmedById: actor.userId,
+              benefitsConfirmedAt: retrievedAt,
+              benefitsSource: 'INTAKE',
+            }
+          : {}),
         // Directive 6.1 (F): directory-derived manager routing, pending HR
         // review and confirmation on the Assignment tab.
         managerName: derivedManagerName,
@@ -693,6 +751,19 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
         addedById: actor.userId,
       },
     });
+    // An officer named by the HR Manager participates as HR_SUPPORT, exactly
+    // as assignOfficer records it, so restricted-case participation holds.
+    if (namedOfficerId) {
+      await tx.caseParticipant.create({
+        data: {
+          caseId: c.id,
+          userId: namedOfficerId,
+          participantRole: 'HR_SUPPORT',
+          reason: 'Assigned operational HR Officer at case creation (DEC-066).',
+          addedById: actor.userId,
+        },
+      });
+    }
 
     await tx.caseStatusHistory.create({
       data: {
@@ -746,9 +817,30 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
           previousOfficerId: null,
           previousOfficerName: null,
           newOfficerId: c.assignedOfficerId,
-          newOfficerName: creator?.displayName ?? null,
-          reason: 'Automatic initial assignment: the HR Officer who created the case owns it.',
-          automatic: true,
+          newOfficerName: namedOfficerId ? namedOfficerName : (creator?.displayName ?? null),
+          reason: namedOfficerId
+            ? 'Assigned by the HR Manager at case creation.'
+            : 'Automatic initial assignment: the HR Officer who created the case owns it.',
+          automatic: !namedOfficerId,
+        },
+      });
+    }
+    if (input.groupHealth !== undefined || input.groupLife !== undefined) {
+      await appendAudit(tx, {
+        eventType: 'BENEFITS_APPLICABILITY_SET',
+        actorType: 'USER',
+        actorId: actor.userId,
+        effectiveRoles: actor.roles,
+        objectType: 'OffboardingCase',
+        objectId: c.id,
+        caseId: c.id,
+        result: 'SUCCESS',
+        correlationId,
+        metadata: {
+          groupHealth: input.groupHealth ?? 'UNKNOWN',
+          groupLife: input.groupLife ?? 'UNKNOWN',
+          otherProvider: 'NO',
+          source: 'INTAKE',
         },
       });
     }
@@ -812,6 +904,23 @@ export interface CaseViewCapabilities {
    * (the UI says "view only" and offers no edit controls).
    */
   canEdit: boolean;
+  /**
+   * DEC-066: the one HR Manager decision. True when this viewer can open the
+   * Case Approval Summary with live Approve / Return controls (a manager
+   * holding a submitted case, or their own draft).
+   */
+  canDecideApproval: boolean;
+}
+
+/**
+ * The most recent return-to-draft, shown to the officer on the draft so the
+ * reason for the return is never something they have to dig out of the
+ * audit trail (DEC-066 section 23). Null once the case has moved on.
+ */
+export interface CaseReturnNote {
+  reason: string | null;
+  returnedById: string;
+  returnedAt: Date;
 }
 
 /**
@@ -907,7 +1016,36 @@ export async function getCase(actor: Actor, caseId: string) {
     canUpload: canActOnCase(actor, 'attachment.upload', ctx) && c.status !== 'VOIDED',
     canDownload: canActOnCase(actor, 'attachment.download', ctx),
     canEdit: canEditCase(actor, ctx),
+    canDecideApproval:
+      canActOnCase(actor, 'case.approve', ctx) &&
+      (c.status === 'PENDING_HR_REVIEW' || c.status === 'DRAFT'),
   };
+
+  // The latest transition, so a draft can say why it came back (DEC-066).
+  const lastTransition =
+    c.status === 'DRAFT'
+      ? await getPrisma().caseStatusHistory.findFirst({
+          where: { caseId },
+          orderBy: { occurredAt: 'desc' },
+          select: {
+            fromStatus: true,
+            toStatus: true,
+            reason: true,
+            actorId: true,
+            occurredAt: true,
+          },
+        })
+      : null;
+  const lastReturn: CaseReturnNote | null =
+    lastTransition &&
+    lastTransition.fromStatus === 'PENDING_HR_REVIEW' &&
+    lastTransition.toStatus === 'DRAFT'
+      ? {
+          reason: lastTransition.reason,
+          returnedById: lastTransition.actorId,
+          returnedAt: lastTransition.occurredAt,
+        }
+      : null;
 
   // Field masking (REQ-CASE-026): sensitive values never leave the server for
   // unauthorized viewers.
@@ -919,7 +1057,7 @@ export async function getCase(actor: Actor, caseId: string) {
     reasonNotesMasked: !capabilities.canViewReasonNotes,
   };
 
-  return { case: dto, capabilities, separation: separationSummaryOf(c) };
+  return { case: dto, capabilities, separation: separationSummaryOf(c), lastReturn };
 }
 
 // --- list --------------------------------------------------------------------
@@ -1392,6 +1530,17 @@ export async function updateDraft(actor: Actor, caseId: string, rawPatch: unknow
           ? { reasonCategoryId: patch.reasonCategoryId ?? null }
           : {}),
         ...('reasonNotes' in patch ? { reasonNotes: patch.reasonNotes || null } : {}),
+        // DEC-066 section 9: the benefits selection is correctable while the
+        // case is still a draft, from the same edit experience as the dates.
+        ...('groupHealth' in patch || 'groupLife' in patch
+          ? {
+              groupHealthApplicability: patch.groupHealth ?? c.groupHealthApplicability,
+              groupLifeApplicability: patch.groupLife ?? c.groupLifeApplicability,
+              benefitsConfirmedById: actor.userId,
+              benefitsConfirmedAt: new Date(),
+              benefitsSource: 'INTAKE',
+            }
+          : {}),
         // Notice given re-derives whenever either anchoring date changes, or
         // when the type changes - a termination has no notice to count.
         ...('receivedAt' in patch || 'confirmedLastDay' in patch || 'departureType' in patch
@@ -1439,6 +1588,28 @@ export async function updateDraft(actor: Actor, caseId: string, rawPatch: unknow
           : {}),
       },
     });
+    if ('groupHealth' in patch || 'groupLife' in patch) {
+      await appendAudit(tx, {
+        eventType: 'BENEFITS_APPLICABILITY_SET',
+        actorType: 'USER',
+        actorId: actor.userId,
+        effectiveRoles: actor.roles,
+        objectType: 'OffboardingCase',
+        objectId: caseId,
+        caseId,
+        result: 'SUCCESS',
+        correlationId,
+        metadata: {
+          groupHealth: patch.groupHealth ?? c.groupHealthApplicability,
+          groupLife: patch.groupLife ?? c.groupLifeApplicability,
+          otherProvider: c.otherProviderApplicability,
+          previousGroupHealth: c.groupHealthApplicability,
+          previousGroupLife: c.groupLifeApplicability,
+          source: 'INTAKE',
+          caseStatus: c.status,
+        },
+      });
+    }
   });
 }
 
@@ -1585,6 +1756,28 @@ export async function transitionCase(
       },
     });
 
+    // DEC-066 section 31: submission and approval name the case version and
+    // the approved facts, so "what exactly was approved" is answerable from
+    // the trail alone. Snapshot provenance rides on the approval event.
+    const snapshotRow =
+      action === 'approve'
+        ? await tx.employeeSnapshot.findUnique({ where: { caseId }, select: { checksum: true } })
+        : null;
+    const approvedFacts =
+      action === 'submit' || action === 'approve'
+        ? {
+            caseVersion: c.version + 1,
+            departureType: c.departureType,
+            confirmedLastDay: c.confirmedLastDay ? c.confirmedLastDay.toISOString() : null,
+            effectiveSeparationAt: c.effectiveSeparationAt
+              ? c.effectiveSeparationAt.toISOString()
+              : null,
+            groupHealth: c.groupHealthApplicability,
+            groupLife: c.groupLifeApplicability,
+            assignedOfficerId: c.assignedOfficerId,
+            ...(snapshotRow ? { snapshotChecksum: snapshotRow.checksum } : {}),
+          }
+        : {};
     await appendAudit(tx, {
       eventType: TRANSITION_EVENT[action],
       actorType: 'USER',
@@ -1595,7 +1788,13 @@ export async function transitionCase(
       caseId,
       result: 'SUCCESS',
       correlationId,
-      metadata: { caseNumber: c.caseNumber, fromStatus: c.status, toStatus: check.to!, reason },
+      metadata: {
+        caseNumber: c.caseNumber,
+        fromStatus: c.status,
+        toStatus: check.to!,
+        reason,
+        ...approvedFacts,
+      },
     });
   });
 }

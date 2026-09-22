@@ -6,6 +6,7 @@ import {
   formatInstant,
   letterTypeForDeparture,
   DOWNLOADABLE_DOC_STATUSES,
+  EDITABLE_DOC_STATUSES,
   RENDERABLE_LETTER_TYPES,
   type DocumentStatus,
   type DocumentType,
@@ -16,20 +17,19 @@ import {
   getCaseDocuments,
   listAttachments,
   listHrCcContacts,
+  previewContent,
 } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { CaseTitle, Feedback, RestrictedBanner } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
 import {
-  approveDocAction,
   createExceptionAction,
   createLetterAction,
+  finalizeDocAction,
   issueByEmailAction,
   markIssuedAction,
   setAddressAction,
   refreshFieldsAction,
-  returnDocAction,
-  submitDocAction,
   supersedeDocAction,
   voidDocAction,
 } from './actions';
@@ -44,8 +44,10 @@ export const dynamic = 'force-dynamic';
 const STATUS_BADGE: Record<string, string> = {
   DRAFT: 'badge--neutral',
   VALIDATION_FAILED: 'badge--danger',
-  PENDING_APPROVAL: 'badge--warning',
-  RETURNED: 'badge--warning',
+  // Legacy statuses of the retired maker-checker model (DEC-066): a row left
+  // in one reads as a draft and finalizes like one.
+  PENDING_APPROVAL: 'badge--neutral',
+  RETURNED: 'badge--neutral',
   APPROVED: 'badge--info',
   RENDERING: 'badge--info',
   RENDERED: 'badge--success',
@@ -98,6 +100,15 @@ export default async function CaseDocumentsPage({
       {c.classification === 'RESTRICTED' ? <RestrictedBanner /> : null}
       <CaseNav caseId={id} active="documents" />
       <Feedback err={sp.err} ok={sp.ok} />
+
+      {/* DEC-066: one HR Manager approval of the case authorizes the assigned
+          HR Officer to finalize and send its documents. Until then a letter
+          can be drafted but not finalized, and the page says so once. */}
+      {docsData.executionBlockedReason ? (
+        <p className="panel panel--edge panel--edge-pending" role="note">
+          {docsData.executionBlockedReason}
+        </p>
+      ) : null}
 
       {docsData.capabilities.canCreate && (
         <section className="panel actions-row" aria-label="Create documents">
@@ -226,26 +237,30 @@ export default async function CaseDocumentsPage({
               ) : null}
 
               {d.contentSnapshot ? (
-                <details className="action" open={d.status === 'PENDING_APPROVAL'}>
-                  <summary>Preview (exact content bound to approval)</summary>
-                  <div
-                    style={{
-                      whiteSpace: 'pre-wrap',
-                      background: 'var(--muted)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '6px',
-                      padding: '1rem',
-                      fontFamily: 'Georgia, serif',
-                      marginTop: '0.5rem',
-                    }}
-                  >
-                    {d.contentSnapshot}
-                  </div>
+                <details
+                  className="action"
+                  open={d.status === 'APPROVED' || d.status === 'RENDERED'}
+                >
+                  <summary>Preview (exact content bound to the finalized version)</summary>
+                  <div className="doc-preview">{d.contentSnapshot}</div>
                 </details>
               ) : d.exceptionReason ? (
                 <p className="hint">Manual exception: {d.exceptionReason}</p>
+              ) : d.template?.contentBody &&
+                EDITABLE_DOC_STATUSES.includes(d.status as DocumentStatus) ? (
+                // DEC-066 section 26: the officer reviews the draft, then
+                // finalizes it - so the draft content is readable here, with
+                // the signatory lines completed at finalization.
+                <details className="action">
+                  <summary>Preview draft (fields as currently captured)</summary>
+                  <div className="doc-preview">
+                    {previewContent(d.template.contentBody, d.fieldSnapshot as never)}
+                  </div>
+                </details>
               ) : (
-                <p className="hint">Draft - submit to capture the reviewed content snapshot.</p>
+                <p className="hint">
+                  Draft - finalizing captures the exact content, attests it and renders the PDF.
+                </p>
               )}
 
               <dl className="kv" style={{ marginTop: '0.5rem' }}>
@@ -302,53 +317,33 @@ export default async function CaseDocumentsPage({
               </dl>
 
               <div className="actions-row" style={{ marginTop: '0.5rem' }}>
-                {['DRAFT', 'RETURNED', 'VALIDATION_FAILED'].includes(d.status) && d.templateId ? (
-                  <>
-                    <form action={refreshFieldsAction}>
-                      <input type="hidden" name="caseId" value={id} />
-                      <input type="hidden" name="docId" value={d.id} />
-                      <button type="submit" className="secondary">
-                        Refresh fields from case
-                      </button>
-                    </form>
-                    <form action={submitDocAction}>
-                      <input type="hidden" name="caseId" value={id} />
-                      <input type="hidden" name="docId" value={d.id} />
-                      <button type="submit">Validate and submit for approval</button>
-                    </form>
-                  </>
-                ) : null}
-                {d.status === 'DRAFT' && !d.templateId ? (
-                  <form action={submitDocAction}>
+                {EDITABLE_DOC_STATUSES.includes(d.status as DocumentStatus) &&
+                d.templateId &&
+                docsData.capabilities.canEdit ? (
+                  <form action={refreshFieldsAction}>
                     <input type="hidden" name="caseId" value={id} />
                     <input type="hidden" name="docId" value={d.id} />
-                    <button type="submit">Submit exception for approval</button>
+                    <button type="submit" className="secondary">
+                      Refresh fields from case
+                    </button>
                   </form>
                 ) : null}
-                {d.status === 'PENDING_APPROVAL' && docsData.capabilities.canApprove ? (
-                  <>
-                    <form action={approveDocAction}>
-                      <input type="hidden" name="caseId" value={id} />
-                      <input type="hidden" name="docId" value={d.id} />
-                      <button type="submit">Approve exact version (attested)</button>
-                    </form>
-                    <details className="action">
-                      <summary>Return for correction</summary>
-                      <form action={returnDocAction} className="stack">
-                        <input type="hidden" name="caseId" value={id} />
-                        <input type="hidden" name="docId" value={d.id} />
-                        <div className="field">
-                          <label htmlFor={`ret-${d.id}`}>Reason (Required)</label>
-                          <textarea id={`ret-${d.id}`} name="reason" rows={2} required />
-                        </div>
-                        <button type="submit" className="secondary">
-                          Return
-                        </button>
-                      </form>
-                    </details>
-                  </>
+                {EDITABLE_DOC_STATUSES.includes(d.status as DocumentStatus) &&
+                docsData.capabilities.canFinalize &&
+                !docsData.executionBlockedReason ? (
+                  <form action={finalizeDocAction}>
+                    <input type="hidden" name="caseId" value={id} />
+                    <input type="hidden" name="docId" value={d.id} />
+                    <button type="submit">
+                      {d.templateId
+                        ? 'Validate and finalize (attested)'
+                        : 'Finalize exception document (attested)'}
+                    </button>
+                  </form>
                 ) : null}
-                {d.status === 'RENDERED' && docsData.capabilities.canApprove ? (
+                {d.status === 'RENDERED' &&
+                docsData.capabilities.canIssue &&
+                !docsData.executionBlockedReason ? (
                   <details className="action">
                     <summary>Record manual issue (no email is sent)</summary>
                     <form action={markIssuedAction} className="stack">
@@ -382,6 +377,7 @@ export default async function CaseDocumentsPage({
                 ) : null}
                 {d.status === 'RENDERED' &&
                 docsData.capabilities.canIssue &&
+                !docsData.executionBlockedReason &&
                 RENDERABLE_LETTER_TYPES.includes(d.documentType as DocumentType) ? (
                   <details className="action">
                     <summary>Send to the employee by email</summary>
@@ -424,7 +420,7 @@ export default async function CaseDocumentsPage({
                   </details>
                 ) : null}
                 {['RENDERED', 'MANUALLY_ISSUED', 'ISSUED_BY_EMAIL'].includes(d.status) &&
-                docsData.capabilities.canApprove ? (
+                docsData.capabilities.canSupersede ? (
                   <details className="action">
                     <summary>Supersede with corrected version</summary>
                     <form action={supersedeDocAction} className="stack">
@@ -442,7 +438,7 @@ export default async function CaseDocumentsPage({
                 ) : null}
                 {!['MANUALLY_ISSUED', 'ISSUED_BY_EMAIL', 'SUPERSEDED', 'VOIDED'].includes(
                   d.status,
-                ) && docsData.capabilities.canApprove ? (
+                ) && docsData.capabilities.canVoid ? (
                   <ConfirmDialog
                     trigger="Void"
                     triggerClassName="danger compact"

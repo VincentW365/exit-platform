@@ -2,7 +2,15 @@
  * Users and role administration (REQ-ADMIN-001/002, REQ-SEC-032).
  * Role changes are audited; self-grant and self-revoke are refused.
  */
-import { can, isRole, roleChangeErrors, type Actor, type Role } from '@exit/domain';
+import {
+  can,
+  emailBannerErrors,
+  isRole,
+  normalizeEmailBanner,
+  roleChangeErrors,
+  type Actor,
+  type Role,
+} from '@exit/domain';
 import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
@@ -50,6 +58,66 @@ export async function getSessionUser(
  */
 function activeRoles(assignments: ReadonlyArray<{ role: string }>): Role[] {
   return assignments.map((r) => r.role).filter((r): r is Role => isRole(r));
+}
+
+// --- my settings (DEC-066 section 8) -----------------------------------------
+
+/** What a signed-in user sees and edits about themselves. */
+export async function getMySettings(actor: Actor) {
+  const u = await getPrisma().user.findUnique({
+    where: { id: actor.userId },
+    select: {
+      displayName: true,
+      workEmail: true,
+      emailBanner: true,
+      emailBannerUpdatedAt: true,
+    },
+  });
+  if (!u) throw ServiceError.notFound();
+  const directory = await getPrisma().employeeSourceRecord.findFirst({
+    where: { workEmail: u.workEmail },
+    select: { jobTitle: true },
+  });
+  return {
+    displayName: u.displayName,
+    workEmail: u.workEmail,
+    jobTitle: directory?.jobTitle ?? 'Human Resources',
+    emailBanner: u.emailBanner,
+    emailBannerUpdatedAt: u.emailBannerUpdatedAt,
+    roles: actor.roles,
+  };
+}
+
+/**
+ * A user sets (or clears) their own email banner: the plain-text lines the
+ * platform appends beneath their name and title on every outgoing email
+ * they are the sender of. Only ever their own - nobody edits another
+ * account's signature - and always audited.
+ */
+export async function setEmailBanner(actor: Actor, rawText: string | null | undefined) {
+  const errors = emailBannerErrors(rawText);
+  if (errors.length) throw ServiceError.validation(errors);
+  const banner = normalizeEmailBanner(rawText) || null;
+  const prisma = getPrisma();
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: actor.userId },
+      data: { emailBanner: banner, emailBannerUpdatedAt: new Date() },
+    });
+    await appendAudit(tx, {
+      eventType: 'USER_EMAIL_BANNER_CHANGED',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'User',
+      objectId: actor.userId,
+      result: 'SUCCESS',
+      correlationId: newCorrelationId(),
+      // Line count only: a signature block is not an audit payload.
+      metadata: { cleared: banner === null, lines: banner ? banner.split('\n').length : 0 },
+    });
+  });
+  return { banner };
 }
 
 /** Dev-login directory: active users with their roles (non-production only; caller gates). */

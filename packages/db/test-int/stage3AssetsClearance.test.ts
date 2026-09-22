@@ -27,10 +27,9 @@ import { processOutbox } from '../src/services/outboxService.ts';
 import { recordManualEvidence } from '../src/services/ackTokenService.ts';
 import { activateTemplate, createDraftTemplate } from '../src/services/templateService.ts';
 import {
-  approveDocument,
   createLetterDraft,
+  finalizeDocument,
   refreshDraftFields,
-  submitDocument,
 } from '../src/services/documentService.ts';
 import { setEmployeeAddress } from '../src/services/letterDeliveryService.ts';
 import {
@@ -196,14 +195,14 @@ describe('clearance gate and completion (T.18-T.22, T.24, O)', () => {
   });
 
   it('full flow: documents, form, tasks, assets - then HR_MANAGER completes (T.21, T.22)', async () => {
-    // Letter: draft -> submit -> approve (renders inline).
+    // Letter: draft -> finalize by the assigned officer (renders inline;
+    // the case approval is the authorization, DEC-066).
     const doc = await createLetterDraft(officer.actor, caseId);
     await setEmployeeAddress(officer.actor, caseId, {
       employeeAddress: '12 Synthetic Avenue, Kingston 5',
     });
     await refreshDraftFields(officer.actor, doc.id);
-    await submitDocument(officer.actor, doc.id);
-    await approveDocument(manager.actor, doc.id);
+    await finalizeDocument(officer.actor, doc.id);
     const letter = await prisma.documentInstance.findUniqueOrThrow({ where: { id: doc.id } });
     expect(['RENDERED', 'MANUALLY_ISSUED', 'ISSUED_BY_EMAIL']).toContain(letter.status);
 
@@ -232,9 +231,9 @@ describe('clearance gate and completion (T.18-T.22, T.24, O)', () => {
       await setAssetDisposition(officer.actor, item.id, { status: 'RETURNED', condition: 'Good' });
     }
 
-    // Benefits: HR confirms applicability once; the rules engine handles the
-    // rest (Directive 6.3 V).
-    await confirmBenefits(officer.actor, caseId, {
+    // Benefits: an approved fact (DEC-066) - after approval only the HR
+    // Manager amends it (audited); the rules engine handles the rest.
+    await confirmBenefits(manager.actor, caseId, {
       groupHealth: 'NO',
       groupLife: 'NO',
       otherProvider: 'NO',

@@ -36,10 +36,14 @@ from these facts. Create the draft and submit it for review.
 
 ## Step 4 - HR Manager approves and assigns the officer
 
-The HR Manager approves the case (this freezes the employee snapshot),
-assigns the HR Officer who will run it, and confirms the derived manager
-(or overrides with a reason if the directory hierarchy is wrong). Then the
-workflow is activated.
+The HR Manager opens the Case Approval Summary, reads what the approval
+authorizes - who will be contacted and where, which documents and forms will
+be produced, the benefits and providers the officer selected at intake - and
+approves the case **once** (this freezes the employee snapshot and authorizes
+the assigned HR Officer for everything downstream, DEC-066). The manager
+assigns the HR Officer where the case was created unassigned, confirms the
+derived manager (or overrides with a reason if the directory hierarchy is
+wrong), and the workflow is activated.
 
 ## Step 5 - The platform derives the required actions
 
@@ -68,12 +72,13 @@ explanation and the action to take - for example "Recipient required"
 (enter who receives this email), "Confirm benefits applicability" or
 "Automatic sending blocked". Resolve the item and the automation continues.
 
-## Step 8 - The letter keeps maker-checker
+## Step 8 - The letter is finalized by the officer
 
-The resignation acknowledgement letter is unchanged: the HR Officer
-generates the draft from the approved template, the HR Manager approves,
-and the issued PDF is immutable. A termination letter remains impossible by
-design.
+The resignation acknowledgement letter is the assigned HR Officer's work
+from start to finish: generate the draft from the approved template,
+validate and finalize it (attested, under the case approval - DEC-066), and
+send it. The issued PDF is immutable. A termination letter remains impossible
+by design.
 
 ## Step 9 - IT and Finance are notified automatically
 

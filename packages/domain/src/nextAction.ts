@@ -37,6 +37,39 @@ export interface CaseNextAction {
   readonly tone: 'attention' | 'progress' | 'done';
 }
 
+/**
+ * What a case is waiting for, in the words of the person who owns it
+ * (owner directive 2026-09-22, section 30). Built from the existing case
+ * statuses - no display-only status is invented. For an ACTIVE case the
+ * caller substitutes the work-aware next action where it has one.
+ */
+export function caseWorkStateLabel(status: string): string {
+  switch (status) {
+    case 'DRAFT':
+      return 'Draft - finish preparation';
+    case 'PENDING_HR_REVIEW':
+      return 'Awaiting HR Manager approval';
+    case 'APPROVED':
+      return 'Approved - action required';
+    case 'ACTIVE':
+      return 'In progress';
+    case 'ON_HOLD':
+      return 'On hold';
+    case 'REOPENED':
+      return 'Reopened - action required';
+    case 'CLEARANCE_REVIEW':
+      return 'Ready to complete - awaiting clearance decision';
+    case 'COMPLETED':
+      return 'Completed';
+    case 'CANCELLED':
+      return 'Cancelled';
+    case 'VOIDED':
+      return 'Voided';
+    default:
+      return status;
+  }
+}
+
 export function computeCaseNextAction(
   caseId: string,
   input: NextActionInput,
@@ -46,7 +79,12 @@ export function computeCaseNextAction(
     case 'DRAFT':
       return { label: 'Complete the draft and submit for review', href: base, tone: 'progress' };
     case 'PENDING_HR_REVIEW':
-      return { label: 'HR Manager: review and approve the case', href: base, tone: 'attention' };
+      // DEC-066: the one approval happens on the Case Approval Summary.
+      return {
+        label: 'HR Manager: review and approve the case',
+        href: `${base}/approve`,
+        tone: 'attention',
+      };
     case 'APPROVED':
       return {
         label: 'Complete the responsibility plan, then activate the workflow',

@@ -56,6 +56,8 @@ export const AUDIT_EVENT_TYPES = [
   'DOC_SUBMITTED',
   'DOC_RETURNED',
   'DOC_APPROVED',
+  /** DEC-066: validated, attested and released for rendering under the case approval. */
+  'DOC_FINALIZED',
   'DOC_APPROVAL_INVALIDATED',
   'DOC_RENDERED',
   'DOC_RENDER_FAILED',
@@ -194,6 +196,8 @@ export const AUDIT_EVENT_TYPES = [
   // Directive 6.2 (E): directory-mapped account creation and re-enable.
   'IDENTITY_USER_CREATED',
   'IDENTITY_USER_ENABLED',
+  /** A user changed their own outgoing-email banner (DEC-066 section 8). */
+  'USER_EMAIL_BANNER_CHANGED',
   'IDENTITY_ACCESS_REVIEW',
   'ROLE_EXPIRED_REVOKED',
   'SYNC_RUN_COMPLETED',

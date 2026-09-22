@@ -47,6 +47,7 @@ export * from './services/caseAssignmentService.ts';
 export * from './services/caseProgressService.ts';
 // Directive 6.3: derived actions, acknowledgement tokens, template admin.
 export * from './services/derivedActionService.ts';
+export * from './services/caseApprovalService.ts';
 export * from './services/ackTokenService.ts';
 export * from './services/notificationTemplateService.ts';
 export { timed } from './services/timing.ts';

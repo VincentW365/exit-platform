@@ -83,6 +83,8 @@ const CRUMB_LABELS: Record<string, string> = {
   documents: 'Documents',
   'action-form': 'Action form',
   workflow: 'Workflow',
+  approve: 'Case approval',
+  settings: 'My settings',
   assets: 'Assets',
   handover: 'Handover',
   clearance: 'Clearance',

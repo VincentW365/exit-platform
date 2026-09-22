@@ -18,12 +18,14 @@ import {
   contentChecksum,
   destinationErrors,
   docTransitionError,
+  executionBlockedReason,
   firstNameOf,
   formatDateOnly,
   maskDestination,
   notificationIdempotencyKey,
   RENDERABLE_LETTER_TYPES,
   substitute,
+  withEmailBanner,
   type DocumentType,
 } from '@exit/domain';
 import { z } from 'zod';
@@ -221,6 +223,11 @@ export async function issueDocumentByEmail(
   if (!doc) throw ServiceError.notFound();
   const { ctx } = await loadCaseAccess(actor, doc.caseId);
   if (!canActOnCase(actor, 'doc.markIssued', ctx)) throw ServiceError.forbidden();
+  // DEC-066: sending executes the approved case. The assigned HR Officer (or
+  // the HR Manager) sends under the case approval; nothing goes out while the
+  // case is a draft, awaiting approval, on hold or closed.
+  const blocked = executionBlockedReason(doc.case.status);
+  if (blocked) throw ServiceError.validation([blocked]);
 
   const guard = docTransitionError('issueByEmail', doc.status);
   if (guard) throw ServiceError.validation([guard]);
@@ -291,7 +298,9 @@ export async function issueDocumentByEmail(
     CASE_REFERENCE: c.caseNumber,
     CONFIRMED_LAST_WORKING_DATE: c.confirmedLastDay ? formatDateOnly(c.confirmedLastDay) : '',
     HR_SENDER_NAME: officer.name,
-    HR_SENDER_TITLE: officer.title,
+    // The sender title carries the user-maintained email banner beneath it
+    // (DEC-066 section 8), so every template keeps its existing placeholders.
+    HR_SENDER_TITLE: withEmailBanner(officer.title, officer.banner),
   };
   const subject = substitute(template.subjectTemplate, values);
   const body = substitute(template.bodyTemplate, values);
@@ -399,20 +408,26 @@ export async function issueDocumentByEmail(
   return { recordId, destinationMask: maskDestination(destination), ccCount: cc.emails.length };
 }
 
-/** Name and title for the officer whose signature block the email carries. */
-async function hrSender(userId: string | null): Promise<{ name: string; title: string }> {
-  if (!userId) return { name: 'Human Resources', title: 'Human Resources' };
+/** Name, title and banner for the officer whose signature block the email carries. */
+async function hrSender(
+  userId: string | null,
+): Promise<{ name: string; title: string; banner: string | null }> {
+  if (!userId) return { name: 'Human Resources', title: 'Human Resources', banner: null };
   const prisma = getPrisma();
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { displayName: true, workEmail: true },
+    select: { displayName: true, workEmail: true, emailBanner: true },
   });
-  if (!user) return { name: 'Human Resources', title: 'Human Resources' };
+  if (!user) return { name: 'Human Resources', title: 'Human Resources', banner: null };
   const directory = user.workEmail
     ? await prisma.employeeSourceRecord.findFirst({
         where: { workEmail: user.workEmail },
         select: { jobTitle: true },
       })
     : null;
-  return { name: user.displayName, title: directory?.jobTitle ?? 'Human Resources' };
+  return {
+    name: user.displayName,
+    title: directory?.jobTitle ?? 'Human Resources',
+    banner: user.emailBanner,
+  };
 }

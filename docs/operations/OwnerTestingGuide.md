@@ -56,8 +56,13 @@ automated controlled emails and confirm through secure links (section 6).
    of business on that date, so the platform sets the exact time itself,
    DEC-064), and whether a reason was given. Attach a resignation letter if you
    want the document flow.
-2. **Submit → Approve** (HR Officer submits; HR Manager approves — an
-   immutable employee snapshot is captured at approval).
+2. **Submit → Approve** (HR Officer submits; HR Manager opens "Review and
+   approve" - the Case Approval Summary shows the employee record, exit
+   details, ownership, the benefits and providers selected at intake, every
+   recipient with its resolved destination and readiness, the documents and
+   forms to come and the workflow - and approves **once**; an immutable
+   employee snapshot is captured at approval and the assigned officer is
+   authorized for everything downstream, DEC-066).
 3. **Assignment tab** — assign the operational HR Officer (the list shows
    every eligible active HR person with their real job title); the manager
    routing is derived from the live hierarchy (override with a reason if
@@ -99,9 +104,10 @@ automated controlled emails and confirm through secure links (section 6).
     resignations pre-suggest "Not obtained"); record Finance evidence; then
     "Finish preparation" and **"Complete action form"** — you complete your
     own form; no manager approval exists. The attested PDF renders.
-11. **Documents** — draft the resignation acceptance letter, submit, and have
-    the HR **Manager** approve (maker-checker stands for employee-facing
-    documents); download the rendered PDF.
+11. **Documents** — as the assigned HR Officer: draft the resignation
+    acceptance letter, refresh its fields, **"Validate and finalize
+    (attested)"** and send it by email - no HR Manager approval of the
+    document exists (DEC-066); download the rendered PDF.
 12. **Survey** — scheduled automatically for eligible departures (watch the
     worker create the invitation). It never blocks clearance.
 13. **Clearance** — as HR Manager: the page is a summary ("READY FOR

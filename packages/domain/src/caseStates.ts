@@ -110,6 +110,44 @@ export const EDITABLE_STATUSES: readonly CaseStatus[] = ['DRAFT'];
 export const TERMINAL_STATUSES: readonly CaseStatus[] = ['CANCELLED', 'VOIDED', 'COMPLETED'];
 
 /**
+ * Statuses in which the HR Manager approval of the case is in force and the
+ * approved offboarding plan may be EXECUTED: documents finalized and issued,
+ * forms completed, notifications released (owner directive 2026-09-22,
+ * DEC-066). Before approval nothing is sent; a case returned to DRAFT loses
+ * the authority; a hold pauses it; a closed case has none.
+ */
+export const EXECUTION_STATUSES: readonly CaseStatus[] = [
+  'APPROVED',
+  'ACTIVE',
+  'CLEARANCE_REVIEW',
+  'REOPENED',
+];
+
+/**
+ * Why the approved plan cannot be executed right now, in the words the
+ * screen shows - or null when it can.
+ */
+export function executionBlockedReason(status: string): string | null {
+  if ((EXECUTION_STATUSES as readonly string[]).includes(status)) return null;
+  switch (status) {
+    case 'DRAFT':
+      return 'The case has not been approved yet. Submit it for HR Manager approval first.';
+    case 'PENDING_HR_REVIEW':
+      return 'The case is awaiting HR Manager approval. Documents, forms and notifications can be prepared but not finalized or sent until it is approved.';
+    case 'ON_HOLD':
+      return 'The case is on hold. Resume it before finalizing or sending anything.';
+    case 'COMPLETED':
+      return 'The case is completed.';
+    case 'CANCELLED':
+      return 'The case was cancelled.';
+    case 'VOIDED':
+      return 'The case was voided.';
+    default:
+      return `The case status ${status} does not permit this action.`;
+  }
+}
+
+/**
  * Fields that must be valid before a case may leave DRAFT (BR-CASE-002).
  * Reason category is intentionally NOT required at creation (IC-S1-008):
  * DEC-031 is OPEN, so `reasonCaptureStatus` tracks the outcome instead.

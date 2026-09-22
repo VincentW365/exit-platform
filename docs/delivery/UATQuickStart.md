@@ -28,11 +28,12 @@ As the **HR Officer**:
 
 1. Cases → open OFF-2026-0001. Click through the tabs to see what is there.
 2. Documents tab → "Create resignation document draft" → "Validate and
-   submit for approval".
+   finalize (attested)" (DEC-066: the officer finalizes under the case
+   approval; there is no document approval step).
 
 As the **HR Manager**:
 
-3. Same case → Documents → "Approve exact version (attested)" → Download
+3. Same case → Documents → the letter the officer finalized shows Rendered → Download
    PDF; check it looks like a proper company letter.
 
 As the **HR Officer** again:
@@ -89,9 +90,10 @@ As the **HR Manager**:
   login since DEC-063): searching cases, queues, dashboards and reports finds NOTHING;
   pasting the case URL gives a plain denial. As the HR Manager it opens normally. No
   termination letter exists; the survey is off.
-- **S4, OFF-2026-0004 (corrected document).** As the HR Officer: the old approved
-  letter shows INVALIDATED with the correction reason; submit the corrected
-  draft; as the HR Manager approve it. The old version stays in history only.
+- **S4, OFF-2026-0004 (corrected document).** As the HR Officer: the old
+  finalized letter shows INVALIDATED with the correction reason; refresh and
+  finalize the corrected draft yourself (DEC-066). The old version stays in
+  history only.
 - **S5, OFF-2026-0005 (overdue tasks).** The IT and Finance Responder queues show
   overdue tasks; the HR Manager's Exceptions feed shows them ageing.
 - **S6, OFF-2026-0006 (lost asset).** As the HR Manager: Assets shows a LOST item with

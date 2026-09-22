@@ -12,6 +12,7 @@ import {
   canActOnCase,
   deriveRequiredActions,
   emailActionDisplayState,
+  hasRole,
   summarizeRequiredActions,
   DERIVATION_RULES_VERSION,
   EMAIL_ACTION_STATE_LABELS,
@@ -29,8 +30,13 @@ import { autoResolveException, openException } from './exceptionService.ts';
 import { loadCaseAccess } from './shared.ts';
 import { prepareDerivedNotification } from './notificationService.ts';
 
-/** Build the facts the rules engine consumes from what the platform holds. */
-async function gatherFacts(caseId: string): Promise<{
+/**
+ * Build the facts the rules engine consumes from what the platform holds.
+ * Exported (DEC-066) so the Case Approval Summary can show the HR Manager the
+ * communication plan BEFORE approval, from the same facts and the same rules
+ * that will derive the real actions at activation.
+ */
+export async function gatherFacts(caseId: string): Promise<{
   facts: DerivationFacts;
   caseRow: NonNullable<
     Awaited<ReturnType<ReturnType<typeof getPrisma>['offboardingCase']['findUnique']>>
@@ -253,6 +259,15 @@ export async function confirmBenefits(actor: Actor, caseId: string, rawInput: un
   if (!canActOnCase(actor, 'benefits.confirm', ctx)) throw ServiceError.forbidden();
   if (['COMPLETED', 'CANCELLED', 'VOIDED'].includes(c.status))
     throw ServiceError.conflict('Benefits applicability cannot change on a closed case.');
+  // DEC-066 section 5/32: the benefits selection is an APPROVED fact once the
+  // case leaves DRAFT. The assigned HR Officer corrects it while drafting;
+  // after submission only the HR Manager may change it, and that change is
+  // an audited post-approval amendment - never a silent re-plan.
+  const postApproval = c.status !== 'DRAFT';
+  if (postApproval && !hasRole(actor, 'HR_MANAGER'))
+    throw ServiceError.forbidden(
+      'The benefits selection was part of the approved case. Ask the HR Manager to correct it.',
+    );
 
   const prisma = getPrisma();
   const now = new Date();
@@ -266,7 +281,7 @@ export async function confirmBenefits(actor: Actor, caseId: string, rawInput: un
         otherProviderApplicability: input.otherProvider,
         benefitsConfirmedById: actor.userId,
         benefitsConfirmedAt: now,
-        benefitsSource: 'HR_CONFIRMED',
+        benefitsSource: postApproval ? 'HR_MANAGER_CORRECTION' : 'HR_CONFIRMED',
         version: { increment: 1 },
       },
     });
@@ -285,6 +300,11 @@ export async function confirmBenefits(actor: Actor, caseId: string, rawInput: un
         groupHealth: input.groupHealth,
         groupLife: input.groupLife,
         otherProvider: input.otherProvider,
+        previousGroupHealth: c.groupHealthApplicability,
+        previousGroupLife: c.groupLifeApplicability,
+        previousOtherProvider: c.otherProviderApplicability,
+        caseStatus: c.status,
+        postApprovalAmendment: postApproval,
       },
     });
   });
@@ -495,12 +515,18 @@ export async function listRequiredActions(actor: Actor, caseId: string) {
     attentionCount: summary.counts.attention,
     firstAttention: summary.attention[0] ?? null,
     canOverride: canActOnCase(actor, 'derivedAction.override', ctx),
-    canConfirmBenefits: canActOnCase(actor, 'benefits.confirm', ctx),
+    // DEC-066: the officer selects benefits while drafting; once submitted
+    // the selection is an approved fact only the HR Manager may amend.
+    canConfirmBenefits:
+      canActOnCase(actor, 'benefits.confirm', ctx) &&
+      (c.status === 'DRAFT' || hasRole(actor, 'HR_MANAGER')) &&
+      !['COMPLETED', 'CANCELLED', 'VOIDED'].includes(c.status),
     benefits: {
       groupHealth: c.groupHealthApplicability,
       groupLife: c.groupLifeApplicability,
       otherProvider: c.otherProviderApplicability,
       confirmedAt: c.benefitsConfirmedAt,
+      source: c.benefitsSource,
     },
     actions: actions.map((a) => ({
       id: a.id,

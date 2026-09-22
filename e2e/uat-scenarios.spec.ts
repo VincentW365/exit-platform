@@ -66,12 +66,15 @@ async function createTestCase(
 
 async function submitAndApprove(page: Page, caseUrl: string): Promise<void> {
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Submit for review' }).click();
-  await expect(page.getByText('Case submitted for review.')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit for approval' }).click();
+  await expect(page.getByText('Case submitted for HR Manager approval.')).toBeVisible();
   await signOut(page);
   await signInAs(page, 'HR Manager');
   await page.goto(caseUrl);
-  await page.getByRole('button', { name: 'Approve case and capture snapshot' }).click();
+  // DEC-066: the one HR Manager decision is taken on the Case Approval Summary.
+  await page.goto(`${caseUrl}/approve`);
+  await page.getByRole('button', { name: 'Approve Case', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
   await expect(page.getByText(/Case approved/)).toBeVisible();
 }
 
@@ -215,25 +218,16 @@ test('UAT-1..5 - integrated resignation with notice: one case end to end (Direct
   await page.getByRole('button', { name: 'Save address' }).click();
   await expect(page.getByText(/Address recorded/)).toBeVisible();
   await page.getByRole('button', { name: 'Refresh fields from case' }).click();
-  await page.getByRole('button', { name: 'Validate and submit for approval' }).click();
-  await expect(page.getByText('Document submitted for HR Manager approval.')).toBeVisible();
+  await page.getByRole('button', { name: 'Validate and finalize (attested)' }).click();
+  await expect(
+    page.getByText('Document finalized; the final PDF has been rendered.'),
+  ).toBeVisible();
 
-  // UAT-3b: one benefits confirmation feeds the derived provider rules.
+  // UAT-3b (DEC-066): benefits were selected at intake and approved with the
+  // case; the officer records the confirmation task, nothing more.
   await page.goto(caseUrl);
-  // The confirm form opens itself while a benefit is undecided; toggle it
-  // open only when it is not already.
-  {
-    const benefitsDetails = page.locator('details.action', {
-      has: page.locator('summary', { hasText: 'Confirm which benefits apply' }),
-    });
-    if (!(await benefitsDetails.evaluate((el) => (el as HTMLDetailsElement).open))) {
-      await benefitsDetails.locator('summary').click();
-    }
-  }
-  await page.locator('#ben-health').selectOption('NO');
-  await page.locator('#ben-life').selectOption('NO');
-  await page.getByRole('button', { name: 'Confirm applicability' }).click();
-  await expect(page.getByText(/Benefits applicability confirmed/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Benefits and providers' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirm applicability' })).toHaveCount(0);
   await completeTaskFromWorkflow(page, caseUrl, 'Confirm benefits and provider applicability');
 
   // Action form: the assigned HR Officer prepares, finishes and completes it
@@ -266,11 +260,13 @@ test('UAT-1..5 - integrated resignation with notice: one case end to end (Direct
   await completeTaskFromWorkflow(page, caseUrl, 'Complete employee action form HR section');
   await signOut(page);
 
-  // UAT-2 (cont.): HR Manager approves the document; PDF renders + downloads.
+  // UAT-2 (cont.): the officer finalized the document above under the case
+  // approval (DEC-066); the HR Manager only verifies the PDF downloads.
   await signInAs(page, 'HR Manager');
   await page.goto(`${caseUrl}/documents`);
-  await page.getByRole('button', { name: 'Approve exact version (attested)' }).click();
-  await expect(page.getByText('Document approved; the final PDF has been rendered.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Approve exact version (attested)' })).toHaveCount(
+    0,
+  );
   const pdfHref = await page
     .getByRole('link', { name: 'Download PDF' })
     .first()
@@ -379,11 +375,13 @@ test('UAT-1..5 - integrated resignation with notice: one case end to end (Direct
   await signOut(page);
 });
 
-test('Document correction - invalidation, supersede, re-approval (audited)', async ({ page }) => {
+test('Document correction - invalidation, supersede, re-finalization (audited)', async ({
+  page,
+}) => {
   test.setTimeout(300_000);
 
-  // Approved case with an approved, rendered document (maker-checker: the
-  // officer drafts and submits; the manager approves).
+  // Approved case with a finalized, rendered document (DEC-066: the officer
+  // drafts and finalizes under the case approval; no manager approval).
   await signInAs(page, 'HR Officer');
   const { url: caseUrl } = await createTestCase(page, {
     employeeQuery: 'taylor',
@@ -403,13 +401,12 @@ test('Document correction - invalidation, supersede, re-approval (audited)', asy
   await page.getByRole('button', { name: 'Save address' }).click();
   await expect(page.getByText(/Address recorded/)).toBeVisible();
   await page.getByRole('button', { name: 'Refresh fields from case' }).click();
-  await page.getByRole('button', { name: 'Validate and submit for approval' }).click();
-  await expect(page.getByText('Document submitted for HR Manager approval.')).toBeVisible();
+  await page.getByRole('button', { name: 'Validate and finalize (attested)' }).click();
+  await expect(
+    page.getByText('Document finalized; the final PDF has been rendered.'),
+  ).toBeVisible();
   await signOut(page);
   await signInAs(page, 'HR Manager');
-  await page.goto(`${caseUrl}/documents`);
-  await page.getByRole('button', { name: 'Approve exact version (attested)' }).click();
-  await expect(page.getByText('Document approved; the final PDF has been rendered.')).toBeVisible();
 
   // 1: authorized audited correction of approved case data.
   await page.goto(caseUrl);
@@ -432,18 +429,16 @@ test('Document correction - invalidation, supersede, re-approval (audited)', asy
   await expect(page.getByText('(superseded copy)').first()).toBeVisible();
   await expect(page.getByText('DRAFT').first()).toBeVisible();
 
-  // 5-6: the new version requires a fresh submission (officer) and a fresh
-  // approval (manager) - the UAT-D1 fix makes this work with one manager.
+  // 5-6: the new version is refreshed and finalized by the officer again -
+  // one person, one step, under the same case approval (DEC-066).
   await signOut(page);
   await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/documents`);
-  await page.getByRole('button', { name: 'Validate and submit for approval' }).click();
-  await expect(page.getByText('Document submitted for HR Manager approval.')).toBeVisible();
-  await signOut(page);
-  await signInAs(page, 'HR Manager');
-  await page.goto(`${caseUrl}/documents`);
-  await page.getByRole('button', { name: 'Approve exact version (attested)' }).click();
-  await expect(page.getByText('Document approved; the final PDF has been rendered.')).toBeVisible();
+  await page.getByRole('button', { name: 'Refresh fields from case' }).click();
+  await page.getByRole('button', { name: 'Validate and finalize (attested)' }).click();
+  await expect(
+    page.getByText('Document finalized; the final PDF has been rendered.'),
+  ).toBeVisible();
 
   // 7: exactly one current RENDERED document; the old one remains SUPERSEDED.
   await expect(page.locator('.badge', { hasText: 'SUPERSEDED' })).toHaveCount(1);

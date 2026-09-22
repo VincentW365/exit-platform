@@ -374,10 +374,17 @@ export type DocumentStatus =
   | 'VOIDED'
   | 'RENDER_FAILED';
 
+/**
+ * Statuses a document can still be edited (fields refreshed) in. PENDING_APPROVAL
+ * and RETURNED are LEGACY statuses from the retired maker-checker model
+ * (DEC-066): no new document enters them, but a historical row left in one is
+ * still editable and finalizable so nothing is stranded.
+ */
 export const EDITABLE_DOC_STATUSES: readonly DocumentStatus[] = [
   'DRAFT',
   'RETURNED',
   'VALIDATION_FAILED',
+  'PENDING_APPROVAL',
 ];
 
 interface DocTransition {
@@ -386,19 +393,26 @@ interface DocTransition {
   reasonRequired: boolean;
 }
 
+/**
+ * Single authorization gate (owner directive 2026-09-22, DEC-066): the HR
+ * Manager approves the CASE once; the HR person executing it validates and
+ * FINALIZES a document in one attested step, which renders the final PDF.
+ * There is no second, per-document HR Manager approval. The submit, return
+ * and approve transitions of the retired maker-checker model are gone; a
+ * legacy row still sitting in PENDING_APPROVAL or RETURNED finalizes like a
+ * draft.
+ */
 export const DOC_TRANSITIONS = {
-  submit: {
-    from: ['DRAFT', 'RETURNED', 'VALIDATION_FAILED'],
-    to: 'PENDING_APPROVAL',
+  finalize: {
+    from: ['DRAFT', 'RETURNED', 'VALIDATION_FAILED', 'PENDING_APPROVAL'],
+    to: 'APPROVED',
     reasonRequired: false,
   },
   failValidation: {
-    from: ['DRAFT', 'RETURNED', 'VALIDATION_FAILED'],
+    from: ['DRAFT', 'RETURNED', 'VALIDATION_FAILED', 'PENDING_APPROVAL'],
     to: 'VALIDATION_FAILED',
     reasonRequired: false,
   },
-  return: { from: ['PENDING_APPROVAL'], to: 'RETURNED', reasonRequired: true },
-  approve: { from: ['PENDING_APPROVAL'], to: 'APPROVED', reasonRequired: false },
   startRender: { from: ['APPROVED', 'RENDER_FAILED'], to: 'RENDERING', reasonRequired: false },
   renderOk: { from: ['RENDERING'], to: 'RENDERED', reasonRequired: false },
   renderFail: { from: ['RENDERING'], to: 'RENDER_FAILED', reasonRequired: false },

@@ -181,6 +181,11 @@ running instances stay pinned to v1 and finish under it):
 - HR tasks (case validation, documents, HRIS update, clearance review) and
   the manager handover retain their v1 due rules and calendar behaviour.
 
+Later versions: v3 (owner decision 2026-08-19) removed the line-manager
+tasks; v4 (DEC-066, 2026-09-22) removed the duplicate "Authorized HR Manager
+approval" task from the restricted termination and redundancy workflows -
+the HR Manager approval of the case is the only management approval.
+
 ## 7. Token security properties (Directive T)
 
 Acknowledgement tokens satisfy, in code (`emailActions.ts`,

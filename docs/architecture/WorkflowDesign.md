@@ -293,3 +293,17 @@ resignation with a month of notice keeps its access for the month, an
 immediate resignation's deadlines are all today because its final working day
 is today, and a termination scheduled for next month does not fire its
 actions on the day the case was raised.
+
+## Single authorization gate: workflow v4 (DEC-066, 2026-09-22)
+
+The HR Manager approves the case once, on the Case Approval Summary, and that
+approval authorizes the assigned HR Officer to execute the workflow. The
+restricted termination and redundancy workflows carried an "Authorized HR
+Manager approval" task (`HRM_AUTHORIZATION`) that asked for the same
+authorization a second time; v4 removes it, and the task that waited on it
+(confirming the exact effective time) now waits on the restricted preparation.
+Every other task, due rule and confidentiality flag is unchanged. Running
+instances stay pinned to the version they started on. The final clearance
+review task (`HRM_FINAL_CLEARANCE` / `HRM_RESTRICTED_CLEARANCE`) is retained:
+it is the HR Manager's own decision at the end of the case, not a repeat of
+the approval at its start.

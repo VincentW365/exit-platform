@@ -1,7 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ServiceError, listCases, listMyQueue } from '@exit/db';
-import { TERMINAL_STATUSES, formatDateOnly, formatInstant, hasRole } from '@exit/domain';
+import {
+  TERMINAL_STATUSES,
+  caseWorkStateLabel,
+  formatDateOnly,
+  formatInstant,
+  hasRole,
+} from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback, StatusBadge } from '@/components/ui';
 import { claimTaskAction, returnTaskAction } from './actions';
@@ -174,6 +180,11 @@ export default async function QueuePage({
                         </span>
                       </span>
                       <StatusBadge status={c.status} />
+                      {/* DEC-066 section 30: what the case is waiting for, in
+                          the words of the person who owns it. */}
+                      <Chip tone={c.status === 'APPROVED' ? 'attention' : 'neutral'}>
+                        {caseWorkStateLabel(c.status)}
+                      </Chip>
                       {c.tasksOverdue > 0 ? (
                         <Chip tone="critical">
                           {c.tasksOverdue} overdue task{c.tasksOverdue === 1 ? '' : 's'}
@@ -188,7 +199,11 @@ export default async function QueuePage({
                   }
                   action={
                     <Link href={`/cases/${c.id}`} className="button secondary compact">
-                      {c.status === 'DRAFT' ? 'Continue draft' : 'Open case'}
+                      {c.status === 'DRAFT'
+                        ? 'Continue draft'
+                        : c.status === 'PENDING_HR_REVIEW' && hasRole(actor, 'HR_MANAGER')
+                          ? 'Review and approve'
+                          : 'Open case'}
                     </Link>
                   }
                 />

@@ -212,7 +212,7 @@ Generated letters, action-form PDFs, attachments, retention packages and schedul
 report CSVs all go through the `StorageAdapter` boundary in
 `packages/db/src/storage.ts`.
 
-PDFs are rendered **synchronously in the web request** when a document is approved
+PDFs are rendered **synchronously in the web request** when a document is finalized
 (`documentService.ts`); the worker's render job is a retry path, not the primary one.
 So the **web process** needs working storage, not just the worker.
 
@@ -403,6 +403,18 @@ assigned. Where a second officer login has been mapped from the directory, reass
 case between the two officers and verify My Work membership and edit rights move with
 the assignment while Created By does not change.
 
+### Single-approval check (DEC-066)
+
+Signed in as the **HR Officer**, create a Draft case ticking one benefit provider in
+the **Benefits & Providers** step, confirm the Draft Overview shows it under
+"Benefits and providers" with **Edit selections**, and submit it. Sign in as the
+**HR Manager**: My Work offers **Review and approve**; the Case Approval Summary lists
+every audience (Employee, Reporting Manager, IT, Finance, Human Resources, Benefit
+providers) with a resolved address or an explicit readiness state, the Documents &
+Forms plan and the workflow to follow. Approve once. Back as the officer: finalize
+the letter, send it, complete the action form and release the provider notification
+- no "Approve exact version" or "(HR Manager authority)" control exists anywhere.
+
 ## Running the worker
 
 Unchanged from the normal architecture. Preferred — the container that matches the
@@ -460,7 +472,7 @@ database only. A green readiness probe therefore says nothing about dispatch —
 | `/admin/health` | Worker component failing after 180 s. `/api/ready` stays 200 |
 
 Still usable without it: sign-in, directory browsing, case creation, case views,
-document approval and rendering, action forms, audit trail, admin pages.
+case approval, document finalization and rendering, action forms, audit trail, admin pages.
 
 ## Deployment protection
 
@@ -491,7 +503,8 @@ protection credentials.
 | 9 | Case creation | Resignation with notice, immediate resignation and termination each create correctly, with the manager pre-assigned and an alternate offered where none exists |
 | 10 | Documents persist | Generate a letter, redeploy, download it again — byte-identical |
 | 11 | Private documents | Document URLs refuse unauthenticated and unauthorised access |
-| 12 | Notifications | With the worker running, approval reaches `SUBMITTED` and appears in `/dev/mailbox` |
+| 12 | Notifications | With the worker running, a release by the assigned HR Officer reaches `SUBMITTED` and appears in `/dev/mailbox` |
+| 17 | Single authorization gate (DEC-066) | The HR Officer creates a case with benefits selected at intake and submits it; the HR Manager approves it once from the Case Approval Summary (every audience shows a resolved destination or an explicit "Recipient not configured"); the officer then finalizes and sends the letter, completes the form and releases the provider notification with no further HR Manager control anywhere; a second officer login, where mapped, can read the case but not execute it |
 | 13 | No external mail | Nothing is delivered to any real mailbox; every destination is a capture or reserved domain |
 | 14 | Uploads labelled | Attachments are accepted and clearly marked as not scanned |
 | 15 | Audit persists | `audit_event` rows survive redeploy; `UPDATE`/`DELETE` refused |
