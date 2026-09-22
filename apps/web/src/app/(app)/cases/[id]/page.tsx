@@ -288,10 +288,10 @@ export default async function CaseDetailPage({
             timed against, so they are set louder than the values beside them. */}
         <div className="panel">
           <Facts>
-            <Fact label="Final working date" isKey>
+            <Fact label="Employment ends (last working day)" isKey>
               {c.confirmedLastDay ? formatDateOnly(c.confirmedLastDay) : 'Not set'}
             </Fact>
-            <Fact label="Employment ends" isKey>
+            <Fact label="Separation effective at" isKey>
               {dt(c.effectiveSeparationAt)}
             </Fact>
             <Fact label="Resignation received">
@@ -383,16 +383,18 @@ export default async function CaseDetailPage({
               <input id="e-recv-detail" name="receiptSourceDetail" type="text" maxLength={150} />
             </div>
             {/* The date concepts a correction can touch are the ones this
-                separation actually uses (DEC-058). The last working day was
-                missing entirely, so a mistyped final date could only be fixed
-                by voiding the case. */}
+                separation actually uses (DEC-058). One end date (DEC-064):
+                the effective instant follows it at close of business, so no
+                time is asked here; an exact-time correction is the HR
+                Manager's audited "Change effective separation time". */}
             {data.separation.dates.confirmedLastDay !== undefined &&
             !separationProfile(data.separation.type).forbiddenDates.includes('confirmedLastDay') ? (
               <div className="field">
-                <label htmlFor="e-last-day">Last Working Day</label>
+                <label htmlFor="e-last-day">Employment Ends (Last Working Day)</label>
                 <input id="e-last-day" name="confirmedLastDay" type="date" />
                 <p className="hint">
                   Currently: {c.confirmedLastDay ? dateOnly(c.confirmedLastDay) : 'not set'}.
+                  Employment ends at close of business on this date.
                 </p>
               </div>
             ) : null}
@@ -407,15 +409,6 @@ export default async function CaseDetailPage({
                 </p>
               </div>
             ) : null}
-            <div className="field">
-              <label htmlFor="e-eff">
-                {data.separation.initiator === 'EMPLOYER'
-                  ? 'Effective Date (and Exact Time)'
-                  : 'Employment Ends (Date and Exact Time)'}
-              </label>
-              <input id="e-eff" name="effectiveSeparationAt" type="datetime-local" />
-              <p className="hint">Currently: {dt(c.effectiveSeparationAt)}.</p>
-            </div>
             {/* An unusual combination is accepted with an audited reason
                 rather than blocked - a correction to a historical record has
                 to be possible (directive 25, 31). */}

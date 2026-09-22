@@ -159,7 +159,7 @@ describe('the server enforces the rules the form only displays', () => {
     };
     await expect(createDraft(officer.actor, bad)).rejects.toMatchObject({
       code: 'VALIDATION',
-      details: [expect.stringMatching(/before the last working day/i)],
+      details: [expect.stringMatching(/before the employment end date/i)],
     });
     const ok = await createDraft(officer.actor, {
       ...bad,

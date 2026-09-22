@@ -44,17 +44,9 @@ async function createTestCase(
   await page.locator(`input[name="type"][value=${JSON.stringify(opts.type)}]`).check();
   await page.getByRole('button', { name: 'Use this separation type' }).click();
   await page.locator('input[name="receivedAt"]').fill('2026-07-22T09:30');
-  // A resignation with notice ends at close of business on the final working
-  // date, so the platform derives the instant and the field is not offered.
-  if (opts.type === 'RESIGNATION_WITH_NOTICE') {
-    await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
-  } else {
-    if (opts.confirmedLastDay !== false) {
-      await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
-    }
-    await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
-    await page.locator('input[name="effectiveSeparationAt"]').fill('2026-08-14T17:00');
-  }
+  // One end date (DEC-064): employment ends at close of business on it and
+  // the platform derives the instant - no time is offered for any type.
+  await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
   // The final action lives in the Review step (owner directive,
   // 2026-08-27), so it is reached by opening that step.
   await page.locator('.step:has([data-step="review"]) .step__header').click();

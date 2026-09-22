@@ -25,14 +25,9 @@ async function createDraftCase(
   await page.locator(`input[name="type"][value=${JSON.stringify(opts.type)}]`).check();
   await page.getByRole('button', { name: 'Use this separation type' }).click();
   await page.locator('input[name="receivedAt"]').fill('2026-07-20T09:30');
-  // A resignation with notice ends at close of business on the final working
-  // date, so the platform derives the instant and the field is not offered.
-  if (opts.type === 'RESIGNATION_WITH_NOTICE') {
-    await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
-  } else {
-    await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
-    await page.locator('input[name="effectiveSeparationAt"]').fill('2026-08-14T17:00');
-  }
+  // One end date (DEC-064): employment ends at close of business on it and
+  // the platform derives the instant - no time is offered for any type.
+  await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
   if (opts.purpose === 'TEST') {
   }
   // The final action lives in the Review step (owner directive,
@@ -73,7 +68,6 @@ test('J.3 return with reason -> correction -> resubmit; history preserved', asyn
   // Draft editing now lives as a disclosure under the case summary.
   await page.locator('details.action > summary', { hasText: 'Edit these details' }).click();
   await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
-  await page.locator('input[name="effectiveSeparationAt"]').fill('2026-08-14T18:00');
   await page.getByRole('button', { name: 'Save draft changes' }).click();
   await expect(page.getByText('Draft updated.')).toBeVisible();
   await page.getByRole('button', { name: 'Submit for review' }).click();

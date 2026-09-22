@@ -142,7 +142,6 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
   await page.getByRole('button', { name: 'Use this separation type' }).click();
   await page.locator('input[name="receivedAt"]').fill('2026-07-21T10:00');
   await page.locator('input[name="confirmedLastDay"]').fill('2026-08-01');
-  await page.locator('input[name="effectiveSeparationAt"]').fill('2026-08-01T17:00');
   // The final action lives in the Review step (owner directive,
   // 2026-08-27), so it is reached by opening that step.
   await page.locator('.step:has([data-step="review"]) .step__header').click();

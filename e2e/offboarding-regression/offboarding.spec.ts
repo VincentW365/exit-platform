@@ -292,12 +292,12 @@ async function runScenario(
     }
     ev.fact('Dates typed', typed);
     if (x.type === 'TERMINATION') {
-      const after = await ui.fieldValue(page, 'effectiveSeparationAt');
+      const timeOffered = await ui.fieldPresent(page, 'effectiveSeparationAt');
       ev.expect(
         'dates',
-        'Termination effective date/time remains editable',
-        after === plan.effectiveSeparationAt,
-        `now ${after}`,
+        'No separate effective time is asked; the instant is derived at close of business (DEC-064)',
+        timeOffered === false,
+        timeOffered ? 'time field offered' : 'no time field',
       );
     }
     const received = (await ui.fieldValue(page, 'receivedAt')) ?? '';

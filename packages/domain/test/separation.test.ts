@@ -130,10 +130,22 @@ describe('a termination is not a resignation without notice', () => {
     expect(separationProfile('TERMINATION').receivedDateLabel).not.toMatch(/notice/i);
   });
 
-  it('defaults the effective date to today and follows it with the last day', () => {
+  it('defaults the employment end date to today; the instant is derived, never defaulted (DEC-064)', () => {
     const d = defaultDates('TERMINATION', TODAY);
-    expect(d.effectiveSeparationAt).toEqual(TODAY);
     expect(d.confirmedLastDay).toEqual(TODAY);
+    expect(d.effectiveSeparationAt).toBeNull();
+  });
+
+  it('asks for one end date and never for a time (DEC-064)', () => {
+    for (const type of DEPARTURE_TYPES) {
+      const p = separationProfile(type as DepartureType);
+      expect(p.requiredDates, type).not.toContain('effectiveSeparationAt');
+      expect(p.optionalDates, type).not.toContain('effectiveSeparationAt');
+      expect(p.effectiveDateSource, type).toBe('confirmedLastDay');
+    }
+    expect(
+      separationErrors({ type: 'TERMINATION', dates: dates({ receivedAt: TODAY }) }),
+    ).toContainEqual(expect.stringMatching(/employment end date .* is required/i));
   });
 
   it('asks who authorized it without blocking a record that cannot say', () => {
@@ -168,12 +180,12 @@ describe('retirement is its own departure, not a disguised resignation', () => {
     expect(p.noticeArrangement).not.toMatch(/resign/i);
   });
 
-  it('requires an effective retirement date', () => {
+  it('requires a retirement date - the employment end date', () => {
     const errs = separationErrors({
       type: 'RETIREMENT',
       dates: dates({ receivedAt: TODAY }),
     });
-    expect(errs).toContainEqual(expect.stringMatching(/effective date is required/i));
+    expect(errs).toContainEqual(expect.stringMatching(/employment end date .* is required/i));
   });
 });
 
@@ -215,13 +227,13 @@ describe('redundancy uses employer wording, not resignation wording', () => {
 
 describe('"Other" refuses to infer', () => {
   it('will not assume notice either way', () => {
-    const d = dates({ receivedAt: TODAY, effectiveSeparationAt: TODAY });
+    const d = dates({ receivedAt: TODAY, confirmedLastDay: TODAY });
     const errs = separationErrors({ type: 'OTHER', dates: d, separationTypeDetail: 'Mutual exit' });
     expect(errs).toContainEqual(expect.stringMatching(/whether employee notice applies/i));
   });
 
   it('requires HR to describe what happened', () => {
-    const d = dates({ receivedAt: TODAY, effectiveSeparationAt: TODAY });
+    const d = dates({ receivedAt: TODAY, confirmedLastDay: TODAY });
     const errs = separationErrors({ type: 'OTHER', dates: d, noticeApplicableOverride: false });
     expect(errs).toContainEqual(expect.stringMatching(/describe the separation/i));
   });
@@ -230,7 +242,7 @@ describe('"Other" refuses to infer', () => {
     expect(noticeApplies('OTHER', true)).toBe(true);
     expect(noticeApplies('OTHER', false)).toBe(false);
     expect(noticeIsServed('OTHER', true)).toBe(true);
-    const d = dates({ receivedAt: TODAY, effectiveSeparationAt: TODAY });
+    const d = dates({ receivedAt: TODAY, confirmedLastDay: TODAY });
     expect(
       separationErrors({
         type: 'OTHER',
@@ -253,7 +265,7 @@ describe('server-side rules hold whatever the form shows', () => {
   it('rejects a contract end date on a termination', () => {
     const d = dates({
       receivedAt: TODAY,
-      effectiveSeparationAt: TODAY,
+      confirmedLastDay: TODAY,
       contractEndDate: day('2026-09-30'),
     });
     const errs = separationErrors({ type: 'TERMINATION', dates: d, authorizedByName: 'HR' });

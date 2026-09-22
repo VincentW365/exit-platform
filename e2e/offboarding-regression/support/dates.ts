@@ -72,20 +72,18 @@ export function datePlanFor(type: string, now: Date = new Date()): DatePlan {
         expectDefaultToday: ['receivedAt', 'confirmedLastDay'],
         narrative: 'Defaults kept: notice received and last working day both today.',
       };
-    case 'TERMINATION': {
-      // The effective instant defaults to today; it is re-typed to prove it
-      // stays editable (directive section 7), to a few minutes from now so
-      // the same-day rules (IT one hour before, manager and finance at the
-      // instant) all fall due inside the run and can be evidenced as sent.
-      const soon = businessTimePlus(now, 3);
+    case 'TERMINATION':
+      // One end date (DEC-064): the end date defaults to today and the
+      // effective instant is derived at close of business on it - nothing is
+      // typed. The same-day rules (IT one hour before, manager and finance at
+      // the instant) fall due at close of business.
       return {
         executionDate: today,
-        effectiveSeparationAt: businessDateTime(soon.date, soon.time),
-        confirmedLastDay: soon.date,
-        expectDefaultToday: ['receivedAt', 'effectiveSeparationAt'],
-        narrative: `Recorded today; effective today at ${soon.time} (edited from the default to a few minutes ahead).`,
+        effectiveSeparationAt: at(0, '17:00'),
+        expectDefaultToday: ['receivedAt', 'confirmedLastDay'],
+        narrative:
+          'Recorded today; employment ends today at close of business (derived, never typed).',
       };
-    }
     case 'RETIREMENT':
       return {
         executionDate: today,

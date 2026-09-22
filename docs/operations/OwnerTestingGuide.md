@@ -52,9 +52,10 @@ automated controlled emails and confirm through secure links (section 6).
    Employee # or department; pick a real employee. Identity, Employee #,
    position, department, location and manager arrive pre-populated. Enter only
    the separation facts: departure type, when it was received and how, the
-   final working date (a resignation with notice ends at close of business on
-   that date, so the platform sets the exact time itself), and whether a reason
-   was given. Attach a resignation letter if you want the document flow.
+   employment end date (the last working day - every separation ends at close
+   of business on that date, so the platform sets the exact time itself,
+   DEC-064), and whether a reason was given. Attach a resignation letter if you
+   want the document flow.
 2. **Submit → Approve** (HR Officer submits; HR Manager approves — an
    immutable employee snapshot is captured at approval).
 3. **Assignment tab** — assign the operational HR Officer (the list shows

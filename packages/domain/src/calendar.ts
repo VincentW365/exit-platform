@@ -41,11 +41,11 @@ export function isBusinessDay(instant: Date, calendar: BusinessCalendar): boolea
 export const DEFAULT_CLOSE_OF_BUSINESS = '17:00';
 
 /**
- * The effective separation instant derived from the final working date
- * (owner request, 2026-08-18): employment ends at close of business on the
- * last day worked. HR only types an exact time when it genuinely differs -
- * immediate resignations and terminations, where the instant is a decision
- * rather than a consequence.
+ * The effective separation instant derived from the employment end date
+ * (owner request, 2026-08-18; every separation type since DEC-064,
+ * 2026-09-22): employment ends at close of business on the last day worked.
+ * No intake asks for a time; the HR Manager records a different exact
+ * instant only as an audited correction.
  *
  * Returns null for an unparseable time so the caller can fall back to asking
  * rather than inventing a deadline that drives access removal.

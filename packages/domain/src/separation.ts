@@ -134,7 +134,7 @@ const PROFILES: Readonly<Record<DepartureType, SeparationProfile>> = {
     noticeServed: true,
     noticeArrangement: 'Notice period served to the final working day.',
     requiredDates: ['receivedAt'],
-    optionalDates: ['confirmedLastDay', 'effectiveSeparationAt'],
+    optionalDates: ['confirmedLastDay'],
     forbiddenDates: ['contractEndDate'],
     effectiveDateSource: 'confirmedLastDay',
     defaultsToToday: ['receivedAt'],
@@ -156,7 +156,7 @@ const PROFILES: Readonly<Record<DepartureType, SeparationProfile>> = {
     noticeServed: false,
     noticeArrangement: 'Immediate resignation - no notice period served.',
     requiredDates: ['receivedAt', 'confirmedLastDay'],
-    optionalDates: ['effectiveSeparationAt'],
+    optionalDates: [],
     forbiddenDates: ['contractEndDate'],
     effectiveDateSource: 'confirmedLastDay',
     defaultsToToday: ['receivedAt', 'confirmedLastDay'],
@@ -178,11 +178,11 @@ const PROFILES: Readonly<Record<DepartureType, SeparationProfile>> = {
     noticeApplicable: false,
     noticeServed: false,
     noticeArrangement: null,
-    requiredDates: ['receivedAt', 'effectiveSeparationAt'],
-    optionalDates: ['confirmedLastDay'],
+    requiredDates: ['receivedAt', 'confirmedLastDay'],
+    optionalDates: [],
     forbiddenDates: ['contractEndDate'],
-    effectiveDateSource: 'effectiveSeparationAt',
-    defaultsToToday: ['receivedAt', 'effectiveSeparationAt'],
+    effectiveDateSource: 'confirmedLastDay',
+    defaultsToToday: ['receivedAt', 'confirmedLastDay'],
     baseUrgency: 'IMMEDIATE',
     restrictedByDefault: true,
     surveyEligibleByDefault: false,
@@ -201,10 +201,10 @@ const PROFILES: Readonly<Record<DepartureType, SeparationProfile>> = {
     noticeApplicable: true,
     noticeServed: true,
     noticeArrangement: 'Retirement notified in advance of the retirement date.',
-    requiredDates: ['receivedAt', 'effectiveSeparationAt'],
-    optionalDates: ['confirmedLastDay'],
+    requiredDates: ['receivedAt', 'confirmedLastDay'],
+    optionalDates: [],
     forbiddenDates: ['contractEndDate'],
-    effectiveDateSource: 'effectiveSeparationAt',
+    effectiveDateSource: 'confirmedLastDay',
     defaultsToToday: ['receivedAt'],
     baseUrgency: 'PLANNED',
     restrictedByDefault: false,
@@ -224,9 +224,11 @@ const PROFILES: Readonly<Record<DepartureType, SeparationProfile>> = {
     noticeServed: false,
     noticeArrangement: 'Contractual end date reached - no notice period applies.',
     requiredDates: ['receivedAt', 'contractEndDate'],
-    optionalDates: ['confirmedLastDay', 'effectiveSeparationAt'],
+    optionalDates: ['confirmedLastDay'],
     forbiddenDates: [],
-    effectiveDateSource: 'contractEndDate',
+    // The last working day follows the contract end date unless HR says
+    // otherwise, and employment ends at close of business on it.
+    effectiveDateSource: 'confirmedLastDay',
     defaultsToToday: ['receivedAt'],
     baseUrgency: 'SCHEDULED',
     restrictedByDefault: false,
@@ -245,10 +247,10 @@ const PROFILES: Readonly<Record<DepartureType, SeparationProfile>> = {
     noticeApplicable: true,
     noticeServed: true,
     noticeArrangement: 'Redundancy notified by the company.',
-    requiredDates: ['receivedAt', 'effectiveSeparationAt'],
-    optionalDates: ['confirmedLastDay'],
+    requiredDates: ['receivedAt', 'confirmedLastDay'],
+    optionalDates: [],
     forbiddenDates: ['contractEndDate'],
-    effectiveDateSource: 'effectiveSeparationAt',
+    effectiveDateSource: 'confirmedLastDay',
     defaultsToToday: ['receivedAt'],
     baseUrgency: 'PLANNED',
     restrictedByDefault: true,
@@ -268,10 +270,10 @@ const PROFILES: Readonly<Record<DepartureType, SeparationProfile>> = {
     noticeApplicable: null,
     noticeServed: null,
     noticeArrangement: null,
-    requiredDates: ['receivedAt', 'effectiveSeparationAt'],
-    optionalDates: ['confirmedLastDay', 'contractEndDate'],
+    requiredDates: ['receivedAt', 'confirmedLastDay'],
+    optionalDates: ['contractEndDate'],
     forbiddenDates: [],
-    effectiveDateSource: 'effectiveSeparationAt',
+    effectiveDateSource: 'confirmedLastDay',
     defaultsToToday: ['receivedAt'],
     baseUrgency: 'PLANNED',
     restrictedByDefault: false,
@@ -319,13 +321,20 @@ export function isVoluntary(type: DepartureType): boolean {
 
 // --- dates -------------------------------------------------------------------
 
-/** The four distinct date concepts a case can carry (directive 5). */
+/**
+ * The four distinct date concepts a case can carry (directive 5). Since the
+ * owner decision of 2026-09-22 (DEC-064) HR enters ONE end date: the last
+ * working day IS the employment end date, and the effective instant is
+ * derived at close of business on it for every separation type. No intake
+ * asks for a time; the HR Manager can still record a different exact instant
+ * as an audited correction.
+ */
 export interface SeparationDates {
   /** When the employee gave notice, retired or was notified. */
   receivedAt: Date | null;
-  /** The final day the employee is expected to perform work. */
+  /** The employment end date: the final day the employee performs work. */
   confirmedLastDay: Date | null;
-  /** The instant employment formally ends. */
+  /** The instant employment formally ends - derived, never asked (DEC-064). */
   effectiveSeparationAt: Date | null;
   /** The predetermined contractual completion date. */
   contractEndDate: Date | null;
@@ -436,11 +445,6 @@ export function defaultDates(
     dates.contractEndDate = known.contractEndDate;
     dates.confirmedLastDay = known.contractEndDate;
   }
-  // A termination's last working day follows the effective date until HR
-  // says otherwise.
-  if (type === 'TERMINATION' && dates.effectiveSeparationAt && !dates.confirmedLastDay) {
-    dates.confirmedLastDay = dates.effectiveSeparationAt;
-  }
   return dates;
 }
 
@@ -464,8 +468,8 @@ const article = (label: string) => `${/^[aeiou]/i.test(label) ? 'an' : 'a'} ${la
 
 const DATE_LABEL: Readonly<Record<DateField, string>> = {
   receivedAt: 'Notice received date',
-  confirmedLastDay: 'Last working day',
-  effectiveSeparationAt: 'Separation effective date',
+  confirmedLastDay: 'Employment end date (last working day)',
+  effectiveSeparationAt: 'Separation effective time',
   contractEndDate: 'Contract end date',
 };
 
@@ -515,23 +519,31 @@ export function separationErrors(input: SeparationValidationInput): string[] {
     d.confirmedLastDay &&
     wholeDaysBetween(d.receivedAt, d.confirmedLastDay) < 0
   ) {
-    relationship.push('The last working day is before the separation was recorded.');
+    relationship.push('The employment end date is before the separation was recorded.');
   }
+  // The effective instant is normally derived on the end date itself
+  // (DEC-064), in which case the check above already said it; only an
+  // explicitly corrected instant on another day is questioned separately.
+  const effectiveOnEndDate =
+    !!d.confirmedLastDay &&
+    !!d.effectiveSeparationAt &&
+    wholeDaysBetween(d.confirmedLastDay, d.effectiveSeparationAt) === 0;
   if (
     d.receivedAt &&
     d.effectiveSeparationAt &&
+    !effectiveOnEndDate &&
     wholeDaysBetween(d.receivedAt, d.effectiveSeparationAt) < 0
   ) {
     relationship.push('Employment ends before the separation was recorded.');
   }
-  // Employment can end at close of business ON the last working day, so only
-  // a date strictly before it is contradictory.
+  // Employment ends at close of business ON the end date, so only an
+  // instant on a strictly earlier day is contradictory.
   if (
     d.confirmedLastDay &&
     d.effectiveSeparationAt &&
     wholeDaysBetween(d.confirmedLastDay, d.effectiveSeparationAt) < 0
   ) {
-    relationship.push('Employment ends before the last working day.');
+    relationship.push('The separation effective time is before the employment end date.');
   }
   if (relationship.length > 0 && !input.dateOverrideReason?.trim()) {
     errors.push(
@@ -556,7 +568,7 @@ export function separationPrompts(input: SeparationValidationInput): string[] {
     prompts.push(`Record who authorized this ${profile.label.toLowerCase()} where it is known.`);
   }
   if (!input.dates.confirmedLastDay && profile.optionalDates.includes('confirmedLastDay')) {
-    prompts.push('A last working day makes every downstream deadline exact.');
+    prompts.push('An employment end date makes every downstream deadline exact.');
   }
   return prompts;
 }

@@ -38,20 +38,11 @@ async function createTestCase(
   await page.locator(`input[name="type"][value=${JSON.stringify(opts.type)}]`).check();
   await page.getByRole('button', { name: 'Use this separation type' }).click();
   await page.locator('input[name="receivedAt"]').fill(opts.receivedAt ?? '2026-07-20T09:30');
-  // A resignation with notice ends at close of business on the final working
-  // date, so the platform derives the instant and the field is not offered.
-  if (opts.type === 'RESIGNATION_WITH_NOTICE') {
-    await page.locator('input[name="confirmedLastDay"]').fill('2026-08-14');
-  } else {
-    const effectiveAt = opts.effectiveAt ?? '2026-08-14T17:00';
-    // The last working day now prefills to today (DEC-058). A historical
-    // separation has to state the day work actually stopped, or the record
-    // claims the employee worked past the date employment ended.
-    await page
-      .locator('input[name="confirmedLastDay"]')
-      .fill(opts.confirmedLastDay ? '2026-08-14' : effectiveAt.slice(0, 10));
-    await page.locator('input[name="effectiveSeparationAt"]').fill(effectiveAt);
-  }
+  // One end date (DEC-064): employment ends at close of business on it and
+  // the platform derives the instant - no time is offered for any type. A
+  // historical separation states the day work actually stopped.
+  const endDate = opts.effectiveAt ? opts.effectiveAt.slice(0, 10) : '2026-08-14';
+  await page.locator('input[name="confirmedLastDay"]').fill(endDate);
   // The final action lives in the Review step (owner directive,
   // 2026-08-27), so it is reached by opening that step.
   await page.locator('.step:has([data-step="review"]) .step__header').click();

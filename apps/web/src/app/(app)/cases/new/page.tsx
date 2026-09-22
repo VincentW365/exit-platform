@@ -462,13 +462,17 @@ export default async function NewCasePage({
           </Field>
         ) : null}
 
+        {/* One end date (owner decision 2026-09-22, DEC-064): the last
+            working day IS the day employment ends. No time is asked -
+            employment ends at close of business on this date and the
+            platform derives the instant that access removal is timed to. */}
         {shows('confirmedLastDay') ? (
           <Field
             id="confirmedLastDay"
-            label="Last Working Day"
+            label="Employment Ends"
             required={requires('confirmedLastDay')}
             optional={!requires('confirmedLastDay')}
-            hint="The final day the employee is expected to perform work."
+            hint="The last working day. Employment ends at close of business on this date, and access removal is timed from that moment."
           >
             <input
               id="confirmedLastDay"
@@ -477,29 +481,6 @@ export default async function NewCasePage({
               type="date"
               required={requires('confirmedLastDay')}
               defaultValue={dateInput(defaults.confirmedLastDay)}
-            />
-          </Field>
-        ) : null}
-
-        {shows('effectiveSeparationAt') ? (
-          <Field
-            id="effectiveSeparationAt"
-            label={
-              profile.initiator === 'EMPLOYER'
-                ? 'Effective Date (and Exact Time)'
-                : 'Employment Ends (Date and Exact Time)'
-            }
-            required={requires('effectiveSeparationAt')}
-            optional={!requires('effectiveSeparationAt')}
-            hint="Access removal is timed to this exact moment, not to end of day."
-          >
-            <input
-              id="effectiveSeparationAt"
-              form={FORM_ID}
-              name="effectiveSeparationAt"
-              type="datetime-local"
-              required={requires('effectiveSeparationAt')}
-              defaultValue={instantInput(defaults.effectiveSeparationAt)}
             />
           </Field>
         ) : null}
@@ -662,16 +643,7 @@ export default async function NewCasePage({
         ? [{ field: 'contractEndDate', label: 'Contract ends', as: 'date' as const }]
         : []),
       ...(shows('confirmedLastDay')
-        ? [{ field: 'confirmedLastDay', label: 'Last working day', as: 'date' as const }]
-        : []),
-      ...(shows('effectiveSeparationAt')
-        ? [
-            {
-              field: 'effectiveSeparationAt',
-              label: profile.initiator === 'EMPLOYER' ? 'Effective' : 'Employment ends',
-              as: 'datetime' as const,
-            },
-          ]
+        ? [{ field: 'confirmedLastDay', label: 'Employment ends', as: 'date' as const }]
         : []),
     ];
 
@@ -682,7 +654,6 @@ export default async function NewCasePage({
       requiredFields: [
         'receivedAt',
         ...(requires('confirmedLastDay') ? ['confirmedLastDay'] : []),
-        ...(requires('effectiveSeparationAt') ? ['effectiveSeparationAt'] : []),
         ...(requires('contractEndDate') ? ['contractEndDate'] : []),
       ],
       summaryFields: dateSummary,

@@ -89,11 +89,15 @@ export const createDraftSchema = z.object({
   departureType: z.enum(DEPARTURE_TYPES),
   receivedAt: isoDate,
   receiptSource: shortText(200).min(1),
-  // One working-date field (owner request, 2026-08-18): `confirmedLastDay`
-  // is the final working date - the one that drives due dates, asset
-  // returns, letters and notice. The retired `proposedLastDay` column keeps
-  // its historical values and is never written again.
+  // One end-date field (owner request, 2026-08-18; DEC-064): `confirmedLastDay`
+  // is the employment end date - the last working day, the one that drives
+  // due dates, asset returns, letters and notice. The retired
+  // `proposedLastDay` column keeps its historical values and is never
+  // written again.
   confirmedLastDay: optionalIsoDate,
+  // The effective instant is derived at close of business on the end date;
+  // no intake form sends it. It stays accepted here so a caller with a
+  // genuine exact instant (fixtures, an audited correction) can state it.
   effectiveSeparationAt: optionalIsoDate,
   /// The predetermined contractual completion date (directive 5, 11).
   contractEndDate: optionalIsoDate,
@@ -205,21 +209,19 @@ async function closeOfBusiness(): Promise<string> {
 }
 
 /**
- * Effective separation for a resignation WITH NOTICE: employment ends at
- * close of business on the final working date, so HR never re-types a time
- * the platform can work out (owner request, 2026-08-18). Immediate
- * resignations and terminations always carry an explicitly entered instant -
- * there the exact moment is a decision, and it drives access removal.
+ * Effective separation instant: employment ends at close of business on the
+ * employment end date (the last working day), so HR never types a time the
+ * platform can work out (owner request, 2026-08-18; every separation type
+ * since DEC-064, 2026-09-22). The derived instant is what access removal is
+ * timed to; the HR Manager may replace it with an audited correction.
  */
 async function derivedEffectiveSeparation(
   departureType: string,
   confirmedLastDay: Date | null | undefined,
 ): Promise<Date | null> {
   if (!confirmedLastDay || !isDepartureType(departureType)) return null;
-  // Any separation whose profile hangs off the final working day ends at
-  // close of business on it. This used to name resignation-with-notice
-  // directly, which left an immediate resignation with no effective instant
-  // at all - and the effective instant is what access removal is timed to.
+  // Every profile now hangs off the end date; the guard stays so a profile
+  // that ever points elsewhere is not silently given a derived instant.
   if (separationProfile(departureType).effectiveDateSource !== 'confirmedLastDay') return null;
   return effectiveSeparationFromFinalDay(confirmedLastDay, await closeOfBusiness());
 }
@@ -521,11 +523,17 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
     contractEndDate: employee.contractEndDate ?? null,
   });
   const contractEndDate = input.contractEndDate ?? defaults.contractEndDate;
-  const confirmedLastDay = input.confirmedLastDay ?? defaults.confirmedLastDay;
+  // An end of contract ends on the contract end date unless HR states a
+  // different last working day - including when HR typed the contract end
+  // date because the directory holds none (DEC-058, DEC-064).
+  const confirmedLastDay =
+    input.confirmedLastDay ??
+    defaults.confirmedLastDay ??
+    (input.departureType === 'CONTRACT_EXPIRY' ? contractEndDate : null);
 
-  // Resignation with notice: employment ends at close of business on the
-  // final working date unless HR states otherwise (owner request 2026-08-18).
-  // Every other type takes the instant its profile points at.
+  // Employment ends at close of business on the end date for every
+  // separation type (owner request 2026-08-18; DEC-064) unless the caller
+  // states an exact instant.
   const effectiveSeparationAt =
     input.effectiveSeparationAt ??
     defaults.effectiveSeparationAt ??
