@@ -335,6 +335,14 @@ td.numeric,
   gap: var(--space-2);
   margin-top: var(--space-3);
 }
+/* One quiet line of state under the chips - a draft says what it is
+   without a banner. */
+.case-head__note {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  color: var(--on-brand-dim);
+  max-width: 60ch;
+}
 /* Chips on the dark header need their own contrast, not the light palette. */
 .case-head .chip {
   background: rgba(255, 255, 255, 0.12);
@@ -856,6 +864,25 @@ td.numeric,
 .facts dd.is-key {
   font-size: var(--text-md);
   font-weight: var(--weight-semi);
+}
+/* Facts inside a half-width card: two columns, never five cramped ones. */
+.facts--pairs {
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  row-gap: var(--space-4);
+}
+
+/* The primary case cards, paired side by side where there is room and
+   stacked below it (owner directive, 2026-09-22: a case summary, not a
+   column of equally weighted cards). */
+.case-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  gap: var(--space-4);
+  align-items: stretch;
+  margin-bottom: 1.25rem;
+}
+.case-grid > .panel {
+  margin-bottom: 0;
 }
 
 /* ---------------------------------------------------------------------------

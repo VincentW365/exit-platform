@@ -277,26 +277,25 @@ export default async function CaseDetailPage({
         </section>
       ) : null}
 
-      <section aria-labelledby="details-h">
-        <SectionHead
-          id="details-h"
-          icon={<CalendarIcon />}
-          title="Exit details"
-          description="The dates and classifications this case is worked against. The separation instant is the one the workflow schedules from."
-        />
-        {/* Dates carry the weight here: they are what the rest of the case is
-            timed against, so they are set louder than the values beside them. */}
-        <div className="panel">
-          <Facts>
-            <Fact label="Employment ends (last working day)" isKey>
-              {c.confirmedLastDay ? formatDateOnly(c.confirmedLastDay) : 'Not set'}
-            </Fact>
-            <Fact label="Separation effective at" isKey>
-              {dt(c.effectiveSeparationAt)}
-            </Fact>
-            <Fact label="Resignation received">
+      {/* Level 2 (owner directive, 2026-09-22): the two cards a case is read
+          from sit side by side where there is room and stack below it. The
+          heading lives inside the card like every other section's. */}
+      <div className="case-grid">
+        <section aria-labelledby="details-h" className="panel">
+          <SectionHead id="details-h" icon={<CalendarIcon />} title="Exit details" />
+          {/* Dates carry the weight here: they are what the rest of the case is
+              timed against, so they are set louder than the values beside them. */}
+          <Facts className="facts--pairs">
+            <Fact label="Separation type">{data.separation.label}</Fact>
+            <Fact label={data.separation.receivedDateLabel}>
               {dt(c.receivedAt)}
               <span className="meta"> · {c.receiptSource}</span>
+            </Fact>
+            <Fact label="Employment ends (last working day)" isKey>
+              {c.confirmedLastDay ? formatDateOnly(c.confirmedLastDay) : 'Not recorded'}
+            </Fact>
+            <Fact label="Separation effective at" isKey>
+              {c.effectiveSeparationAt ? formatInstant(c.effectiveSeparationAt) : 'Not recorded'}
             </Fact>
             <Fact label="Reason category">
               {c.reasonCategory
@@ -304,148 +303,154 @@ export default async function CaseDetailPage({
                 : `None recorded (${humanize(c.reasonCaptureStatus).toLowerCase()})`}
             </Fact>
             <Fact label="Reason notes">
-              {c.reasonNotesMasked ? <em>Masked (restricted HR data)</em> : (c.reasonNotes ?? '-')}
+              {c.reasonNotesMasked ? (
+                <em>Masked (restricted HR data)</em>
+              ) : (
+                c.reasonNotes || 'Not recorded'
+              )}
             </Fact>
             <Fact label="Rehire eligibility">
               {c.rehireMasked ? (
                 <em>Masked (HR Manager only)</em>
               ) : (
-                humanize(c.rehireEligibility) || 'Not set'
+                humanize(c.rehireEligibility) || 'Not recorded'
               )}
             </Fact>
             {c.closeReason ? <Fact label="Closure reason">{c.closeReason}</Fact> : null}
           </Facts>
-        </div>
-      </section>
 
-      <section aria-labelledby="who-h">
-        <SectionHead
-          id="who-h"
-          icon={<UserIcon />}
-          tone="info"
-          title="Employee record"
-          description="Confirmed from the company directory when the case was approved, and held unchanged from that point."
-        />
-        <div className="panel">
-          <Facts>
-            <Fact label="Employee #" isKey>
-              {c.employeeNumber ?? <span className="meta">Not recorded in BambooHR</span>}
-            </Fact>
-            <Fact label="Department">{c.department}</Fact>
-            <Fact label="Location">{c.location}</Fact>
-            <Fact label="Position">{c.jobTitle ?? '-'}</Fact>
-          </Facts>
-          {/* Provenance is reference material, not headline information. */}
-          <div className="well" style={{ marginTop: 'var(--space-4)' }}>
-            <span className="label">Record provenance</span>
-            <p className="meta" style={{ margin: 'var(--space-1) 0 0' }}>
-              {humanize(c.employeeSourceSystem)} directory record {c.employeeSourceId}.{' '}
-              {c.snapshot ? (
-                <>
-                  Snapshot captured {formatInstant(c.snapshot.capturedAt)} (checksum{' '}
-                  <code>{c.snapshot.checksum.slice(0, 12)}...</code>, source retrieved{' '}
-                  {formatInstant(c.snapshot.retrievedAt)}) and immutable from then on.
-                </>
-              ) : (
-                'No snapshot yet - one is captured when the case is approved.'
-              )}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Editing a draft belongs with the values being edited (owner
-            request, 2026-08-19): one disclosure under the summary instead of
+          {/* Editing a draft belongs with the values being edited (owner
+            request, 2026-08-19): one disclosure inside the card instead of
             a second full-width section repeating the same fields. */}
-      {cap.canEditDraft ? (
-        <details className="action" style={{ marginTop: '0.75rem' }}>
-          <summary>Edit these details</summary>
-          <form action={updateDraftAction} className="stack">
-            <input type="hidden" name="caseId" value={c.id} />
-            <div className="field">
-              <label htmlFor="e-recv">Date and Time Received</label>
-              <input id="e-recv" name="receivedAt" type="datetime-local" />
-              <p className="hint">Currently: {dt(c.receivedAt)}. Leave blank to keep.</p>
-            </div>
-            <div className="field">
-              <label htmlFor="e-recv-src">How It Was Received</label>
-              <select id="e-recv-src" name="receiptSourceKind" defaultValue="">
-                <option value="">(keep current)</option>
-                <option value="Signed letter">Signed letter</option>
-                <option value="Email">Email</option>
-                <option value="Verbal (in person)">Verbal (in person)</option>
-                <option value="Other">Other</option>
-              </select>
-              <p className="hint">Currently: {c.receiptSource}.</p>
-            </div>
-            <div className="field">
-              <label htmlFor="e-recv-detail">Describe How It Was Received</label>
-              <input id="e-recv-detail" name="receiptSourceDetail" type="text" maxLength={150} />
-            </div>
-            {/* The date concepts a correction can touch are the ones this
+          {cap.canEditDraft ? (
+            <details className="action" style={{ marginTop: 'var(--space-4)' }}>
+              <summary>Edit these details</summary>
+              <form action={updateDraftAction} className="stack">
+                <input type="hidden" name="caseId" value={c.id} />
+                <div className="field">
+                  <label htmlFor="e-recv">Date and Time Received</label>
+                  <input id="e-recv" name="receivedAt" type="datetime-local" />
+                  <p className="hint">Currently: {dt(c.receivedAt)}. Leave blank to keep.</p>
+                </div>
+                <div className="field">
+                  <label htmlFor="e-recv-src">How It Was Received</label>
+                  <select id="e-recv-src" name="receiptSourceKind" defaultValue="">
+                    <option value="">(keep current)</option>
+                    <option value="Signed letter">Signed letter</option>
+                    <option value="Email">Email</option>
+                    <option value="Verbal (in person)">Verbal (in person)</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  <p className="hint">Currently: {c.receiptSource}.</p>
+                </div>
+                <div className="field">
+                  <label htmlFor="e-recv-detail">Describe How It Was Received</label>
+                  <input
+                    id="e-recv-detail"
+                    name="receiptSourceDetail"
+                    type="text"
+                    maxLength={150}
+                  />
+                </div>
+                {/* The date concepts a correction can touch are the ones this
                 separation actually uses (DEC-058). One end date (DEC-064):
                 the effective instant follows it at close of business, so no
                 time is asked here; an exact-time correction is the HR
                 Manager's audited "Change effective separation time". */}
-            {data.separation.dates.confirmedLastDay !== undefined &&
-            !separationProfile(data.separation.type).forbiddenDates.includes('confirmedLastDay') ? (
-              <div className="field">
-                <label htmlFor="e-last-day">Employment Ends (Last Working Day)</label>
-                <input id="e-last-day" name="confirmedLastDay" type="date" />
-                <p className="hint">
-                  Currently: {c.confirmedLastDay ? dateOnly(c.confirmedLastDay) : 'not set'}.
-                  Employment ends at close of business on this date.
-                </p>
-              </div>
-            ) : null}
-            {!separationProfile(data.separation.type).forbiddenDates.includes('contractEndDate') &&
-            (separationProfile(data.separation.type).requiredDates.includes('contractEndDate') ||
-              c.contractEndDate) ? (
-              <div className="field">
-                <label htmlFor="e-contract-end">Contract End Date</label>
-                <input id="e-contract-end" name="contractEndDate" type="date" />
-                <p className="hint">
-                  Currently: {c.contractEndDate ? dateOnly(c.contractEndDate) : 'not set'}.
-                </p>
-              </div>
-            ) : null}
-            {/* An unusual combination is accepted with an audited reason
+                {data.separation.dates.confirmedLastDay !== undefined &&
+                !separationProfile(data.separation.type).forbiddenDates.includes(
+                  'confirmedLastDay',
+                ) ? (
+                  <div className="field">
+                    <label htmlFor="e-last-day">Employment Ends (Last Working Day)</label>
+                    <input id="e-last-day" name="confirmedLastDay" type="date" />
+                    <p className="hint">
+                      Currently: {c.confirmedLastDay ? dateOnly(c.confirmedLastDay) : 'not set'}.
+                      Employment ends at close of business on this date.
+                    </p>
+                  </div>
+                ) : null}
+                {!separationProfile(data.separation.type).forbiddenDates.includes(
+                  'contractEndDate',
+                ) &&
+                (separationProfile(data.separation.type).requiredDates.includes(
+                  'contractEndDate',
+                ) ||
+                  c.contractEndDate) ? (
+                  <div className="field">
+                    <label htmlFor="e-contract-end">Contract End Date</label>
+                    <input id="e-contract-end" name="contractEndDate" type="date" />
+                    <p className="hint">
+                      Currently: {c.contractEndDate ? dateOnly(c.contractEndDate) : 'not set'}.
+                    </p>
+                  </div>
+                ) : null}
+                {/* An unusual combination is accepted with an audited reason
                 rather than blocked - a correction to a historical record has
                 to be possible (directive 25, 31). */}
-            <div className="field">
-              <label htmlFor="e-date-reason">Why are these dates correct? (if unusual)</label>
-              <input id="e-date-reason" name="dateOverrideReason" type="text" maxLength={500} />
-              <p className="hint">Recorded in the audit trail beside the dates it explains.</p>
-            </div>
-            <div className="field">
-              <label htmlFor="e-reason-status">Did the Employee Give a Reason?</label>
-              <select
-                id="e-reason-status"
-                name="reasonCaptureStatus"
-                defaultValue={c.reasonCaptureStatus}
-              >
-                <option value="PENDING">Not provided yet</option>
-                <option value="PROVIDED">Yes</option>
-                <option value="NOT_PROVIDED">No, they preferred not to say</option>
-                <option value="NOT_APPLICABLE">Not applicable</option>
-              </select>
-            </div>
-            {!c.reasonNotesMasked ? (
-              <div className="field field--reason-notes">
-                <label htmlFor="e-reason-notes">What Did They Say?</label>
-                <textarea
-                  id="e-reason-notes"
-                  name="reasonNotes"
-                  rows={3}
-                  maxLength={2000}
-                  defaultValue={c.reasonNotes ?? ''}
-                />
-              </div>
-            ) : null}
-            <button type="submit">Save draft changes</button>
-          </form>
-        </details>
-      ) : null}
+                <div className="field">
+                  <label htmlFor="e-date-reason">Why are these dates correct? (if unusual)</label>
+                  <input id="e-date-reason" name="dateOverrideReason" type="text" maxLength={500} />
+                  <p className="hint">Recorded in the audit trail beside the dates it explains.</p>
+                </div>
+                <div className="field">
+                  <label htmlFor="e-reason-status">Did the Employee Give a Reason?</label>
+                  <select
+                    id="e-reason-status"
+                    name="reasonCaptureStatus"
+                    defaultValue={c.reasonCaptureStatus}
+                  >
+                    <option value="PENDING">Not provided yet</option>
+                    <option value="PROVIDED">Yes</option>
+                    <option value="NOT_PROVIDED">No, they preferred not to say</option>
+                    <option value="NOT_APPLICABLE">Not applicable</option>
+                  </select>
+                </div>
+                {!c.reasonNotesMasked ? (
+                  <div className="field field--reason-notes">
+                    <label htmlFor="e-reason-notes">What Did They Say?</label>
+                    <textarea
+                      id="e-reason-notes"
+                      name="reasonNotes"
+                      rows={3}
+                      maxLength={2000}
+                      defaultValue={c.reasonNotes ?? ''}
+                    />
+                  </div>
+                ) : null}
+                <button type="submit">Save draft changes</button>
+              </form>
+            </details>
+          ) : null}
+        </section>
+
+        <section aria-labelledby="who-h" className="panel">
+          <SectionHead id="who-h" icon={<UserIcon />} tone="info" title="Employee record" />
+          <Facts className="facts--pairs">
+            <Fact label="Employee #" isKey>
+              {c.employeeNumber ?? 'Not recorded'}
+            </Fact>
+            <Fact label="Position">{c.jobTitle || 'Not recorded'}</Fact>
+            <Fact label="Department">{c.department || 'Not recorded'}</Fact>
+            <Fact label="Location">{c.location || 'Not recorded'}</Fact>
+            <Fact label="Reporting manager">{c.managerName ?? 'Not recorded'}</Fact>
+          </Facts>
+          {/* Provenance is reference material, not headline information:
+              one quiet line rather than a box inside the card. */}
+          <p className="meta" style={{ margin: 'var(--space-4) 0 0' }}>
+            {humanize(c.employeeSourceSystem)} directory record {c.employeeSourceId}.{' '}
+            {c.snapshot ? (
+              <>
+                Snapshot captured {formatInstant(c.snapshot.capturedAt)} (checksum{' '}
+                <code>{c.snapshot.checksum.slice(0, 12)}...</code>, source retrieved{' '}
+                {formatInstant(c.snapshot.retrievedAt)}) and held unchanged from then on.
+              </>
+            ) : (
+              'No snapshot yet - one is captured when the case is approved.'
+            )}
+          </p>
+        </section>
+      </div>
 
       {(cap.canChangeEffectiveTime || cap.canCorrect || cap.canSetRehire) && !cap.canEditDraft ? (
         <section aria-labelledby="corr-h" className="panel">
@@ -520,7 +525,6 @@ export default async function CaseDetailPage({
             icon={<ShieldCheckIcon />}
             tone={benefitsTone(required.benefits)}
             title="Benefits and providers"
-            description="Each benefit this employee holds has to be cancelled with the provider that carries it. Confirming applicability is what starts - or stands down - that provider's notification."
             aside={
               required.benefits.confirmedAt ? (
                 <Chip tone="done">Confirmed</Chip>
@@ -732,7 +736,6 @@ export default async function CaseDetailPage({
               </ConfirmDialog>
             ) : null}
           </div>
-          <p className="hint">Cases are never deleted; cancel or void preserves full history.</p>
         </section>
       )}
 
@@ -881,7 +884,10 @@ export default async function CaseDetailPage({
         </section>
       ) : null}
 
-      {cap.canRecordBaseline ? (
+      {/* Baseline facts measure the old process against a case that is
+          being worked; a draft has nothing to measure yet, so the section
+          waits for approval (owner directive, 2026-09-22). */}
+      {cap.canRecordBaseline && c.status !== 'DRAFT' ? (
         <section aria-labelledby="baseline-h" className="panel">
           <SectionHead
             id="baseline-h"

@@ -119,8 +119,8 @@ export function Fact({
 }
 
 /** A grid of label/value pairs. */
-export function Facts({ children }: { children: ReactNode }) {
-  return <dl className="facts">{children}</dl>;
+export function Facts({ children, className }: { children: ReactNode; className?: string }) {
+  return <dl className={className ? `facts ${className}` : 'facts'}>{children}</dl>;
 }
 
 /** Completion as a bar plus the figure - never the bar alone. */

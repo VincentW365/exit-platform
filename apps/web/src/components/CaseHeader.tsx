@@ -10,7 +10,7 @@
  */
 import type { SeparationSummary } from '@exit/db';
 import Link from 'next/link';
-import { formatDateOnly, formatInstant } from '@exit/domain';
+import { formatDateOnly } from '@exit/domain';
 import type { CaseNextAction, CaseStatus } from '@exit/domain';
 import type { ProgressStage } from '@exit/db';
 import { humanize } from '@/lib/text';
@@ -121,14 +121,15 @@ export function CaseHeader({ data }: { data: CaseHeaderData }) {
               <span className="sr-only"> - </span>
               {data.employeeDisplayName}
             </h1>
+            {/* Position and department identify the person; the full
+                employee record (location, manager, provenance) sits in its
+                own card below, so it is not repeated here. */}
             <p className="case-head__role">
               {data.jobTitle ? `${data.jobTitle} · ` : ''}
               {data.department}
-              {data.location ? ` · ${data.location}` : ''}
             </p>
             <div className="case-head__chips">
               <Chip>{sep?.label ?? humanize(data.departureType)}</Chip>
-              {lastDay ? <Chip>Last day {formatDateOnly(lastDay)}</Chip> : null}
               {/* Section 28: the presentation reinforces the business logic.
                   An immediate departure says so where it cannot be missed;
                   a planned one says how long there is to work with. */}
@@ -138,6 +139,12 @@ export function CaseHeader({ data }: { data: CaseHeaderData }) {
               <ClassificationBadge classification={data.classification} />
               <PurposeBadge purpose={data.recordPurpose} cohort={data.measurementCohort} />
             </div>
+            {data.status === 'DRAFT' ? (
+              <p className="case-head__note">
+                Draft: this case has been created but has not yet entered the active offboarding
+                workflow.
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -171,19 +178,22 @@ export function CaseHeader({ data }: { data: CaseHeaderData }) {
             <ProgressBar percent={progress.percent} label="Case completion" />
           </div>
         ) : null}
+        {/* One date at the anchor - the last working day - and the exact
+            instant it resolves to lives in Exit details. The reporting
+            manager belongs to the employee record. */}
         <div className="case-head__fact">
           <span className="label">Employment ends</span>
           <span className="value">
-            {data.effectiveSeparationAt ? formatInstant(data.effectiveSeparationAt) : 'Not set'}
+            {lastDay
+              ? formatDateOnly(lastDay)
+              : data.effectiveSeparationAt
+                ? formatDateOnly(data.effectiveSeparationAt)
+                : 'Not recorded'}
           </span>
         </div>
         <div className="case-head__fact">
           <span className="label">HR owner</span>
           <span className="value">{data.officerName ?? data.ownerName}</span>
-        </div>
-        <div className="case-head__fact">
-          <span className="label">Manager</span>
-          <span className="value">{data.managerUserName ?? data.managerName ?? 'Not derived'}</span>
         </div>
       </div>
     </header>
