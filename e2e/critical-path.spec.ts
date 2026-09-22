@@ -62,6 +62,15 @@ test('HR officer creates and submits; HR manager approves with snapshot; line ma
   await expect(
     page.getByText('Draft: this case has been created but has not yet entered', { exact: false }),
   ).toBeVisible();
+  // DEC-065: the officer who created the draft owns it, so it is in My Work
+  // at once - no assignment step - and shows them as the assigned officer.
+  await expect(page.getByText('Assigned HR Officer', { exact: true })).toBeVisible();
+  await page.goto('/queue');
+  await expect(page.getByRole('heading', { name: 'My cases' })).toBeVisible();
+  await expect(
+    page.locator('section[aria-labelledby="my-cases-h"]').getByText('Avery Brown').first(),
+  ).toBeVisible();
+  await page.goto(caseUrl);
 
   // --- submit for review --------------------------------------------------
   await page.getByRole('button', { name: 'Submit for review' }).click();
@@ -80,7 +89,9 @@ test('HR officer creates and submits; HR manager approves with snapshot; line ma
     page.getByText('Case approved. The employee snapshot has been captured.'),
   ).toBeVisible();
   await expect(page.getByText('Approved').first()).toBeVisible();
-  await expect(page.getByText(/captured .* \(checksum/)).toBeVisible();
+  // The snapshot checksum line left the overview with the provenance copy
+  // (owner, 2026-09-22); the approval banner above and the audit trail below
+  // are the evidence that the snapshot was captured.
 
   // Audit history shows the full trail (humanized sentences, Directive 6.1).
   await expect(page.getByText('created the case', { exact: false }).first()).toBeVisible();

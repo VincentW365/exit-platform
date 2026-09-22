@@ -121,6 +121,7 @@ export async function scheduleDueSurveyInvitations(_now: Date = new Date()): Pro
     select: {
       id: true,
       ownerId: true,
+      assignedOfficerId: true,
       effectiveSeparationAt: true,
       recordPurpose: true,
       measurementCohort: true,

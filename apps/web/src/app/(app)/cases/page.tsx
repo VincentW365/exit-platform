@@ -266,12 +266,16 @@ export default async function CasesPage({
                           </span>
                         </span>
                       ) : null}
-                      {c.officerName ? (
+                      {/* DEC-065: the register shows every case with its
+                          operational owner; an officer sees at once which
+                          rows are theirs to work and which are read-only. */}
+                      {!c.minimized ? (
                         <span>
-                          <span className="label">HR Officer</span>
-                          <span className="value">{c.officerName}</span>
+                          <span className="label">Assigned HR Officer</span>
+                          <span className="value">{c.officerName ?? 'Unassigned'}</span>
                         </span>
                       ) : null}
+                      {!c.minimized && !c.editable ? <Chip tone="neutral">View only</Chip> : null}
                       <StatusBadge status={c.status} />
                       <ClassificationBadge classification={c.classification} />
                       <PurposeBadge purpose={c.recordPurpose} cohort={c.measurementCohort} />

@@ -60,6 +60,49 @@ selects or honours them:
 - **Case participants** are HR users only; `FINANCE` and `MANAGER` participant roles are refused.
 - **Task definitions** carrying a retired `requiredRole` or `waiverAuthority` exist only on superseded workflow versions and are historical; new definitions must name `HR_MANAGER` or `HR_OFFICER`, and residual departmental tasks on legacy instances can be held only by HR.
 
+## Case ownership: Cases versus My Work (DEC-065)
+
+Every case carries two distinct facts:
+
+- **Created By** (`createdById`) - immutable audit information: who originally
+  created the case. It never determines authorization.
+- **Assigned HR Officer** (`assignedOfficerId`) - mutable operational
+  ownership: who is responsible for the case now. It decides My Work
+  membership and an HR Officer's edit authority.
+
+Rules:
+
+- An HR Officer who creates a case is assigned to it automatically; a case
+  the HR Manager creates starts **Unassigned** until the manager assigns an
+  officer on the Assignment tab.
+- **Cases** is the organisation's register: both roles see and search every
+  case they may view (restricted cases stay participant-only).
+- **My Work** lists the cases currently assigned to the signed-in person
+  (drafts included), above the task queue.
+- Edit authority is one server-side policy, `canEditCase(actor, case)`:
+  HR Manager → every case they can view; HR Officer → only the case assigned
+  to them; otherwise read-only. Workflow-state rules (draft-only edits,
+  closed cases, restricted participation) apply on top for everyone.
+- Only the HR Manager assigns or reassigns the officer; every assignment,
+  automatic or manual, is audited with the previous officer, the new
+  officer, the actor and the instant. The creator and task history are never
+  rewritten.
+
+| Case capability | HR Manager | HR Officer |
+| --- | --- | --- |
+| View all cases | Yes | Yes |
+| Search all cases | Yes | Yes |
+| Create case | Yes | Yes (assigned to self automatically) |
+| Edit case assigned to self | Yes | Yes |
+| Edit case assigned to another officer | Yes | No (view only) |
+| Edit unassigned case | Yes | No (view only) |
+| Assign HR Officer | Yes | No |
+| Reassign HR Officer | Yes | No |
+| View ownership history | Yes | Yes, where case audit visibility permits |
+| View other officer's case | Yes | Yes |
+| Add case to My Work | Via assignment | Automatic through assignment |
+| Remove case from officer My Work | Via reassignment or case state | No |
+
 ## Capability matrix
 
 Legend: `Full` means within approved record scope, not unrestricted database access.

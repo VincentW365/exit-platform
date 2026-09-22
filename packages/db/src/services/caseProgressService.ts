@@ -60,6 +60,7 @@ export async function caseProgressSummary(
       id: true,
       status: true,
       ownerId: true,
+      assignedOfficerId: true,
       classification: true,
       groupHealthApplicability: true,
       groupLifeApplicability: true,
@@ -70,6 +71,7 @@ export async function caseProgressSummary(
   if (!c) throw ServiceError.notFound();
   const ctx: CaseAccessContext = {
     ownerId: c.ownerId,
+    assignedOfficerId: c.assignedOfficerId,
     classification: c.classification,
     participantUserIds: c.participants.map((p) => p.userId),
   };

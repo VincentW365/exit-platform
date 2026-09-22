@@ -91,8 +91,10 @@ async function completeAssignmentPlan(
     .getAttribute('value');
   await page.locator('#of-user').selectOption(officerValue!);
   await page.locator('#of-reason').fill('UAT assignment.');
-  await page.getByRole('button', { name: 'Assign officer' }).click();
-  await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
+  await page.getByRole('button', { name: /Assign officer|Reassign case/ }).click();
+  await expect(
+    page.getByText(/HR Officer assigned \(audited\)|already owns this case/),
+  ).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
   await page.locator('#am-user').selectOption({ index: 1 });
   await page.locator('#am-reason').fill('UAT manager routing.');
@@ -207,7 +209,9 @@ test('UAT-1..5 - integrated resignation with notice: one case end to end (Direct
   await expect(page.getByText('Draft document created')).toBeVisible();
   // The acceptance letter is addressed, so HR types the address from the
   // resignation letter scan before submitting (DEC-054).
-  await page.getByLabel('Employee Address').fill('12 Synthetic Avenue, Kingston 5');
+  await page
+    .getByRole('textbox', { name: 'Employee Address' })
+    .fill('12 Synthetic Avenue, Kingston 5');
   await page.getByRole('button', { name: 'Save address' }).click();
   await expect(page.getByText(/Address recorded/)).toBeVisible();
   await page.getByRole('button', { name: 'Refresh fields from case' }).click();
@@ -393,7 +397,9 @@ test('Document correction - invalidation, supersede, re-approval (audited)', asy
   await expect(page.getByText('Draft document created')).toBeVisible();
   // The acceptance letter is addressed, so HR types the address from the
   // resignation letter scan before submitting (DEC-054).
-  await page.getByLabel('Employee Address').fill('12 Synthetic Avenue, Kingston 5');
+  await page
+    .getByRole('textbox', { name: 'Employee Address' })
+    .fill('12 Synthetic Avenue, Kingston 5');
   await page.getByRole('button', { name: 'Save address' }).click();
   await expect(page.getByText(/Address recorded/)).toBeVisible();
   await page.getByRole('button', { name: 'Refresh fields from case' }).click();

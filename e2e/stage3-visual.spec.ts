@@ -131,8 +131,10 @@ test('stage 3 surfaces: visual + axe sweep', async ({ page }) => {
     .getAttribute('value');
   await page.locator('#of-user').selectOption(officerValue!);
   await page.locator('#of-reason').fill('Visual QA assignment.');
-  await page.getByRole('button', { name: 'Assign officer' }).click();
-  await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
+  await page.getByRole('button', { name: /Assign officer|Reassign case/ }).click();
+  await expect(
+    page.getByText(/HR Officer assigned \(audited\)|already owns this case/),
+  ).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
   await page.locator('#am-user').selectOption({ index: 1 });
   await page.locator('#am-reason').fill('Visual QA manager routing.');

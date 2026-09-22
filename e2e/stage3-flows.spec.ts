@@ -87,8 +87,10 @@ async function completeAssignmentPlan(
     .getAttribute('value');
   await page.locator('#of-user').selectOption(officerValue!);
   await page.locator('#of-reason').fill('E2E assignment.');
-  await page.getByRole('button', { name: 'Assign officer' }).click();
-  await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
+  await page.getByRole('button', { name: /Assign officer|Reassign case/ }).click();
+  await expect(
+    page.getByText(/HR Officer assigned \(audited\)|already owns this case/),
+  ).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
   await page.locator('#am-user').selectOption({ index: 1 });
   await page.locator('#am-reason').fill('E2E manager routing.');
@@ -222,7 +224,9 @@ test('Scenario 1 - resignation with notice: activate, HR journey, email evidence
   await expect(page.getByText('Draft document created')).toBeVisible();
   // The acceptance letter is addressed, so HR types the address from the
   // resignation letter scan before submitting (DEC-054).
-  await page.getByLabel('Employee Address').fill('12 Synthetic Avenue, Kingston 5');
+  await page
+    .getByRole('textbox', { name: 'Employee Address' })
+    .fill('12 Synthetic Avenue, Kingston 5');
   await page.getByRole('button', { name: 'Save address' }).click();
   await expect(page.getByText(/Address recorded/)).toBeVisible();
   await page.getByRole('button', { name: 'Refresh fields from case' }).click();

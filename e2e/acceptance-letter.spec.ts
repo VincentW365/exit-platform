@@ -29,7 +29,7 @@ test('the acceptance letter is addressed, approved and emailed with HR copied', 
 
   // The address is HR-typed, from the scan - it is not in the directory.
   await expect(page.getByRole('heading', { name: 'Employee Address' })).toBeVisible();
-  await page.getByLabel('Employee Address').fill(ADDRESS);
+  await page.getByRole('textbox', { name: 'Employee Address' }).fill(ADDRESS);
   await page.getByRole('button', { name: 'Save address' }).click();
   await expect(page.getByText(/Address recorded/)).toBeVisible();
 

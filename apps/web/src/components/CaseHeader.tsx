@@ -45,6 +45,11 @@ export interface CaseHeaderData {
   nextAction?: CaseNextAction | null;
   /** Stage list, used only to state how far the case has run. */
   stages?: readonly ProgressStage[];
+  /**
+   * DEC-065: the viewer may read this case but not edit it - an HR Officer
+   * looking at a case assigned to someone else (or to nobody yet).
+   */
+  viewOnly?: boolean;
 }
 
 /**
@@ -138,6 +143,13 @@ export function CaseHeader({ data }: { data: CaseHeaderData }) {
               <StatusBadge status={data.status} />
               <ClassificationBadge classification={data.classification} />
               <PurposeBadge purpose={data.recordPurpose} cohort={data.measurementCohort} />
+              {data.viewOnly ? (
+                <Chip tone="neutral">
+                  {data.officerName
+                    ? 'Assigned to another HR Officer - view only'
+                    : 'Unassigned - view only'}
+                </Chip>
+              ) : null}
             </div>
             {data.status === 'DRAFT' ? (
               <p className="case-head__note">
@@ -191,9 +203,11 @@ export function CaseHeader({ data }: { data: CaseHeaderData }) {
                 : 'Not recorded'}
           </span>
         </div>
+        {/* DEC-065: the assigned HR Officer is the operational owner and is
+            stated as such - never inferred from who created the case. */}
         <div className="case-head__fact">
-          <span className="label">HR owner</span>
-          <span className="value">{data.officerName ?? data.ownerName}</span>
+          <span className="label">Assigned HR Officer</span>
+          <span className="value">{data.officerName ?? 'Unassigned'}</span>
         </div>
       </div>
     </header>

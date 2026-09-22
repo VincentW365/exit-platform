@@ -42,6 +42,7 @@ async function loadCase(caseId: string) {
   if (!c) throw ServiceError.notFound();
   const ctx: CaseAccessContext = {
     ownerId: c.ownerId,
+    assignedOfficerId: c.assignedOfficerId,
     classification: c.classification,
     participantUserIds: c.participants.map((p) => p.userId),
   };
@@ -356,7 +357,7 @@ export async function assignOfficer(
   caseId: string,
   officerUserId: string,
   reason: string,
-): Promise<void> {
+): Promise<{ changed: boolean }> {
   const { c, ctx } = await loadCase(caseId);
   assertView(actor, ctx);
   if (!canActOnCase(actor, 'case.assignOfficer', ctx)) throw ServiceError.forbidden();
@@ -378,8 +379,10 @@ export async function assignOfficer(
 
   const previous = c.assignedOfficer;
   const isReassignment = Boolean(previous) && previous!.id !== officerUserId;
-  if (previous?.id === officerUserId)
-    throw ServiceError.validation(['That officer is already assigned to this case.']);
+  // Idempotent: assigning the officer who already owns the case changes
+  // nothing and records nothing (DEC-065 - creation assigns the creating
+  // officer automatically, so this is a common no-op).
+  if (previous?.id === officerUserId) return { changed: false as const };
   const correlationId = newCorrelationId();
   // Outstanding tasks that travel with the officer (E: recorded, not moved -
   // HR tasks are queue-scoped; the count is evidence for the reassignment).
@@ -429,6 +432,7 @@ export async function assignOfficer(
       },
     });
   });
+  return { changed: true as const };
 }
 
 /** F: re-derive the manager from the current directory state (HR on case). */

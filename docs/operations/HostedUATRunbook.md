@@ -391,6 +391,18 @@ these cases for destructive testing:
 | B | Avery Immediate (`UAT-1002`) | Immediate resignation | A second HR Officer login mapped from the directory (e.g. Jordan Officer), to exercise reassignment |
 | C | Cameron Termination (`UAT-1003`) | Termination | HR Officer |
 
+### Ownership check (DEC-065)
+
+Signed in as the **HR Officer**, create the Draft case and verify at once - with no
+assignment step - that it appears under **My Work → My cases** and under **Cases**, and
+that it is editable ("Edit these details"). Then sign in as the **HR Manager**: the same
+case appears under Cases, is editable, and its Assignment tab offers **Reassign HR
+Officer**. A case the HR Manager creates starts **Unassigned**: it is in Cases and
+editable by the manager, in nobody's My Work, and read-only to an officer until
+assigned. Where a second officer login has been mapped from the directory, reassign a
+case between the two officers and verify My Work membership and edit rights move with
+the assignment while Created By does not change.
+
 ## Running the worker
 
 Unchanged from the normal architecture. Preferred — the container that matches the

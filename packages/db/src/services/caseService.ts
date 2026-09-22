@@ -10,6 +10,8 @@ import {
   can,
   daysUntil,
   canActOnCase,
+  canEditCase,
+  hasRole,
   canDiscoverCase,
   canViewCase,
   type CaseAccessContext,
@@ -165,6 +167,7 @@ async function loadCaseWithAccess(caseId: string) {
   if (!c) throw ServiceError.notFound();
   const ctx: CaseAccessContext = {
     ownerId: c.ownerId,
+    assignedOfficerId: c.assignedOfficerId,
     classification: c.classification,
     participantUserIds: c.participants.map((p) => p.userId),
   };
@@ -665,6 +668,13 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
         reasonNotes: input.reasonNotes || null,
         ownerId: actor.userId,
         createdById: actor.userId,
+        // DEC-065: an HR Officer who creates a case owns it from the first
+        // second - it is in their My Work and editable by them with no
+        // assignment step. A case an HR Manager creates starts unassigned
+        // until the manager assigns an officer. `createdById` above is the
+        // immutable audit fact; this is the mutable operational owner.
+        assignedOfficerId:
+          hasRole(actor, 'HR_OFFICER') && !hasRole(actor, 'HR_MANAGER') ? actor.userId : null,
         // Directive 6.1 (F): directory-derived manager routing, pending HR
         // review and confirmation on the Assignment tab.
         managerName: derivedManagerName,
@@ -713,6 +723,35 @@ export async function createDraft(actor: Actor, rawInput: unknown) {
         employeeSourceId: employee.sourceId,
       },
     });
+
+    // The automatic initial assignment is audited like a manual one, so the
+    // ownership history reads the same whichever way it began (DEC-065).
+    if (c.assignedOfficerId) {
+      const creator = await tx.user.findUnique({
+        where: { id: actor.userId },
+        select: { displayName: true },
+      });
+      await appendAudit(tx, {
+        eventType: 'CASE_OFFICER_ASSIGNED',
+        actorType: 'USER',
+        actorId: actor.userId,
+        effectiveRoles: actor.roles,
+        objectType: 'OffboardingCase',
+        objectId: c.id,
+        caseId: c.id,
+        result: 'SUCCESS',
+        correlationId,
+        metadata: {
+          caseNumber,
+          previousOfficerId: null,
+          previousOfficerName: null,
+          newOfficerId: c.assignedOfficerId,
+          newOfficerName: creator?.displayName ?? null,
+          reason: 'Automatic initial assignment: the HR Officer who created the case owns it.',
+          automatic: true,
+        },
+      });
+    }
 
     if (derivedManagerName || derivedManagerSourceId) {
       await appendAudit(tx, {
@@ -767,6 +806,12 @@ export interface CaseViewCapabilities {
   canRecordBaseline: boolean;
   canUpload: boolean;
   canDownload: boolean;
+  /**
+   * DEC-065: case edit authority. True for the HR Manager and for the
+   * assigned HR Officer; false means the viewer is read-only on this case
+   * (the UI says "view only" and offers no edit controls).
+   */
+  canEdit: boolean;
 }
 
 /**
@@ -861,6 +906,7 @@ export async function getCase(actor: Actor, caseId: string) {
     canRecordBaseline: canActOnCase(actor, 'case.recordBaselineEvent', ctx),
     canUpload: canActOnCase(actor, 'attachment.upload', ctx) && c.status !== 'VOIDED',
     canDownload: canActOnCase(actor, 'attachment.download', ctx),
+    canEdit: canEditCase(actor, ctx),
   };
 
   // Field masking (REQ-CASE-026): sensitive values never leave the server for
@@ -1072,6 +1118,7 @@ export async function listCases(actor: Actor, rawFilter: unknown = {}) {
   const mapped = rows.map((c) => {
     const ctx: CaseAccessContext = {
       ownerId: c.ownerId,
+      assignedOfficerId: c.assignedOfficerId,
       classification: c.classification,
       participantUserIds: c.participants.map((p) => p.userId),
     };
@@ -1096,6 +1143,10 @@ export async function listCases(actor: Actor, rawFilter: unknown = {}) {
       /// Section 15: what the list needs to answer "where is this, and does
       /// it need me today". Restricted rows expose none of it.
       officerName: full ? (c.assignedOfficer?.displayName ?? null) : null,
+      assignedOfficerId: full ? c.assignedOfficerId : null,
+      /// DEC-065: whether THIS viewer may edit the case - the register shows
+      /// every case, and marks the ones an officer can only read.
+      editable: full && canEditCase(actor, ctx),
       managerName: full ? c.managerName : null,
       tasksTotal: full ? c.workflowTasks.length : 0,
       tasksDone: full

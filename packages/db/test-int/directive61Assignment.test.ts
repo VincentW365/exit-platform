@@ -121,7 +121,16 @@ describe('HR officer ownership (E; AM 13)', () => {
 
 describe('manager routing and the activation gate (F/J; AM 14-18)', () => {
   it('activation is blocked without officer, manager and confirmations - in that order', async () => {
-    const caseId = await approvedCase({ employeeSourceId: 'EMP-TEST-002' });
+    // DEC-065: a case the OFFICER creates is assigned to them at once, so an
+    // unassigned case has to come from the HR Manager for the first blocker
+    // to exist at all.
+    const created = await createDraft(manager.actor, {
+      ...TEST_DRAFT,
+      employeeSourceId: 'EMP-TEST-002',
+    });
+    const caseId = created.caseId;
+    await transitionCase(manager.actor, caseId, 'submit');
+    await transitionCase(manager.actor, caseId, 'approve');
     await expect(activateCase(manager.actor, caseId)).rejects.toMatchObject({
       code: 'VALIDATION',
       details: [expect.stringContaining('HR Officer must be assigned')],

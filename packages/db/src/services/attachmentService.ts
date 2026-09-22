@@ -25,6 +25,7 @@ async function loadAccess(caseId: string) {
       caseNumber: true,
       status: true,
       ownerId: true,
+      assignedOfficerId: true,
       classification: true,
       participants: { where: { removedAt: null }, select: { userId: true } },
     },
@@ -32,6 +33,7 @@ async function loadAccess(caseId: string) {
   if (!c) throw ServiceError.notFound();
   const ctx: CaseAccessContext = {
     ownerId: c.ownerId,
+    assignedOfficerId: c.assignedOfficerId,
     classification: c.classification,
     participantUserIds: c.participants.map((p) => p.userId),
   };

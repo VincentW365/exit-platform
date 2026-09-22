@@ -1,14 +1,23 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ServiceError, listMyQueue } from '@exit/db';
-import { formatInstant } from '@exit/domain';
+import { ServiceError, listCases, listMyQueue } from '@exit/db';
+import { TERMINAL_STATUSES, formatDateOnly, formatInstant, hasRole } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
-import { Feedback } from '@/components/ui';
+import { Feedback, StatusBadge } from '@/components/ui';
 import { claimTaskAction, returnTaskAction } from './actions';
 import { humanize } from '@/lib/text';
 import { EmptyState } from '@/components/EmptyState';
-import { Chip, Row, Rows } from '@/components/patterns';
-import { AlertIcon, CheckCircleIcon, QueueIcon } from '@/components/icons';
+import { Chip, Row, Rows, SectionHead } from '@/components/patterns';
+import { AlertIcon, CasesIcon, CheckCircleIcon, QueueIcon } from '@/components/icons';
+
+/** The order a personal workload reads in: what needs finishing first. */
+const CASE_ORDER: Record<string, number> = {
+  DRAFT: 0,
+  PENDING_HR_REVIEW: 1,
+  APPROVED: 2,
+  ACTIVE: 3,
+  ON_HOLD: 4,
+};
 
 export const metadata: Metadata = { title: 'My Work' };
 export const dynamic = 'force-dynamic';
@@ -43,6 +52,24 @@ export default async function QueuePage({
 }) {
   const { actor } = await requireAuth();
   const sp = await searchParams;
+
+  // DEC-065: My Work answers "what am I responsible for?" - the cases
+  // assigned to this person (a draft they just created included), before
+  // the task queue. Cases is the register of every case; this is not.
+  const assigned = hasRole(actor, 'HR_MANAGER', 'HR_OFFICER')
+    ? await listCases(actor, { officer: actor.userId }).catch(() => [])
+    : [];
+  const myCases = assigned
+    .filter((c) => !(TERMINAL_STATUSES as readonly string[]).includes(c.status))
+    .sort(
+      (a, b) =>
+        (CASE_ORDER[a.status] ?? 9) - (CASE_ORDER[b.status] ?? 9) ||
+        (a.effectiveSeparationAt?.getTime() ?? Infinity) -
+          (b.effectiveSeparationAt?.getTime() ?? Infinity),
+    );
+  // An officer always sees their case list (empty or not); a manager only
+  // when a case has been assigned to them personally.
+  const showMyCases = hasRole(actor, 'HR_OFFICER') || myCases.length > 0;
 
   let data: Awaited<ReturnType<typeof listMyQueue>>;
   try {
@@ -99,6 +126,79 @@ export default async function QueuePage({
       <h1>My Work</h1>
       <Feedback err={sp.err} ok={sp.ok} />
 
+      {showMyCases ? (
+        <section aria-labelledby="my-cases-h" className="panel">
+          <SectionHead
+            id="my-cases-h"
+            icon={<CasesIcon />}
+            title="My cases"
+            description="Cases currently assigned to you. The register of every case, including other officers' cases, is under Cases."
+            aside={
+              <Chip tone={myCases.length > 0 ? 'progress' : 'done'}>{myCases.length} open</Chip>
+            }
+          />
+          {myCases.length === 0 ? (
+            <EmptyState
+              icon={<CheckCircleIcon />}
+              tone="done"
+              title="No cases assigned to you"
+              body="A case you create is yours from the start; the HR Manager assigns or reassigns the others."
+            />
+          ) : (
+            <Rows label="My cases">
+              {myCases.map((c) => (
+                <Row
+                  key={c.id}
+                  tone={
+                    c.tasksOverdue > 0 || c.openExceptions > 0
+                      ? 'attention'
+                      : c.status === 'DRAFT'
+                        ? 'pending'
+                        : 'progress'
+                  }
+                  mark={c.tasksOverdue > 0 ? <AlertIcon /> : <CasesIcon />}
+                  title={<Link href={`/cases/${c.id}`}>{c.employeeDisplayName}</Link>}
+                  sub={
+                    <>
+                      {humanize(c.departureType)} · {c.caseNumber}
+                    </>
+                  }
+                  facts={
+                    <>
+                      <span>
+                        <span className="label">Employment ends</span>
+                        <span className="value numeric">
+                          {c.effectiveSeparationAt
+                            ? formatDateOnly(c.effectiveSeparationAt)
+                            : 'Not recorded'}
+                        </span>
+                      </span>
+                      <StatusBadge status={c.status} />
+                      {c.tasksOverdue > 0 ? (
+                        <Chip tone="critical">
+                          {c.tasksOverdue} overdue task{c.tasksOverdue === 1 ? '' : 's'}
+                        </Chip>
+                      ) : null}
+                      {c.openExceptions > 0 ? (
+                        <Chip tone="attention">
+                          {c.openExceptions} exception{c.openExceptions === 1 ? '' : 's'}
+                        </Chip>
+                      ) : null}
+                    </>
+                  }
+                  action={
+                    <Link href={`/cases/${c.id}`} className="button secondary compact">
+                      {c.status === 'DRAFT' ? 'Continue draft' : 'Open case'}
+                    </Link>
+                  }
+                />
+              ))}
+            </Rows>
+          )}
+        </section>
+      ) : null}
+
+      <h2 style={{ marginTop: 0 }}>Tasks</h2>
       <nav aria-label="Queue views" className="panel" style={{ padding: '0.4rem 0.75rem' }}>
         <ul
           style={{

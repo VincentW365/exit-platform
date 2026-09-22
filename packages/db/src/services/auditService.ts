@@ -94,6 +94,7 @@ export async function listCaseAudit(
     select: {
       id: true,
       ownerId: true,
+      assignedOfficerId: true,
       classification: true,
       participants: { where: { removedAt: null }, select: { userId: true } },
     },
@@ -101,6 +102,7 @@ export async function listCaseAudit(
   if (!c) throw ServiceError.notFound();
   const ctx = {
     ownerId: c.ownerId,
+    assignedOfficerId: c.assignedOfficerId,
     classification: c.classification,
     participantUserIds: c.participants.map((p) => p.userId),
   };
@@ -182,6 +184,7 @@ export async function listGlobalAudit(actor: Actor, filter: GlobalAuditFilter = 
       select: {
         id: true,
         ownerId: true,
+        assignedOfficerId: true,
         classification: true,
         participants: { where: { removedAt: null }, select: { userId: true } },
       },
@@ -190,6 +193,7 @@ export async function listGlobalAudit(actor: Actor, filter: GlobalAuditFilter = 
       c &&
       canViewCase(actor, {
         ownerId: c.ownerId,
+        assignedOfficerId: c.assignedOfficerId,
         classification: c.classification,
         participantUserIds: c.participants.map((p) => p.userId),
       });
@@ -263,6 +267,7 @@ export async function listGlobalAudit(actor: Actor, filter: GlobalAuditFilter = 
           id: true,
           caseNumber: true,
           ownerId: true,
+          assignedOfficerId: true,
           classification: true,
           participants: { where: { removedAt: null }, select: { userId: true } },
         },
@@ -276,6 +281,7 @@ export async function listGlobalAudit(actor: Actor, filter: GlobalAuditFilter = 
       !c ||
       canViewCase(actor, {
         ownerId: c.ownerId,
+        assignedOfficerId: c.assignedOfficerId,
         classification: c.classification,
         participantUserIds: c.participants.map((p) => p.userId),
       });

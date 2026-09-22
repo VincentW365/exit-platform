@@ -32,9 +32,18 @@ export async function assignOfficerAction(formData: FormData): Promise<void> {
   await touchSession();
   const caseId = str(formData, 'caseId');
   try {
-    await assignOfficer(actor, caseId, str(formData, 'officerUserId'), str(formData, 'reason'));
+    const result = await assignOfficer(
+      actor,
+      caseId,
+      str(formData, 'officerUserId'),
+      str(formData, 'reason'),
+    );
     revalidatePath(`/cases/${caseId}/assignment`);
-    back(caseId, { ok: 'HR Officer assigned (audited).' });
+    back(caseId, {
+      ok: result.changed
+        ? 'HR Officer assigned (audited).'
+        : 'That HR Officer already owns this case; nothing changed.',
+    });
   } catch (e) {
     if (e instanceof ServiceError) back(caseId, { err: errText(e) });
     throw e;

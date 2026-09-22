@@ -22,10 +22,17 @@ export type CaseClassification = 'CONFIDENTIAL' | 'RESTRICTED';
 
 /** Minimal case facts needed for record-level decisions. */
 export interface CaseAccessContext {
+  /** The accountable owner recorded at creation (audit fact, never edit authority). */
   readonly ownerId: string;
   readonly classification: CaseClassification;
   /** User IDs with an active participant row (owner is always a participant). */
   readonly participantUserIds: readonly string[];
+  /**
+   * The assigned HR Officer: the current operational owner (owner directive
+   * 2026-09-22, DEC-065). Null while the case is unassigned. This - never the
+   * creator - decides whether an HR Officer may edit the case.
+   */
+  readonly assignedOfficerId: string | null;
 }
 
 function isParticipant(actor: Actor, c: CaseAccessContext): boolean {
@@ -34,6 +41,19 @@ function isParticipant(actor: Actor, c: CaseAccessContext): boolean {
 
 function isHrParticipant(actor: Actor, c: CaseAccessContext): boolean {
   return isParticipant(actor, c) && hasRole(actor, 'HR_MANAGER', 'HR_OFFICER');
+}
+
+/**
+ * Case edit authority (DEC-065). The HR Manager edits every case they can
+ * view; an HR Officer edits only the case currently assigned to them. Any
+ * other viewer is read-only. Workflow-state rules (draft-only edits, closed
+ * cases, restricted participation) are layered on top by the callers - this
+ * answers ownership alone.
+ */
+export function canEditCase(actor: Actor, c: CaseAccessContext): boolean {
+  if (!canViewCase(actor, c)) return false;
+  if (hasRole(actor, 'HR_MANAGER')) return true;
+  return hasRole(actor, 'HR_OFFICER') && c.assignedOfficerId === actor.userId;
 }
 
 /** Full case content visibility. */
@@ -154,6 +174,10 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
   const hrManager = hasRole(actor, 'HR_MANAGER');
   const hr = hasRole(actor, 'HR_MANAGER', 'HR_OFFICER');
   const hrOnCase = c.classification === 'RESTRICTED' ? isHrParticipant(actor, c) : hr;
+  // DEC-065: operational EDITS additionally require ownership for an HR
+  // Officer - the assigned officer works the case, everyone else reads it.
+  // Views keep `hrOnCase`; mutations use `hrEdit`.
+  const hrEdit = hrOnCase && canEditCase(actor, c);
 
   switch (action) {
     case 'doc.create':
@@ -172,7 +196,7 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
     case 'notification.enterRecipient':
     case 'survey.manage':
     case 'survey.recordVerbal':
-      return hrOnCase;
+      return hrEdit;
     case 'doc.approve':
     case 'doc.return':
     case 'doc.void':
@@ -194,8 +218,9 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
     case 'case.addNote':
     case 'case.recordBaselineEvent':
     case 'attachment.upload':
-      return hrOnCase;
-    // Stage 3: HR case-work actions (officer or manager, on-case for RESTRICTED).
+      return hrEdit;
+    // Stage 3: HR case-work actions (the assigned officer or the manager,
+    // on-case for RESTRICTED).
     case 'case.activate':
     case 'clearance.request':
     case 'notification.prepare':
@@ -204,7 +229,7 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
     case 'asset.manage':
     case 'handover.review':
     case 'exception.resolve':
-      return hrOnCase;
+      return hrEdit;
     // Stage 3: read surfaces - full case viewers (incl. read-only oversight).
     case 'workflow.view':
     case 'notification.view':
@@ -252,7 +277,7 @@ export function canActOnCase(actor: Actor, action: CaseAction, c: CaseAccessCont
     // HR Manager in the service.
     case 'case.manageManager':
     case 'case.confirmAssignment':
-      return hrOnCase;
+      return hrEdit;
     default:
       return false;
   }

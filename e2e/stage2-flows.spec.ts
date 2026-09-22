@@ -65,7 +65,9 @@ test('Scenario 1 - resignation document: draft, approve, render, authorized down
   await expect(page.getByText('Draft document created')).toBeVisible();
   // The acceptance letter is addressed, so HR types the address from the
   // resignation letter scan before submitting (DEC-054).
-  await page.getByLabel('Employee Address').fill('12 Synthetic Avenue, Kingston 5');
+  await page
+    .getByRole('textbox', { name: 'Employee Address' })
+    .fill('12 Synthetic Avenue, Kingston 5');
   await page.getByRole('button', { name: 'Save address' }).click();
   await expect(page.getByText(/Address recorded/)).toBeVisible();
   await page.getByRole('button', { name: 'Refresh fields from case' }).click();

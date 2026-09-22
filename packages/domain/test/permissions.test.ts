@@ -14,6 +14,7 @@ import {
   can,
   canActOnCase,
   canDiscoverCase,
+  canEditCase,
   canViewCase,
   roleChangeErrors,
   type CaseAccessContext,
@@ -31,11 +32,20 @@ const normalCase: CaseAccessContext = {
   ownerId: 'hr-officer-1',
   classification: 'CONFIDENTIAL',
   participantUserIds: ['hr-officer-1'],
+  assignedOfficerId: 'hr-officer-1',
 };
 const restrictedCase: CaseAccessContext = {
   ownerId: 'hr-manager-1',
   classification: 'RESTRICTED',
   participantUserIds: ['hr-manager-1', 'hr-officer-2'],
+  assignedOfficerId: 'hr-officer-2',
+};
+/** A case an HR Manager created and has not assigned yet. */
+const unassignedCase: CaseAccessContext = {
+  ownerId: 'hr-manager-1',
+  classification: 'CONFIDENTIAL',
+  participantUserIds: ['hr-manager-1'],
+  assignedOfficerId: null,
 };
 
 describe('active role union (DEC-063)', () => {
@@ -109,7 +119,7 @@ describe('case action authorization', () => {
     }
   });
 
-  it('working actions are available to both HR roles and nobody else', () => {
+  it('working actions belong to the HR Manager and the ASSIGNED officer only (DEC-065)', () => {
     for (const action of [
       'case.editDraft',
       'case.submit',
@@ -118,10 +128,38 @@ describe('case action authorization', () => {
       'attachment.upload',
       'doc.create',
       'form.complete',
+      'asset.manage',
+      'case.activate',
     ] as const) {
       expect(canActOnCase(actor('m', 'HR_MANAGER'), action, normalCase), action).toBe(true);
-      expect(canActOnCase(actor('o', 'HR_OFFICER'), action, normalCase), action).toBe(true);
+      expect(canActOnCase(actor('hr-officer-1', 'HR_OFFICER'), action, normalCase), action).toBe(
+        true,
+      );
+      // Another officer can read the case (below) but not work it.
+      expect(canActOnCase(actor('hr-officer-9', 'HR_OFFICER'), action, normalCase), action).toBe(
+        false,
+      );
+      expect(
+        canActOnCase(actor('hr-officer-9', 'HR_OFFICER'), action, unassignedCase),
+        action,
+      ).toBe(false);
       expect(canActOnCase(noActiveRole, action, normalCase), action).toBe(false);
+    }
+  });
+
+  it('read surfaces stay open to every HR viewer regardless of ownership', () => {
+    for (const action of [
+      'workflow.view',
+      'notification.view',
+      'asset.view',
+      'audit.viewCase',
+      'attachment.download',
+      'case.viewReasonNotes',
+      'form.view',
+    ] as const) {
+      expect(canActOnCase(actor('hr-officer-9', 'HR_OFFICER'), action, normalCase), action).toBe(
+        true,
+      );
     }
   });
 
@@ -144,6 +182,40 @@ describe('case action authorization', () => {
   it('reason notes are restricted to HR participants (REQ-PRIV-024)', () => {
     expect(canActOnCase(actor('o', 'HR_OFFICER'), 'case.viewReasonNotes', normalCase)).toBe(true);
     expect(canActOnCase(noActiveRole, 'case.viewReasonNotes', normalCase)).toBe(false);
+  });
+});
+
+describe('case ownership and edit authority (DEC-065)', () => {
+  it('the HR Manager edits every case they can view, whoever created or owns it', () => {
+    expect(canEditCase(actor('hr-manager-1', 'HR_MANAGER'), normalCase)).toBe(true);
+    expect(canEditCase(actor('hr-manager-9', 'HR_MANAGER'), normalCase)).toBe(true);
+    expect(canEditCase(actor('hr-manager-9', 'HR_MANAGER'), unassignedCase)).toBe(true);
+    // Restricted cases still demand participation - ownership never bypasses DEC-035.
+    expect(canEditCase(actor('hr-manager-1', 'HR_MANAGER'), restrictedCase)).toBe(true);
+    expect(canEditCase(actor('hr-manager-9', 'HR_MANAGER'), restrictedCase)).toBe(false);
+  });
+
+  it('an HR Officer edits only the case assigned to them', () => {
+    expect(canEditCase(actor('hr-officer-1', 'HR_OFFICER'), normalCase)).toBe(true);
+    expect(canEditCase(actor('hr-officer-9', 'HR_OFFICER'), normalCase)).toBe(false);
+    expect(canEditCase(actor('hr-officer-9', 'HR_OFFICER'), unassignedCase)).toBe(false);
+    expect(canEditCase(actor('hr-officer-2', 'HR_OFFICER'), restrictedCase)).toBe(true);
+    expect(canEditCase(noActiveRole, normalCase)).toBe(false);
+  });
+
+  it('ownership follows the assigned officer, never the creator', () => {
+    // hr-officer-1 created the case (ownerId) but it was reassigned to hr-officer-2.
+    const reassigned: CaseAccessContext = { ...normalCase, assignedOfficerId: 'hr-officer-2' };
+    expect(canEditCase(actor('hr-officer-1', 'HR_OFFICER'), reassigned)).toBe(false);
+    expect(canEditCase(actor('hr-officer-2', 'HR_OFFICER'), reassigned)).toBe(true);
+    expect(canViewCase(actor('hr-officer-1', 'HR_OFFICER'), reassigned)).toBe(true);
+  });
+
+  it('assignment itself stays an HR Manager authority', () => {
+    expect(
+      canActOnCase(actor('hr-officer-1', 'HR_OFFICER'), 'case.assignOfficer', normalCase),
+    ).toBe(false);
+    expect(canActOnCase(actor('m', 'HR_MANAGER'), 'case.assignOfficer', normalCase)).toBe(true);
   });
 });
 
@@ -235,9 +307,13 @@ describe('global actions - the two-role matrix (DEC-063)', () => {
   });
 
   it('officers may enter a recipient for one case but not configure global recipients', () => {
-    expect(canActOnCase(actor('o', 'HR_OFFICER'), 'notification.enterRecipient', normalCase)).toBe(
-      true,
-    );
+    // Per-case recipient entry is case work, so it follows ownership (DEC-065).
+    expect(
+      canActOnCase(actor('hr-officer-1', 'HR_OFFICER'), 'notification.enterRecipient', normalCase),
+    ).toBe(true);
+    expect(
+      canActOnCase(actor('hr-officer-9', 'HR_OFFICER'), 'notification.enterRecipient', normalCase),
+    ).toBe(false);
     expect(can(actor('o', 'HR_OFFICER'), 'recipients.editBusiness')).toBe(false);
   });
 });

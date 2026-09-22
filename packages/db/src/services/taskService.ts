@@ -48,6 +48,7 @@ async function loadTask(taskId: string) {
           status: true,
           classification: true,
           ownerId: true,
+          assignedOfficerId: true,
           departureType: true,
           employeeDisplayName: true,
           effectiveSeparationAt: true,
@@ -62,6 +63,7 @@ async function loadTask(taskId: string) {
   if (!t) throw ServiceError.notFound();
   const ctx: CaseAccessContext = {
     ownerId: t.case.ownerId,
+    assignedOfficerId: t.case.assignedOfficerId,
     classification: t.case.classification,
     participantUserIds: t.case.participants.map((p) => p.userId),
   };
@@ -989,6 +991,7 @@ export async function listMyQueue(actor: Actor, rawFilter: unknown = {}) {
           caseNumber: true,
           classification: true,
           ownerId: true,
+          assignedOfficerId: true,
           departureType: true,
           location: true,
           employeeDisplayName: true,
@@ -1034,6 +1037,7 @@ export async function listMyQueue(actor: Actor, rawFilter: unknown = {}) {
     rows: rows.map((t) => {
       const ctx: CaseAccessContext = {
         ownerId: t.case.ownerId,
+        assignedOfficerId: t.case.assignedOfficerId,
         classification: t.case.classification,
         participantUserIds: t.case.participants.map((p) => p.userId),
       };

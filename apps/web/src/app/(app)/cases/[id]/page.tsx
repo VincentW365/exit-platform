@@ -177,6 +177,7 @@ export default async function CaseDetailPage({
           nextAction: progressSummary?.nextAction ?? null,
           stages: progress,
           separation: data.separation,
+          viewOnly: !cap.canEdit,
         }}
       />
       <Feedback err={sp.err} ok={sp.ok} />

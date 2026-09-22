@@ -290,6 +290,7 @@ export async function listExceptionFeed(
           caseNumber: true,
           classification: true,
           ownerId: true,
+          assignedOfficerId: true,
           employeeDisplayName: true,
           participants: { where: { removedAt: null }, select: { userId: true } },
         },

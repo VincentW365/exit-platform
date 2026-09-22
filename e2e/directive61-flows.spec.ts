@@ -81,8 +81,10 @@ test('Scenario F - missing manager blocks activation until an audited override',
     .getAttribute('value');
   await page.locator('#of-user').selectOption(officerValueF!);
   await page.locator('#of-reason').fill('Scenario F assignment.');
-  await page.getByRole('button', { name: 'Assign officer' }).click();
-  await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
+  await page.getByRole('button', { name: /Assign officer|Reassign case/ }).click();
+  await expect(
+    page.getByText(/HR Officer assigned \(audited\)|already owns this case/),
+  ).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
   await page.locator('#am-user').selectOption({ index: 1 });
   await page.locator('#am-reason').fill('Directory records no manager for this employee.');
@@ -132,8 +134,10 @@ test('Scenario D - queue claim, return to queue and reclaim through the UI', asy
     .getAttribute('value');
   await page.locator('#of-user').selectOption(officerValueD!);
   await page.locator('#of-reason').fill('Scenario D assignment.');
-  await page.getByRole('button', { name: 'Assign officer' }).click();
-  await expect(page.getByText('HR Officer assigned (audited).')).toBeVisible();
+  await page.getByRole('button', { name: /Assign officer|Reassign case/ }).click();
+  await expect(
+    page.getByText(/HR Officer assigned \(audited\)|already owns this case/),
+  ).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Assign alternate manager' }).click();
   await page.locator('#am-user').selectOption({ index: 1 });
   await page.locator('#am-reason').fill('Scenario D routing.');

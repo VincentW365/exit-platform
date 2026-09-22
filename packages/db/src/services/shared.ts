@@ -33,6 +33,7 @@ export async function loadCaseAccess(actor: Actor, caseId: string): Promise<Load
   if (!c) throw ServiceError.notFound();
   const ctx: CaseAccessContext = {
     ownerId: c.ownerId,
+    assignedOfficerId: c.assignedOfficerId,
     classification: c.classification,
     participantUserIds: c.participants.map((p) => p.userId),
   };

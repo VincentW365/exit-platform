@@ -138,7 +138,27 @@ sign-off.
    exclusions.
 3. Continuity: declare outage → fallback entry → one-time reconciliation →
    close.
-4. **Backup: create; restore-verify PASSED.**
+4. **Backup and restore test attested** (`readiness.backupVerified`,
+   `readiness.restoreTested`) from the operations runbook evidence - the
+   application performs neither (DEC-063).
+
+### UAT-8 Case ownership - Cases versus My Work (DEC-065)
+
+1. As the **HR Officer**, create a Draft case for a synthetic employee.
+   **Immediately**: it is listed under **My Work → My cases**, it is listed
+   under **Cases**, the header reads "Assigned HR Officer: HR Officer", and
+   "Edit these details" is offered.
+2. As the **HR Manager**: the same case is in **Cases**, is editable, and the
+   Assignment tab offers **Reassign HR Officer**.
+3. As the **HR Manager**, create a case: it starts **Unassigned** - it is in
+   Cases, editable by the manager, in nobody's My Work, and an officer opening
+   it sees "Unassigned - view only" with no edit controls until assigned.
+4. Where a second HR Officer login exists (mapped from the directory under
+   Administration → Organization), reassign a case from one officer to the
+   other: it leaves the first officer's My Work (still readable in Cases,
+   marked "View only") and appears in the second officer's My Work with edit
+   rights; the case history shows the reassignment with both officers and
+   the manager who made it; Created By is unchanged.
 
 ## Result capture
 
