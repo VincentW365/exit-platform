@@ -1351,24 +1351,19 @@ const ASSET_CATALOGUE = [
     trackIdentifier: true,
   },
   {
-    assetType: 'EMPLOYEE_HANDBOOK' as const,
-    label: 'Employee handbook',
-    issuingDepartment: 'Administration',
-    trackIdentifier: false,
-  },
-  {
-    assetType: 'COMPANY_DOCUMENTS' as const,
-    label: 'Company documents',
-    issuingDepartment: 'Administration',
-    trackIdentifier: false,
-  },
-  {
     assetType: 'OTHER' as const,
     label: 'Other approved asset',
     issuingDepartment: 'Administration',
     trackIdentifier: false,
   },
 ];
+
+/**
+ * Catalogue entries retired by the owner (2026-09-22). Their rows are never
+ * deleted - a rebuilt environment simply marks them inactive, and their
+ * enum values stay in the database for historical recovery items.
+ */
+const RETIRED_ASSET_LABELS = ['Employee handbook', 'Company documents'] as const;
 
 /** Synthetic employee-issued assets (all fictional, ties to EMP-TEST-*). */
 const ISSUED_ASSETS: ReadonlyArray<{
@@ -1728,6 +1723,10 @@ export async function seedStage3(db: Db): Promise<void> {
       update: { active: true },
     });
   }
+  await db.assetCatalogueItem.updateMany({
+    where: { label: { in: [...RETIRED_ASSET_LABELS] } },
+    data: { active: false },
+  });
   for (const a of ISSUED_ASSETS) {
     const existing = await db.issuedAsset.findFirst({
       where: { employeeSourceId: a.employeeSourceId, catalogueLabel: a.label },

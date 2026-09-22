@@ -54,7 +54,7 @@ The source checklist includes identification/employee card, health card, access/
 - mobile phone/SIM;
 - charger/peripherals;
 - lunch card;
-- company documents/handbook;
+- company documents/handbook - retired as recoverable asset types on 2026-09-22 (owner request); the enum values stay in the database for historical items, and the Employee Handbook line remains on the Exit Checklist for Return Items (DEC-053);
 - tools/equipment;
 - vehicle/fuel card;
 - payment/purchase card;

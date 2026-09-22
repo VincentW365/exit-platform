@@ -138,11 +138,11 @@ export default async function CaseDocumentsPage({
       {letterType !== null && docsData.capabilities.canEdit ? (
         <section className="panel" aria-labelledby="letter-address-h">
           <h2 id="letter-address-h" style={{ marginTop: 0 }}>
-            Address on the Letter
+            Employee Address
           </h2>
           <p className="hint">
-            Typed from the resignation letter scan. The directory holds no home address, so the
-            acceptance letter cannot be submitted until this is recorded.
+            The directory holds no home address, so the acceptance letter cannot be submitted until
+            this is recorded.
           </p>
           <form action={setAddressAction} className="stack">
             <input type="hidden" name="caseId" value={id} />

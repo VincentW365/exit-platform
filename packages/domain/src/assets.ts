@@ -5,6 +5,12 @@
  * instruction, calculate a deduction or block/alter final pay. Unresolved
  * assets surface as review exceptions only.
  */
+/**
+ * The asset types HR can record for recovery. EMPLOYEE_HANDBOOK and
+ * COMPANY_DOCUMENTS were retired by the owner on 2026-09-22: they stay in
+ * the database enum deprecated-in-place so historical recovery items keep
+ * their stored label, but no new item can be created for them.
+ */
 export const ASSET_TYPES = [
   'EMPLOYEE_ID_CARD',
   'ACCESS_CARD',
@@ -14,8 +20,6 @@ export const ASSET_TYPES = [
   'LAPTOP',
   'MOBILE_PHONE',
   'KEYS',
-  'EMPLOYEE_HANDBOOK',
-  'COMPANY_DOCUMENTS',
   'OTHER',
 ] as const;
 export type AssetType = (typeof ASSET_TYPES)[number];
@@ -29,8 +33,6 @@ export const ASSET_TYPE_LABELS: Readonly<Record<AssetType, string>> = {
   LAPTOP: 'Laptop',
   MOBILE_PHONE: 'Mobile phone',
   KEYS: 'Keys',
-  EMPLOYEE_HANDBOOK: 'Employee handbook',
-  COMPANY_DOCUMENTS: 'Company documents',
   OTHER: 'Other approved asset',
 };
 
