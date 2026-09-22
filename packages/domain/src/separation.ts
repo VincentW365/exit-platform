@@ -224,10 +224,12 @@ const PROFILES: Readonly<Record<DepartureType, SeparationProfile>> = {
     noticeServed: false,
     noticeArrangement: 'Contractual end date reached - no notice period applies.',
     requiredDates: ['receivedAt', 'contractEndDate'],
-    optionalDates: ['confirmedLastDay'],
+    // Intake asks for the contract end date only (owner, 2026-09-22): the
+    // last working day IS the contract end date and employment ends at
+    // close of business on it. A different last working day is a draft
+    // correction, not an intake question.
+    optionalDates: [],
     forbiddenDates: [],
-    // The last working day follows the contract end date unless HR says
-    // otherwise, and employment ends at close of business on it.
     effectiveDateSource: 'confirmedLastDay',
     defaultsToToday: ['receivedAt'],
     baseUrgency: 'SCHEDULED',

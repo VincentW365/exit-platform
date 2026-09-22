@@ -94,6 +94,12 @@ export interface StepSpec {
   /** The last step: it carries the real submit, so it has no forward button. */
   finalStep?: boolean;
   /**
+   * A step whose content is its own form with its own submit (choosing the
+   * separation type): the accordion's "Save & continue" would only skip
+   * past it, so it is not offered (owner request, 2026-09-22).
+   */
+  ownAction?: boolean;
+  /**
    * Section 12: the review step restates what every earlier step decided,
    * each block with a way straight back to it. Rendered by the accordion
    * rather than by the page, because only the accordion can reopen a step.
@@ -498,7 +504,7 @@ export function StepAccordion({
                       Back
                     </button>
                   ) : null}
-                  {!step.finalStep ? (
+                  {!step.finalStep && !step.ownAction ? (
                     <button type="button" className="step__forward" onClick={() => advance(index)}>
                       Save &amp; continue
                     </button>

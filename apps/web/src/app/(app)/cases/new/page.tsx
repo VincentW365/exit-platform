@@ -447,8 +447,8 @@ export default async function NewCasePage({
             optional={!requires('contractEndDate')}
             hint={
               contractEnd
-                ? 'Taken from the employee record. Change it only if the record is wrong.'
-                : 'The employee record holds no contract end date, so it has to be entered.'
+                ? 'Taken from the employee record. Change it only if the record is wrong. Employment ends at close of business on this date.'
+                : 'The employee record holds no contract end date, so it has to be entered. Employment ends at close of business on this date.'
             }
           >
             <input
@@ -627,6 +627,9 @@ export default async function NewCasePage({
       title: 'How they are leaving',
       note: 'This decides what the platform asks for next, and how the whole case is run.',
       settledByServer: !!profile,
+      // "Use this separation type" is the only action here; a second
+      // "Save & continue" would just skip past the choice.
+      ownAction: true,
       staticSummary: profile ? (
         <>
           <strong>{profile.label}</strong> · {profile.guidance}

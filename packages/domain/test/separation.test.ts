@@ -146,6 +146,11 @@ describe('a termination is not a resignation without notice', () => {
     expect(
       separationErrors({ type: 'TERMINATION', dates: dates({ receivedAt: TODAY }) }),
     ).toContainEqual(expect.stringMatching(/employment end date .* is required/i));
+    // An end of contract asks for the contract end date only: the last
+    // working day is that date (owner, 2026-09-22).
+    const contract = separationProfile('CONTRACT_EXPIRY');
+    expect(contract.requiredDates).toEqual(['receivedAt', 'contractEndDate']);
+    expect(contract.optionalDates).not.toContain('confirmedLastDay');
   });
 
   it('asks who authorized it without blocking a record that cannot say', () => {
