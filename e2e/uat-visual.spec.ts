@@ -53,14 +53,14 @@ test('UAT tablet spot-check: representative surfaces per role', async ({ page })
   await tabletCheck(page, '05-continuity');
   await signOut(page);
 
-  // Directive 6.3: IT/Finance have no logins - the line manager is the
-  // representative departmental queue user ("My work").
-  await signInAs(page, 'System Administrator');
+  // DEC-063: the HR Officer is the operational queue user ("My work").
+  await signInAs(page, 'HR Officer');
   await page.goto('/queue');
   await tabletCheck(page, '06-department-queue');
   await signOut(page);
 
-  await signInAs(page, 'System Administrator');
+  // DEC-063: integration health belongs to the HR Manager.
+  await signInAs(page, 'HR Manager');
   await page.goto('/admin/health');
   await tabletCheck(page, '07-health');
   await signOut(page);

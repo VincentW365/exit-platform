@@ -35,7 +35,7 @@ status`, and see Part 20 for rebuild options.
 
 ## Part 2 - Verify safety
 
-As the System Administrator, confirm on Administration → Health and → System:
+As the HR Manager (DEC-063), confirm on Administration → Health and → System:
 
 1. Email provider mode: capture/sink (messages land in the Development
    mailbox - nothing external, including every "automated" send).
@@ -48,7 +48,7 @@ As the System Administrator, confirm on Administration → Health and → System
 
 ## Part 3 - Sync the live directory
 
-As the System Administrator on Administration → System:
+As the HR Manager on Administration → System:
 
 1. "Test connection (read-only)" - aggregate counts only.
 2. Set `bamboohr.mode` = `live`, then "Run directory sync (live adapter)".
@@ -60,7 +60,7 @@ As the System Administrator on Administration → System:
 
 ## Part 4 - Map actual responsibilities (fewer logins than before)
 
-As the System Administrator on Administration → Organization →
+As the HR Manager on Administration → Organization →
 "Map a directory person to an application account":
 
 1. Map the actual HR Manager → HR_MANAGER.
@@ -78,7 +78,7 @@ staff" and can sign in as themselves.
 
 ## Part 5 - Prepare the email-action configuration
 
-As the HR Manager (with the System Administrator present):
+As the HR Manager:
 
 1. Administration → Notification templates: verify at least 9 ACTIVE
    templates - one per notification type, including payroll/bank and
@@ -258,8 +258,8 @@ As the HR Manager in the Audit centre: filter to the case number and read
 the timeline - directory selection, derivation (with rule provenance),
 every automatic email, the token issue/use, the recipient entry, the
 completion - who/what/why/when, with the automated steps carrying MORE
-detail than manual ones. Export CSV (audited). As the System Administrator:
-confirm the technical feed shows no case content. Then run reports with
+detail than manual ones. Export CSV (audited). Technical events (identity,
+configuration, sync) sit in the same feed since DEC-063. Then run reports with
 purpose TEST and confirm UAT cases stay out of operational KPIs.
 
 ## Part 20 - Alternate scenarios, clear-down and feedback

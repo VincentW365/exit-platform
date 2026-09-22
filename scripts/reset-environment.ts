@@ -93,10 +93,10 @@ async function purgeLive(): Promise<void> {
   const db = await import('../packages/db/src/index.ts');
   const prisma = db.getPrisma();
   const admin = await prisma.user.findFirst({
-    where: { roleAssignments: { some: { role: 'SYSTEM_ADMIN', revokedAt: null } }, isActive: true },
+    where: { roleAssignments: { some: { role: 'HR_MANAGER', revokedAt: null } }, isActive: true },
   });
-  if (!admin) fail('no active SYSTEM_ADMIN account exists.');
-  const actor = { userId: admin.id, roles: ['SYSTEM_ADMIN'] as never };
+  if (!admin) fail('no active HR_MANAGER account exists.');
+  const actor = { userId: admin.id, roles: ['HR_MANAGER'] as never };
   if (existsSync(MAPPING_PATH)) {
     // Legacy alias-flow artifact (retired by DEC-043) - always cleaned up.
     unlinkSync(MAPPING_PATH);
@@ -193,14 +193,14 @@ async function rebuild(withUatDataset: boolean, migrateUrl: URL, devDbName: stri
       const db = await import('../packages/db/src/index.ts');
       const admin = await db.getPrisma().user.findFirst({
         where: {
-          roleAssignments: { some: { role: 'SYSTEM_ADMIN', revokedAt: null } },
+          roleAssignments: { some: { role: 'HR_MANAGER', revokedAt: null } },
           isActive: true,
         },
       });
       if (admin) {
         const sync = await db.syncEmployees({
           userId: admin.id,
-          roles: ['SYSTEM_ADMIN'] as never,
+          roles: ['HR_MANAGER'] as never,
         });
         console.log(
           `Synthetic directory loaded: ${sync.created} created, ${sync.updated} updated.`,
@@ -218,12 +218,12 @@ async function rebuild(withUatDataset: boolean, migrateUrl: URL, devDbName: stri
       const db = await import('../packages/db/src/index.ts');
       const admin = await db.getPrisma().user.findFirst({
         where: {
-          roleAssignments: { some: { role: 'SYSTEM_ADMIN', revokedAt: null } },
+          roleAssignments: { some: { role: 'HR_MANAGER', revokedAt: null } },
           isActive: true,
         },
       });
-      if (!admin) throw new Error('no active SYSTEM_ADMIN account exists after seeding');
-      const actor = { userId: admin.id, roles: ['SYSTEM_ADMIN'] as never };
+      if (!admin) throw new Error('no active HR_MANAGER account exists after seeding');
+      const actor = { userId: admin.id, roles: ['HR_MANAGER'] as never };
       const reason = 'Environment rebuild: the live directory stays connected (owner request).';
       await db.setSystemConfig(actor, 'bamboohr.mode', 'live', reason);
       await db.setSystemConfig(actor, 'bamboohr.scheduledSync', true, reason);

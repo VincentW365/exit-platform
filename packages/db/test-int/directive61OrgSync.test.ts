@@ -37,7 +37,7 @@ beforeAll(async () => {
   await seedStage3Fixtures();
   officer = await createUser('D61 Officer', 'HR_OFFICER');
   manager = await createUser('D61 Manager', 'HR_MANAGER');
-  lineMgr = await createUser('D61 Line Manager', 'LINE_MANAGER');
+  lineMgr = await createUser('D61 Line Manager');
   setBambooFixtureForTests(null);
 });
 
@@ -159,13 +159,15 @@ describe('createDraft preserves manager provenance (AM 3, 12)', () => {
     expect((derived!.metadata as { managerName?: string }).managerName).toBe('Operations Manager');
   });
 
-  it('resolves managerUserId when a LINE_MANAGER account matches by email', async () => {
-    const samira = await prisma.user.create({
+  it('never resolves managerUserId, even when an account matches by email (DEC-063)', async () => {
+    // Reporting managers are directory people reached by controlled email;
+    // a matching application account (here an HR Officer) is not linked.
+    await prisma.user.create({
       data: {
         identitySubject: 'test|samira-manager',
         displayName: 'Operations Manager',
         workEmail: 'samira.cole@example.test',
-        roleAssignments: { create: [{ role: 'LINE_MANAGER', reason: 'test fixture' }] },
+        roleAssignments: { create: [{ role: 'HR_OFFICER', reason: 'test fixture' }] },
       },
     });
     const created = await createDraft(officer.actor, {
@@ -173,7 +175,8 @@ describe('createDraft preserves manager provenance (AM 3, 12)', () => {
       employeeSourceId: 'EMP-TEST-003',
     });
     const c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: created.caseId } });
-    expect(c.managerUserId).toBe(samira.id);
+    expect(c.managerName).toBe('Operations Manager');
+    expect(c.managerUserId).toBeNull();
     expect(c.managerSource).toBe('DIRECTORY');
   });
 });

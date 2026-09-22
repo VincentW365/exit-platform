@@ -38,11 +38,10 @@ const STATIC_ROUTES = [
   '/unauthorized',
 ];
 
-// Directive 6.3: the IT and Finance responder sign-ins are retired - those
-// departments act on controlled emails, never application logins. The
-// remaining representative roles cover every reachable surface. (Note: the
+// DEC-063: exactly two application roles exist - the HR Manager and the HR
+// Officer - and together they cover every reachable surface. (Note: the
 // /queue page heading is now "My work".)
-const ROLES = ['HR Manager', 'HR Officer', 'System Administrator'];
+const ROLES = ['HR Manager', 'HR Officer'];
 
 async function assertHealthy(page: Page, label: string): Promise<void> {
   // The global error boundary and Next's static error page must never show.

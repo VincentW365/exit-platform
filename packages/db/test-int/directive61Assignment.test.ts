@@ -86,9 +86,9 @@ beforeAll(async () => {
   manager = await createUser('D61A Manager', 'HR_MANAGER');
   hrA = await createUser('D61A HR One', 'HR_OFFICER');
   hrB = await createUser('D61A HR Two', 'HR_OFFICER');
-  itA = await createUser('D61A IT One', 'IT_RESPONDER');
-  finA = await createUser('D61A Finance', 'FINANCE_RESPONDER');
-  lineMgr = await createUser('D61A Line Manager', 'LINE_MANAGER');
+  itA = await createUser('D61A IT One');
+  finA = await createUser('D61A Finance');
+  lineMgr = await createUser('D61A Line Manager');
 });
 
 describe('HR officer ownership (E; AM 13)', () => {

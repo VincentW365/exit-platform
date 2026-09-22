@@ -1,50 +1,58 @@
 # Backup and Restore Runbook
 
-Local/synthetic backup discipline for the offboarding platform. Production
-disaster recovery is NOT approved and NOT claimed here; hosting, storage
-location, encryption-at-rest custody and RPO/RTO targets are open decisions
-recorded in the Decision Register.
+Backup discipline for the offboarding platform. Production disaster recovery
+is NOT approved and NOT claimed here; hosting, storage location,
+encryption-at-rest custody and RPO/RTO targets are open decisions recorded in
+the Decision Register.
 
-## What is implemented
+## Where backups live since DEC-063
 
-- **Create backup** (`/admin/system`, System Administrator only): runs
-  `pg_dump -Fc` against the configured database using the migrate credential,
-  writes the dump to the gitignored `BACKUP_DIR`, records size + SHA-256
-  checksum as an immutable `backup_record` row and audits BACKUP_CREATED.
-- **Restore + verify** (same page): re-hashes the file against the recorded
-  checksum (refuses a tampered file), drops/recreates the isolated scratch
-  database `exitplatform_restorecheck`, restores with
-  `pg_restore --no-owner --no-privileges`, then compares critical-table
-  counts (cases, snapshots, documents, attestations, surveys, workflow
-  instances/tasks, assets, clearance records, audit events) between the
-  restored copy and the source database. Result, note and verification
-  timestamp are recorded and audited (BACKUP_VERIFIED).
-- The health page surfaces latest backup age; a verified restore is a
-  mandatory pilot readiness gate.
+Backups and restore tests are **infrastructure operations, not HR
+operations**. The two-role model (DEC-063, 2026-09-22) retired the System
+Administrator login together with the in-application pg_dump / restore
+tooling that used to sit on `/admin/system`. Nothing in the application takes
+a backup any more:
+
+- the operator of the hosting environment takes and verifies backups with the
+  database tooling below, outside the application;
+- the HR Manager **attests** that evidence in the application by setting the
+  configuration values `readiness.backupVerified` and `readiness.restoreTested`
+  (Administration → System → "Set a configuration value", reason required,
+  audited), which is what the two mandatory pilot readiness gates read - the
+  same shape as the SOP, UAT and manual-fallback attestations;
+- the historical `backup_record` rows written by the retired tooling remain
+  in the database, immutable and read-only; history is never rewritten.
+
+## Procedure (development, UAT and pilot)
+
+1. **Backup**: `pg_dump -Fc` against the environment's database using the
+   migrate credential, written to a location outside the repository that is
+   never committed or uploaded. Record the size and the SHA-256 checksum of
+   the file with the run.
+2. **Restore verification**: check the file against its recorded checksum
+   (a mismatch means the file changed after capture - treat as an incident,
+   Support runbook); restore into a NEW, isolated database with
+   `pg_restore --no-owner --no-privileges`; compare critical-table counts
+   (cases, snapshots, documents, attestations, surveys, workflow
+   instances/tasks, assets, clearance records, audit events) between the
+   restored copy and the source. Record the result with the run.
+3. **Attest**: the HR Manager sets `readiness.backupVerified` = `true` and
+   `readiness.restoreTested` = `true` with a reason that names the run
+   (date, checksum prefix). Re-attest after each verified restore; the pilot
+   readiness page shows the attestation status.
 
 ## Cadence (development/pilot)
 
 | Action | Frequency | Owner |
 | --- | --- | --- |
-| Backup | Before every migration; at least weekly during the pilot | System Administrator |
-| Restore verification | After every backup taken before a migration; at least monthly | System Administrator |
-| Checksum spot-check | With each restore verification (automatic) | - |
-
-## Restore verification procedure
-
-1. `/admin/system` → "Create database backup (pg_dump)" → confirm the
-   banner shows size + checksum.
-2. Press "Restore into isolated DB + verify" on the newest record.
-3. Confirm "Restore test PASSED" and the "restore verified" badge.
-4. If it FAILS: do not delete anything. Check `BACKUP_DIR` disk space, the
-   PostgreSQL service and the note on the record; take a fresh backup and
-   verify again. A checksum mismatch means the file changed after capture -
-   treat as an incident (Support runbook).
+| Backup | Before every migration; at least weekly during the pilot | Infrastructure operator (outside the application) |
+| Restore verification | After every backup taken before a migration; at least monthly | Infrastructure operator (outside the application) |
+| Attestation in the application | After each verified restore | HR Manager |
 
 ## Actual data-loss event (development scope)
 
-1. Declare an outage (`/continuity`) and stop the worker.
-2. Choose the newest VERIFIED backup record.
+1. Declare an outage (`/continuity`, HR Manager) and stop the worker.
+2. Choose the newest VERIFIED backup.
 3. Restore into a NEW database name (never over the damaged one), using the
    same `pg_restore` flags as the verification path.
 4. Repoint `DATABASE_URL`/`DATABASE_URL_MIGRATE` at the restored database,
@@ -55,8 +63,8 @@ recorded in the Decision Register.
 
 ## Constraints
 
-- Backup files contain synthetic data only in this environment but are
-  treated as sensitive: gitignored directory, no copies into the repository,
-  no upload anywhere.
-- `backup_record` rows are immutable (database trigger) apart from the
-  verification fields; history is never rewritten.
+- Backup files contain synthetic data only in development and UAT but are
+  treated as sensitive: never inside the repository, no copies anywhere the
+  runbook does not name, no upload.
+- `backup_record` rows are immutable (database trigger); the retired tooling
+  is not reinstated to "clean up" history.

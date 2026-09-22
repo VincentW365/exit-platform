@@ -1,7 +1,9 @@
 /**
  * Directive 6.2 (E) - directory role mapping: account creation from the
- * synchronized directory, role grants, enable/disable lifecycle, and manager
- * auto-resolution succeeding for a directory-mapped manager account.
+ * synchronized directory, role grants, enable/disable lifecycle. Under the
+ * two-role model (DEC-063) the HR Manager performs identity administration,
+ * only HR_MANAGER / HR_OFFICER can be granted, and manager auto-resolution
+ * never links a directory manager to an application account.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { getPrisma } from '../src/client.ts';
@@ -20,11 +22,14 @@ const prisma = getPrisma();
 
 let admin: Awaited<ReturnType<typeof createUser>>;
 let hrManager: Awaited<ReturnType<typeof createUser>>;
+let officer: Awaited<ReturnType<typeof createUser>>;
 
 beforeAll(async () => {
   await resetDb();
-  admin = await createUser('D62 Admin', 'SYSTEM_ADMIN');
+  // DEC-063: identity administration is an HR Manager capability.
+  admin = await createUser('D62 Admin HRM', 'HR_MANAGER');
   hrManager = await createUser('D62 Manager', 'HR_MANAGER');
+  officer = await createUser('D62 Officer', 'HR_OFFICER');
   // Populate the directory (fixture graph incl. EMP-TEST-006 Warehouse Manager).
   await syncEmployees(hrManager.actor);
 });
@@ -34,8 +39,8 @@ describe('createUserFromDirectory', () => {
     const created = await createUserFromDirectory(admin.actor, {
       sourceSystem: 'SYNTHETIC',
       sourceId: 'EMP-TEST-006',
-      roles: ['LINE_MANAGER'],
-      reason: 'Map the warehouse manager for live UAT.',
+      roles: ['HR_OFFICER'],
+      reason: 'Map the warehouse manager as an HR Officer for live UAT.',
     });
     const row = await prisma.user.findUniqueOrThrow({
       where: { id: created.userId },
@@ -44,7 +49,7 @@ describe('createUserFromDirectory', () => {
     expect(row.identitySubject).toBe('bamboo|EMP-TEST-006');
     expect(row.identitySource).toBe('directory');
     expect(row.department).toBe('Warehouse');
-    expect(row.roleAssignments.map((r) => r.role)).toEqual(['LINE_MANAGER']);
+    expect(row.roleAssignments.map((r) => r.role)).toEqual(['HR_OFFICER']);
     const audit = await prisma.auditEvent.findFirst({
       where: { eventType: 'IDENTITY_USER_CREATED', objectId: created.userId },
     });
@@ -53,12 +58,12 @@ describe('createUserFromDirectory', () => {
     expect(accounts.some((a) => a.sourceId === 'EMP-TEST-006')).toBe(true);
   });
 
-  it('is SYSTEM_ADMIN-only and refuses duplicates, unknown roles and missing people', async () => {
+  it('is HR-Manager-only and refuses duplicates, retired roles and missing people', async () => {
     await expect(
-      createUserFromDirectory(hrManager.actor, {
+      createUserFromDirectory(officer.actor, {
         sourceSystem: 'SYNTHETIC',
         sourceId: 'EMP-TEST-007',
-        roles: ['LINE_MANAGER'],
+        roles: ['HR_OFFICER'],
         reason: 'x',
       }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN' });
@@ -66,23 +71,27 @@ describe('createUserFromDirectory', () => {
       createUserFromDirectory(admin.actor, {
         sourceSystem: 'SYNTHETIC',
         sourceId: 'EMP-TEST-006',
-        roles: ['LINE_MANAGER'],
+        roles: ['HR_OFFICER'],
         reason: 'duplicate',
       }),
     ).rejects.toMatchObject({ code: 'CONFLICT' });
-    await expect(
-      createUserFromDirectory(admin.actor, {
-        sourceSystem: 'SYNTHETIC',
-        sourceId: 'EMP-TEST-007',
-        roles: ['AUDITOR'],
-        reason: 'retired role',
-      }),
-    ).rejects.toMatchObject({ code: 'VALIDATION' });
+    // DEC-063: every retired value is refused, not only the DEC-042 ones.
+    for (const retired of ['AUDITOR', 'LINE_MANAGER', 'SYSTEM_ADMIN']) {
+      await expect(
+        createUserFromDirectory(admin.actor, {
+          sourceSystem: 'SYNTHETIC',
+          sourceId: 'EMP-TEST-007',
+          roles: [retired],
+          reason: 'retired role',
+        }),
+        retired,
+      ).rejects.toMatchObject({ code: 'VALIDATION' });
+    }
     await expect(
       createUserFromDirectory(admin.actor, {
         sourceSystem: 'SYNTHETIC',
         sourceId: 'NO-SUCH-PERSON',
-        roles: ['LINE_MANAGER'],
+        roles: ['HR_OFFICER'],
         reason: 'missing',
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION' });
@@ -92,14 +101,16 @@ describe('createUserFromDirectory', () => {
     const people = await listDirectoryPeopleForMapping(admin.actor);
     expect(people.some((p) => p.sourceId === 'EMP-TEST-006')).toBe(false);
     expect(people.some((p) => p.sourceId === 'EMP-TEST-007')).toBe(true);
-    await expect(listDirectoryPeopleForMapping(hrManager.actor)).rejects.toMatchObject({
+    await expect(listDirectoryPeopleForMapping(officer.actor)).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
   });
 
-  it('manager auto-resolution now resolves to the mapped account', async () => {
-    // EMP-TEST-002 reports to EMP-TEST-006 (Warehouse Manager), whose account
-    // was just created from the directory with the directory work email.
+  it('manager auto-resolution never links an application account (DEC-063)', async () => {
+    // EMP-TEST-002 reports to EMP-TEST-006 (Warehouse Manager), who now
+    // also holds an application account created from the directory. The
+    // case records the DIRECTORY manager only: reporting managers are
+    // reached by controlled email, never through a login.
     const created = await createDraft(hrManager.actor, {
       ...VALID_DRAFT,
       employeeSourceId: 'EMP-TEST-002',
@@ -107,10 +118,8 @@ describe('createUserFromDirectory', () => {
       measurementCohort: null,
     });
     const c = await prisma.offboardingCase.findUniqueOrThrow({ where: { id: created.caseId } });
-    const mapped = await prisma.user.findUniqueOrThrow({
-      where: { identitySubject: 'bamboo|EMP-TEST-006' },
-    });
-    expect(c.managerUserId).toBe(mapped.id);
+    expect(c.managerSourceId).toBe('EMP-TEST-006');
+    expect(c.managerUserId).toBeNull();
     expect(c.managerSource).toBe('DIRECTORY');
   });
 });
@@ -124,7 +133,7 @@ describe('enable/disable lifecycle', () => {
     let row = await prisma.user.findUniqueOrThrow({ where: { id: mapped.id } });
     expect(row.isActive).toBe(false);
 
-    await expect(enableUser(hrManager.actor, mapped.id, 'x')).rejects.toMatchObject({
+    await expect(enableUser(officer.actor, mapped.id, 'x')).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
     await enableUser(admin.actor, mapped.id, 'Drill complete; restore access.');

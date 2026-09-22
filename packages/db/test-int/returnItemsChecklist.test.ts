@@ -72,7 +72,7 @@ beforeAll(async () => {
   await seedStage3Fixtures();
   officer = await createUser('Checklist Officer', 'HR_OFFICER');
   manager = await createUser('Checklist Manager', 'HR_MANAGER');
-  lineMgr = await createUser('Checklist Line Manager', 'LINE_MANAGER');
+  lineMgr = await createUser('Checklist Line Manager');
 });
 
 describe('the checklist is created and requested automatically', () => {
@@ -290,7 +290,7 @@ describe('HR can record and correct the checklist', () => {
 
   it('refuses anyone without asset management rights', async () => {
     const caseId = await activeCase();
-    const other = await createUser('Checklist Line Manager 2', 'LINE_MANAGER');
+    const other = await createUser('Checklist Line Manager 2');
     await expect(
       recordReturnItemsChecklist(other.actor, caseId, {
         items: allItems(),

@@ -22,8 +22,8 @@ BASELINE records never trigger automation in any state.
 
 ## Roles
 
-- **HR Manager** - proposes/approves (business), owns pilot scope.
-- **System Administrator** - approves (technical), owns configuration.
+- **HR Manager** - proposes and approves, owns the pilot scope and the platform
+  configuration (DEC-063: the separate technical approver is retired).
 
 ## Entering the pilot (PILOT_ACTIVE)
 
@@ -56,9 +56,8 @@ BASELINE records never trigger automation in any state.
      sends will wait on recipient-required exceptions.
 2. Propose the activation with the pilot scope and a rollback plan. The
    proposal core is frozen (database trigger) and checksummed.
-3. Record HR Manager approval and System Administrator approval. DEC-042:
-   the two approvals must come from two DIFFERENT people - the service
-   refuses to apply an activation self-approved on both tiers.
+3. Record the HR Manager approval (DEC-063: one approval; the DEC-042 second
+   technical approval and its two-person rule are retired).
 4. Apply the activation. Gates are re-evaluated at apply time; a failed
    mandatory gate blocks the transition.
 5. Verify: `/admin/health` shows the expected provider modes; the outbox

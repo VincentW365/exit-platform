@@ -1,3 +1,14 @@
+/**
+ * Authorization under the two-role model (DEC-063, 2026-09-22).
+ *
+ * Only HR_MANAGER and HR_OFFICER can sign in or satisfy a permission. Every
+ * other kind of person the platform knows - employees, reporting managers,
+ * IT, Finance, providers - is a directory record, a workflow participant, a
+ * recipient or a token-link holder, never a login. The retired roles remain
+ * in the database enum for history only; these tests prove the domain never
+ * honours them: an actor whose stored assignments are all deprecated has no
+ * active role at all and is refused everywhere.
+ */
 import { describe, expect, it } from 'vitest';
 import {
   can,
@@ -6,60 +17,77 @@ import {
   canViewCase,
   roleChangeErrors,
   type CaseAccessContext,
+  type GlobalAction,
 } from '../src/permissions.ts';
-import { ROLES, type Actor, type Role } from '../src/roles.ts';
+import { HR_ROLES, ROLES, isRole, type Actor, type Role } from '../src/roles.ts';
 
 function actor(userId: string, ...roles: Role[]): Actor {
   return { userId, roles };
 }
+/** A signed-in user whose only stored assignments are deprecated values. */
+const noActiveRole: Actor = { userId: 'legacy-1', roles: [] };
 
 const normalCase: CaseAccessContext = {
   ownerId: 'hr-officer-1',
   classification: 'CONFIDENTIAL',
   participantUserIds: ['hr-officer-1'],
 };
-
 const restrictedCase: CaseAccessContext = {
   ownerId: 'hr-manager-1',
   classification: 'RESTRICTED',
   participantUserIds: ['hr-manager-1', 'hr-officer-2'],
 };
 
-describe('record-level visibility (REQ-SEC-007/008, DEC-042 six-role model)', () => {
-  it('normal cases: HR roles can view; departments and admin cannot', () => {
+describe('active role union (DEC-063)', () => {
+  it('has exactly HR_MANAGER and HR_OFFICER', () => {
+    expect([...ROLES]).toEqual(['HR_MANAGER', 'HR_OFFICER']);
+    expect([...HR_ROLES]).toEqual(['HR_MANAGER', 'HR_OFFICER']);
+  });
+
+  it('refuses every deprecated value as a role, so none can be newly assigned', () => {
+    for (const deprecated of [
+      'SYSTEM_ADMIN',
+      'IT_RESPONDER',
+      'FINANCE_RESPONDER',
+      'LINE_MANAGER',
+      'AUDITOR',
+      'PRIVACY_OFFICER',
+      'EMPLOYEE',
+      'MANAGER',
+      'ADMIN',
+    ]) {
+      expect(isRole(deprecated), deprecated).toBe(false);
+    }
+    expect(isRole('HR_MANAGER')).toBe(true);
+    expect(isRole('HR_OFFICER')).toBe(true);
+  });
+});
+
+describe('record-level visibility (REQ-SEC-007/008)', () => {
+  it('normal cases: HR roles can view; a user with no active role cannot', () => {
     expect(canViewCase(actor('x', 'HR_MANAGER'), normalCase)).toBe(true);
     expect(canViewCase(actor('x', 'HR_OFFICER'), normalCase)).toBe(true);
-    expect(canViewCase(actor('x', 'IT_RESPONDER'), normalCase)).toBe(false);
-    expect(canViewCase(actor('x', 'FINANCE_RESPONDER'), normalCase)).toBe(false);
-    expect(canViewCase(actor('x', 'LINE_MANAGER'), normalCase)).toBe(false);
-    expect(canViewCase(actor('x', 'SYSTEM_ADMIN'), normalCase)).toBe(false);
+    expect(canViewCase(noActiveRole, normalCase)).toBe(false);
   });
 
   it('RESTRICTED termination cases: content requires explicit HR participation (DEC-035)', () => {
-    // Participants with HR roles: yes.
     expect(canViewCase(actor('hr-manager-1', 'HR_MANAGER'), restrictedCase)).toBe(true);
     expect(canViewCase(actor('hr-officer-2', 'HR_OFFICER'), restrictedCase)).toBe(true);
-    // An HR MANAGER who is NOT a participant is denied - role alone is not enough.
     expect(canViewCase(actor('hr-manager-9', 'HR_MANAGER'), restrictedCase)).toBe(false);
     expect(canViewCase(actor('hr-officer-9', 'HR_OFFICER'), restrictedCase)).toBe(false);
-    // SYSTEM_ADMIN never gains business access by role (REQ-SEC-010).
-    expect(canViewCase(actor('admin-1', 'SYSTEM_ADMIN'), restrictedCase)).toBe(false);
-    // A participant row without an HR role still gets nothing.
-    const withItParticipant: CaseAccessContext = {
+    // Being listed as a participant without an HR role grants nothing.
+    const withLegacyParticipant: CaseAccessContext = {
       ...restrictedCase,
-      participantUserIds: [...restrictedCase.participantUserIds, 'it-1'],
+      participantUserIds: [...restrictedCase.participantUserIds, 'legacy-1'],
     };
-    expect(canViewCase(actor('it-1', 'IT_RESPONDER'), withItParticipant)).toBe(false);
+    expect(canViewCase(noActiveRole, withLegacyParticipant)).toBe(false);
   });
 
   it('discovery of RESTRICTED cases is participant-only (DEC-042)', () => {
     expect(canDiscoverCase(actor('hr-manager-1', 'HR_MANAGER'), restrictedCase)).toBe(true);
-    // Non-participants must not learn the case exists through lists/counts -
-    // there is no longer any role-based discovery path.
     expect(canDiscoverCase(actor('hr-manager-9', 'HR_MANAGER'), restrictedCase)).toBe(false);
     expect(canDiscoverCase(actor('hr-officer-9', 'HR_OFFICER'), restrictedCase)).toBe(false);
-    expect(canDiscoverCase(actor('admin-1', 'SYSTEM_ADMIN'), restrictedCase)).toBe(false);
-    expect(canDiscoverCase(actor('it-1', 'IT_RESPONDER'), restrictedCase)).toBe(false);
+    expect(canDiscoverCase(noActiveRole, restrictedCase)).toBe(false);
   });
 });
 
@@ -73,24 +101,27 @@ describe('case action authorization', () => {
       'case.correct',
       'case.changeEffectiveTime',
       'case.manageParticipants',
+      'case.assignOfficer',
     ] as const) {
       expect(canActOnCase(actor('m', 'HR_MANAGER'), action, normalCase), action).toBe(true);
       expect(canActOnCase(actor('o', 'HR_OFFICER'), action, normalCase), action).toBe(false);
-      expect(canActOnCase(actor('a', 'SYSTEM_ADMIN'), action, normalCase), action).toBe(false);
+      expect(canActOnCase(noActiveRole, action, normalCase), action).toBe(false);
     }
   });
 
-  it('working actions are available to HR roles only', () => {
+  it('working actions are available to both HR roles and nobody else', () => {
     for (const action of [
       'case.editDraft',
       'case.submit',
       'case.addNote',
       'case.recordBaselineEvent',
       'attachment.upload',
+      'doc.create',
+      'form.complete',
     ] as const) {
+      expect(canActOnCase(actor('m', 'HR_MANAGER'), action, normalCase), action).toBe(true);
       expect(canActOnCase(actor('o', 'HR_OFFICER'), action, normalCase), action).toBe(true);
-      expect(canActOnCase(actor('a', 'SYSTEM_ADMIN'), action, normalCase), action).toBe(false);
-      expect(canActOnCase(actor('l', 'LINE_MANAGER'), action, normalCase), action).toBe(false);
+      expect(canActOnCase(noActiveRole, action, normalCase), action).toBe(false);
     }
   });
 
@@ -108,65 +139,122 @@ describe('case action authorization', () => {
     expect(canActOnCase(actor('hr-officer-1', 'HR_OFFICER'), 'case.viewRehire', normalCase)).toBe(
       false,
     );
-    expect(canActOnCase(actor('a', 'SYSTEM_ADMIN'), 'case.viewRehire', normalCase)).toBe(false);
   });
 
   it('reason notes are restricted to HR participants (REQ-PRIV-024)', () => {
     expect(canActOnCase(actor('o', 'HR_OFFICER'), 'case.viewReasonNotes', normalCase)).toBe(true);
-    expect(canActOnCase(actor('a', 'SYSTEM_ADMIN'), 'case.viewReasonNotes', normalCase)).toBe(
-      false,
-    );
+    expect(canActOnCase(noActiveRole, 'case.viewReasonNotes', normalCase)).toBe(false);
   });
 });
 
-describe('global actions', () => {
-  it('case creation is HR-led only (DEC-002 / REQ-CASE-002)', () => {
-    const allowed: Role[] = ['HR_MANAGER', 'HR_OFFICER'];
-    for (const role of ROLES) {
-      expect(can(actor('u', role), 'case.create'), role).toBe(allowed.includes(role));
-    }
+describe('global actions - the two-role matrix (DEC-063)', () => {
+  const both = (a: GlobalAction) => {
+    expect(can(actor('m', 'HR_MANAGER'), a), a).toBe(true);
+    expect(can(actor('o', 'HR_OFFICER'), a), a).toBe(true);
+    expect(can(noActiveRole, a), a).toBe(false);
+  };
+  const managerOnly = (a: GlobalAction) => {
+    expect(can(actor('m', 'HR_MANAGER'), a), a).toBe(true);
+    expect(can(actor('o', 'HR_OFFICER'), a), a).toBe(false);
+    expect(can(noActiveRole, a), a).toBe(false);
+  };
+
+  it('operational processing is shared by both HR roles', () => {
+    for (const a of [
+      'case.create',
+      'case.list',
+      'employeeSource.search',
+      'queue.view',
+      'exceptions.viewFeed',
+      'template.view',
+      'template.draft',
+      'workflowDef.view',
+      'workflowDef.draft',
+      'notifTemplate.view',
+      'notifTemplate.draft',
+      'reports.view',
+      'reports.export',
+      'baseline.viewDashboard',
+      'baseline.export',
+      'recipients.viewBusiness',
+      'mailbox.dev',
+      'support.use',
+      'sop.view',
+      'org.view',
+    ] as const)
+      both(a);
   });
 
-  it('audit centre audiences (DEC-042); admin console is SYSTEM_ADMIN-only', () => {
-    for (const role of ROLES) {
-      // HR_MANAGER is the business audit audience; the service minimizes
-      // restricted-case rows they cannot view (DEC-039).
-      expect(can(actor('u', role), 'audit.viewGlobal'), role).toBe(role === 'HR_MANAGER');
-      expect(can(actor('u', role), 'audit.viewTechnical'), role).toBe(role === 'SYSTEM_ADMIN');
-      expect(can(actor('u', role), 'audit.export'), role).toBe(role === 'HR_MANAGER');
-      expect(can(actor('u', role), 'admin.roles'), role).toBe(role === 'SYSTEM_ADMIN');
-      expect(can(actor('u', role), 'admin.flags'), role).toBe(role === 'SYSTEM_ADMIN');
-    }
+  it('oversight and HR administration belong to the HR Manager alone', () => {
+    for (const a of [
+      'template.activate',
+      'workflowDef.activate',
+      'notifTemplate.activate',
+      'reports.schedule',
+      'audit.viewGlobal',
+      'audit.export',
+      'admin.calendar',
+      'admin.configLists',
+      'reasons.manage',
+      'privacy.view',
+      'privacy.operate',
+      'continuity.operate',
+      'support.manage',
+    ] as const)
+      managerOnly(a);
   });
 
-  it('business calendar and org lists are HR Manager configuration (DEC-027)', () => {
-    for (const role of ROLES) {
-      expect(can(actor('u', role), 'admin.calendar'), role).toBe(role === 'HR_MANAGER');
-      expect(can(actor('u', role), 'admin.configLists'), role).toBe(role === 'HR_MANAGER');
-    }
+  it('transferred from the former System Administrator: only genuinely HR-operational functions', () => {
+    for (const a of [
+      'sync.run',
+      'directory.viewSync',
+      'admin.system',
+      'admin.roles',
+      'admin.flags',
+      'admin.organization',
+      'recipients.editBusiness',
+      'recipients.editTechnical',
+      'recipients.approveExternal',
+      'outbox.view',
+      'outbox.resolve',
+      'notifications.testMode',
+      'notifications.routing',
+      'health.view',
+      'identity.admin',
+      'identity.accessReview',
+      'pilot.view',
+      'pilot.manage',
+      'pilot.hrApprove',
+    ] as const)
+      managerOnly(a);
   });
 
-  it('privacy/retention operations belong to HR_MANAGER (DEC-042)', () => {
-    for (const role of ROLES) {
-      expect(can(actor('u', role), 'privacy.view'), role).toBe(role === 'HR_MANAGER');
-      expect(can(actor('u', role), 'privacy.operate'), role).toBe(role === 'HR_MANAGER');
-    }
-    // SYSTEM_ADMIN keeps technical administration but never case content.
-    expect(can(actor('u', 'SYSTEM_ADMIN'), 'identity.accessReview')).toBe(true);
-    expect(can(actor('u', 'HR_MANAGER'), 'identity.accessReview')).toBe(false);
+  it('Refresh Directory Now (sync.run) is an HR Manager capability, not an officer one', () => {
+    expect(can(actor('m', 'HR_MANAGER'), 'sync.run')).toBe(true);
+    expect(can(actor('o', 'HR_OFFICER'), 'sync.run')).toBe(false);
+  });
+
+  it('officers may enter a recipient for one case but not configure global recipients', () => {
+    expect(canActOnCase(actor('o', 'HR_OFFICER'), 'notification.enterRecipient', normalCase)).toBe(
+      true,
+    );
+    expect(can(actor('o', 'HR_OFFICER'), 'recipients.editBusiness')).toBe(false);
   });
 });
 
 describe('role administration (REQ-ADMIN-002)', () => {
-  it('forbids self-grant even for SYSTEM_ADMIN', () => {
-    expect(roleChangeErrors(actor('admin-1', 'SYSTEM_ADMIN'), 'someone-else')).toEqual([]);
-    expect(roleChangeErrors(actor('admin-1', 'SYSTEM_ADMIN'), 'admin-1')).toContainEqual(
+  it('the HR Manager administers roles but can never grant to themself', () => {
+    expect(roleChangeErrors(actor('hr-manager-1', 'HR_MANAGER'), 'someone-else')).toEqual([]);
+    expect(roleChangeErrors(actor('hr-manager-1', 'HR_MANAGER'), 'hr-manager-1')).toContainEqual(
       expect.stringContaining('own role'),
     );
   });
 
-  it('forbids role administration for non-admins', () => {
-    expect(roleChangeErrors(actor('m', 'HR_MANAGER'), 'someone')).toContainEqual(
+  it('forbids role administration for HR Officers and for users with no active role', () => {
+    expect(roleChangeErrors(actor('o', 'HR_OFFICER'), 'someone')).toContainEqual(
+      expect.stringContaining('Not authorized'),
+    );
+    expect(roleChangeErrors(noActiveRole, 'someone')).toContainEqual(
       expect.stringContaining('Not authorized'),
     );
   });

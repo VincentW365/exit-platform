@@ -4,22 +4,129 @@
 
 1. Permission is enforced server-side.
 2. A role alone is insufficient for restricted records; case classification and explicit assignment also apply.
-3. Departmental users receive task-specific views, not full HR cases.
-4. System administration does not imply HR-data access.
+3. Only two kinds of user exist: the HR Manager and the HR Officer (DEC-063). Everyone else the platform knows about - employees, reporting managers, IT, Finance, providers - is a directory record, a workflow participant, a notification recipient or a token-link holder, never an application login.
+4. Platform administration is an HR Manager responsibility; it never widens the HR Manager's record scope, and technical functions that are not HR operations (backups, restore tests) live outside the application.
 5. Sensitive views, downloads and exports are audited.
 6. No user may approve their own privileged access grant or self-escalate.
 7. The survey respondent is not an internal role.
 
-## Role definitions
+## The two-role model (DEC-063, 2026-09-22)
+
+Supersedes the six-role model of DEC-042 and completes the retirements of
+DEC-045 (IT/Finance) and the owner decision of 2026-08-19 (line manager).
 
 | Role | Purpose | Record scope | Key permissions | Restrictions |
 | --- | --- | --- | --- | --- |
-| HR_MANAGER | Accountable process owner and approval authority. | All non-restricted HR cases; restricted cases only when explicitly assigned or within approved leadership scope. | Create, view, edit, approve, place on hold, reopen, waive, close, manage sensitive documents, view identifiable survey responses, run HR reports, operate privacy/retention workflows and the Audit Centre (DEC-042). | Cannot alter immutable audit events; cannot bypass mandatory controls without recorded override authority and reason. |
-| HR_OFFICER | Executes day-to-day offboarding work. | Cases assigned to the officer or within permitted HR operational scope. | Create and update draft/active cases, prepare documents, initiate tasks, record assets, manage survey invitations, resolve routine exceptions. | Cannot approve own restricted communications, close cases requiring manager sign-off, change retention policy, or grant roles. |
-| IT_RESPONDER | RETIRED as an operational login (Directive 6.3 / DEC-045). Historically: performed access and technology-asset tasks. | Historical read support only - assignments and attributions on pre-redesign (v1) cases remain readable. | None for new cases. IT is reached by controlled email with secure acknowledgement links. | No new operational surface is granted; role enum value retained deprecated-in-place for history. |
-| FINANCE_RESPONDER | RETIRED as an operational login (Directive 6.3 / DEC-045). Historically: performed final-pay and finance clearance tasks. | Historical read support only - assignments and attributions on pre-redesign (v1) cases remain readable. | None for new cases. Finance is reached by controlled email with secure acknowledgement links. | No new operational surface is granted; role enum value retained deprecated-in-place for history. |
-| LINE_MANAGER | Completes handover, duty reassignment, and manager confirmations. | Direct reports or cases explicitly assigned to the manager. | View manager-facing case summary, handover plan, assigned assets where relevant, and assigned tasks; record handover evidence and blockers. | No access to confidential exit responses, HR-only reasons, rehire eligibility, pay details, or termination preparation unless explicitly authorized. |
-| SYSTEM_ADMIN | Maintains technical configuration and platform availability. | Technical administration; business-record access is denied by default. | Manage deployments, integrations, health settings, feature flags, technical users, and configuration where assigned. | No default access to HR case content. Break-glass access requires explicit approval, time limitation, reason, and enhanced audit. |
+| HR_MANAGER | Accountable process owner, approval authority and platform administrator. | All non-restricted HR cases; restricted cases only when explicitly assigned. | Everything the HR Officer holds, plus: approve, return, cancel, void, correct, place on hold, reopen, waive, assign officers and participants, activate templates / workflow definitions / notification templates, schedule reports, the Audit Centre and audited export, calendar and configuration lists, reason taxonomy, privacy and retention operations, business continuity, support management, and the HR-operational administration listed below. | Cannot alter immutable audit events; cannot grant a role to themself; cannot bypass mandatory controls without recorded override authority and reason; restricted cases require participation even for the HR Manager. |
+| HR_OFFICER | Executes day-to-day offboarding work. | Cases assigned to the officer or within permitted HR operational scope. | Create and update draft/active cases, prepare documents, complete ordinary action forms, work tasks, record assets and the return-items checklist, manage survey invitations, resolve routine exceptions, enter a recipient for one case, view the recipient directory, run operational reports and exports, use support and SOPs. | Operational only: no approval-level case actions, no activation of versioned content, no Audit Centre, no administration area, no role or recipient configuration. |
+
+### HR-operational administration held by the HR Manager
+
+Transferred from the former System Administrator because each one is an HR
+operation with a technical shape, not a technical operation:
+
+- `admin.system` - system configuration REFERENCES (never secret values), identity lifecycle (accounts mapped from the directory, enable/disable with session revocation, access-review snapshots) and the employee directory (Refresh Directory Now, synchronize, test connection, reconciliation, purge of the live cache).
+- `sync.run`, `directory.viewSync` - manual synchronization and the synchronization log.
+- `admin.roles`, `identity.admin`, `identity.accessReview` - role administration (no self-grant, every change audited).
+- `admin.flags`, `admin.organization` - automation feature flags and organization mapping.
+- `recipients.editBusiness`, `recipients.editTechnical`, `recipients.approveExternal`, `notifications.routing`, `notifications.testMode` - recipient configuration, routing and rehearsal mode.
+- `outbox.view`, `outbox.resolve` - outbox oversight and resolution.
+- `health.view` - integration and operational health.
+- `pilot.view`, `pilot.manage`, `pilot.hrApprove` - pilot readiness, proposal, ONE approval, apply and suspend.
+
+### Retired roles (deprecated-in-place)
+
+`SYSTEM_ADMIN`, `IT_RESPONDER`, `FINANCE_RESPONDER`, `LINE_MANAGER`,
+`AUDITOR` and `PRIVACY_OFFICER` remain values of the database `Role` enum so
+that historical role assignments, task attributions on superseded workflow
+versions and append-only evidence stay intact and readable. Nothing grants,
+selects or honours them:
+
+- `isRole()` in `@exit/domain` is the single gate; the active union is exactly `HR_MANAGER | HR_OFFICER`.
+- Session hydration drops stored retired assignments, so a legacy account with only retired roles holds no active role and is refused everywhere.
+- Role grants, directory account mapping and workflow-definition validation refuse retired values.
+- Seeded accounts are exactly `HR Manager` and `HR Officer`; the System Administrator and named UAT persona logins are deactivated with reason, never converted.
+
+### Technical functions outside the application
+
+- **Backups and restore tests** are infrastructure operations (see `docs/operations/BackupRestoreRunbook.md`). The in-app tooling is removed; the readiness gates read the HR Manager's attestation (`readiness.backupVerified`, `readiness.restoreTested`).
+- **The technical audit feed** is retired: technical events (identity, configuration, system) sit in the single HR Manager feed.
+- **Integration configuration** has no application surface; integration health remains an HR Manager view.
+
+### People who are not logins
+
+- **Reporting managers** are resolved from directory data only (`managerName`, `managerSourceId`); `managerUserId` is never linked to an account. They are reached by controlled email and secure links.
+- **IT and Finance** act on controlled emails with secure acknowledgement links, or HR records the evidence.
+- **Case participants** are HR users only; `FINANCE` and `MANAGER` participant roles are refused.
+- **Task definitions** carrying a retired `requiredRole` or `waiverAuthority` exist only on superseded workflow versions and are historical; new definitions must name `HR_MANAGER` or `HR_OFFICER`, and residual departmental tasks on legacy instances can be held only by HR.
+
+## Capability matrix
+
+Legend: `Full` means within approved record scope, not unrestricted database access.
+
+| Capability | HR Manager | HR Officer | Everyone else (no login) |
+| --- | --- | --- | --- |
+| Case creation/edit | Full | Create/edit assigned | None |
+| Case approval/closure | Approve/close/reopen/void | Prepare only | None |
+| Termination preparation | Explicit assigned access | Only if explicitly assigned | None |
+| Documents | Prepare/approve/issue | Prepare/submit/complete ordinary forms | Recipient of issued documents only |
+| Notifications | Approve, configure recipients and routing, oversee the outbox | Prepare, manage routine, enter a recipient for one case | Receive; acknowledge through secure links |
+| Assets and return items | Approve exception/waiver | Manage checklist | Confirm through secure link |
+| Exit responses | Identifiable access | Identifiable access if authorized | Respond through the survey link only |
+| Reports/exports | HR reports, controlled export, scheduling | Operational reports and exports | None |
+| Audit Centre | Full (restricted rows minimized unless participating) | None | None |
+| Configuration | HR business configuration and platform administration | None | None |
+| Roles/access | Grant/revoke (no self-grant), directory account mapping, access reviews | None | None |
+| Pilot | Propose, approve (one approval), apply, suspend | None | None |
+| Backups / restore tests | Attest the runbook evidence | None | Performed by the infrastructure operator outside the application |
+
+## Record-level access rules
+
+### Normal resignation cases
+
+- HR Manager: permitted within HR scope.
+- HR Officer: assigned/operational scope.
+- Nobody else holds a login; managers, IT and Finance receive controlled email.
+
+### Restricted termination cases
+
+- only explicitly assigned HR users can discover the case - the HR Manager included;
+- notifications to IT, Finance and the manager are released intentionally and carry minimum data;
+- no view reveals preparation notes, exit reason, rehire status or unrelated participants;
+- administration surfaces carry configuration, counts and identifiers only, never case content.
+
+### Exit-feedback records
+
+- identifiable response: HR Manager and specifically authorized HR Officer (DEC-042);
+- nobody else has content access.
+
+## Segregation of duties
+
+The product should support:
+
+- HR Officer prepares; HR Manager approves sensitive document/notification.
+- role grant requester is not the sole approver; nobody grants a role to themself.
+- template/workflow author is not the sole activator.
+- break-glass user cannot approve their own access.
+- audit events cannot be altered by operational roles.
+
+## Access review
+
+At least before pilot and periodically thereafter:
+
+- confirm active users and roles - exactly the two active roles;
+- verify terminated/transferred users have no inappropriate access;
+- review restricted-record access;
+- review exports/downloads;
+- review break-glass events;
+- verify integration/service identities and owners.
+
+## Historical implementation notes
+
+The notes below record how earlier directives mapped the model at the time.
+Where they name a retired role or a capability the HR Manager now holds,
+DEC-063 governs; they are kept so the history of each decision stays
+readable.
 
 ### Directive 6.1 implementation note (2026-08-11)
 
@@ -28,32 +135,27 @@
   Manager assigns/reassigns manually with reason and full audit. Activation
   requires the assignment plan: officer + resolved manager (or audited
   override) + six recorded confirmations.
-- **Manager routing (F):** LINE_MANAGER behaviour derives from the
-  directory's employee→manager relationship; access remains assignment-
-  scoped (the routed manager sees exactly the routed case's work).
-- **Department queues (G/H/I):** IT/Finance tasks start unassigned in their
-  queues; department responders may claim, return to queue, and assign
-  unassigned work within their department; reassignment of held work stays
-  HR-Manager authority. No assignment operation moves a due date.
-- **Audit Centre (K):** `audit.viewGlobal` now includes HR_MANAGER with
-  service-level minimization of restricted-case rows; new
-  `audit.viewTechnical` gives SYSTEM_ADMIN technical categories only with no
-  case linkage; `audit.export` (HR_MANAGER) is itself audited. New `org.view` / `admin.organization` gate the
-  organization health surfaces.
+- **Manager routing (F):** the reporting manager derives from the
+  directory's employee→manager relationship. (Since DEC-063 the manager is
+  never an application account; the notice goes by controlled email.)
+- **Department queues (G/H/I):** introduced department queues for IT and
+  Finance responders; retired by DEC-045 (Directive 6.3) and DEC-063 - HR
+  holds residual legacy department work.
+- **Audit Centre (K):** `audit.viewGlobal` includes HR_MANAGER with
+  service-level minimization of restricted-case rows; `audit.export`
+  (HR_MANAGER) is itself audited. The `audit.viewTechnical` feed introduced
+  here for SYSTEM_ADMIN is retired (DEC-063). `org.view` / `admin.organization`
+  gate the organization health surfaces.
 
-### Six-role model (DEC-042, 2026-08-12, supersedes DEC-037)
+### Six-role model (DEC-042, 2026-08-12, superseded by DEC-063)
 
 The owner removed AUDITOR and PRIVACY_OFFICER from the active model.
-HR_MANAGER absorbs privacy/retention operations, survey-response oversight
-and audit export; SYSTEM_ADMIN keeps technical administration and never
-gains case content. Accepted consequences, recorded in DEC-042: restricted
-cases are participant-only for content AND discovery; full restricted-case
-audit review requires participation (minimized rows otherwise, DEC-039);
-the pilot privacy approval tier is retired - activation requires HR Manager
-and System Administrator approval by two DIFFERENT people (code-enforced).
-Database enum values remain deprecated-in-place so historical records are
-untouched. Real staff are mapped to these six roles for live-data UAT via
-the Organization screen (Directive 6.2 E).
+HR_MANAGER absorbed privacy/retention operations, survey-response oversight
+and audit export. Restricted cases became participant-only for content AND
+discovery, and full restricted-case audit review requires participation
+(minimized rows otherwise, DEC-039) - both still in force. The two-person
+pilot approval (HR Manager + System Administrator) introduced here is retired
+by DEC-063.
 
 ### Directive 6.3 implementation note (2026-08-16, HR-validated workflow)
 
@@ -63,34 +165,27 @@ formal policy/legal approval.
 - **IT_RESPONDER / FINANCE_RESPONDER retired as login roles.** New cases
   create no IT/Finance queue tasks; the departments receive controlled,
   versioned emails and confirm through secure no-login links (or HR records
-  the evidence). The role enum values stay deprecated-in-place: historical
-  assignments, task attributions and audit rows on v1 cases remain readable
-  forever. Residual IT/FINANCE tasks on legacy (v1) instances are worked by
-  HR (`queueDepartmentsForActor` grants HR the IT/FINANCE queues).
+  the evidence). Residual IT/FINANCE tasks on legacy (v1) instances are
+  worked by HR (`queueDepartmentsForActor` grants HR the IT/FINANCE queues).
 - **Officer completion authority.** The assigned HR Officer prepares,
   reviews, returns-for-correction and COMPLETES ordinary Action Forms
   (`form.complete` is HR-on-case work). The optional HR-Manager review step
   (`form.hrReview`) and form voiding stay management-grade and are gated by
   configuration `actionForm.requireHrReview` (off by default). Manager
   approval of the form no longer exists (DEC-044).
-- **New case-scoped permissions** (enforced server-side like all others):
+- **Case-scoped permissions** (enforced server-side like all others):
   `form.complete`, `form.hrReview`, `benefits.confirm`,
   `derivedAction.override`, `notification.recordEvidence`,
   `notification.enterRecipient` - all HR-on-case except `form.hrReview`
   (HR Manager). Overrides of derived actions require a recorded reason and
   are audited.
-- **New global permissions**: `notifTemplate.view` / `notifTemplate.draft`
+- **Global permissions**: `notifTemplate.view` / `notifTemplate.draft`
   (HR Manager + HR Officer) and `notifTemplate.activate` (HR Manager only -
   activation of outgoing-communication content stays management-grade).
-- **Queue membership change**: `queue.view` now serves HR_MANAGER,
-  HR_OFFICER and LINE_MANAGER (handover). IT/Finance no longer hold queue
-  access; their remaining permissions are the shared support/SOP surfaces
-  for historical participants.
 - **Recipient entry split**: entering a recipient for one case is
   officer-grade (`notification.enterRecipient`); saving a recipient for
   future cases requires `recipients.editBusiness` plus the external-approval
-  lifecycle (`recipients.approveExternal`, HR Manager) - unchanged from
-  Stage 4.
+  lifecycle (`recipients.approveExternal`, HR Manager).
 
 ### HR samples implementation note (2026-08-20)
 
@@ -103,133 +198,47 @@ formal policy/legal approval.
   issue. Maker-checker on employee-facing documents is unchanged: the officer
   drafts and addresses, the HR Manager approves and issues. Typing the address
   from the resignation scan is officer work (`doc.edit`).
-- **New global permission** `notifications.routing` (HR Manager +
-  SYSTEM_ADMIN) edits the routing table (DEC-056). Who receives which
-  notification is a business decision with a technical consequence, so both
-  hold it. Reading the email log rides on `outbox.view`.
-- **New global permission** `notifications.testMode` (HR Manager +
-  SYSTEM_ADMIN) turns rehearsal mode on and off (DEC-055). It is deliberately
-  held by both: HR runs the rehearsal, the administrator owns delivery - the
-  same shape as pilot management. Reading the current setting rides on
-  `outbox.view`, because a diversion nobody can see is worse than none.
+- **`notifications.routing`** edits the routing table (DEC-056) and
+  **`notifications.testMode`** turns rehearsal mode on and off (DEC-055).
+  Both were held by the HR Manager and the System Administrator; since
+  DEC-063 the HR Manager holds them alone. Reading the email log and the
+  current rehearsal setting rides on `outbox.view`.
 
-## Capability matrix
+### Stage 2 implementation note (Directive 2, 2026-07-29)
 
-Legend: `Full` means within approved record scope, not unrestricted database access.
+HR_OFFICER drafts documents/templates and edits the action form; HR_MANAGER
+activates templates and approves documents (authenticated attestations,
+DEC-025 Option B). The participant-scoped Finance and manager form surfaces
+introduced here were retired by Directive 6.3 and DEC-063; identifiable
+survey responses are restricted to case HR (DEC-042).
 
-| Capability | HR Manager | HR Officer | IT Responder | Finance Responder | Line Manager | System Admin |
-| --- | --- | --- | --- | --- | --- | --- |
-| Case creation/edit | Full | Create/edit assigned | Task summary only | Task summary only | Assigned manager summary | Technical only |
-| Case approval/closure | Approve/close/reopen/void | Prepare only | No | No | No | No |
-| Termination preparation | Explicit assigned access | Only if explicitly assigned | Only released task | Only released task | Only if explicitly assigned | No content by default |
-| Documents | Prepare/approve/issue | Prepare/submit | Only assigned evidence | Only assigned evidence | Handover evidence | Technical metadata only |
-| Notifications | Approve/manual fallback/config as assigned | Prepare/manage routine | Receive/complete IT task | Receive/complete Finance task | Receive assigned manager task | Provider health only |
-| Assets | Approve exception/waiver | Manage checklist | Technology assets only | Finance exception only | Assigned items where relevant | Technical metadata only |
-| Handover | View/approve exception | Coordinate | No | No | Own plan | No content by default |
-| Exit responses | Identifiable access | Identifiable access if authorized | No | No | Aggregate only | No content |
-| Reports/exports | HR reports/controlled export | Operational reports | Own queue only | Own queue only | Own queue/aggregate | Health only |
-| Configuration | HR business config approval (incl. retention/privacy, DEC-042) | Limited draft/config | No | No | No | Technical config |
-| Roles/access | No self-grant; approve HR assignment where defined | No | No | No | No | Technical provisioning without business-content grant |
+### Stage 3 implementation note (Directive 3, 2026-07-29)
 
-## Stage 2 implementation note (Directive 2, 2026-07-29)
+HR_OFFICER drafts workflow definitions and performs HR case work
+(activation, task work, notification preparation, asset management,
+exception resolution); HR_MANAGER activates/retires workflow versions and
+holds every override authority (holds, reopening, waivers, reassignment,
+corrections, external and employee-facing notification approval, asset
+waive/write-off, handover waiver, security exceptions, final clearance).
+Restricted termination cases require explicit HR participation everywhere
+(queues, tasks, assets, handover, notifications, exceptions, clearance) and
+never leak through totals, feeds or errors. The department and manager task
+surfaces described by the original note are historical.
 
-The document/action-form/survey build maps this model as follows, without
-changing any authority: HR_OFFICER drafts documents/templates and edits the
-action form; HR_MANAGER activates templates, approves documents, and gives
-final form approval (all as authenticated attestations, DEC-025 Option B
-recommendation); FINANCE_RESPONDER and LINE_MANAGER receive **participant-
-scoped action-form surfaces only** (finance checklist; manager minimum
-review/approval view) when explicitly assigned - never case content;
-identifiable survey responses are restricted to case HR (DEC-042).
+### Stage 4 implementation note (Directive 4, 2026-07-30)
 
-## Stage 3 implementation note (Directive 3, 2026-07-29)
+The production-readiness build added ~30 global actions to the enforced
+server-side matrix. The business/technical split it introduced (HR versus
+SYSTEM_ADMIN) is superseded by DEC-063; what remains in force:
 
-The workflow build maps this model without changing any authority:
-HR_OFFICER drafts workflow definitions and performs HR case work (activation,
-task work, notification preparation, asset management, exception resolution);
-HR_MANAGER activates/retires workflow versions and holds every override
-authority (holds, reopening, waivers, reassignment, corrections, external and
-employee-facing notification approval, asset waive/write-off, handover
-waiver, security exceptions, final clearance). IT_RESPONDER and
-FINANCE_RESPONDER work **released tasks of their department only**, on a
-minimum-data task surface that grants no case access and never discloses the
-departure type; LINE_MANAGER works only tasks expressly assigned to them and
-owns the handover content. Restricted termination cases require explicit HR
-participation everywhere (queues, tasks, assets, handover, notifications,
-exceptions, clearance) and never leak through totals, feeds or errors.
-SYSTEM_ADMIN has no queue and no workflow surface.
-
-## Stage 4 implementation note (Directive 4, 2026-07-30)
-
-The production-readiness build adds ~30 global actions to the enforced
-server-side matrix without changing any authority above:
-
-- **Business vs technical administration is a hard split.** HR_MANAGER /
-  HR_OFFICER hold business configuration (recipient directory business
-  fields, reason taxonomy, calendar approval); SYSTEM_ADMIN holds technical
-  configuration (`admin.system`, system config references, user lifecycle,
-  access reviews, fixture sync, backup/restore, technical recipient fields)
-  and still has **zero access to HR case content** - verified by tests.
-- **Outbox**: monitor view is HR_MANAGER + SYSTEM_ADMIN; retry/resolve of
-  failures is SYSTEM_ADMIN; every action is audited with masked destinations.
-- **Pilot**: propose/apply/suspend is HR_MANAGER + SYSTEM_ADMIN
-  (`pilot.manage`); the three approvals are role-exclusive
-  (`pilot.hrApprove` HR_MANAGER, `pilot.adminApprove` SYSTEM_ADMIN, by two
-  different people - DEC-042) so no single person can activate.
 - **Reports** (`reports.view`, audited exports): HR_MANAGER, HR_OFFICER -
-  all output passes visibility filters and
-  small-group suppression; department roles keep queue-only visibility.
+  all output passes visibility filters and small-group suppression.
 - **Privacy operations** (`privacy.operate`: retention, holds, dry runs,
   anonymization, DSR, disclosures): HR_MANAGER (DEC-042); no other role.
-- **Backup** (`backup.operate`) and health administration: SYSTEM_ADMIN;
-  read-only health for authorized viewers.
 - **Continuity** (`continuity.operate`), support tickets, SOP/training
   surfaces follow the operational roles; the development capture mailbox
-  (`mailbox.dev`) is HR + SYSTEM_ADMIN and refuses production.
+  (`mailbox.dev`) is HR-only and refuses production.
 - **Identity lifecycle**: roles are NEVER granted from identity-provider
   claims; expiring role assignments are revoked by the worker; disabling a
   user revokes sessions immediately; break-glass stays disabled unless
   explicitly configured and is enhanced-audited.
-
-## Record-level access rules
-
-### Normal resignation cases
-
-- HR Manager: permitted within HR scope.
-- HR Officer: assigned/operational scope.
-- IT/Finance/manager: assigned tasks and minimum fields.
-- system admin: technical metadata only.
-
-### Restricted termination cases
-
-- only explicitly assigned HR users and approved leadership participants can discover the case;
-- IT/Finance/manager users see a task only after it is intentionally released to them;
-- task views do not reveal preparation notes, exit reason, rehire status or unrelated participants;
-- system administrators require break-glass approval for content.
-
-### Exit-feedback records
-
-- identifiable response: HR Manager and specifically authorized HR Officer (DEC-042);
-- manager: aggregates only;
-- IT/System Admin: no content access.
-
-## Segregation of duties
-
-The product should support:
-
-- HR Officer prepares; HR Manager approves sensitive document/notification.
-- role grant requester is not the sole approver.
-- template/workflow author is not the sole activator.
-- break-glass user cannot approve their own access.
-- audit events cannot be altered by operational roles.
-
-## Access review
-
-At least before pilot and periodically thereafter:
-
-- confirm active users and roles;
-- verify terminated/transferred users have no inappropriate access;
-- review restricted-record access;
-- review exports/downloads;
-- review break-glass events;
-- verify integration/service identities and owners.

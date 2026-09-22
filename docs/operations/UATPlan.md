@@ -10,7 +10,7 @@
 Structured acceptance testing of the offboarding platform by the pilot user
 group, using SYNTHETIC data only (EMP-TEST employees, TEST record purpose).
 Passing this plan is a pilot readiness gate (`readiness.uatPassed` is set by
-the System Administrator only after the HR Manager signs the results).
+the HR Manager only after signing the results; DEC-063).
 
 > **Execution status (Directive 5, 2026-07-30):** an automated synthetic
 > execution of this plan - 14 business scenarios driven through the real UI
@@ -36,9 +36,9 @@ the System Administrator only after the HR Manager signs the results).
 | HR Officer | HR Officer | Case intake, benefits confirmation, exceptions, action-form completion, recipient entry, reports |
 | IT (no login, 6.3) | Acts via captured email + secure link | Reads the access-removal email in `/dev/mailbox`; confirms receipt/completion through the acknowledgement link |
 | Finance (no login, 6.3) | Acts via captured email + secure link | Reads the Finance notification in `/dev/mailbox`; acknowledges through the link |
-| Line Manager | Line Manager | Handover, queue |
+| Line Manager (no login, DEC-051/DEC-063) | Receives the departure notice by captured email | Reads the notice in `/dev/mailbox`; holds no queue or task |
 | HR Manager (DEC-042) | HR Manager | Privacy/retention operations |
-| System Administrator | System Administrator | System admin, health, backup |
+| HR Manager (platform administration, DEC-063) | HR Manager | System configuration, identity lifecycle, directory refresh, health, outbox; attests backup/restore evidence |
 
 Prerequisites: seeded development database; training module for the
 participant's role completed (recorded in the Operations centre); this plan
@@ -99,7 +99,7 @@ sign-off.
 4. Leave one benefit UNKNOWN and verify clearance is blocked with a plain
    explanation until it is resolved.
 
-### UAT-4 Notification review, outbox and templates (HR + System Administrator)
+### UAT-4 Notification review, outbox and templates (HR Officer + HR Manager)
 
 1. **Approve a provider notification from "Needs your review"; run the
    outbox; confirm CAPTURED in the development mailbox; confirm a repeat
@@ -121,8 +121,8 @@ sign-off.
 
 ### UAT-6 Administration (per role)
 
-1. **Business vs technical separation: HR cannot open `/admin/system`;
-   System Administrator cannot read case content.**
+1. **Role separation (DEC-063): the HR Officer cannot open `/admin/system`;
+   the sign-in page offers exactly HR Manager and HR Officer.**
 2. Reason taxonomy: create, approve, retire a category; verify reporting
    groups.
 3. Calendar: preview impact (compute-only), approve.

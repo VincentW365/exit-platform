@@ -98,7 +98,7 @@ These rules convert the DMAIC and Decision Register into deterministic behaviour
 | BR-REP-003 | Exports | Sensitive exports require authorization, redaction and audit. |
 | BR-REP-004 | Freshness | Reports display data-as-of time and relevant integration health. |
 | BR-SEC-001 | Authorization | Hiding a UI control is not authorization; every request is checked server-side. |
-| BR-SEC-002 | Admin | SYSTEM_ADMIN has no default HR content access. |
+| BR-SEC-002 | Admin | SYSTEM_ADMIN is retired (DEC-063). No login outside HR_MANAGER / HR_OFFICER exists; platform administration never widens the HR Manager's record scope. |
 | BR-SEC-003 | Break glass | Break-glass access is approved, time-bound, reasoned and reviewed. |
 | BR-SEC-004 | Uploads | Unsafe/unscanned files are not served. |
 | BR-SEC-005 | Logs | Logs exclude secrets, tokens, document bodies, survey answers and unnecessary PII. |

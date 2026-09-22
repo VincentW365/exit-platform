@@ -151,7 +151,7 @@ export async function revokeRole(actor: Actor, targetUserId: string, role: strin
  * local application account with granted roles. The account exists only in
  * this environment's database; identitySubject `bamboo|<sourceId>` records
  * provenance and groups these accounts separately on the sign-in screen.
- * Gate: admin.roles (SYSTEM_ADMIN), same authority as role grants.
+ * Gate: admin.roles (HR_MANAGER, DEC-063), same authority as role grants.
  */
 export async function createUserFromDirectory(
   actor: Actor,
@@ -312,7 +312,7 @@ export async function listDirectoryAccounts(actor: Actor) {
 
 /**
  * Active directory people eligible for account mapping (has a work email,
- * not yet mapped). SYSTEM_ADMIN only - it feeds the mapping form.
+ * not yet mapped). HR_MANAGER only (DEC-063) - it feeds the mapping form.
  */
 export async function listDirectoryPeopleForMapping(actor: Actor) {
   if (!can(actor, 'admin.roles')) throw ServiceError.forbidden();

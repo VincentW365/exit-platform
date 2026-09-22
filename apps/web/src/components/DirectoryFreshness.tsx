@@ -50,7 +50,7 @@ export function DirectoryFreshnessNote({
               <Link href="/admin/system#directory-h">Refresh the directory now</Link>.
             </>
           ) : (
-            ' Ask a system administrator to run the first synchronization.'
+            ' Ask the HR Manager to run the first synchronization.'
           )}
         </p>
       </div>

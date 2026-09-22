@@ -41,10 +41,9 @@ export default async function AuditCentrePage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const { actor } = await requireAuth();
-  if (!can(actor, 'audit.viewGlobal') && !can(actor, 'audit.viewTechnical'))
-    redirect('/unauthorized');
+  // The technical-only feed retired with the System Administrator (DEC-063).
+  if (!can(actor, 'audit.viewGlobal')) redirect('/unauthorized');
   const sp = await searchParams;
-  const technicalOnly = !can(actor, 'audit.viewGlobal');
 
   const filter: GlobalAuditFilter = {
     from: parseDate(sp.from),
@@ -60,7 +59,7 @@ export default async function AuditCentrePage({
   };
   const [{ rows, nextCursor, summary }, users] = await Promise.all([
     listGlobalAudit(actor, filter),
-    can(actor, 'audit.viewGlobal') ? listActiveUsers().catch(() => []) : Promise.resolve([]),
+    listActiveUsers().catch(() => []),
   ]);
 
   const olderHref = (() => {
@@ -80,10 +79,8 @@ export default async function AuditCentrePage({
     <>
       <h1>Audit Center</h1>
       <p className="hint" role="note">
-        The complete, append-only business audit trail
-        {technicalOnly
-          ? ' - technical events only (identity, configuration, system); HR case content is never shown here.'
-          : ' - every case, assignment, approval and security event with who, what, why and when.'}
+        The complete, append-only business audit trail - every case, assignment, approval and
+        security event with who, what, why and when.
       </p>
 
       <div className="stat-grid" style={{ marginBottom: '1rem' }}>
@@ -129,30 +126,21 @@ export default async function AuditCentrePage({
             ))}
           </select>
         </div>
-        {!technicalOnly ? (
-          <div className="field" style={{ maxWidth: '13rem' }}>
-            <label htmlFor="af-actor">Actor</label>
-            <select id="af-actor" name="actor" defaultValue={sp.actor ?? ''}>
-              <option value="">Any</option>
-              {users.map((u) => (
-                <option key={u.userId} value={u.userId}>
-                  {u.displayName}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-        {!technicalOnly ? (
-          <div className="field" style={{ maxWidth: '11rem' }}>
-            <label htmlFor="af-case">Case Number</label>
-            <input
-              id="af-case"
-              name="caseNumber"
-              defaultValue={sp.caseNumber ?? ''}
-              maxLength={20}
-            />
-          </div>
-        ) : null}
+        <div className="field" style={{ maxWidth: '13rem' }}>
+          <label htmlFor="af-actor">Actor</label>
+          <select id="af-actor" name="actor" defaultValue={sp.actor ?? ''}>
+            <option value="">Any</option>
+            {users.map((u) => (
+              <option key={u.userId} value={u.userId}>
+                {u.displayName}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field" style={{ maxWidth: '11rem' }}>
+          <label htmlFor="af-case">Case Number</label>
+          <input id="af-case" name="caseNumber" defaultValue={sp.caseNumber ?? ''} maxLength={20} />
+        </div>
         <div className="field" style={{ maxWidth: '10rem' }}>
           <label htmlFor="af-result">Outcome</label>
           <select id="af-result" name="result" defaultValue={sp.result ?? ''}>

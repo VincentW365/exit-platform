@@ -62,12 +62,10 @@ export async function approveActivationAction(formData: FormData): Promise<void>
   const { actor } = await requireAuth();
   await touchSession();
   try {
-    const role = str(formData, 'role');
-    if (role !== 'hr' && role !== 'admin')
-      throw ServiceError.validation(['Unknown approval role.']);
-    await approveActivation(actor, str(formData, 'id'), role);
+    // One HR Manager approval is the whole gate (DEC-063).
+    await approveActivation(actor, str(formData, 'id'));
     revalidatePath('/admin/pilot');
-    back({ ok: 'Approval recorded.' });
+    back({ ok: 'HR Manager approval recorded.' });
   } catch (e) {
     if (e instanceof ServiceError) back({ err: errText(e) });
     throw e;

@@ -1,15 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { ROLES, can, formatInstant } from '@exit/domain';
-import { getConfig } from '@exit/config';
-import {
-  listActiveUsers,
-  listCalendars,
-  listConfigItems,
-  listFlags,
-  listIntegrations,
-  liveDirectoryPresence,
-} from '@exit/db';
+import { listActiveUsers, listCalendars, listConfigItems, listFlags } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import {
@@ -21,7 +13,7 @@ import {
   revokeRoleAction,
   setFlagAction,
 } from './actions';
-import { humanize, roleLabel, roleList } from '@/lib/text';
+import { roleLabel, roleList } from '@/lib/text';
 
 export const metadata: Metadata = { title: 'Administration' };
 export const dynamic = 'force-dynamic';
@@ -32,46 +24,20 @@ export default async function AdminPage({
   searchParams: Promise<{ err?: string; ok?: string; preview?: string }>;
 }) {
   const { actor } = await requireAuth();
-  const isSysAdmin = can(actor, 'admin.roles');
+  // Both gates are HR Manager capabilities under DEC-063; they stay separate
+  // because each section below mirrors its own page's permission.
+  const canAdminRoles = can(actor, 'admin.roles');
   const isHrConfig = can(actor, 'admin.calendar');
-  if (!isSysAdmin && !isHrConfig) redirect('/unauthorized');
+  if (!canAdminRoles && !isHrConfig) redirect('/unauthorized');
   const sp = await searchParams;
 
-  const [users, flags, integrations, liveDirectory] = await Promise.all([
-    isSysAdmin ? listActiveUsers() : Promise.resolve([]),
+  const [users, flags] = await Promise.all([
+    canAdminRoles ? listActiveUsers() : Promise.resolve([]),
     listFlags(actor).catch(() => []),
-    listIntegrations(),
-    liveDirectoryPresence().catch(() => ({ present: false, records: 0 })),
   ]);
   const calendars = isHrConfig ? await listCalendars(actor) : [];
   const departments = isHrConfig ? await listConfigItems('DEPARTMENT') : [];
   const locations = isHrConfig ? await listConfigItems('LOCATION') : [];
-
-  // The seeded placeholder rows describe the original Stage 1 posture, which
-  // is no longer true for every adapter: the BambooHR directory is a real
-  // read-only connection once staff records are synchronized, and email always
-  // runs through whichever provider EMAIL_MODE selects. Report what is in
-  // force rather than a stale record (owner request, 2026-08-18). The
-  // directory verdict uses the same signal as the live-data banner - cached
-  // BambooHR records - so the two surfaces can never disagree.
-  const cfg = getConfig();
-  const runtimeAdapter: Record<string, { mode: string; configured: boolean; notes: string }> = {
-    BAMBOOHR: {
-      mode: liveDirectory.present ? 'live (read-only)' : 'synthetic',
-      configured: liveDirectory.present,
-      notes: liveDirectory.present
-        ? `${liveDirectory.records} employee records synchronized from the company directory. Read-only: this application never writes to BambooHR.`
-        : 'No directory records synchronized yet; the synthetic source is in use.',
-    },
-    EMAIL: {
-      mode: cfg.EMAIL_MODE,
-      configured: cfg.EMAIL_MODE !== 'disabled',
-      notes:
-        cfg.EMAIL_MODE === 'graph'
-          ? 'Live mail provider.'
-          : 'Messages are captured in this environment; nothing leaves the network.',
-    },
-  };
 
   // Each entry mirrors the target page's OWN permission gate, so the hub
   // never offers a door the signed-in role cannot open (owner, 2026-08-25:
@@ -165,8 +131,8 @@ export default async function AdminPage({
       <h1>Administration Center</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint">
-        Technical administration and HR business configuration are separated by role; system
-        administration includes no HR case content (least privilege).
+        HR configuration and platform administration are both HR Manager responsibilities (DEC-063).
+        Technical operations such as backups and restore tests run outside the application.
       </p>
 
       <section className="panel" aria-labelledby="hub-h">
@@ -185,7 +151,7 @@ export default async function AdminPage({
               </a>
             ))}
         </div>
-        <h3>Technical Administration</h3>
+        <h3>Platform Administration</h3>
         <div className="actions-row">
           {hubLinks
             .filter((l) => l.kind === 'technical')
@@ -197,7 +163,7 @@ export default async function AdminPage({
         </div>
       </section>
 
-      {isSysAdmin ? (
+      {canAdminRoles ? (
         <section className="panel" aria-labelledby="roles-h">
           <h2 id="roles-h" style={{ marginTop: 0 }}>
             Users and Roles
@@ -304,7 +270,7 @@ export default async function AdminPage({
         </section>
       ) : null}
 
-      {isSysAdmin ? (
+      {canAdminRoles ? (
         <section className="panel" aria-labelledby="flags-h">
           <h2 id="flags-h" style={{ marginTop: 0 }}>
             Feature Flags
@@ -487,43 +453,6 @@ export default async function AdminPage({
           </details>
         </section>
       ) : null}
-
-      <section className="panel" aria-labelledby="int-h">
-        <h2 id="int-h" style={{ marginTop: 0 }}>
-          Integration Status
-        </h2>
-        <div className="table-wrap" tabIndex={0}>
-          <table className="data">
-            <caption>Adapter in force for this environment.</caption>
-            <thead>
-              <tr>
-                <th scope="col">Integration</th>
-                <th scope="col">Mode</th>
-                <th scope="col">Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {integrations.map((i) => {
-                const live = runtimeAdapter[i.key];
-                const mode = live?.mode ?? i.mode;
-                const configured = live?.configured ?? i.configured;
-                return (
-                  <tr key={i.key}>
-                    <td>{i.displayName}</td>
-                    <td>
-                      <span className={`badge ${configured ? 'badge--success' : 'badge--neutral'}`}>
-                        {humanize(mode)}
-                      </span>{' '}
-                      {configured ? 'Configured' : 'Not configured'}
-                    </td>
-                    <td className="hint">{live?.notes ?? i.notes}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
     </>
   );
 }

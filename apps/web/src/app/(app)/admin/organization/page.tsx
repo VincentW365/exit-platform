@@ -287,9 +287,7 @@ export default async function OrganizationAdminPage({
             </form>
           </details>
         ) : (
-          <p className="hint">
-            Account creation and role grants require the System Administrator (role separation).
-          </p>
+          <p className="hint">Account creation and role grants require the HR Manager (DEC-063).</p>
         )}
       </section>
 

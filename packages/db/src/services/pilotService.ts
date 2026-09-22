@@ -3,9 +3,9 @@
  *
  * The environment activation state lives in system_config
  * ('activation.state'); every change is backed by an immutable-core
- * PilotActivation record with the required approvals. PILOT_ACTIVE demands
- * every mandatory gate to pass (M) plus HR + SYSTEM_ADMIN approval by two
- * different people (DEC-042 retired the separate privacy tier). BASELINE
+ * PilotActivation record with the required approval. PILOT_ACTIVE demands
+ * every mandatory gate to pass (M) plus one HR Manager approval (DEC-042
+ * retired the privacy tier, DEC-063 the technical tier). BASELINE
  * cases are never processed retroactively (L.6): activation gates apply only
  * to actions taken after activation, and BASELINE cohorts remain excluded by
  * automationPermitted.
@@ -48,8 +48,8 @@ export async function evaluateReadinessGates(): Promise<GateResult[]> {
     recipientsVerified,
     calendarApproved,
     reasonsApproved,
-    backup,
-    verifiedBackup,
+    backupAttested,
+    restoreAttested,
     retentionActive,
     openCritical,
     openSecurity,
@@ -68,11 +68,8 @@ export async function evaluateReadinessGates(): Promise<GateResult[]> {
     }),
     prisma.holidayCalendar.count({ where: { isActive: true, approvedById: { not: null } } }),
     prisma.reasonCategory.count({ where: { isActive: true, approvedById: { not: null } } }),
-    prisma.backupRecord.findFirst({ orderBy: { createdAt: 'desc' } }),
-    prisma.backupRecord.findFirst({
-      where: { verifiedAt: { not: null } },
-      orderBy: { verifiedAt: 'desc' },
-    }),
+    getSystemConfigValue('readiness.backupVerified'),
+    getSystemConfigValue('readiness.restoreTested'),
     prisma.retentionPolicy.count({ where: { active: true, approvedById: { not: null } } }),
     prisma.caseException.count({ where: { status: 'OPEN', severity: 'CRITICAL' } }),
     prisma.supportTicket.count({
@@ -139,15 +136,23 @@ export async function evaluateReadinessGates(): Promise<GateResult[]> {
       ok: componentOk('database')?.ok ?? false,
       detail: componentOk('database')?.detail ?? 'unknown',
     },
+    // Backups and restore tests are infrastructure operations performed
+    // outside the application: DEC-063 retired the in-app backup tooling
+    // with the System Administrator role. The HR Manager attests the
+    // evidence the operations runbook produced, as for SOPs and UAT.
     backup: {
-      ok: backup !== null,
-      detail: backup ? `latest backup ${backup.createdAt.toISOString()}` : 'no backup recorded',
+      ok: backupAttested === true,
+      detail:
+        backupAttested === true
+          ? 'Backup attested (readiness.backupVerified).'
+          : 'No backup attested; set readiness.backupVerified once the runbook backup exists.',
     },
     restoreTest: {
-      ok: verifiedBackup !== null,
-      detail: verifiedBackup
-        ? `restore verified ${verifiedBackup.verifiedAt!.toISOString()}`
-        : 'no verified restore test',
+      ok: restoreAttested === true,
+      detail:
+        restoreAttested === true
+          ? 'Restore test attested (readiness.restoreTested).'
+          : 'No restore test attested; set readiness.restoreTested after the runbook restore test.',
     },
     retentionPolicy: {
       ok: retentionActive > 0,
@@ -307,21 +312,18 @@ export async function proposeActivation(actor: Actor, rawInput: unknown) {
 }
 
 /**
- * L.3: role-specific approvals on the pending record. DEC-042 retired the
- * separate privacy approval tier with the PRIVACY_OFFICER role; dual control
- * is HR Manager + System Administrator, enforced as two DIFFERENT people at
- * apply time.
+ * L.3: the HR Manager approval on the pending record. DEC-042 retired the
+ * separate privacy tier; DEC-063 retired the System Administrator tier with
+ * that role, so one HR Manager approval is the whole control. The audit row
+ * carries the approving role, the actor, the instant and the result. The
+ * adminApproved* columns stay in the schema for historical records only.
  */
-export async function approveActivation(actor: Actor, activationId: string, role: 'hr' | 'admin') {
-  const permission = role === 'hr' ? 'pilot.hrApprove' : 'pilot.adminApprove';
-  if (!can(actor, permission)) throw ServiceError.forbidden();
+export async function approveActivation(actor: Actor, activationId: string) {
+  if (!can(actor, 'pilot.hrApprove')) throw ServiceError.forbidden();
   const prisma = getPrisma();
   const row = await prisma.pilotActivation.findUnique({ where: { id: activationId } });
   if (!row || row.supersededAt) throw ServiceError.notFound();
-  const data =
-    role === 'hr'
-      ? { hrApprovedById: actor.userId, hrApprovedAt: new Date() }
-      : { adminApprovedById: actor.userId, adminApprovedAt: new Date() };
+  const data = { hrApprovedById: actor.userId, hrApprovedAt: new Date() };
   await prisma.$transaction(async (tx) => {
     await tx.pilotActivation.update({
       where: { id: activationId },
@@ -336,14 +338,14 @@ export async function approveActivation(actor: Actor, activationId: string, role
       objectId: activationId,
       result: 'SUCCESS',
       correlationId: newCorrelationId(),
-      metadata: { approvalRole: role },
+      metadata: { approvalRole: 'HR_MANAGER' },
     });
   });
 }
 
 /**
  * L.2: apply the proposed state. PILOT_ACTIVE (and beyond) demands mandatory
- * gates + HR and SYSTEM_ADMIN approval by two different people (DEC-042).
+ * gates + the HR Manager approval (one approval since DEC-063).
  */
 export async function applyActivation(actor: Actor, activationId: string) {
   if (!can(actor, 'pilot.manage')) throw ServiceError.forbidden();
@@ -355,16 +357,12 @@ export async function applyActivation(actor: Actor, activationId: string) {
     row.state,
   );
   if (needsFullGates) {
-    if (!row.hrApprovedById || !row.adminApprovedById)
-      throw ServiceError.validation([
-        'PILOT activation requires both HR Manager and System Administrator approval (L.3).',
-      ]);
-    // DEC-042: genuine two-person control - a dual-hatted account cannot
-    // self-approve both tiers.
-    if (row.hrApprovedById === row.adminApprovedById)
-      throw ServiceError.validation([
-        'The HR and System Administrator approvals must come from two different people.',
-      ]);
+    // DEC-063 (supersedes DEC-042's two-person tier): the current operating
+    // model has one HR Manager role in use, so activation needs one HR Manager
+    // approval - recorded with the approving role, actor, instant and result.
+    // No second approver is fabricated to keep an obsolete structure.
+    if (!row.hrApprovedById)
+      throw ServiceError.validation(['PILOT activation requires HR Manager approval (L.3).']);
     const gates = await evaluateReadinessGates();
     const blockers = evaluateGateBlockers(gates);
     if (blockers.length > 0)
@@ -470,7 +468,6 @@ export async function getPilotOverview(actor: Actor) {
     blockers: evaluateGateBlockers(gates),
     records,
     canHrApprove: can(actor, 'pilot.hrApprove'),
-    canAdminApprove: can(actor, 'pilot.adminApprove'),
     canManage: can(actor, 'pilot.manage'),
   };
 }

@@ -216,10 +216,10 @@ test('Scenario I - audit investigation in the Audit Centre', async ({ page }) =>
   }
   await signOut(page);
 
-  // SYSTEM_ADMIN sees the technical feed - never case content.
-  await signInAs(page, 'System Administrator');
+  // DEC-063: the separate technical feed retired with the System
+  // Administrator; the Audit Center is the HR Manager's alone.
+  await signInAs(page, 'HR Officer');
   await page.goto('/audit');
-  await expect(page.getByText(/technical events only/)).toBeVisible();
-  await expect(page.getByText(/OFF-\d{4}-\d{4,}(?:-\d)?/)).toHaveCount(0);
+  await expect(page).toHaveURL(/unauthorized/);
   await signOut(page);
 });

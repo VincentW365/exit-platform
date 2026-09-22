@@ -244,7 +244,7 @@ Minimum rules:
 - Line managers may receive only assigned information.
 - Negative authorization tests are mandatory.
 - Audit logs must record access to restricted cases.
-- `SYSTEM_ADMIN` must not automatically receive unrestricted HR business access merely because it administers the system.
+- `SYSTEM_ADMIN` must not automatically receive unrestricted HR business access merely because it administers the system. (Superseded by DEC-063: the role is retired; platform administration is held by `HR_MANAGER` and never widens that role's record scope.)
 
 ## 4. Decisions still unresolved
 

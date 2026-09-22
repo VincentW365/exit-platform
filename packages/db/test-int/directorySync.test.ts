@@ -38,6 +38,7 @@ import { createUser, resetDb, seedStage3Fixtures, VALID_DRAFT } from './helpers.
 const prisma = getPrisma();
 
 let admin: Awaited<ReturnType<typeof createUser>>;
+let outsider: Awaited<ReturnType<typeof createUser>>;
 let manager: Awaited<ReturnType<typeof createUser>>;
 let officer: Awaited<ReturnType<typeof createUser>>;
 
@@ -98,7 +99,8 @@ const rec = (sourceId: string) =>
 beforeAll(async () => {
   await resetDb();
   await seedStage3Fixtures();
-  admin = await createUser('Dir Sync Admin', 'SYSTEM_ADMIN');
+  admin = await createUser('Dir Sync Admin', 'HR_MANAGER');
+  outsider = await createUser('Dir Sync Outsider');
   manager = await createUser('Dir Sync Manager', 'HR_MANAGER');
   officer = await createUser('Dir Sync Officer', 'HR_OFFICER');
   await setSystemConfig(admin.actor, 'bamboohr.mode', 'fixture', 'directory sync tests');
@@ -413,11 +415,11 @@ describe('directory reads and access control (sections 22-25 and 34)', () => {
     expect(rowById?.managerName).toBe('Morgan Lead');
   });
 
-  it('directory reads are HR-only; the synchronization log is for administrators and HR Managers', async () => {
-    await expect(listDirectory(admin.actor, {})).rejects.toMatchObject({ code: 'FORBIDDEN' });
-    await expect(getDirectoryProfile(admin.actor, (await rec('DIR-001')).id)).rejects.toMatchObject(
-      { code: 'FORBIDDEN' },
-    );
+  it('directory reads are HR-only; the synchronization log is for HR Managers (DEC-063)', async () => {
+    await expect(listDirectory(outsider.actor, {})).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(
+      getDirectoryProfile(outsider.actor, (await rec('DIR-001')).id),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(listDirectorySyncRuns(officer.actor, {})).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });

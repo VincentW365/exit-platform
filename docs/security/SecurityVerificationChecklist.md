@@ -23,7 +23,7 @@ This checklist operationalizes the security/privacy baseline and supports OWASP 
 | [ ] SEC-AUTHZ-002 | Authorization | 1 | IDOR tests cover case, task, document, file, survey, export and audit IDs. |
 | [ ] SEC-AUTHZ-003 | Authorization | 1 | Restricted termination cases are absent from unauthorized search/counts. |
 | [ ] SEC-AUTHZ-004 | Authorization | 2 | Identifiable survey responses use separate permission checks. |
-| [ ] SEC-AUTHZ-005 | Authorization | 1 | SYSTEM_ADMIN has no normal HR-content access. |
+| [ ] SEC-AUTHZ-005 | Authorization | 1 | No login outside HR_MANAGER / HR_OFFICER exists; stored retired-role assignments (SYSTEM_ADMIN and the others) grant nothing (DEC-063). |
 | [ ] SEC-AUTHZ-006 | Authorization | 7 | Break-glass request/approval/expiry/review is tested. |
 | [ ] SEC-AUTHZ-007 | Authorization | 1 | Role grants cannot be self-approved or self-escalated. |
 | [ ] SEC-AUTHZ-008 | Authorization | 6 | Exports apply effective record/field permissions and are audited. |

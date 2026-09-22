@@ -90,13 +90,10 @@ test('directory page is HR-scoped and the employee selector shows provenance', a
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.waitForURL('**/signin');
 
-  // SYSTEM_ADMIN: no directory access, but technical status on /admin/system.
-  await page.getByRole('button', { name: 'Sign in as System Administrator' }).click();
+  // HR Manager (DEC-063): the technical status on /admin/system that the
+  // former System Administrator used to hold.
+  await page.getByRole('button', { name: 'Sign in as HR Manager' }).click();
   await page.waitForURL('**/');
-  await page.goto('/directory');
-  await expect(
-    page.getByText('The employee directory is limited to authorized HR roles.'),
-  ).toBeVisible();
   await page.goto('/admin/system');
   await expect(page.getByText('Credential status:')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Test connection (read-only)' })).toBeVisible();

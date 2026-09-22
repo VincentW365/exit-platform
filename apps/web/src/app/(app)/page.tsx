@@ -117,37 +117,17 @@ export default async function DashboardPage() {
   const { user, actor } = await requireAuth();
 
   if (!can(actor, 'baseline.viewDashboard')) {
-    // Owner decision 2026-08-19: IT, Finance and the line manager all
-    // participate by controlled email now, so no one outside HR has an
-    // offboarding work list here.
+    // Only the HR Manager and HR Officer can sign in (DEC-063) and both hold
+    // the dashboard, so a session lands here only when every stored role
+    // assignment of the account is retired: there is nothing for it to do.
     return (
       <>
         <h1>Welcome, {user.displayName}</h1>
-        {can(actor, 'queue.view') ? (
-          <section className="panel" aria-labelledby="queue-link-h">
-            <h2 id="queue-link-h" style={{ marginTop: 0 }}>
-              Your Department Work Queue
-            </h2>
-            <p>
-              Offboarding tasks assigned to your department are in{' '}
-              <Link href="/queue">My work</Link>. Tasks show only the minimum information needed to
-              complete the work.
-            </p>
-          </section>
-        ) : null}
         <section className="panel">
-          {can(actor, 'admin.roles') ? (
-            <p>
-              System administration does not include HR case access (least privilege). Go to{' '}
-              <Link href="/admin">Administration</Link> or the technical{' '}
-              <Link href="/audit">Audit center</Link>.
-            </p>
-          ) : (
-            <p>
-              Departmental work queues arrive with the Stage 3 workflow engine. There is nothing for
-              your role to action in the baseline-capture release.
-            </p>
-          )}
+          <p>
+            This account holds no active application role. The platform has two roles - HR Manager
+            and HR Officer - and only an HR Manager can grant one.
+          </p>
         </section>
       </>
     );

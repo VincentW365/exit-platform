@@ -91,9 +91,9 @@ beforeAll(async () => {
   await seedStage3Fixtures(); // includes Stage 4 dev recipients (capture://)
   officer = await createUser('S4 Officer', 'HR_OFFICER');
   manager = await createUser('S4 Manager', 'HR_MANAGER');
-  sysAdmin = await createUser('S4 SysAdmin', 'SYSTEM_ADMIN');
-  victim = await createUser('S4 Victim', 'IT_RESPONDER');
-  lineMgr = await createUser('S4 Line Manager', 'LINE_MANAGER');
+  sysAdmin = await createUser('S4 SysAdmin', 'HR_MANAGER');
+  victim = await createUser('S4 Victim', 'HR_OFFICER');
+  lineMgr = await createUser('S4 Line Manager');
 });
 
 afterAll(() => {
@@ -318,9 +318,9 @@ describe('identity lifecycle (X.8, X.9)', () => {
     expect(payload.inactiveWithRoles).toContain(victim.userId);
   });
 
-  it('SYSTEM_ADMIN cannot access HR case content (X.9)', async () => {
+  it('an account with no active role cannot access HR case content (X.9, DEC-063)', async () => {
     const caseId = await makeActiveCase({ employeeSourceId: 'EMP-TEST-003' });
-    await expect(getCase(sysAdmin.actor, caseId)).rejects.toMatchObject({
+    await expect(getCase(lineMgr.actor, caseId)).rejects.toMatchObject({
       code: expect.stringMatching(/NOT_FOUND|FORBIDDEN/),
     });
   });

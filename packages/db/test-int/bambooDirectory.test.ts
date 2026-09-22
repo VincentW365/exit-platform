@@ -39,8 +39,8 @@ beforeAll(async () => {
   await resetDb();
   manager = await createUser('Dir Manager', 'HR_MANAGER');
   officer = await createUser('Dir Officer', 'HR_OFFICER');
-  sysadmin = await createUser('Dir Sysadmin', 'SYSTEM_ADMIN');
-  itUser = await createUser('Dir IT', 'IT_RESPONDER');
+  sysadmin = await createUser('Dir Sysadmin', 'HR_MANAGER');
+  itUser = await createUser('Dir IT');
 });
 
 describe('adapter surface is strictly read-only (K.3)', () => {
@@ -90,11 +90,8 @@ describe('DB-backed employee search with content-free auditing (E.1, G.8)', () =
     expect(metadata).not.toContain('Reed');
   });
 
-  it('is refused for non-HR roles (K.6)', async () => {
+  it('is refused for an account with no active role (K.6, DEC-063)', async () => {
     await expect(searchEmployees(itUser.actor, 'avery')).rejects.toMatchObject({
-      code: 'FORBIDDEN',
-    });
-    await expect(searchEmployees(sysadmin.actor, 'avery')).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
   });
@@ -210,7 +207,7 @@ describe('directory views and scheduled-sync gate (F, D.2)', () => {
     const overview = await directoryOverview(manager.actor);
     expect(overview.totals.records).toBeGreaterThan(0);
     expect(overview.totals.purged).toBe(2);
-    await expect(directoryOverview(sysadmin.actor)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(directoryOverview(itUser.actor)).rejects.toMatchObject({ code: 'FORBIDDEN' });
 
     const tech = await directoryTechnicalCounts();
     expect(JSON.stringify(tech)).not.toContain('Livecache');

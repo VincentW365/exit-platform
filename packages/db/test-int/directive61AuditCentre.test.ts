@@ -25,7 +25,7 @@ const prisma = getPrisma();
 let officer: Awaited<ReturnType<typeof createUser>>;
 let manager: Awaited<ReturnType<typeof createUser>>;
 let otherManager: Awaited<ReturnType<typeof createUser>>;
-let sysAdmin: Awaited<ReturnType<typeof createUser>>;
+let noRole: Awaited<ReturnType<typeof createUser>>;
 
 const TEST_DRAFT = {
   ...VALID_DRAFT,
@@ -45,7 +45,7 @@ beforeAll(async () => {
   officer = await createUser('D61C Officer', 'HR_OFFICER');
   manager = await createUser('D61C Manager', 'HR_MANAGER');
   otherManager = await createUser('D61C Other Manager', 'HR_MANAGER');
-  sysAdmin = await createUser('D61C SysAdmin', 'SYSTEM_ADMIN');
+  noRole = await createUser('D61C No Active Role');
 
   const normal = await createDraft(officer.actor, TEST_DRAFT);
   normalCaseId = normal.caseId;
@@ -131,19 +131,20 @@ describe('restricted-case minimization for HR_MANAGER (AM 32)', () => {
   });
 });
 
-describe('SYSTEM_ADMIN technical feed (AM 33)', () => {
-  it('returns only technical categories and never case-linked rows', async () => {
+describe('technical events after DEC-063 (AM 33 superseded)', () => {
+  it('sit in the single HR Manager feed; an account with no active role has no feed', async () => {
     // Generate a technical (CONFIG) event with no case linkage.
     const { setFlag } = await import('../src/services/adminService.ts');
-    await setFlag(sysAdmin.actor, 'automation.workflowEngine', false, 'D61 audit centre test');
-    const feed = await listGlobalAudit(sysAdmin.actor, { take: 200 });
+    await setFlag(manager.actor, 'automation.workflowEngine', false, 'D61 audit centre test');
+    const feed = await listGlobalAudit(manager.actor, { category: 'CONFIG', take: 200 });
     expect(feed.rows.length).toBeGreaterThan(0);
     for (const row of feed.rows) {
       expect(TECHNICAL_CATEGORIES).toContain(eventCategory(row.eventType as never));
       expect(row.caseId).toBeNull();
     }
-    const caseCategory = await listGlobalAudit(sysAdmin.actor, { category: 'CASE' });
-    expect(caseCategory.rows).toHaveLength(0);
+    await expect(listGlobalAudit(noRole.actor, { take: 200 })).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
   });
 });
 

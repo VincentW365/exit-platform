@@ -230,16 +230,17 @@ export async function getAssignmentPlan(actor: Actor, caseId: string): Promise<A
   };
 
   const confirmations = (c.activationConfirmations ?? {}) as ConfirmationState;
-  const managerMissing = !c.managerUserId;
+  // The manager is business data, never a login (DEC-063): routing needs a
+  // directory manager - derived from the reporting line or recorded by an
+  // audited override - and nothing else. This mirrors the activation gate.
+  const managerMissing = !c.managerSourceId && !c.managerName;
 
   const blockers: string[] = [];
   if (!c.assignedOfficerId)
     blockers.push('HR Officer not assigned (HR Manager assigns on this tab).');
   if (managerMissing)
     blockers.push(
-      c.managerName
-        ? `Directory manager "${c.managerName}" has no active application account with the LINE_MANAGER role - override with an alternate manager.`
-        : 'No manager on record — action required: the directory records no manager for this employee; assign an alternate manager.',
+      'No manager on record — action required: the directory records no manager for this employee; assign an alternate manager.',
     );
   const confErrors = activationConfirmationErrors(confirmations, c.managerChangeFlaggedAt ?? null);
   blockers.push(...confErrors);

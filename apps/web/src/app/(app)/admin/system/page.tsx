@@ -10,7 +10,6 @@ import {
   getSystemConfigValue,
   listAccessReviews,
   listActiveUsers,
-  listBackups,
   listSystemConfig,
   reconciliationReport,
   ServiceError,
@@ -22,12 +21,10 @@ import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import {
   accessReviewAction,
-  createBackupAction,
   disableUserAction,
   purgeDirectoryAction,
   reconciliationAction,
   refreshDirectoryAction,
-  restoreVerifyAction,
   setConfigAction,
   syncEmployeesAction,
   testDirectoryConnectionAction,
@@ -38,9 +35,11 @@ export const metadata: Metadata = { title: 'System Administration' };
 export const dynamic = 'force-dynamic';
 
 /**
- * Technical administration (Directive 4 sections E, F, I, Q): provider
- * configuration, identity lifecycle, employee sync and backups - with NO
- * access to HR case content (I.3 / fixed default 14).
+ * HR-operational system administration (Directive 4 sections E, F, I;
+ * two-role model DEC-063): provider configuration, identity lifecycle and
+ * the employee directory, owned by the HR Manager. Technical functions such
+ * as database backups and restore verification are not HR operations and
+ * are not offered here (DEC-063).
  */
 export default async function SystemAdminPage({
   searchParams,
@@ -53,25 +52,23 @@ export default async function SystemAdminPage({
     return (
       <>
         <h1>Access Restricted</h1>
-        <p className="panel">System administration requires the SYSTEM_ADMIN role.</p>
+        <p className="panel">System administration requires the HR Manager role.</p>
       </>
     );
 
   let config: Awaited<ReturnType<typeof listSystemConfig>> = [];
   let users: Awaited<ReturnType<typeof listActiveUsers>> = [];
   let reviews: Awaited<ReturnType<typeof listAccessReviews>> = [];
-  let backups: Awaited<ReturnType<typeof listBackups>> = [];
   let breakGlass = { enabled: false, note: '' };
   let recon: Awaited<ReturnType<typeof reconciliationReport>> | null = null;
   let directory: Awaited<ReturnType<typeof directoryTechnicalCounts>> | null = null;
   let sync: Awaited<ReturnType<typeof directorySyncStatus>> | null = null;
   let adapterMode = 'fixture';
   try {
-    [config, users, reviews, backups, breakGlass, directory] = await Promise.all([
+    [config, users, reviews, breakGlass, directory] = await Promise.all([
       listSystemConfig(actor),
       listActiveUsers(),
       listAccessReviews(actor),
-      listBackups(actor),
       breakGlassStatus(),
       directoryTechnicalCounts(),
     ]);
@@ -89,8 +86,8 @@ export default async function SystemAdminPage({
       <h1>System Administration</h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
-        Technical configuration only - this area never grants HR case content access. Secrets are
-        stored as REFERENCES and never displayed. {breakGlass.note}
+        Configuration only - this area never grants HR case content access. Secrets are stored as
+        REFERENCES and never displayed. {breakGlass.note}
       </p>
 
       <section className="panel" aria-labelledby="cfg-h">
@@ -330,42 +327,6 @@ export default async function SystemAdminPage({
           Sync updates SOURCE records only; immutable case snapshots and approved HR decisions are
           never touched. Missing source employees are reported for reconciliation, never deleted.
           Purging anonymizes cached live records without touching cases or snapshots.
-        </p>
-      </section>
-
-      <section className="panel" aria-labelledby="bk-h">
-        <h2 id="bk-h" style={{ marginTop: 0 }}>
-          Backup and Restore
-        </h2>
-        <form action={createBackupAction} style={{ display: 'inline-block' }}>
-          <button type="submit">Create database backup (pg_dump)</button>
-        </form>
-        {backups.length === 0 ? (
-          <p className="meta">
-            No verified backup recorded yet. Backup runs appear here once one has been verified.
-          </p>
-        ) : null}
-        <ul>
-          {backups.map((b) => (
-            <li key={b.id}>
-              {formatInstant(b.createdAt)} - {String(b.sizeBytes)} bytes - checksum{' '}
-              <code>{b.checksum.slice(0, 12)}...</code>{' '}
-              {b.verifiedAt ? (
-                <span className="badge badge--success">restore verified</span>
-              ) : (
-                <form action={restoreVerifyAction} style={{ display: 'inline-block' }}>
-                  <input type="hidden" name="backupId" value={b.id} />
-                  <button type="submit" className="secondary">
-                    Restore into isolated DB + verify
-                  </button>
-                </form>
-              )}
-            </li>
-          ))}
-        </ul>
-        <p className="hint">
-          Development evidence only: production disaster recovery is documented in the runbook and
-          remains unapproved.
         </p>
       </section>
     </>

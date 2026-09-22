@@ -73,9 +73,9 @@ beforeAll(async () => {
   await seedStage3Fixtures();
   officer = await createUser('INV Officer', 'HR_OFFICER');
   manager = await createUser('INV Manager', 'HR_MANAGER');
-  lineMgr = await createUser('INV Line Manager', 'LINE_MANAGER');
-  itUser = await createUser('INV IT', 'IT_RESPONDER');
-  finUser = await createUser('INV Finance', 'FINANCE_RESPONDER');
+  lineMgr = await createUser('INV Line Manager');
+  itUser = await createUser('INV IT');
+  finUser = await createUser('INV Finance');
   sharedCaseId = await activeCase({ employeeSourceId: 'EMP-TEST-001' });
 });
 
@@ -96,7 +96,7 @@ describe('Directive 6.3 AC invariants', () => {
     expect(managerTasks).toBe(0);
     const handover = await prisma.handoverRecord.findUnique({ where: { caseId: sharedCaseId } });
     expect(handover).toBeNull();
-    expect(queueDepartmentsForActor({ userId: 'x', roles: ['LINE_MANAGER'] })).toEqual([]);
+    expect(queueDepartmentsForActor({ userId: 'x', roles: [] })).toEqual([]);
     const notice = await prisma.caseRequiredAction.findFirst({
       where: { caseId: sharedCaseId, actionKey: 'EMAIL:MANAGER_DEPARTURE_NOTICE' },
     });
@@ -104,13 +104,13 @@ describe('Directive 6.3 AC invariants', () => {
   });
 
   it('3. no IT login is required or useful: the role gets no queue and no access', async () => {
-    expect(queueDepartmentsForActor({ userId: 'x', roles: ['IT_RESPONDER'] })).toEqual([]);
+    expect(queueDepartmentsForActor({ userId: 'x', roles: [] })).toEqual([]);
     const queue = await listMyQueue(itUser.actor).catch((e) => e);
     expect(queue).toBeInstanceOf(ServiceError);
   });
 
   it('4. no Finance login is required or useful', async () => {
-    expect(queueDepartmentsForActor({ userId: 'x', roles: ['FINANCE_RESPONDER'] })).toEqual([]);
+    expect(queueDepartmentsForActor({ userId: 'x', roles: [] })).toEqual([]);
     const queue = await listMyQueue(finUser.actor).catch((e) => e);
     expect(queue).toBeInstanceOf(ServiceError);
   });

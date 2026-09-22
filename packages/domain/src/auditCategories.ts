@@ -160,9 +160,10 @@ export function eventCategory(eventType: AuditEventType): AuditCategory {
 }
 
 /**
- * Technical categories: everything a SYSTEM_ADMIN may see in the Audit
- * Centre. Combined with the caseId IS NULL restriction this guarantees no
- * HR case content reaches the technical feed (Directive 6.1 K).
+ * Technical categories (identity, configuration, system). The separate
+ * technical-only feed they once defined for the System Administrator is
+ * retired (DEC-063); they remain the classification the single HR Manager
+ * feed and the tests use to tell technical events from case events.
  */
 export const TECHNICAL_CATEGORIES: readonly AuditCategory[] = ['IDENTITY', 'CONFIG', 'SYSTEM'];
 

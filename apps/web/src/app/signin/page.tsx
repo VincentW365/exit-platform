@@ -93,9 +93,10 @@ export default async function SignInPage({
 
 async function DevUserList() {
   const users = await listActiveUsers();
-  // DEC-042: six-role model. Directory-mapped real staff (identitySubject
-  // bamboo|...) are grouped separately from the function-named accounts so
-  // automated tests keep unambiguous function buttons.
+  // DEC-063: two-role model - the seed leaves exactly HR Manager and HR
+  // Officer active. Directory-mapped real staff (identitySubject bamboo|...)
+  // are grouped separately from the function-named accounts so automated
+  // tests keep unambiguous function buttons.
   const mapped = users.filter((u) => u.identitySubject.startsWith('bamboo|'));
   const functions = users.filter((u) => !mapped.includes(u));
   return (

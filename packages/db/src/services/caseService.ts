@@ -1710,15 +1710,16 @@ export async function addParticipant(
     // DEC-042: the oversight roles were removed from the active model; the
     // participant role remains in the schema for historical rows only.
     throw ServiceError.validation([
-      'The OVERSIGHT participant role was retired with DEC-042 - add HR, Finance or Manager participants instead.',
+      'The OVERSIGHT participant role was retired with DEC-042 - add an HR support participant instead.',
     ]);
   }
-  // Stage 2: scoped action-form participants (Directive 2 section F).
-  if (participantRole === 'FINANCE' && !targetRoles.includes('FINANCE_RESPONDER')) {
-    throw ServiceError.validation(['Finance participants must hold the FINANCE_RESPONDER role.']);
-  }
-  if (participantRole === 'MANAGER' && !targetRoles.includes('LINE_MANAGER')) {
-    throw ServiceError.validation(['Manager participants must hold the LINE_MANAGER role.']);
+  if (participantRole === 'FINANCE' || participantRole === 'MANAGER') {
+    // DEC-063: Finance and the reporting manager hold no application login,
+    // so they cannot be case participants. They are reached by controlled
+    // email and secure links; the enum values stay for historical rows.
+    throw ServiceError.validation([
+      'Finance and Manager participants were retired with DEC-063 - Finance and the reporting manager are notified by email, not added as participants.',
+    ]);
   }
 
   const existing = await prisma.caseParticipant.findFirst({

@@ -54,9 +54,9 @@ export default async function PilotPage({
       </h1>
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
-        PILOT_ACTIVE requires every mandatory gate to pass plus HR Manager and System Administrator
-        approval by two different people (DEC-042). Activation never processes BASELINE cases
-        retroactively; suspension stops new automated integration work at once.
+        PILOT_ACTIVE requires every mandatory gate to pass plus one HR Manager approval (DEC-063).
+        Activation never processes BASELINE cases retroactively; suspension stops new automated
+        integration work at once.
       </p>
 
       <section className="panel" aria-labelledby="gates-h">
@@ -84,9 +84,13 @@ export default async function PilotPage({
           </h2>
           <p className="hint">
             Created {formatInstant(current.createdAt)} - checksum{' '}
-            <code>{current.checksum.slice(0, 16)}...</code> - HR approval{' '}
-            {current.hrApprovedAt ? formatInstant(current.hrApprovedAt) : 'pending'} - technical
-            approval {current.adminApprovedAt ? formatInstant(current.adminApprovedAt) : 'pending'}
+            <code>{current.checksum.slice(0, 16)}...</code> - HR Manager approval{' '}
+            {current.hrApprovedAt ? formatInstant(current.hrApprovedAt) : 'pending'}
+            {/* Historical records may carry the second, technical approval
+                that DEC-063 retired; it is shown, never required. */}
+            {current.adminApprovedAt
+              ? ` - technical approval ${formatInstant(current.adminApprovedAt)} (historical)`
+              : ''}
             {current.activatedAt ? ` - applied ${formatInstant(current.activatedAt)}` : ''}
             {current.suspendedAt ? ` - SUSPENDED ${formatInstant(current.suspendedAt)}` : ''}
           </p>
@@ -94,15 +98,7 @@ export default async function PilotPage({
           {data.canHrApprove && !current.hrApprovedAt ? (
             <form action={approveActivationAction} style={{ display: 'inline-block' }}>
               <input type="hidden" name="id" value={current.id} />
-              <input type="hidden" name="role" value="hr" />
               <button type="submit">Approve (HR Manager)</button>
-            </form>
-          ) : null}{' '}
-          {data.canAdminApprove && !current.adminApprovedAt ? (
-            <form action={approveActivationAction} style={{ display: 'inline-block' }}>
-              <input type="hidden" name="id" value={current.id} />
-              <input type="hidden" name="role" value="admin" />
-              <button type="submit">Approve (System Administrator)</button>
             </form>
           ) : null}{' '}
           {data.canManage && !current.activatedAt ? (

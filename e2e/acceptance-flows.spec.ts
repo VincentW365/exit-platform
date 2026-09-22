@@ -135,14 +135,10 @@ test('J.5 restricted termination: assignment-gated access; no discovery for othe
   await expect(page.getByText('Page or Record Not Found')).toBeVisible();
   await signOut(page);
 
-  // Non-HR + admin roles: nothing anywhere (Directive 6.3: IT/Finance have
-  // no logins at all; the line manager and admin cover the negative).
-  for (const who of ['System Administrator']) {
-    await signInAs(page, who);
-    await page.goto(caseUrl);
-    await expect(page.getByText('Page or Record Not Found')).toBeVisible();
-    await signOut(page);
-  }
+  // DEC-063: no login outside HR exists; the unassigned HR Officer above is
+  // the whole negative, and a signed-out visitor is sent to sign in.
+  await page.goto(caseUrl);
+  await page.waitForURL('**/signin**');
 
   // Explicit assignment opens access for the assigned HR officer.
   await signInAs(page, 'HR Manager');
@@ -191,11 +187,10 @@ test('J.6+J.8 cohort/purpose exclusion and audited export without restricted row
   expect(csv).not.toContain('Casey'); // TEST purpose excluded
   await signOut(page);
 
-  // Unauthorized roles cannot export.
-  await signInAs(page, 'System Administrator');
+  // DEC-063: both application roles may export; the remaining negative is an
+  // unauthenticated request, refused without content.
   const denied = await page.request.get('/api/baseline-export');
-  expect(denied.status()).toBe(403);
-  await signOut(page);
+  expect(denied.status()).toBe(401);
 });
 
 test('J.7 attachment upload with clearly-labelled development scan transition', async ({
@@ -224,11 +219,10 @@ test('J.7 attachment upload with clearly-labelled development scan transition', 
   expect(dl.headers()['content-disposition']).toContain('attachment');
   await signOut(page);
 
-  // Unauthorized role: download denied without disclosure.
-  await signInAs(page, 'System Administrator');
+  // DEC-063: no non-HR login exists; an unauthenticated download is refused
+  // without disclosure.
   const denied = await page.request.get(href!);
-  expect([403, 404]).toContain(denied.status());
-  await signOut(page);
+  expect([401, 403, 404]).toContain(denied.status());
   void caseUrl;
 });
 

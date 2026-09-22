@@ -90,9 +90,9 @@ beforeAll(async () => {
   setStorageForTests(new LocalStorageAdapter(mkdtempSync(path.join(tmpdir(), 'exit-pdf2-'))));
   officer = await createUser('F Officer', 'HR_OFFICER');
   manager = await createUser('F Manager', 'HR_MANAGER');
-  finance = await createUser('F Finance', 'FINANCE_RESPONDER');
-  lineManager = await createUser('F LineMgr', 'LINE_MANAGER');
-  sysadmin = await createUser('F Sysadmin', 'SYSTEM_ADMIN');
+  finance = await createUser('F Finance');
+  lineManager = await createUser('F LineMgr');
+  sysadmin = await createUser('F Sysadmin');
   await seedSurveyTemplate();
 
   const created = await createDraft(officer.actor, {
@@ -102,14 +102,17 @@ beforeAll(async () => {
     measurementCohort: null,
   });
   caseId = created.caseId;
-  await addParticipant(
-    manager.actor,
-    caseId,
-    finance.userId,
-    'FINANCE',
-    'Assigned finance responder.',
-  );
-  await addParticipant(manager.actor, caseId, lineManager.userId, 'MANAGER', 'Assigned manager.');
+});
+
+describe('departmental participants (DEC-063)', () => {
+  it('FINANCE and MANAGER participant roles are refused: those people are recipients, not logins', async () => {
+    await expect(
+      addParticipant(manager.actor, caseId, finance.userId, 'FINANCE', 'Assigned finance.'),
+    ).rejects.toMatchObject({ code: 'VALIDATION' });
+    await expect(
+      addParticipant(manager.actor, caseId, lineManager.userId, 'MANAGER', 'Assigned manager.'),
+    ).rejects.toMatchObject({ code: 'VALIDATION' });
+  });
 });
 
 describe('action form (section F, HR-validated per Directive 6.3)', () => {

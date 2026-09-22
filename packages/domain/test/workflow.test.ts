@@ -368,12 +368,10 @@ describe('queue access (J, R.8)', () => {
       'IT',
       'FINANCE',
     ]);
-    // AC invariants 3-4: the retired roles grant no queue at all.
-    expect(queueDepartmentsForActor({ userId: 'u', roles: ['IT_RESPONDER'] })).toEqual([]);
-    expect(queueDepartmentsForActor({ userId: 'u', roles: ['FINANCE_RESPONDER'] })).toEqual([]);
-    // Owner decision 2026-08-19: the line manager has no queue either.
-    expect(queueDepartmentsForActor({ userId: 'u', roles: ['LINE_MANAGER'] })).toEqual([]);
-    expect(queueDepartmentsForActor({ userId: 'u', roles: ['SYSTEM_ADMIN'] })).toEqual([]);
+    // AC invariants 3-4 / DEC-063: the retired department, manager and
+    // administrator roles are no longer roles at all, so an account whose
+    // stored assignments are all retired has no active role and no queue.
+    expect(queueDepartmentsForActor({ userId: 'u', roles: [] })).toEqual([]);
   });
 
   it('overdue severity honours the configurable HIGH threshold (Directive 6.2 K)', () => {

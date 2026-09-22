@@ -46,10 +46,10 @@ async function main(): Promise<void> {
     const u = await prisma.user.findUniqueOrThrow({ where: { identitySubject: `dev|${slug}` } });
     return { userId: u.id, roles: [role] as never };
   };
-  // Catalogue reads need no actor; everything else acts as the HR Manager
-  // (the authority the product gives these operations) or the administrator.
+  // Catalogue reads need no actor; everything else acts as the HR Manager,
+  // the single authority the product gives these operations (DEC-063).
   const managerActor = () => actorFor('hr-manager', 'HR_MANAGER');
-  const adminActor = () => actorFor('system-admin', 'SYSTEM_ADMIN');
+  const adminActor = managerActor;
 
   const caseByNumber = async (caseNumber: string) => {
     const c = await prisma.offboardingCase.findFirst({ where: { caseNumber } });

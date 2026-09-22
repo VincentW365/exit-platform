@@ -66,7 +66,7 @@ const SOPS: ReadonlyArray<{ module: string; title: string; audience: string; sum
     {
       module: 'notification-fallback',
       title: 'Notification-failure fallback',
-      audience: 'HR / System administrator',
+      audience: 'HR Manager',
       summary: [
         'Failed dispatches appear in the outbox monitor and exception feed.',
         'Retry with a reason, or send manually through an approved channel and record the manual send.',
@@ -78,7 +78,7 @@ const SOPS: ReadonlyArray<{ module: string; title: string; audience: string; sum
       title: 'Outage / manual process',
       audience: 'All roles',
       summary: [
-        'HR Manager or System Administrator declares the outage in the continuity center.',
+        'The HR Manager declares the outage in the continuity center.',
         'Use sanitized blank forms with FB-references; reconcile every entry when service returns.',
         'Duplicates are prevented by one-time reconciliation of each reference.',
       ],
@@ -95,12 +95,12 @@ const SOPS: ReadonlyArray<{ module: string; title: string; audience: string; sum
     },
     {
       module: 'administrator-guide',
-      title: 'Administrator guide',
-      audience: 'System administrator',
+      title: 'Platform administration guide',
+      audience: 'HR Manager',
       summary: [
-        'Technical configuration only - no HR case content access.',
+        'Platform administration is an HR Manager responsibility (DEC-063); no other login exists.',
         'Secrets are stored as REFERENCES; production fails closed on any development provider.',
-        'Health, outbox, backups and access reviews live in the administration center.',
+        'Health, outbox, directory refresh and access reviews live in the administration center; backups and restore tests are infrastructure operations outside the application.',
       ],
     },
     {
@@ -109,7 +109,7 @@ const SOPS: ReadonlyArray<{ module: string; title: string; audience: string; sum
       audience: 'All roles',
       summary: [
         'Raise incidents/service requests in the Support area with SAFE descriptions (no personal data).',
-        'CRITICAL security/privacy incidents escalate immediately to the System Administrator and HR Manager.',
+        'CRITICAL security/privacy incidents escalate immediately to the HR Manager and the infrastructure operator.',
         'Diagnostic bundles are PII-free: correlation IDs, versions, codes and states only.',
       ],
     },

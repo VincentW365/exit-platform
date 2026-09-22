@@ -82,7 +82,7 @@ beforeAll(async () => {
   setStorageForTests(new LocalStorageAdapter(mkdtempSync(path.join(tmpdir(), 'exit-letter-'))));
   officer = await createUser('Letter Officer', 'HR_OFFICER');
   manager = await createUser('Letter Manager', 'HR_MANAGER');
-  lineMgr = await createUser('Letter Line Manager', 'LINE_MANAGER');
+  lineMgr = await createUser('Letter Line Manager');
 
   // The letter under test is the canonical one the seed ships.
   const template = await createDraftTemplate(officer.actor, {

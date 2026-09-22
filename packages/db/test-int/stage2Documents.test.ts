@@ -44,7 +44,7 @@ beforeAll(async () => {
   officer = await createUser('S2 Officer', 'HR_OFFICER');
   manager = await createUser('S2 Manager', 'HR_MANAGER');
   manager2 = await createUser('S2 Manager Two', 'HR_MANAGER');
-  itResponder = await createUser('S2 IT', 'IT_RESPONDER');
+  itResponder = await createUser('S2 IT');
 
   const draft = await createDraftTemplate(officer.actor, {
     documentType: 'RESIGNATION_ACCEPTANCE_WITH_NOTICE',

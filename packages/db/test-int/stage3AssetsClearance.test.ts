@@ -10,7 +10,7 @@ import { getPrisma } from '../src/client.ts';
 import { LocalStorageAdapter, setStorageForTests } from '../src/storage.ts';
 import { createDraft, transitionCase } from '../src/services/caseService.ts';
 import { activateCase } from '../src/services/workflowService.ts';
-import { completeTask, reassignTask } from '../src/services/taskService.ts';
+import { completeTask } from '../src/services/taskService.ts';
 import {
   addAssetRecoveryItem,
   listCaseAssets,
@@ -91,7 +91,7 @@ beforeAll(async () => {
   setStorageForTests(new LocalStorageAdapter(mkdtempSync(path.join(tmpdir(), 'exit-s3-'))));
   officer = await createUser('S3B Officer', 'HR_OFFICER');
   manager = await createUser('S3B Manager', 'HR_MANAGER');
-  lineMgr = await createUser('S3B Line Manager', 'LINE_MANAGER');
+  lineMgr = await createUser('S3B Line Manager');
 
   const draft = await createDraftTemplate(officer.actor, {
     documentType: 'RESIGNATION_ACCEPTANCE_WITH_NOTICE',
@@ -252,28 +252,16 @@ describe('clearance gate and completion (T.18-T.22, T.24, O)', () => {
       note: 'IT confirmed all access removed. Ticket TEST-9.',
     });
 
-    // Complete every remaining open required task by department authority,
-    // re-running rounds as dependencies release (D.1). Line-manager tasks are
-    // reassigned to the direct manager first (D.4).
+    // Complete every remaining open required task, re-running rounds as
+    // dependencies release (D.1).
     for (let round = 0; round < 8; round++) {
       const open = (await tasksOf(caseId)).filter(
         (t) => t.required && ['READY', 'IN_PROGRESS'].includes(t.status),
       );
       if (open.length === 0) break;
       for (const t of open) {
-        if (t.department === 'LINE_MANAGER') {
-          if (t.assigneeId !== lineMgr.userId) {
-            await reassignTask(
-              manager.actor,
-              t.id,
-              lineMgr.userId,
-              'Assigning to the direct manager.',
-            );
-          }
-          await completeTask(lineMgr.actor, t.id, `${t.taskCode} completed by the manager.`);
-          continue;
-        }
-        // Directive 6.3 I/J: HR records residual legacy department work.
+        // Directive 6.3 I/J and DEC-063: HR records every residual legacy
+        // department task, the manager's included - no other login exists.
         const actor = t.requiredRole === 'HR_MANAGER' ? manager.actor : officer.actor;
         await completeTask(actor, t.id, `${t.taskCode} completed for clearance test.`);
       }

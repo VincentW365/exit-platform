@@ -57,8 +57,8 @@ beforeAll(async () => {
   await seedStage3Fixtures();
   officer = await createUser('Rehearsal Officer', 'HR_OFFICER');
   manager = await createUser('Rehearsal Manager', 'HR_MANAGER');
-  lineMgr = await createUser('Rehearsal Line Manager', 'LINE_MANAGER');
-  admin = await createUser('Rehearsal Admin', 'SYSTEM_ADMIN');
+  lineMgr = await createUser('Rehearsal Line Manager');
+  admin = await createUser('Rehearsal Admin', 'HR_MANAGER');
 });
 
 describe('who can change it', () => {

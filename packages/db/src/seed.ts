@@ -18,62 +18,24 @@ const { getPrisma } = await import('./client.ts');
 
 const prisma = getPrisma();
 
-// UAT accounts are named by FUNCTION, not by fictional people (owner
-// decision, DEC-040): testers sign in as the role they are exercising and
-// audit trails read as "HR Manager approved the case". Login slugs and
-// synthetic emails are unchanged - only display names carry the function.
+// The two-role model (owner directive, 2026-09-22, DEC-063): exactly two
+// sign-ins exist, named by FUNCTION (DEC-040) so audit trails read as
+// "HR Manager approved the case". Everyone else the platform knows - IT,
+// Finance, reporting managers, the former System Administrator and the named
+// UAT personas - is a directory record, a workflow participant or a
+// notification recipient, never a login; their old accounts are deactivated
+// below and never converted.
 const DEV_USERS: ReadonlyArray<{ slug: string; name: string; email: string; roles: string[] }> = [
   {
     slug: 'hr-manager',
     name: 'HR Manager',
-    email: 'dana.field@example.test',
+    email: 'hr-manager@example.test',
     roles: ['HR_MANAGER'],
   },
   {
     slug: 'hr-officer',
     name: 'HR Officer',
-    email: 'riley.okafor@example.test',
-    roles: ['HR_OFFICER'],
-  },
-  // Directive 6.3 retired the IT and Finance responder logins; the owner
-  // decision of 2026-08-19 retired the line-manager login on the same
-  // grounds. Every department outside HR now participates through automated
-  // controlled email, so none of those accounts are seeded here - existing
-  // ones are deactivated above with the DEC-042 pattern.
-  {
-    slug: 'system-admin',
-    name: 'System Administrator',
-    email: 'marley.thompson@example.test',
-    roles: ['SYSTEM_ADMIN'],
-  },
-  // Hosted UAT generic testers (owner directive, 2026-09-21): named synthetic
-  // accounts so HR ownership can be assigned and REASSIGNED between two
-  // officers, and so a tester can pick a person as well as a role. They
-  // mirror the UAT-000x directory records. Authorization stays role-driven;
-  // the names are test data. The role-named accounts above remain, because
-  // the end-to-end suites sign in through them.
-  {
-    slug: 'uat-admin',
-    name: 'Alex Admin',
-    email: 'alex.admin@example.test',
-    roles: ['SYSTEM_ADMIN'],
-  },
-  {
-    slug: 'uat-hr-manager',
-    name: 'Morgan HR',
-    email: 'morgan.hr@example.test',
-    roles: ['HR_MANAGER'],
-  },
-  {
-    slug: 'uat-officer-taylor',
-    name: 'Taylor Officer',
-    email: 'taylor.officer@example.test',
-    roles: ['HR_OFFICER'],
-  },
-  {
-    slug: 'uat-officer-jordan',
-    name: 'Jordan Officer',
-    email: 'jordan.officer@example.test',
+    email: 'hr-officer@example.test',
     roles: ['HR_OFFICER'],
   },
 ];
@@ -140,10 +102,36 @@ const TEST_REASONS: ReadonlyArray<{ code: string; label: string }> = [
 // Retired sign-ins are never deleted: assignments are revoked with a reason
 // (history preserved) and the account is deactivated. DEC-042 removed the
 // oversight roles; Directive 6.3 retires the IT/Finance responder logins
-// because those departments now act on controlled emails, not sign-ins.
+// because those departments now act on controlled emails, not sign-ins;
+// DEC-063 retires the System Administrator and the named UAT personas.
 const RETIRED_LOGINS: ReadonlyArray<{ slug: string; reason: string }> = [
   { slug: 'auditor', reason: 'Role retired by DEC-042.' },
   { slug: 'privacy-officer', reason: 'Role retired by DEC-042.' },
+  {
+    slug: 'system-admin',
+    reason:
+      'DEC-063: the System Administrator role is retired; HR-operational administration belongs to the HR Manager. The account is deactivated, not converted.',
+  },
+  {
+    slug: 'uat-admin',
+    reason:
+      'DEC-063: the System Administrator role is retired; HR-operational administration belongs to the HR Manager. The account is deactivated, not converted.',
+  },
+  {
+    slug: 'uat-hr-manager',
+    reason:
+      'DEC-063: named login personas are retired; the role switcher offers HR Manager and HR Officer only. The directory record is unaffected.',
+  },
+  {
+    slug: 'uat-officer-taylor',
+    reason:
+      'DEC-063: named login personas are retired; the role switcher offers HR Manager and HR Officer only. The directory record is unaffected.',
+  },
+  {
+    slug: 'uat-officer-jordan',
+    reason:
+      'DEC-063: named login personas are retired; the role switcher offers HR Manager and HR Officer only. The directory record is unaffected.',
+  },
   {
     slug: 'it-responder',
     reason: 'Directive 6.3: IT/Finance participate by controlled email, not application logins.',

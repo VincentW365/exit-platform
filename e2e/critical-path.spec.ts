@@ -85,15 +85,19 @@ test('HR officer creates and submits; HR manager approves with snapshot; line ma
   await expect(page.getByText('approved the case', { exact: false }).first()).toBeVisible();
   await signOut(page);
 
-  // --- least privilege: no department login has HR case access at all ---
-  await signInAs(page, 'System Administrator');
-  await expect(page.getByText('Your Department Work Queue')).toHaveCount(0);
-  // No Cases navigation is offered...
-  await expect(page.getByRole('navigation', { name: 'Primary' }).getByText('Cases')).toHaveCount(0);
-  // ...and going there directly is refused server-side.
-  await page.goto('/cases');
+  // --- least privilege (DEC-063): exactly two roles can sign in at all ---
+  await page.goto('/signin');
+  await expect(page.getByRole('button', { name: /^Sign in as / })).toHaveCount(2);
+  await expect(
+    page.getByRole('button', { name: 'Sign in as HR Manager', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Sign in as HR Officer', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: /System Administrator/ })).toHaveCount(0);
+  // The HR Officer holds no oversight surface: the Audit Center is refused
+  // server-side.
+  await signInAs(page, 'HR Officer');
+  await page.goto('/audit');
   await expect(page).toHaveURL(/unauthorized/);
-  // A direct case URL leaks nothing (the manager is not on this case).
-  await page.goto(caseUrl);
-  await expect(page.getByText('Page or Record Not Found')).toBeVisible();
 });

@@ -6,7 +6,6 @@ import { randomUUID } from 'node:crypto';
 import {
   AUDIT_CATEGORIES,
   AUDIT_EVENT_TYPES,
-  TECHNICAL_CATEGORIES,
   TIMELINE_NOISE_EVENTS,
   eventCategory,
   sanitizeMetadata,
@@ -161,21 +160,18 @@ export interface GlobalAuditRow {
 }
 
 /**
- * Global Audit Centre feed (DEC-042 model). HR_MANAGER is the business
- * audience; rows on restricted cases outside their participation are
- * MINIMIZED (timestamp + category only); SYSTEM_ADMIN uses the technical
- * path: technical categories AND no case linkage - never HR case content.
+ * Global Audit Centre feed. HR_MANAGER is the audience; rows on restricted
+ * cases outside their participation are MINIMIZED (timestamp + category
+ * only). The separate technical-only feed the System Administrator used to
+ * receive went with that role (DEC-063): technical categories remain
+ * ordinary categories of this feed, filtered like any other.
  */
 export async function listGlobalAudit(actor: Actor, filter: GlobalAuditFilter = {}) {
-  const technicalOnly = !can(actor, 'audit.viewGlobal');
-  if (technicalOnly && !can(actor, 'audit.viewTechnical')) throw ServiceError.forbidden();
+  if (!can(actor, 'audit.viewGlobal')) throw ServiceError.forbidden();
   const prisma = getPrisma();
   const take = Math.min(Math.max(filter.take ?? 50, 1), 200);
 
   const categoryTypes = filter.category ? eventTypesForCategory(filter.category) : null;
-  const technicalTypes = technicalOnly
-    ? TECHNICAL_CATEGORIES.flatMap((cat) => eventTypesForCategory(cat))
-    : null;
 
   // caseNumber lookup is guarded by case visibility: a restricted case the
   // viewer cannot see yields an empty result, not an existence leak.
@@ -225,16 +221,6 @@ export async function listGlobalAudit(actor: Actor, filter: GlobalAuditFilter = 
       : categoryTypes
         ? { eventType: { in: categoryTypes } }
         : {}),
-    ...(technicalOnly
-      ? {
-          caseId: null,
-          eventType: filter.eventType
-            ? technicalTypes!.includes(filter.eventType as AuditEventType)
-              ? filter.eventType
-              : { in: [] as string[] }
-            : { in: (categoryTypes ?? technicalTypes)!.filter((t) => technicalTypes!.includes(t)) },
-        }
-      : {}),
     ...(filter.recordPurpose ? { case: { is: { recordPurpose: filter.recordPurpose } } } : {}),
   };
 

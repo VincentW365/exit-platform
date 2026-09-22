@@ -266,7 +266,7 @@
 | REQ-SEC-007 | Record-level authorization | Access shall consider case classification, assignment, department role, and explicit participation, not role name alone. | MUST | 1 | PROVISIONAL |
 | REQ-SEC-008 | Restricted termination cases | Termination cases shall be restricted by default and excluded from broad lists/notifications for unauthorized users. | MUST | 1 | PROVISIONAL |
 | REQ-SEC-009 | Restricted survey data | Identifiable exit-response data shall use separate permissions and access logging. | MUST | 2 | PROVISIONAL |
-| REQ-SEC-010 | System admin data isolation | SYSTEM_ADMIN shall have no default business-data access; break-glass access shall be time-bound, approved, reasoned, and audited. | MUST | 1 | PROVISIONAL |
+| REQ-SEC-010 | System admin data isolation | Superseded by DEC-063: SYSTEM_ADMIN is retired and no login outside HR_MANAGER / HR_OFFICER exists, so the isolation holds structurally; platform administration shall never widen the HR Manager's record scope, and break-glass access shall remain time-bound, approved, reasoned, and audited. | MUST | 1 | PROVISIONAL |
 | REQ-SEC-011 | TLS | All production traffic, callbacks, and integrations shall use current approved TLS over HTTPS. | MUST | 1 | PROVISIONAL |
 | REQ-SEC-012 | Encryption at rest | Database, backups, and object storage shall use encryption at rest managed by the hosting platform or approved equivalent. | MUST | 1 | PROVISIONAL |
 | REQ-SEC-013 | Secrets management | Credentials, API keys, signing secrets, and encryption keys shall be stored outside source control in an approved secrets manager or deployment secret store. | MUST | 1 | PROVISIONAL |

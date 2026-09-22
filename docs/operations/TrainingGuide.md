@@ -6,8 +6,8 @@ recorded completions feed the pilot readiness gate.
 
 ## How training runs
 
-- Trainer: HR Manager (business modules) and System Administrator
-  (technical modules).
+- Trainer: HR Manager (business and platform-administration modules;
+  DEC-063).
 - Environment: development/training instance, synthetic data only, record
   purpose TRAINING or TEST. Real employee data is never used in training.
 - Format per module: walk-through, hands-on exercise from the SOP module,
@@ -107,12 +107,14 @@ recipient-side guidance distributed to the departments:
   and package exclusions, disclosure logging - absorbed into the HR Manager
   role since DEC-042 removed the separate Privacy Officer.
 
-### System Administrator (SOP-09)
+### Platform administration - HR Manager (SOP-09)
 
 - System configuration (references only - never secret values), user
-  lifecycle + session revocation, access reviews, fixture sync and
-  reconciliation, health monitoring, outbox operations, backup/restore
-  verification. Explicit boundary: no access to HR case content.
+  lifecycle + session revocation, access reviews, directory refresh and
+  reconciliation, health monitoring, outbox operations, attestation of the
+  backup/restore evidence. Backups and restore tests themselves are
+  infrastructure operations outside the application (DEC-063). Explicit
+  boundary: administration never widens the HR Manager's case scope.
 
 ## Completion evidence
 

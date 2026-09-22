@@ -112,7 +112,7 @@ Controls:
 - test IDOR by swapping IDs;
 - termination cases restricted by default;
 - survey response permission separated from case permission;
-- SYSTEM_ADMIN has no ordinary content access;
+- retired role assignments (SYSTEM_ADMIN and the others) grant nothing; only HR_MANAGER / HR_OFFICER exist (DEC-063);
 - break-glass is time-bound and audited;
 - deny by default.
 

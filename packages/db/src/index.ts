@@ -41,7 +41,6 @@ export * from './services/reasonService.ts';
 export * from './services/reportingService.ts';
 export * from './services/scheduledReportService.ts';
 export * from './services/retentionService.ts';
-export * from './services/backupService.ts';
 export * from './services/fallbackService.ts';
 export * from './services/orgService.ts';
 export * from './services/caseAssignmentService.ts';

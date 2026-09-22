@@ -3,9 +3,9 @@
  *
  * HR case-preparation views over the LOCAL employee-source cache (synthetic
  * fixtures, synchronized read-only BambooHR rows, manual entries). Access is
- * restricted to the HR roles behind `employeeSource.search`; SYSTEM_ADMIN
- * sees technical counts on the system administration surface instead and
- * never gains case content. This is deliberately NOT an employee
+ * restricted to the HR roles behind `employeeSource.search` - the only
+ * logins there are (DEC-063); the system administration surface shows
+ * technical counts only. This is deliberately NOT an employee
  * self-service directory (F.4) and emails are not shown here (F.5).
  */
 import { can, type Actor } from '@exit/domain';

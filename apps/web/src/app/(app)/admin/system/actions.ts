@@ -5,13 +5,11 @@ import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import {
   ServiceError,
-  createBackup,
   disableUser,
   generateAccessReview,
   purgeLiveDirectory,
   reconciliationReport,
   requestManualDirectoryRefresh,
-  restoreAndVerify,
   runQueuedDirectorySyncs,
   setSystemConfig,
   syncEmployees,
@@ -183,38 +181,6 @@ export async function reconciliationAction(): Promise<void> {
     revalidatePath('/admin/system');
     back({
       ok: `Reconciliation: ${report.findings.length} finding(s) (${report.adapterMode} adapter). See the panel below.`,
-    });
-  } catch (e) {
-    if (e instanceof ServiceError) back({ err: errText(e) });
-    throw e;
-  }
-}
-
-export async function createBackupAction(): Promise<void> {
-  const { actor } = await requireAuth();
-  await touchSession();
-  try {
-    const result = await createBackup(actor);
-    revalidatePath('/admin/system');
-    back({
-      ok: `Backup created (${result.sizeBytes} bytes, checksum ${result.checksum.slice(0, 12)}...).`,
-    });
-  } catch (e) {
-    if (e instanceof ServiceError) back({ err: errText(e) });
-    throw e;
-  }
-}
-
-export async function restoreVerifyAction(formData: FormData): Promise<void> {
-  const { actor } = await requireAuth();
-  await touchSession();
-  try {
-    const result = await restoreAndVerify(actor, str(formData, 'backupId'));
-    revalidatePath('/admin/system');
-    back({
-      ok: result.ok
-        ? `Restore test PASSED into the isolated database: ${result.note}`
-        : `Restore test FAILED: ${result.note}`,
     });
   } catch (e) {
     if (e instanceof ServiceError) back({ err: errText(e) });

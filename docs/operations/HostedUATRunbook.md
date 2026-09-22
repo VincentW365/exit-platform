@@ -99,16 +99,18 @@ same people and relationships:
 
 | Identity | Number | Purpose |
 | --- | --- | --- |
-| Alex Admin · Morgan HR · Taylor Officer · Jordan Officer | `UAT-0001` … `0004` | Also seeded as **sign-in accounts** (System Administrator, HR Manager, two HR Officers) so ownership can be assigned *and reassigned* between two officers |
+| Alex Admin · Morgan HR · Taylor Officer · Jordan Officer | `UAT-0001` … `0004` | HR and administration staff **as directory records only** (DEC-063): they are not sign-in accounts. Where a scenario needs a second HR Officer (assign *and reassign* ownership between two officers), the HR Manager maps one of them - Jordan Officer, say - to an HR Officer login under Administration → Organization |
 | Casey Manager → Riley Supervisor; Sam Finance; Drew IT | `UAT-0100`, `0101`, `0200`, `0300` | Reporting roots and a two-level chain |
 | Jamie Notice · Avery Immediate · Cameron Termination | `UAT-1001` … `1003` | One employee per separation workflow — never recycled |
 | Robin Unassigned | `UAT-1101` | No manager recorded |
 | Parker Employee → Quinn Former Manager (inactive) | `UAT-1102`, `1103` | Inactive manager, link preserved |
 | Skyler Minimal | `UAT-1104` | No hire date, no work phone → "Not recorded" |
 
-The role-named accounts (`HR Manager`, `HR Officer`, `System Administrator`) remain
-alongside the named ones; the e2e suites sign in through them, and testers may use
-either. Authorization is role-driven throughout — the names are test data.
+Exactly two sign-in accounts exist, named by function: `HR Manager` and `HR Officer`
+(DEC-063). The e2e suites sign in through them and testers do the same. Any earlier
+`System Administrator`, `Alex Admin`, `Morgan HR`, `Taylor Officer` or `Jordan Officer`
+login is deactivated by the seed with a recorded reason, never converted; the directory
+records stay. Authorization is role-driven throughout — the names are test data.
 
 | UAT need | Fixture support |
 | --- | --- |
@@ -344,7 +346,7 @@ The seeds do **not** populate the employee directory mirror. Only a synchronizat
 fills `employee_source_record`, and the local reset tool's synthetic mode is what
 normally triggers it. On the remote database, after step 5:
 
-1. Sign in to the hosted app as a **System Administrator**.
+1. Sign in to the hosted app as the **HR Manager** (DEC-063: Refresh Directory Now is an HR Manager capability).
 2. Open **Administration → System** and press **Refresh Directory Now**.
 3. Watch the panel; the run should finish `SUCCESS: checked 14, added 14`.
 
@@ -365,7 +367,7 @@ freshness `CURRENT`); with it off, freshness moves to "delayed" after two hours 
 
 ## Recipient configuration and workflow assignments
 
-Group recipients are **not seeded**. An administrator configures them at runtime
+Group recipients are **not seeded**. The HR Manager configures them at runtime
 under **Administration → Recipients**, and dispatch uses a recipient only once it is
 active, approved and verified. In UAT every destination must be a reserved-domain
 address or a `capture://` channel — the `uat` environment refuses anything
@@ -385,9 +387,9 @@ these cases for destructive testing:
 
 | Workflow | Employee | Type | HR Officer |
 | --- | --- | --- | --- |
-| A | Jamie Notice (`UAT-1001`) | Resignation with notice | Taylor Officer |
-| B | Avery Immediate (`UAT-1002`) | Immediate resignation | Jordan Officer |
-| C | Cameron Termination (`UAT-1003`) | Termination | Taylor Officer |
+| A | Jamie Notice (`UAT-1001`) | Resignation with notice | HR Officer |
+| B | Avery Immediate (`UAT-1002`) | Immediate resignation | A second HR Officer login mapped from the directory (e.g. Jordan Officer), to exercise reassignment |
+| C | Cameron Termination (`UAT-1003`) | Termination | HR Officer |
 
 ## Running the worker
 

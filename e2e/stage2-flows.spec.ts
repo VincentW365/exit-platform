@@ -98,12 +98,10 @@ test('Scenario 1 - resignation document: draft, approve, render, authorized down
   expect(dl.headers()['content-disposition']).toContain('attachment');
   await signOut(page);
 
-  // Unauthorized download: a non-case role gets a non-disclosing failure
-  // (Directive 6.3: IT has no login; the line manager covers the negative).
-  await signInAs(page, 'System Administrator');
+  // Unauthenticated download: refused without disclosure (DEC-063: no
+  // non-HR login exists to play the outsider).
   const denied = await page.request.get(pdfHref!);
-  expect([403, 404]).toContain(denied.status());
-  await signOut(page);
+  expect(denied.status()).toBe(401);
 });
 
 test('Scenario 2 - action form: HR-only completion (Directive 6.3), PDF and audit', async ({
@@ -222,11 +220,10 @@ test('Scenario 3 - exit survey: invitation, token completion, duplicate neutral,
   await expect(page.getByRole('heading', { name: 'Response' })).toBeVisible();
   await signOut(page);
 
-  // Line manager cannot view it (no case access at all).
-  await signInAs(page, 'System Administrator');
+  // Signed out, the survey page is not reachable at all (DEC-063: no
+  // non-HR login exists to play the outsider).
   await page.goto(`${caseUrl}/survey`);
-  await expect(page.getByText('Page or Record Not Found')).toBeVisible();
-  await signOut(page);
+  await page.waitForURL('**/signin**');
 });
 
 test('Scenario 4 - restricted termination: new surfaces disclose nothing', async ({ page }) => {
@@ -243,12 +240,6 @@ test('Scenario 4 - restricted termination: new surfaces disclose nothing', async
   }
   await signOut(page);
 
-  // Non-HR and admin roles: same non-disclosure (Directive 6.3: IT/Finance
-  // have no logins; the line manager and admin cover the negative).
-  for (const who of ['System Administrator']) {
-    await signInAs(page, who);
-    await page.goto(`${caseUrl}/documents`);
-    await expect(page.getByText('Page or Record Not Found')).toBeVisible();
-    await signOut(page);
-  }
+  // DEC-063: no login outside HR exists; the unassigned HR Officer above is
+  // the whole negative.
 });

@@ -53,10 +53,10 @@ failed. Nothing disappears quietly.
 
 ## Administration → Email Routing
 
-For each notification type an administrator sets the primary recipient (To), any
+For each notification type the HR Manager sets the primary recipient (To), any
 copies (Cc), any blind copies (Bcc) and a note explaining the route. Held by the
-HR Manager and the System Administrator (`notifications.routing`): who receives
-which notification is a business decision with a technical consequence.
+HR Manager alone (`notifications.routing`, DEC-063): who receives which
+notification is a business decision.
 
 Every change is audited as `NOTIFICATION_ROUTING_CHANGED` with destination keys
 and the actor — never addresses.
@@ -118,7 +118,7 @@ To/Cc/Bcc (masked) · the address actually used (masked) · subject · delivery
 status and attempts · Test/Live indicator · error detail where a send failed.
 
 Filterable by delivery status, case reference and test-only. Read with
-`outbox.view` (HR Manager, System Administrator). It exists to answer *"did this
+`outbox.view` (HR Manager, DEC-063). It exists to answer *"did this
 go to the right place"* — not to become a directory of everyone's email, which is
 why the addresses stay masked even here.
 

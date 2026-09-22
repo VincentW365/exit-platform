@@ -36,7 +36,7 @@ beforeAll(async () => {
   await resetDb();
   setStorageForTests(new LocalStorageAdapter(mkdtempSync(path.join(tmpdir(), 'exit-store-'))));
   officer = await createUser('Riley Officer', 'HR_OFFICER');
-  lineMgr = await createUser('Matrix Line Manager', 'LINE_MANAGER');
+  lineMgr = await createUser('Matrix Line Manager');
   const created = await createDraft(officer.actor, VALID_DRAFT);
   baselineCaseId = created.caseId;
   baselineCaseNumber = created.caseNumber;
@@ -264,7 +264,7 @@ describe('attachments: quarantine-first uploads (REQ-SEC-019/020/022)', () => {
   });
 
   it('departmental roles cannot download case files', async () => {
-    const it2 = await createUser('Sam IT', 'IT_RESPONDER');
+    const it2 = await createUser('Sam IT');
     const listed = await listAttachments(officer.actor, baselineCaseId);
     await expect(downloadAttachment(it2.actor, listed[0]!.id)).rejects.toMatchObject({
       code: 'NOT_FOUND',

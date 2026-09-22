@@ -113,8 +113,8 @@ test('stage 4 surfaces: visual + axe sweep', async ({ page }) => {
   await axeCheck(page, 'support');
   await signOut(page);
 
-  // Technical administration surfaces (System Administrator).
-  await signInAs(page, 'System Administrator');
+  // Platform administration surfaces (HR Manager, DEC-063).
+  await signInAs(page, 'HR Manager');
   await page.goto('/admin/system');
   await snap(page, '12-system-administration', true);
   await axeCheck(page, 'system-administration');

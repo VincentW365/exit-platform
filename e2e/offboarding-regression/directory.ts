@@ -184,7 +184,7 @@ export async function runDirectoryEvidence(
 
   // --- manual-refresh ---------------------------------------------------------------
   await ev.step('manual-refresh', 'Refresh Directory Now', page, async () => {
-    await ui.switchTo(page, 'System Administrator');
+    await ui.switchTo(page, 'HR Manager');
     await page.goto('/admin/system');
     await ev.shot('manual-refresh', page, 'before', 'Employee Directory panel before the refresh');
     const before = bridge.directoryRuns({ kind: 'MANUAL', limit: 1 })[0] ?? null;
@@ -479,7 +479,7 @@ export async function runDirectoryEvidence(
       after.connection === 'HEALTHY',
       after.connection,
     );
-    await ui.switchTo(page, 'System Administrator');
+    await ui.switchTo(page, 'HR Manager');
     await page.goto('/admin/system');
     await ev.shot('offline-cache', page, 'admin_after_recovery', 'Health panel after recovery');
     await page.goto('/admin/directory-sync?errors=yes');

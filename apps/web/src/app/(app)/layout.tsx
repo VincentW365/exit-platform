@@ -64,7 +64,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     insight.push({ href: '/reports', label: 'Reports', icon: <ReportsIcon /> });
   if (!hasAdminHub && can(actor, 'baseline.viewDashboard'))
     insight.push({ href: '/baseline', label: 'Baseline', icon: <ChartIcon /> });
-  if (can(actor, 'audit.viewGlobal') || can(actor, 'audit.viewTechnical'))
+  if (can(actor, 'audit.viewGlobal'))
     insight.push({ href: '/audit', label: 'Audit Center', icon: <AuditIcon /> });
 
   const manage: Item[] = [];

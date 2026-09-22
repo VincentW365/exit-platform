@@ -14,8 +14,8 @@ import {
   interpretDateOnlyInZone,
   type BusinessCalendar,
 } from './calendar.ts';
-import type { Actor, Role } from './roles.ts';
-import { hasRole } from './roles.ts';
+import type { Actor, StoredRole } from './roles.ts';
+import { hasRole, isRole } from './roles.ts';
 import type { DepartureType } from './caseStates.ts';
 
 // --- vocabulary --------------------------------------------------------------
@@ -83,13 +83,13 @@ export interface TaskDefinitionShape {
   title: string;
   description: string;
   department: TaskDepartment;
-  requiredRole: Role;
+  requiredRole: StoredRole;
   taskKind: TaskKind;
   priority: TaskPriority;
   confidential: boolean;
   required: boolean;
   waiverAllowed: boolean;
-  waiverAuthority: Role;
+  waiverAuthority: StoredRole;
   dueBasis: DueBasis;
   dueOffsetDays: number;
   dueOffsetKind: DueOffsetKind;
@@ -150,6 +150,17 @@ export function workflowDefinitionErrors(def: WorkflowDefinitionShape): string[]
       errors.push(`Task "${t.taskCode}": release offset must be within +/-90 days in hours.`);
     if (t.dependsOnCodes.includes(t.taskCode))
       errors.push(`Task "${t.taskCode}" cannot depend on itself.`);
+    // DEC-063: a NEW or edited definition may only name active roles. Stored
+    // definitions on superseded versions keep their deprecated values for
+    // history; they are never re-validated through this path.
+    if (!isRole(t.requiredRole))
+      errors.push(
+        `Task "${t.taskCode}": required role ${t.requiredRole} is retired; use HR_MANAGER or HR_OFFICER.`,
+      );
+    if (!isRole(t.waiverAuthority))
+      errors.push(
+        `Task "${t.taskCode}": waiver authority ${t.waiverAuthority} is retired; use HR_MANAGER or HR_OFFICER.`,
+      );
   }
   // Dependencies must reference existing enabled tasks and be acyclic.
   const enabledCodes = new Set(enabled.map((t) => t.taskCode));
@@ -361,7 +372,7 @@ export function taskTransitionError(
     status: TaskStatus;
     taskKind: TaskKind;
     waiverAllowed: boolean;
-    waiverAuthority: Role;
+    waiverAuthority: StoredRole;
   },
   actor: Actor | null,
   reason?: string,
@@ -372,7 +383,9 @@ export function taskTransitionError(
     if (task.taskKind === 'ACCESS_REVOCATION') return 'Access revocation cannot be waived (I.9).';
     if (!task.waiverAllowed) return 'This task does not permit a waiver (D.8).';
     if (!reason?.trim()) return 'A waiver requires a reason (fixed default 23).';
-    if (actor && !hasRole(actor, task.waiverAuthority))
+    // A waiver authority stored as a deprecated role (legacy workflow
+    // versions) can never be satisfied: nobody signs in with it (DEC-063).
+    if (actor && !(isRole(task.waiverAuthority) && hasRole(actor, task.waiverAuthority)))
       return `Only ${task.waiverAuthority} may approve this waiver (D.9).`;
   }
   if ((action === 'block' || action === 'cancel' || action === 'reassign') && !reason?.trim())
@@ -439,9 +452,10 @@ export function overdueSeverity(
 // --- queue access (sections J and R) -----------------------------------------
 
 /**
- * Departments whose queue a role may read. SYSTEM_ADMIN: none (R.8).
- * Directive 6.3 I/J: IT and Finance are reached by controlled email, never
- * logins - HR works any residual IT/FINANCE tasks on legacy (v1) instances.
+ * Departments whose queue a role may read. An account with no active role
+ * reads none (R.8, DEC-063). Directive 6.3 I/J: IT and Finance are reached
+ * by controlled email, never logins - HR works any residual IT/FINANCE tasks
+ * on legacy (v1) instances.
  */
 export function queueDepartmentsForActor(actor: Actor): TaskDepartment[] {
   const out: TaskDepartment[] = [];

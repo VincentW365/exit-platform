@@ -172,10 +172,10 @@ test('visual + accessibility sweep of principal surfaces', async ({ page }) => {
   await axeCheck(page, 'audit-feed');
   await signOut(page);
 
-  // Unauthorized page as a non-HR role (Directive 6.3: the IT/Finance
-  // responder logins are retired; the line manager covers this negative).
-  await signInAs(page, 'System Administrator');
-  await page.goto('/cases');
+  // Unauthorized page (DEC-063: only HR roles sign in; the Audit Center is
+  // the HR Manager's, so the HR Officer covers this negative).
+  await signInAs(page, 'HR Officer');
+  await page.goto('/audit');
   await page.waitForURL('**/unauthorized');
   await snap(page, '12-unauthorized');
   await axeCheck(page, 'unauthorized');

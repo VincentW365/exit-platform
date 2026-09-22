@@ -70,7 +70,7 @@ beforeAll(async () => {
   await seedStage3Fixtures();
   officer = await createUser('D63 Officer', 'HR_OFFICER');
   manager = await createUser('D63 Manager', 'HR_MANAGER');
-  lineMgr = await createUser('D63 Line Manager', 'LINE_MANAGER');
+  lineMgr = await createUser('D63 Line Manager');
 });
 
 describe('deterministic derivation at activation (B/C; AC 5-7, 11-12)', () => {

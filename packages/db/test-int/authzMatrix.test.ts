@@ -1,9 +1,13 @@
 /**
- * Role-by-surface authorization matrix (Directive 1.1 section E).
+ * Role-by-surface authorization matrix (Directive 1.1 section E; two-role
+ * model DEC-063).
  *
- * Every role is exercised against every Stage 1 surface at the SERVICE layer
- * (the single server-side authorization choke point). The expected outcome
- * table below is the acceptance matrix reproduced in Stage1AcceptanceReport.
+ * Every actor kind is exercised against every surface at the SERVICE layer
+ * (the single server-side authorization choke point). The two application
+ * roles are joined by NO_ACTIVE_ROLE: a signed-in account whose stored role
+ * assignments are all retired values, which the domain treats as holding no
+ * role at all. It stands in for every former login kind (IT, Finance, line
+ * manager, System Administrator) and must be refused everywhere.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Role } from '@exit/domain';
@@ -24,133 +28,48 @@ import {
 import { createUser, resetDb, VALID_DRAFT } from './helpers.ts';
 
 type Outcome = 'ALLOW' | 'FORBIDDEN' | 'NOT_FOUND';
+type MatrixActor = Role | 'NO_ACTIVE_ROLE';
 
-const ROLES: Role[] = [
-  'HR_MANAGER',
-  'HR_OFFICER',
-  'IT_RESPONDER',
-  'FINANCE_RESPONDER',
-  'LINE_MANAGER',
-  'SYSTEM_ADMIN',
-];
+const ACTORS: MatrixActor[] = ['HR_MANAGER', 'HR_OFFICER', 'NO_ACTIVE_ROLE'];
 
 /**
  * Expected outcomes per surface. HR_MANAGER/HR_OFFICER here are NOT
  * participants of the restricted case - restricted access must come from
  * explicit assignment, never from role alone.
  */
-const EXPECTED: Record<string, Record<Role, Outcome>> = {
-  caseList: {
-    HR_MANAGER: 'ALLOW',
-    HR_OFFICER: 'ALLOW',
-    IT_RESPONDER: 'FORBIDDEN',
-    FINANCE_RESPONDER: 'FORBIDDEN',
-    LINE_MANAGER: 'FORBIDDEN',
-    SYSTEM_ADMIN: 'FORBIDDEN',
-  },
-  employeeSearch: {
-    HR_MANAGER: 'ALLOW',
-    HR_OFFICER: 'ALLOW',
-    IT_RESPONDER: 'FORBIDDEN',
-    FINANCE_RESPONDER: 'FORBIDDEN',
-    LINE_MANAGER: 'FORBIDDEN',
-    SYSTEM_ADMIN: 'FORBIDDEN',
-  },
-  caseCreate: {
-    HR_MANAGER: 'ALLOW',
-    HR_OFFICER: 'ALLOW',
-    IT_RESPONDER: 'FORBIDDEN',
-    FINANCE_RESPONDER: 'FORBIDDEN',
-    LINE_MANAGER: 'FORBIDDEN',
-    SYSTEM_ADMIN: 'FORBIDDEN',
-  },
-  normalCaseDetail: {
-    HR_MANAGER: 'ALLOW',
-    HR_OFFICER: 'ALLOW',
-    IT_RESPONDER: 'NOT_FOUND',
-    FINANCE_RESPONDER: 'NOT_FOUND',
-    LINE_MANAGER: 'NOT_FOUND',
-    SYSTEM_ADMIN: 'NOT_FOUND',
-  },
+const EXPECTED: Record<string, Record<MatrixActor, Outcome>> = {
+  caseList: { HR_MANAGER: 'ALLOW', HR_OFFICER: 'ALLOW', NO_ACTIVE_ROLE: 'FORBIDDEN' },
+  employeeSearch: { HR_MANAGER: 'ALLOW', HR_OFFICER: 'ALLOW', NO_ACTIVE_ROLE: 'FORBIDDEN' },
+  caseCreate: { HR_MANAGER: 'ALLOW', HR_OFFICER: 'ALLOW', NO_ACTIVE_ROLE: 'FORBIDDEN' },
+  normalCaseDetail: { HR_MANAGER: 'ALLOW', HR_OFFICER: 'ALLOW', NO_ACTIVE_ROLE: 'NOT_FOUND' },
   restrictedCaseDetail: {
     HR_MANAGER: 'NOT_FOUND',
     HR_OFFICER: 'NOT_FOUND',
-    IT_RESPONDER: 'NOT_FOUND',
-    FINANCE_RESPONDER: 'NOT_FOUND',
-    LINE_MANAGER: 'NOT_FOUND',
-    SYSTEM_ADMIN: 'NOT_FOUND',
+    NO_ACTIVE_ROLE: 'NOT_FOUND',
   },
-  hrDashboard: {
-    HR_MANAGER: 'ALLOW',
-    HR_OFFICER: 'ALLOW',
-    IT_RESPONDER: 'FORBIDDEN',
-    FINANCE_RESPONDER: 'FORBIDDEN',
-    LINE_MANAGER: 'FORBIDDEN',
-    SYSTEM_ADMIN: 'FORBIDDEN',
-  },
-  baselineDashboard: {
-    HR_MANAGER: 'ALLOW',
-    HR_OFFICER: 'ALLOW',
-    IT_RESPONDER: 'FORBIDDEN',
-    FINANCE_RESPONDER: 'FORBIDDEN',
-    LINE_MANAGER: 'FORBIDDEN',
-    SYSTEM_ADMIN: 'FORBIDDEN',
-  },
-  baselineExport: {
-    HR_MANAGER: 'ALLOW',
-    HR_OFFICER: 'ALLOW',
-    IT_RESPONDER: 'FORBIDDEN',
-    FINANCE_RESPONDER: 'FORBIDDEN',
-    LINE_MANAGER: 'FORBIDDEN',
-    SYSTEM_ADMIN: 'FORBIDDEN',
-  },
+  hrDashboard: { HR_MANAGER: 'ALLOW', HR_OFFICER: 'ALLOW', NO_ACTIVE_ROLE: 'FORBIDDEN' },
+  baselineDashboard: { HR_MANAGER: 'ALLOW', HR_OFFICER: 'ALLOW', NO_ACTIVE_ROLE: 'FORBIDDEN' },
+  baselineExport: { HR_MANAGER: 'ALLOW', HR_OFFICER: 'ALLOW', NO_ACTIVE_ROLE: 'FORBIDDEN' },
   globalAuditFeed: {
-    // Directive 6.1 (K): HR_MANAGER joined the Audit Centre audience
-    // (restricted-case rows are minimized inside the service) and
-    // SYSTEM_ADMIN receives the TECHNICAL feed only (technical categories,
-    // never rows linked to a case - asserted in directive61AuditCentre).
+    // Directive 6.1 (K): the HR Manager is the Audit Centre audience
+    // (restricted-case rows are minimized inside the service). DEC-063
+    // retired the separate technical feed with the System Administrator.
     HR_MANAGER: 'ALLOW',
     HR_OFFICER: 'FORBIDDEN',
-    IT_RESPONDER: 'FORBIDDEN',
-    FINANCE_RESPONDER: 'FORBIDDEN',
-    LINE_MANAGER: 'FORBIDDEN',
-    SYSTEM_ADMIN: 'ALLOW',
+    NO_ACTIVE_ROLE: 'FORBIDDEN',
   },
-  normalCaseAudit: {
-    HR_MANAGER: 'ALLOW',
-    HR_OFFICER: 'ALLOW',
-    IT_RESPONDER: 'NOT_FOUND',
-    FINANCE_RESPONDER: 'NOT_FOUND',
-    LINE_MANAGER: 'NOT_FOUND',
-    SYSTEM_ADMIN: 'NOT_FOUND',
-  },
+  normalCaseAudit: { HR_MANAGER: 'ALLOW', HR_OFFICER: 'ALLOW', NO_ACTIVE_ROLE: 'NOT_FOUND' },
   normalCaseAttachments: {
     HR_MANAGER: 'ALLOW',
     HR_OFFICER: 'ALLOW',
-    IT_RESPONDER: 'NOT_FOUND',
-    FINANCE_RESPONDER: 'NOT_FOUND',
-    LINE_MANAGER: 'NOT_FOUND',
-    SYSTEM_ADMIN: 'NOT_FOUND',
+    NO_ACTIVE_ROLE: 'NOT_FOUND',
   },
-  approveMutation: {
-    HR_MANAGER: 'ALLOW',
-    HR_OFFICER: 'FORBIDDEN',
-    IT_RESPONDER: 'NOT_FOUND',
-    FINANCE_RESPONDER: 'NOT_FOUND',
-    LINE_MANAGER: 'NOT_FOUND',
-    SYSTEM_ADMIN: 'NOT_FOUND',
-  },
-  adminUsers: {
-    HR_MANAGER: 'FORBIDDEN',
-    HR_OFFICER: 'FORBIDDEN',
-    IT_RESPONDER: 'FORBIDDEN',
-    FINANCE_RESPONDER: 'FORBIDDEN',
-    LINE_MANAGER: 'FORBIDDEN',
-    SYSTEM_ADMIN: 'ALLOW',
-  },
+  approveMutation: { HR_MANAGER: 'ALLOW', HR_OFFICER: 'FORBIDDEN', NO_ACTIVE_ROLE: 'NOT_FOUND' },
+  // DEC-063: role administration is an HR Manager capability.
+  adminUsers: { HR_MANAGER: 'ALLOW', HR_OFFICER: 'FORBIDDEN', NO_ACTIVE_ROLE: 'FORBIDDEN' },
 };
 
-const actors = new Map<Role, Awaited<ReturnType<typeof createUser>>>();
+const actors = new Map<MatrixActor, Awaited<ReturnType<typeof createUser>>>();
 let normalCaseId: string;
 let restrictedCaseId: string;
 let pendingCaseId: string;
@@ -169,7 +88,13 @@ async function classify(p: Promise<unknown>): Promise<Outcome> {
 
 beforeAll(async () => {
   await resetDb();
-  for (const role of ROLES) actors.set(role, await createUser(`Matrix ${role}`, role));
+  for (const kind of ACTORS)
+    actors.set(
+      kind,
+      kind === 'NO_ACTIVE_ROLE'
+        ? await createUser('Matrix NO_ACTIVE_ROLE')
+        : await createUser(`Matrix ${kind}`, kind),
+    );
   const owner = await createUser('Matrix Owner', 'HR_OFFICER');
   const restrictedOwner = await createUser('Matrix RestrictedOwner', 'HR_MANAGER');
   normalCaseId = (await createDraft(owner.actor, VALID_DRAFT)).caseId;
@@ -187,7 +112,7 @@ beforeAll(async () => {
 });
 
 describe('role-by-surface authorization matrix', () => {
-  const surfaces: Record<string, (role: Role) => Promise<unknown>> = {
+  const surfaces: Record<string, (kind: MatrixActor) => Promise<unknown>> = {
     caseList: (r) => listCases(actors.get(r)!.actor, {}),
     employeeSearch: (r) => searchEmployees(actors.get(r)!.actor, 'avery'),
     caseCreate: (r) =>
@@ -212,12 +137,12 @@ describe('role-by-surface authorization matrix', () => {
   for (const [surface, run] of Object.entries(surfaces)) {
     it(`surface: ${surface}`, async () => {
       const expected = EXPECTED[surface]!;
-      for (const role of ROLES) {
+      for (const kind of ACTORS) {
         // approveMutation would actually approve for HR_MANAGER; run it last
         // for the manager and tolerate ALLOW consuming the transition.
-        if (surface === 'approveMutation' && role === 'HR_MANAGER') continue;
-        const outcome = await classify(run(role));
-        expect(outcome, `${surface} as ${role}`).toBe(expected[role]);
+        if (surface === 'approveMutation' && kind === 'HR_MANAGER') continue;
+        const outcome = await classify(run(kind));
+        expect(outcome, `${surface} as ${kind}`).toBe(expected[kind]);
       }
       if (surface === 'approveMutation') {
         const outcome = await classify(run('HR_MANAGER'));
@@ -228,11 +153,11 @@ describe('role-by-surface authorization matrix', () => {
 
   it('restricted case is absent from every unauthorized aggregate surface', async () => {
     // list rows
-    for (const role of ['HR_MANAGER', 'HR_OFFICER'] as Role[]) {
-      const rows = await listCases(actors.get(role)!.actor, {});
+    for (const kind of ['HR_MANAGER', 'HR_OFFICER'] as const) {
+      const rows = await listCases(actors.get(kind)!.actor, {});
       expect(
         rows.some((c) => c.id === restrictedCaseId),
-        role,
+        kind,
       ).toBe(false);
     }
     // search by restricted employee name
@@ -243,8 +168,9 @@ describe('role-by-surface authorization matrix', () => {
     expect(dash.some((r) => r.id === restrictedCaseId)).toBe(false);
     const csv = await baselineExportCsv(actors.get('HR_OFFICER')!.actor);
     expect(csv.includes('Morgan')).toBe(false);
-    // DEC-042: no role discovers restricted rows - even minimized ones.
-    const adminRows = await listCases(actors.get('SYSTEM_ADMIN')!.actor, {}).catch(() => []);
-    expect(JSON.stringify(adminRows)).not.toContain('Morgan');
+    // DEC-042 / DEC-063: an account with no active role discovers nothing -
+    // not even minimized rows.
+    const noRoleRows = await listCases(actors.get('NO_ACTIVE_ROLE')!.actor, {}).catch(() => []);
+    expect(JSON.stringify(noRoleRows)).not.toContain('Morgan');
   });
 });

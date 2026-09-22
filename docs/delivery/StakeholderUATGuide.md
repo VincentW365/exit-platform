@@ -35,7 +35,7 @@ needs 20-30 minutes and can run their slice whenever they have time.
 | Finance Responder | Finance Responder | My queue | S1, S5 |
 | Line Manager | Line Manager | My queue / handover | S1, S7(handover) |
 | HR Manager (privacy/audit duties, DEC-042) | HR Manager | Administration → Privacy; Audit centre | S8, cross-scenario |
-| System Administrator | System Administrator | Administration → System / Health | S11, S12, integration status |
+| HR Manager (platform administration, DEC-063) | HR Manager | Administration → System / Health | S11, S12, integration health |
 | (fixture for S11) | Second IT Responder | - | disabled during Scenario 11 |
 
 ## 2. Prepared synthetic scenario data (section B)
@@ -60,7 +60,7 @@ production-readiness state instead; `... status` is a read-only check.)
 | OFF-2026-0010 | Spare ACTIVE case (left by the automated deactivation drill); usable for Scenario 11 reassignment practice. A CLOSED synthetic outage drill is also visible on the Continuity page as a worked example. |
 
 Scenario 11 (user deactivation): reassign an open task to Second IT Responder, then
-as System Administrator disable that account and watch the session revoke and the
+as HR Manager (DEC-063) disable that account and watch the session revoke and the
 orphaned task get reassigned. Scenario 12 (fallback): declare a synthetic
 outage on the Continuity page, record FB entries, reconcile once, close.
 Scenario 13: Reports → run any report with purpose TEST, export CSV.
@@ -74,7 +74,7 @@ The fixture adapter serves EMP-TEST employees; nothing leaves the machine.
 **Option 2 - private live demonstration (authorized HR only).** Facilitator
 procedure, in this exact order:
 
-1. `/admin/system` (System Administrator): confirm credential status "configured"; press
+1. `/admin/system` (HR Manager, DEC-063): confirm credential status "configured"; press
    "Test connection (read-only)" - the result shows aggregate counts only.
 2. Set configuration `bamboohr.mode` = `live`, then "Run directory sync
    (live adapter)". The RED banner appears: "LIVE HR DIRECTORY DATA — DO NOT
@@ -105,9 +105,9 @@ Work your scenarios, then judge your area:
 - **HR Manager (privacy/audit duties, DEC-042):** privacy dashboard,
   retention/holds, disclosures, survey-response restrictions, and the Audit
   centre evidence trail (history, approvals, corrections, exceptions).
-- **System Administrator:** integration health, provider status, users/
-  roles, backup, worker health, support - and confirm HR case content stays
-  unavailable to you.
+- **HR Manager (platform administration, DEC-063):** integration health,
+  provider status, users/roles, worker health, support; backups and restore
+  tests are infrastructure operations outside the application.
 
 ## 5. Feedback questionnaire (section G - answer per role)
 

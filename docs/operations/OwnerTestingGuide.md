@@ -31,7 +31,7 @@ Use the development role switcher. Active accounts after the rebuild:
 | HR Manager | HR_MANAGER | Case approval, officer assignment, releases needing management authority, clearance |
 | HR Officer | HR_OFFICER | Daily case work: create, prepare, complete |
 | _(no manager login)_ | — | Line managers receive a departure notice by email and hold no login, queue or task (DEC-051/DEC-052) |
-| System Administrator | SYSTEM_ADMIN | Technical administration; no case content |
+| _(no administrator login)_ | — | Platform administration belongs to the HR Manager (DEC-063); backups and restore tests are infrastructure operations outside the application |
 
 IT and Finance responder logins no longer exist — those departments receive
 automated controlled emails and confirm through secure links (section 6).
@@ -137,8 +137,8 @@ automated controlled emails and confirm through secure links (section 6).
 | Feature flags & config | Administration → System | The five automation flags; escalation thresholds; send-control levels |
 | Email delivery status | Administration → Email delivery status | Technical outbox view: captured/submitted rows, retries, dead letters |
 | Organization | Administration → Organization | The live directory coverage and hierarchy health |
-| Pilot readiness | Administration → Pilot | 24 readiness gates (9 active templates, verified recipients, backups, …) |
-| Audit center | Audit center | Business lens (HR Manager) and technical lens (System Administrator) |
+| Pilot readiness | Administration → Pilot | 24 readiness gates (9 active templates, verified recipients, attested backups, …) |
+| Audit center | Audit center | The single HR Manager feed - business and technical events together (DEC-063) |
 | Reports | Reports | Run any of the 22 reports; TEST records are excluded unless you filter for them |
 
 ## 7. Keeping the environment healthy

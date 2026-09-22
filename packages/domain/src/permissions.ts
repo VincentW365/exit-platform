@@ -11,9 +11,9 @@
  *  - RESTRICTED (termination) cases: content AND discovery require explicit HR
  *    participation (DEC-042 removed the oversight roles; there is no longer a
  *    role-based minimized-discovery path);
- *  - SYSTEM_ADMIN has no business-record access by default;
- *  - departmental roles (IT / Finance / line manager) have no case access in
- *    Stage 1 - their queues arrive with the Stage 3 workflow engine.
+ *  - only HR_MANAGER and HR_OFFICER exist as logins (DEC-063); IT, Finance,
+ *    the reporting manager and the former System Administrator hold no
+ *    account and therefore no access of any kind.
  */
 import type { Actor, Role } from './roles.ts';
 import { hasRole } from './roles.ts';
@@ -39,8 +39,8 @@ function isHrParticipant(actor: Actor, c: CaseAccessContext): boolean {
 /** Full case content visibility. */
 export function canViewCase(actor: Actor, c: CaseAccessContext): boolean {
   if (c.classification === 'RESTRICTED') {
-    // Explicit assignment only (DEC-035). Roles alone - including HR_MANAGER
-    // and SYSTEM_ADMIN - do not grant content access.
+    // Explicit assignment only (DEC-035). Roles alone - the HR_MANAGER
+    // included - do not grant content access.
     return isHrParticipant(actor, c);
   }
   // CONFIDENTIAL (normal) cases.
@@ -57,15 +57,13 @@ export function canDiscoverCase(actor: Actor, c: CaseAccessContext): boolean {
 }
 
 /**
- * Access levels. Directive 6.3 D/I/J retired the Stage-2 limited form
- * surfaces: the Action Form is HR-controlled and Finance/IT act by email.
- * The line manager keeps a genuine responsibility - the handover - so an
- * explicitly assigned MANAGER participant retains the scoped MANAGER_FORM
- * level (it no longer unlocks any Action Form action; form.* permissions key
- * on full case view). FINANCE_FORM survives in the type for historical read
- * paths only and is never granted.
+ * Access levels. Only HR roles sign in (DEC-063), so case content is either
+ * fully visible (FULL), discoverable without content (DISCOVER) or hidden
+ * (NONE). The former FINANCE_FORM and MANAGER_FORM levels are gone with the
+ * responder and line-manager logins: Finance, IT and the reporting manager
+ * act through controlled email and secure links, never through a case view.
  */
-export type CaseAccessLevel = 'FULL' | 'FINANCE_FORM' | 'MANAGER_FORM' | 'DISCOVER' | 'NONE';
+export type CaseAccessLevel = 'FULL' | 'DISCOVER' | 'NONE';
 
 export function caseAccessLevel(actor: Actor, c: CaseAccessContext): CaseAccessLevel {
   if (canViewCase(actor, c)) return 'FULL';
@@ -284,10 +282,12 @@ export type GlobalAction =
   | 'notifTemplate.activate'
   | 'queue.view'
   | 'exceptions.viewFeed'
-  // Stage 4 (Directive 4): administration, integrations, pilot, reporting,
-  // privacy, continuity, support.
+  // Stage 4 (Directive 4): administration, pilot, reporting, privacy,
+  // continuity, support. DEC-063 removed the technical-only actions
+  // (admin.integrations, backup.operate, audit.viewTechnical,
+  // pilot.adminApprove): no business role holds them, so they are not
+  // application permissions at all.
   | 'admin.system'
-  | 'admin.integrations'
   | 'recipients.viewBusiness'
   | 'recipients.editBusiness'
   | 'recipients.editTechnical'
@@ -305,20 +305,17 @@ export type GlobalAction =
   | 'pilot.view'
   | 'pilot.manage'
   | 'pilot.hrApprove'
-  | 'pilot.adminApprove'
   | 'reports.view'
   | 'reports.export'
   | 'reports.schedule'
   | 'privacy.view'
   | 'privacy.operate'
-  | 'backup.operate'
   | 'continuity.operate'
   | 'support.use'
   | 'support.manage'
   | 'sop.view'
   | 'health.view'
   // Directive 6.1: audit centre + organization administration.
-  | 'audit.viewTechnical'
   | 'audit.export'
   | 'org.view'
   | 'admin.organization';
@@ -328,12 +325,21 @@ const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   'case.list': ['HR_MANAGER', 'HR_OFFICER'],
   'baseline.viewDashboard': ['HR_MANAGER', 'HR_OFFICER'],
   'baseline.export': ['HR_MANAGER', 'HR_OFFICER'],
-  // Directive 6.1 (K) / DEC-042: the Audit Centre serves HR_MANAGER;
-  // restricted-case rows are minimized in the service for viewers without
-  // case access. SYSTEM_ADMIN has the separate technical feed.
+  // Two-role model (DEC-063, 2026-09-22). HR_MANAGER is the highest business
+  // authority and owns every HR-operational administration the platform
+  // needs; HR_OFFICER processes cases. Every former SYSTEM_ADMIN permission
+  // was classified before it moved: genuinely HR-operational ones came to
+  // HR_MANAGER, technical-only ones (integrations, backups, the technical
+  // audit feed, the second pilot approver) left the application entirely.
+  // Directive 6.1 (K): the Audit Centre serves HR_MANAGER; restricted-case
+  // rows are minimized in the service for viewers without case access.
   'audit.viewGlobal': ['HR_MANAGER'],
-  'admin.roles': ['SYSTEM_ADMIN'],
-  'admin.flags': ['SYSTEM_ADMIN'],
+  // Current application-role administration (grant/revoke HR roles, map a
+  // directory person to an account). roleChangeErrors still forbids
+  // self-grant.
+  'admin.roles': ['HR_MANAGER'],
+  // Automation flags gate offboarding automation - business settings.
+  'admin.flags': ['HR_MANAGER'],
   'admin.calendar': ['HR_MANAGER'],
   'admin.configLists': ['HR_MANAGER'],
   'employeeSource.search': ['HR_MANAGER', 'HR_OFFICER'],
@@ -350,59 +356,63 @@ const GLOBAL_MATRIX: Readonly<Record<GlobalAction, readonly Role[]>> = {
   'notifTemplate.view': ['HR_MANAGER', 'HR_OFFICER'],
   'notifTemplate.draft': ['HR_MANAGER', 'HR_OFFICER'],
   'notifTemplate.activate': ['HR_MANAGER'],
-  // Directive 3 J / Directive 6.3 I-J: department queues serve HR and line
-  // managers (handover). IT/Finance participate by controlled email, not
-  // logins - their roles keep only historical read support.
+  // Directive 3 J / Directive 6.3 I-J: the work queue serves HR. IT, Finance
+  // and the reporting manager participate by controlled email, not logins.
   'queue.view': ['HR_MANAGER', 'HR_OFFICER'],
   'exceptions.viewFeed': ['HR_MANAGER', 'HR_OFFICER'],
-  // Directive 4: business administration is HR; technical administration is
-  // SYSTEM_ADMIN (never HR case content - I.1-I.3).
-  'admin.system': ['SYSTEM_ADMIN'],
-  'admin.integrations': ['SYSTEM_ADMIN'],
-  'recipients.viewBusiness': ['HR_MANAGER', 'HR_OFFICER', 'SYSTEM_ADMIN'],
-  'recipients.editBusiness': ['HR_MANAGER', 'HR_OFFICER'],
-  'recipients.editTechnical': ['SYSTEM_ADMIN'],
+  // System settings that HR operates: directory synchronization and the
+  // business-facing configuration keys. The technical sections that page
+  // used to host (backups, restore verification) are gone with DEC-063.
+  'admin.system': ['HR_MANAGER'],
+  // Recipients: officers may see the directory of destinations and enter a
+  // recipient for ONE case (a case action); configuring global recipients is
+  // oversight work (owner directive 2026-09-22, section 4).
+  'recipients.viewBusiness': ['HR_MANAGER', 'HR_OFFICER'],
+  'recipients.editBusiness': ['HR_MANAGER'],
+  'recipients.editTechnical': ['HR_MANAGER'],
   'recipients.approveExternal': ['HR_MANAGER'],
   'reasons.manage': ['HR_MANAGER'],
-  'outbox.view': ['SYSTEM_ADMIN', 'HR_MANAGER'],
-  // Rehearsal mode diverts every outgoing message. HR runs the rehearsal and
-  // the administrator owns delivery, so both hold the switch - the same shape
-  // as pilot management.
-  'notifications.testMode': ['HR_MANAGER', 'SYSTEM_ADMIN'],
-  // Who receives which notification is a business decision with a technical
-  // consequence, so HR and the administrator hold it together.
-  'notifications.routing': ['HR_MANAGER', 'SYSTEM_ADMIN'],
-  'outbox.resolve': ['SYSTEM_ADMIN'],
-  'mailbox.dev': ['SYSTEM_ADMIN', 'HR_MANAGER', 'HR_OFFICER'],
-  'identity.admin': ['SYSTEM_ADMIN'],
-  'identity.accessReview': ['SYSTEM_ADMIN'],
-  'sync.run': ['SYSTEM_ADMIN', 'HR_MANAGER'],
-  // Employee directory synchronization health and history (2026-09-15).
-  'directory.viewSync': ['SYSTEM_ADMIN', 'HR_MANAGER'],
-  'pilot.view': ['HR_MANAGER', 'SYSTEM_ADMIN'],
-  'pilot.manage': ['HR_MANAGER', 'SYSTEM_ADMIN'],
+  // Notification/outbox oversight and the resolution of operational
+  // dispatch failures are HR Manager responsibilities.
+  'outbox.view': ['HR_MANAGER'],
+  'notifications.testMode': ['HR_MANAGER'],
+  'notifications.routing': ['HR_MANAGER'],
+  'outbox.resolve': ['HR_MANAGER'],
+  // The development/UAT capture mailbox: both HR roles inspect what would
+  // have been sent (nothing leaves the application in those environments).
+  'mailbox.dev': ['HR_MANAGER', 'HR_OFFICER'],
+  // Access administration: disabling an account and the periodic snapshot of
+  // who holds which application role are HR's own administration domain -
+  // they list accounts and roles, never infrastructure.
+  'identity.admin': ['HR_MANAGER'],
+  'identity.accessReview': ['HR_MANAGER'],
+  // Employee directory synchronization: Refresh Directory Now, status,
+  // history (2026-09-15; HR Manager owns it since DEC-063).
+  'sync.run': ['HR_MANAGER'],
+  'directory.viewSync': ['HR_MANAGER'],
+  // Pilot activation requires one HR Manager approval (DEC-063).
+  'pilot.view': ['HR_MANAGER'],
+  'pilot.manage': ['HR_MANAGER'],
   'pilot.hrApprove': ['HR_MANAGER'],
-  'pilot.adminApprove': ['SYSTEM_ADMIN'],
   'reports.view': ['HR_MANAGER', 'HR_OFFICER'],
   'reports.export': ['HR_MANAGER', 'HR_OFFICER'],
   'reports.schedule': ['HR_MANAGER'],
   // DEC-042: HR_MANAGER absorbs privacy/retention oversight.
   'privacy.view': ['HR_MANAGER'],
   'privacy.operate': ['HR_MANAGER'],
-  'backup.operate': ['SYSTEM_ADMIN'],
-  'continuity.operate': ['HR_MANAGER', 'SYSTEM_ADMIN'],
-  'support.use': ['HR_MANAGER', 'HR_OFFICER', 'IT_RESPONDER', 'FINANCE_RESPONDER', 'SYSTEM_ADMIN'],
-  'support.manage': ['SYSTEM_ADMIN'],
-  'sop.view': ['HR_MANAGER', 'HR_OFFICER', 'IT_RESPONDER', 'FINANCE_RESPONDER', 'SYSTEM_ADMIN'],
-  'health.view': ['SYSTEM_ADMIN', 'HR_MANAGER'],
-  // Directive 6.1 (K): SYSTEM_ADMIN sees technical events only (never HR case
-  // content - enforced in the service as technical categories AND no caseId).
-  'audit.viewTechnical': ['SYSTEM_ADMIN'],
+  'continuity.operate': ['HR_MANAGER'],
+  // Support: both HR roles raise tickets and pull diagnostics; triage is
+  // oversight. SOPs serve both.
+  'support.use': ['HR_MANAGER', 'HR_OFFICER'],
+  'support.manage': ['HR_MANAGER'],
+  'sop.view': ['HR_MANAGER', 'HR_OFFICER'],
+  // Operational health: database, storage, worker heartbeat, directory
+  // freshness - what HR needs to know dispatch is working.
+  'health.view': ['HR_MANAGER'],
   'audit.export': ['HR_MANAGER'],
-  // Directive 6.1 (C/D): organization health for HR; the administration page
-  // is shared HR-business / technical like /admin.
+  // Directive 6.1 (C/D): organization health for HR.
   'org.view': ['HR_MANAGER', 'HR_OFFICER'],
-  'admin.organization': ['HR_MANAGER', 'SYSTEM_ADMIN'],
+  'admin.organization': ['HR_MANAGER'],
 };
 
 export function can(actor: Actor, action: GlobalAction): boolean {

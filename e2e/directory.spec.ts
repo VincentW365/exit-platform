@@ -114,16 +114,12 @@ test('an existing active case is surfaced on the profile and at intake, and a du
   await signOut(page);
 });
 
-test('administrators see the synchronization health, the log and the manual refresh; HR sees no admin view', async ({
+test('the HR Manager sees the synchronization health, the log and the manual refresh; the HR Officer sees no admin view', async ({
   page,
 }) => {
   test.setTimeout(180_000);
-  await signInAs(page, 'System Administrator');
-  await page.goto('/directory');
-  await expect(
-    page.getByText('The employee directory is limited to authorized HR roles.'),
-  ).toBeVisible();
-
+  // DEC-063: Refresh Directory Now is an HR Manager capability.
+  await signInAs(page, 'HR Manager');
   await page.goto('/admin/system');
   await expect(page.locator('[data-directory-health]')).toBeVisible();
   await expect(page.getByText('Local employees')).toBeVisible();
@@ -140,7 +136,7 @@ test('administrators see the synchronization health, the log and the manual refr
 
   await signInAs(page, 'HR Officer');
   await page.goto('/admin/directory-sync');
-  await expect(page.getByText('requires an administrator or HR Manager')).toBeVisible();
+  await expect(page.getByText('requires the HR Manager')).toBeVisible();
   await signOut(page);
 });
 

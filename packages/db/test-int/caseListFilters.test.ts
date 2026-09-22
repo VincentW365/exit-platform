@@ -57,7 +57,7 @@ describe('case list filtering (section 15)', () => {
     officerA = await createUser('Filter Officer A', 'HR_OFFICER');
     officerB = await createUser('Filter Officer B', 'HR_OFFICER');
     manager = await createUser('Filter Manager', 'HR_MANAGER');
-    outsider = await createUser('Filter Outsider', 'IT_RESPONDER');
+    outsider = await createUser('Filter Outsider');
     mine = await activeCase(officerA);
     theirs = await activeCase(officerB);
   });

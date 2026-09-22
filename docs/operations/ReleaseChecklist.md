@@ -40,9 +40,9 @@ test or an unresolved security finding.
       installed; must be run in CI or on the deployment host.)
 - [ ] `/api/health` and `/api/ready` verified in the target environment;
       worker heartbeat visible.
-- [ ] All 24 pilot readiness gates PASS; activation proposed and dually
-      approved (HR Manager + System Administrator, two different people
-      where configured); rollback plan recorded.
+- [ ] All 24 pilot readiness gates PASS (backup and restore-test gates are
+      attested from the runbook evidence, DEC-063); activation proposed and
+      approved by the HR Manager; rollback plan recorded.
 - [ ] UAT signed off (UATPlan.md) and training completions recorded. The
       automated synthetic execution (docs/delivery/SyntheticUATReport.md)
       supports but does not replace stakeholder sign-off.

@@ -14,7 +14,7 @@ import { LocalStorageAdapter, setStorageForTests } from '../src/storage.ts';
 import { createDraft, transitionCase } from '../src/services/caseService.ts';
 import { activateCase } from '../src/services/workflowService.ts';
 import { runStage3Sweep } from '../src/services/workflowSweepService.ts';
-import { completeAccessTask, completeTask, reassignTask } from '../src/services/taskService.ts';
+import { completeAccessTask, completeTask } from '../src/services/taskService.ts';
 import { listCaseAssets, setAssetDisposition } from '../src/services/assetService.ts';
 import {
   approveFinalClearance,
@@ -93,7 +93,7 @@ beforeAll(async () => {
   setStorageForTests(new LocalStorageAdapter(mkdtempSync(path.join(tmpdir(), 'exit-gap-'))));
   officer = await createUser('Gap Officer', 'HR_OFFICER');
   manager = await createUser('Gap Manager', 'HR_MANAGER');
-  lineMgr = await createUser('Gap Line Manager', 'LINE_MANAGER');
+  lineMgr = await createUser('Gap Line Manager');
   for (const documentType of [
     'RESIGNATION_ACCEPTANCE_WITH_NOTICE',
     'IMMEDIATE_RESIGNATION_ACKNOWLEDGEMENT',
@@ -134,15 +134,8 @@ async function completeAllRequired(caseId: string, hrActor: typeof officer): Pro
           progressed = true;
           continue;
         }
-        if (t.department === 'LINE_MANAGER') {
-          if (t.assigneeId !== lineMgr.userId) {
-            await reassignTask(manager.actor, t.id, lineMgr.userId, 'Gap-proof routing.');
-          }
-          await completeTask(lineMgr.actor, t.id, `${t.taskCode} completed (gap-proof).`);
-          progressed = true;
-          continue;
-        }
-        // Directive 6.3 I/J: HR records residual legacy department work.
+        // Directive 6.3 I/J and DEC-063: HR records every residual legacy
+        // department task, the manager's included - no other login exists.
         const actor = t.requiredRole === 'HR_MANAGER' ? manager.actor : hrActor.actor;
         await completeTask(actor, t.id, `${t.taskCode} completed (gap-proof).`);
         progressed = true;

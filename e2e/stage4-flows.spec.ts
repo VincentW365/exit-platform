@@ -151,11 +151,15 @@ test('Scenario 1 - notification delivery through development capture', async ({ 
   await signOut(page);
 });
 
-test('Scenario 2 - integration administration with strict role separation', async ({ page }) => {
+test('Scenario 2 - platform administration belongs to the HR Manager (DEC-063)', async ({
+  page,
+}) => {
   test.setTimeout(240_000);
-  // Technical admin: system config + health; NO case content.
-  await signInAs(page, 'System Administrator');
+  // HR Manager: system configuration, health and business configuration.
+  await signInAs(page, 'HR Manager');
   await page.goto('/admin/system');
+  // Backups and restore tests are no longer application operations.
+  await expect(page.getByRole('heading', { name: 'Backup and Restore' })).toHaveCount(0);
   await expect(page.getByText('System administration')).toBeVisible();
   await page.locator('details.action > summary', { hasText: 'Set a configuration value' }).click();
   await page.locator('#sc-key').fill('pilot.privacyApprovalRequired');
@@ -165,18 +169,15 @@ test('Scenario 2 - integration administration with strict role separation', asyn
   await expect(page.getByText('Configuration saved')).toBeVisible();
   await page.goto('/admin/health');
   await expect(page.getByText('Integration and Operational Health')).toBeVisible();
-  // SYSTEM_ADMIN cannot reach HR case content.
-  await page.goto('/cases');
-  await expect(page.getByText(/Avery Brown/)).toHaveCount(0);
-  await signOut(page);
-
-  // HR Manager: business configuration; NOT the technical area.
-  await signInAs(page, 'HR Manager');
   await page.goto('/admin/recipients');
   await expect(page.getByText('Notification Recipient Directory')).toBeVisible();
   await expect(page.getByText('capture://it-offboarding').first()).toBeVisible();
+  await signOut(page);
+
+  // HR Officer: operational only; system administration is refused.
+  await signInAs(page, 'HR Officer');
   await page.goto('/admin/system');
-  await expect(page.getByText('requires the SYSTEM_ADMIN role')).toBeVisible();
+  await expect(page.getByText('requires the HR Manager role')).toBeVisible();
   await signOut(page);
 });
 
@@ -211,7 +212,7 @@ test('Scenario 3 - pilot readiness gates, activation and suspension', async ({ p
 
 test('Scenario 4 - employee directory sync and reconciliation', async ({ page }) => {
   test.setTimeout(240_000);
-  await signInAs(page, 'System Administrator');
+  await signInAs(page, 'HR Manager');
   await page.goto('/admin/system');
   // Employee directory (2026-09-15): the manual refresh is queued and runs
   // after the response; the page follows its progress and the health panel
@@ -254,15 +255,20 @@ test('Scenario 5 - privacy and retention operations', async ({ page }) => {
   await signOut(page);
 });
 
-test('Scenario 6 - backup and restore verification', async ({ page }) => {
-  test.setTimeout(300_000);
-  await signInAs(page, 'System Administrator');
+test('Scenario 6 - backup and restore are attested, not operated in the application (DEC-063)', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await signInAs(page, 'HR Manager');
   await page.goto('/admin/system');
-  await page.getByRole('button', { name: 'Create database backup (pg_dump)' }).click();
-  await expect(page.getByText(/Backup created \(\d+ bytes/)).toBeVisible();
-  await page.getByRole('button', { name: 'Restore into isolated DB + verify' }).first().click();
-  await expect(page.getByText(/Restore test PASSED/)).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText('restore verified').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create database backup (pg_dump)' })).toHaveCount(
+    0,
+  );
+  // The readiness gates still ask for the evidence; it comes from the
+  // operations runbook and is attested through system configuration.
+  await page.goto('/admin/pilot');
+  await expect(page.getByText('Backup status')).toBeVisible();
+  await expect(page.getByText('Restore-test status')).toBeVisible();
   await signOut(page);
 });
 

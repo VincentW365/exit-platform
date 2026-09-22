@@ -69,7 +69,7 @@ beforeAll(async () => {
   await seedStage3Fixtures();
   officer = await createUser('Routing Officer', 'HR_OFFICER');
   manager = await createUser('Routing Manager', 'HR_MANAGER');
-  lineMgr = await createUser('Routing Line Manager', 'LINE_MANAGER');
+  lineMgr = await createUser('Routing Line Manager');
 });
 
 describe('the routing table', () => {

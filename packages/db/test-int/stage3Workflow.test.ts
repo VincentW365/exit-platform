@@ -79,10 +79,10 @@ beforeAll(async () => {
   officer = await createUser('S3 Officer', 'HR_OFFICER');
   officer2 = await createUser('S3 Officer Two', 'HR_OFFICER');
   manager = await createUser('S3 Manager', 'HR_MANAGER');
-  itUser = await createUser('S3 IT', 'IT_RESPONDER');
-  finUser = await createUser('S3 Finance', 'FINANCE_RESPONDER');
-  lineMgr = await createUser('S3 Line Manager', 'LINE_MANAGER');
-  sysAdmin = await createUser('S3 SysAdmin', 'SYSTEM_ADMIN');
+  itUser = await createUser('S3 IT');
+  finUser = await createUser('S3 Finance');
+  lineMgr = await createUser('S3 Line Manager');
+  sysAdmin = await createUser('S3 SysAdmin');
 });
 
 describe('workflow activation and pinning (T.1, T.2, T.25, B/C)', () => {

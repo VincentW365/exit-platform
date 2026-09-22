@@ -1,8 +1,8 @@
 /**
  * Controlled recipient directory (Directive 4 section D).
  *
- * HR selects business recipient classes; technical destination values are
- * SYSTEM_ADMIN work; external recipient changes require HR_MANAGER approval.
+ * HR selects business recipient classes; technical destination values and
+ * external recipient approval are HR_MANAGER work (DEC-063).
  * Destinations are encrypted at rest and only ever displayed masked outside
  * the authorized edit surface. No real address is ever seeded.
  */
@@ -117,8 +117,8 @@ export async function upsertRecipient(actor: Actor, rawInput: unknown, existingI
   return { id: record.id, destinationMask: record.destinationMask };
 }
 
-/** D.3: external recipients require HR_MANAGER approval; internal may be
- *  approved by HR or SYSTEM_ADMIN. */
+/** D.3: external recipients require HR_MANAGER approval; internal ones are
+ *  approved by the HR Manager as well (DEC-063). */
 export async function approveRecipient(actor: Actor, id: string) {
   const prisma = getPrisma();
   const r = await prisma.recipientConfig.findUnique({ where: { id } });

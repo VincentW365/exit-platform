@@ -26,20 +26,20 @@ import { loadCaseAccess } from './shared.ts';
 import { autoResolveException } from './exceptionService.ts';
 import { recalcInstanceCounts, releaseEligibleTasks } from './workflowService.ts';
 
-type HandoverAccessLevel = 'HR' | 'MANAGER' | 'NONE';
+type HandoverAccessLevel = 'HR' | 'NONE';
 
+/**
+ * Only HR signs in (DEC-063). The reporting manager owes the handover but
+ * has no login: they are informed by controlled email and HR records the
+ * plan and its evidence. The former MANAGER level, keyed on a LINE_MANAGER
+ * account, is gone with that role.
+ */
 function handoverAccess(
   actor: Actor,
   ctx: CaseAccessContext,
-  record: { managerId: string | null },
+  _record: { managerId: string | null },
 ): HandoverAccessLevel {
   if (canViewCase(actor, ctx) && hasRole(actor, 'HR_MANAGER', 'HR_OFFICER')) return 'HR';
-  // The assigned manager - or a MANAGER participant on the case (M.4/M.8).
-  if (
-    hasRole(actor, 'LINE_MANAGER') &&
-    (record.managerId === actor.userId || ctx.participantUserIds.includes(actor.userId))
-  )
-    return 'MANAGER';
   return 'NONE';
 }
 
@@ -62,11 +62,13 @@ export async function getHandover(actor: Actor, caseId: string) {
     access,
     record,
     sections: HANDOVER_SECTIONS,
+    // DEC-063: the reporting manager has no login, so HR records the handover
+    // plan and its completion from the manager's emailed confirmation.
     canEdit:
-      access === 'MANAGER' &&
+      access === 'HR' &&
       ['NOT_STARTED', 'IN_PROGRESS'].includes(record.status) &&
       ['ACTIVE', 'ON_HOLD'].includes(c.status),
-    canComplete: access === 'MANAGER' && ['NOT_STARTED', 'IN_PROGRESS'].includes(record.status),
+    canComplete: access === 'HR' && ['NOT_STARTED', 'IN_PROGRESS'].includes(record.status),
     canReview: canActOnCase(actor, 'handover.review', ctx),
     canWaive:
       canActOnCase(actor, 'handover.waive', ctx) &&
@@ -89,7 +91,7 @@ export async function updateHandover(actor: Actor, caseId: string, rawInput: unk
     );
   const input = parsed.data;
   const { record, access } = await loadHandover(actor, caseId);
-  if (access !== 'MANAGER') throw ServiceError.forbidden();
+  if (access !== 'HR') throw ServiceError.forbidden();
   if (!['NOT_STARTED', 'IN_PROGRESS'].includes(record.status))
     throw ServiceError.conflict('The handover record is finalized.');
 
@@ -150,7 +152,7 @@ export async function transitionHandover(
   const transitionErr = handoverTransitionError(action, record.status, reason);
   if (transitionErr) throw ServiceError.validation([transitionErr]);
 
-  if (action === 'complete' && access !== 'MANAGER') throw ServiceError.forbidden();
+  if (action === 'complete' && access !== 'HR') throw ServiceError.forbidden();
   if (
     (action === 'waive' || action === 'notApplicable' || action === 'reopen') &&
     !canActOnCase(actor, 'handover.waive', ctx)

@@ -53,7 +53,7 @@ export default async function DirectorySyncPage({
     return (
       <>
         <h1 className="page-title">Access Restricted</h1>
-        <p className="panel">The synchronization log requires an administrator or HR Manager.</p>
+        <p className="panel">The synchronization log requires the HR Manager role.</p>
       </>
     );
   let runs: Awaited<ReturnType<typeof listDirectorySyncRuns>> = [];
@@ -197,7 +197,7 @@ export default async function DirectorySyncPage({
         <EmptyState
           icon={<ServerIcon />}
           title="No synchronization runs"
-          body="Runs appear here as webhooks arrive, reconciliations execute and administrators refresh the directory."
+          body="Runs appear here as webhooks arrive, reconciliations execute and the HR Manager refreshes the directory."
           action={
             can(actor, 'admin.system')
               ? { href: '/admin/system#directory-h', label: 'Refresh the directory now' }

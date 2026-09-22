@@ -26,12 +26,12 @@ The application is not a payroll engine, legal decision system or autonomous AI 
 | --- | --- | --- |
 | HR_MANAGER | Accountable process owner and approval authority. | Cannot alter immutable audit events; cannot bypass mandatory controls without recorded override authority and reason. |
 | HR_OFFICER | Executes day-to-day offboarding work. | Cannot approve own restricted communications, close cases requiring manager sign-off, change retention policy, or grant roles. |
-| IT_RESPONDER | Performs access and technology-asset tasks. | No access to resignation letters, reasons, pay details, identifiable survey responses, or unrelated cases. |
-| FINANCE_RESPONDER | Performs final-pay and finance clearance tasks. | No access to exit feedback, unrestricted HR notes, or technology/access details. |
-| LINE_MANAGER | Completes handover, duty reassignment, and manager confirmations. | No access to confidential exit responses, HR-only reasons, rehire eligibility, pay details, or termination preparation unless explicitly authorized. |
+| IT_RESPONDER (RETIRED, DEC-045 / DEC-063 - IT acts on controlled email) | Performs access and technology-asset tasks. | No access to resignation letters, reasons, pay details, identifiable survey responses, or unrelated cases. |
+| FINANCE_RESPONDER (RETIRED, DEC-045 / DEC-063 - Finance acts on controlled email) | Performs final-pay and finance clearance tasks. | No access to exit feedback, unrestricted HR notes, or technology/access details. |
+| LINE_MANAGER (RETIRED, DEC-051 / DEC-063 - the manager is a directory record reached by email) | Completes handover, duty reassignment, and manager confirmations. | No access to confidential exit responses, HR-only reasons, rehire eligibility, pay details, or termination preparation unless explicitly authorized. |
 | AUDITOR (RETIRED, DEC-042) | Performs read-only assurance and control reviews. | Identifiable exit free text and restricted termination content are masked unless separately authorized; no operational changes. |
 | PRIVACY_OFFICER (RETIRED, DEC-042 - duties absorbed by HR_MANAGER) | Reviews data protection, access, retention, breach, and data-subject matters. | No routine operational edits except privacy workflows; cannot change HR decisions. |
-| SYSTEM_ADMIN | Maintains technical configuration and platform availability. | No default access to HR case content. Break-glass access requires explicit approval, time limitation, reason, and enhanced audit. |
+| SYSTEM_ADMIN (RETIRED, DEC-063 - HR-operational administration belongs to HR_MANAGER; backups and restore tests are infrastructure operations outside the application) | Maintained technical configuration and platform availability. | No default access to HR case content. Break-glass access requires explicit approval, time limitation, reason, and enhanced audit. |
 
 A departing employee is a limited survey respondent, not an internal application user.
 

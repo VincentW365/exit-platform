@@ -1,13 +1,13 @@
 /**
  * Task engine actions and department work queues (Directive 3 sections D, I, J).
  *
- * Authorization model:
- *  - HR roles act on HR tasks of cases they can see (restricted cases need
- *    explicit participation);
- *  - IT_RESPONDER / FINANCE_RESPONDER act on released tasks of their
- *    department with MINIMUM task data - a task never grants case access;
- *  - LINE_MANAGER only ever sees tasks expressly assigned to them (H.6);
- *  - SYSTEM_ADMIN sees no queue and no task (R.8);
+ * Authorization model (two-role model, DEC-063):
+ *  - HR roles act on tasks of cases they can see (restricted cases need
+ *    explicit participation); HR-Manager-only obligations exclude officers;
+ *  - IT, Finance and the reporting manager hold no login: they act by
+ *    controlled email and HR records the evidence, including on residual
+ *    departmental tasks of legacy workflow versions;
+ *  - an account with no active role sees no queue and no task;
  *  - restricted cases stay undiscoverable: unauthorized access -> NOT_FOUND.
  */
 import {
@@ -23,7 +23,6 @@ import {
   type Actor,
   type AuditEventType,
   type CaseAccessContext,
-  type Role,
   type TaskAction,
   type TaskDepartment,
 } from '@exit/domain';
@@ -69,58 +68,41 @@ async function loadTask(taskId: string) {
   return { t, ctx };
 }
 
-type TaskAccess = 'HR_FULL' | 'DEPARTMENT' | 'NONE';
+type TaskAccess = 'HR_FULL' | 'NONE';
 
 /**
- * D.3 / J.1-J.4: who may see/act on a task. Department users get access to
- * RELEASED tasks only (NOT_READY tasks would disclose work prematurely - H.8).
+ * D.3 / J.1-J.4: who may see/act on a task. Only HR signs in (DEC-063), so
+ * a task is visible to HR with case access and to nobody else. The former
+ * DEPARTMENT level - a line manager reading their own released task - went
+ * with the LINE_MANAGER login; the manager is informed by controlled email.
  */
 function taskAccessFor(
   actor: Actor,
-  t: Awaited<ReturnType<typeof loadTask>>['t'],
+  _t: Awaited<ReturnType<typeof loadTask>>['t'],
   ctx: CaseAccessContext,
 ): TaskAccess {
   if (canViewCase(actor, ctx) && hasRole(actor, 'HR_MANAGER', 'HR_OFFICER')) return 'HR_FULL';
-  const released = t.status !== 'NOT_READY';
-  if (!released) return 'NONE';
-  // Directive 6.3 I/J: IT/Finance logins are retired. Residual department
-  // tasks on legacy (v1) instances are worked by HR with recorded evidence.
-  if (
-    t.department === 'LINE_MANAGER' &&
-    hasRole(actor, 'LINE_MANAGER') &&
-    t.assigneeId === actor.userId
-  )
-    return 'DEPARTMENT';
   return 'NONE';
 }
 
-/** May the actor perform WORK on the task (not just read it)? */
+/**
+ * May the actor perform WORK on the task (not just read it)? Every department
+ * is HR-recorded work now: IT, Finance and the reporting manager act by
+ * controlled email outside the application and HR records the evidence
+ * (Directive 6.3 I/J; DEC-063 for the manager). Only the HR-Manager-only
+ * obligations (final approvals) exclude officers.
+ */
 function canWorkOnTask(
   actor: Actor,
   t: Awaited<ReturnType<typeof loadTask>>['t'],
   ctx: CaseAccessContext,
 ): boolean {
-  switch (t.department) {
-    case 'HR':
-      // HR-Manager-only obligations (final approvals) exclude officers.
-      if (t.requiredRole === 'HR_MANAGER' && !hasRole(actor, 'HR_MANAGER')) return false;
-      return (
-        hasRole(actor, 'HR_MANAGER', 'HR_OFFICER') &&
-        canViewCase(actor, ctx) &&
-        canActOnCase(actor, 'workflow.view', ctx)
-      );
-    case 'IT':
-    case 'FINANCE':
-      // Directive 6.3 I/J: legacy department tasks are HR-recorded evidence
-      // (the department itself acts by email, outside the application).
-      return (
-        hasRole(actor, 'HR_MANAGER', 'HR_OFFICER') &&
-        canViewCase(actor, ctx) &&
-        canActOnCase(actor, 'workflow.view', ctx)
-      );
-    case 'LINE_MANAGER':
-      return hasRole(actor, 'LINE_MANAGER') && t.assigneeId === actor.userId;
-  }
+  if (t.requiredRole === 'HR_MANAGER' && !hasRole(actor, 'HR_MANAGER')) return false;
+  return (
+    hasRole(actor, 'HR_MANAGER', 'HR_OFFICER') &&
+    canViewCase(actor, ctx) &&
+    canActOnCase(actor, 'workflow.view', ctx)
+  );
 }
 
 /** Minimum-data DTO for department users (J.3 / H.4-H.6 / R.1). */
@@ -257,14 +239,9 @@ async function transition(
   if (!['ACTIVE', 'CLEARANCE_PENDING'].includes(t.instance.status))
     throw ServiceError.conflict('The workflow is not active.');
 
-  // waiverAuthority narrows to the active Role union: the column's deprecated
-  // enum values (DEC-042) are never written and would simply fail hasRole.
-  const transitionErr = taskTransitionError(
-    action,
-    { ...t, waiverAuthority: t.waiverAuthority as Role },
-    actor,
-    fields.reason,
-  );
+  // The stored waiverAuthority may be a deprecated value on a legacy
+  // instance; the transition rule treats those as unsatisfiable (DEC-063).
+  const transitionErr = taskTransitionError(action, t, actor, fields.reason);
   if (transitionErr) throw ServiceError.validation([transitionErr]);
 
   // D.14/D.15: task comments carry safe operational information only.
@@ -445,16 +422,17 @@ export const reassignTask = (actor: Actor, taskId: string, assigneeId: string, r
 // --- Directive 6.1 (G/H/I): department-queue claim / assign / return ---------
 
 /**
- * Roles allowed to hold work in each department. Directive 6.3 I/J: the
- * department-login roles are retired; residual IT/FINANCE tasks on legacy
- * instances are held by HR (the retired roles stay accepted so historical
- * assignments keep rendering).
+ * Roles allowed to be ASSIGNED work in each department. Directive 6.3 I/J
+ * and DEC-063: every department login is retired, so residual IT, FINANCE
+ * and LINE_MANAGER tasks on legacy instances can only be held by HR.
+ * Historical assignments to retired roles keep rendering; they are simply
+ * never valid targets for a new assignment.
  */
 const DEPARTMENT_ASSIGNEE_ROLES: Record<TaskDepartment, readonly string[]> = {
   HR: ['HR_OFFICER', 'HR_MANAGER'],
-  IT: ['HR_OFFICER', 'HR_MANAGER', 'IT_RESPONDER'],
-  FINANCE: ['HR_OFFICER', 'HR_MANAGER', 'FINANCE_RESPONDER'],
-  LINE_MANAGER: ['LINE_MANAGER'],
+  IT: ['HR_OFFICER', 'HR_MANAGER'],
+  FINANCE: ['HR_OFFICER', 'HR_MANAGER'],
+  LINE_MANAGER: ['HR_OFFICER', 'HR_MANAGER'],
 };
 
 async function validateAssignmentTarget(department: TaskDepartment, userId: string) {

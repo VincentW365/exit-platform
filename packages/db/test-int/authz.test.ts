@@ -26,8 +26,8 @@ beforeAll(async () => {
   await resetDb();
   manager = await createUser('Dana Manager', 'HR_MANAGER');
   otherOfficer = await createUser('Riley Other', 'HR_OFFICER');
-  sysadmin = await createUser('Marley Admin', 'SYSTEM_ADMIN');
-  itResponder = await createUser('Sam IT', 'IT_RESPONDER');
+  sysadmin = await createUser('Marley Admin');
+  itResponder = await createUser('Sam IT');
 
   const normal = await createDraft(otherOfficer.actor, VALID_DRAFT);
   normalCaseId = normal.caseId;

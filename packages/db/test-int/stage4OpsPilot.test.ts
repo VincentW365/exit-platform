@@ -39,7 +39,6 @@ import {
   retentionDryRun,
   upsertRetentionPolicy,
 } from '../src/services/retentionService.ts';
-import { createBackup, restoreAndVerify } from '../src/services/backupService.ts';
 import {
   declareOutage,
   recordFallbackEntry,
@@ -61,7 +60,6 @@ const prisma = getPrisma();
 
 let officer: Awaited<ReturnType<typeof createUser>>;
 let manager: Awaited<ReturnType<typeof createUser>>;
-let sysAdmin: Awaited<ReturnType<typeof createUser>>;
 let privacy: Awaited<ReturnType<typeof createUser>>;
 let lineMgr: Awaited<ReturnType<typeof createUser>>;
 
@@ -80,10 +78,11 @@ beforeAll(async () => {
   setStorageForTests(new LocalStorageAdapter(mkdtempSync(path.join(tmpdir(), 'exit-s4-'))));
   officer = await createUser('S4B Officer', 'HR_OFFICER');
   manager = await createUser('S4B Manager', 'HR_MANAGER');
-  sysAdmin = await createUser('S4B SysAdmin', 'SYSTEM_ADMIN');
-  // DEC-042: HR_MANAGER absorbs privacy/retention operations.
+  // DEC-042: HR_MANAGER absorbs privacy/retention operations; DEC-063: the
+  // HR Manager also owns the former System Administrator's HR-operational
+  // configuration, so every technical step below is the manager's.
   privacy = await createUser('S4B Privacy HRM', 'HR_MANAGER');
-  lineMgr = await createUser('S4B Line Manager', 'LINE_MANAGER');
+  lineMgr = await createUser('S4B Line Manager');
 });
 
 async function makeCase(overrides: Record<string, unknown> = {}, approve = true) {
@@ -214,8 +213,7 @@ describe('pilot activation gates (X.17-X.19)', () => {
       targetState: 'PILOT_ACTIVE',
       rollbackPlan: 'Return to fully manual operations immediately.',
     });
-    await approveActivation(manager.actor, rec.id, 'hr');
-    await approveActivation(sysAdmin.actor, rec.id, 'admin');
+    await approveActivation(manager.actor, rec.id);
     await expect(applyActivation(manager.actor, rec.id)).rejects.toMatchObject({
       code: 'VALIDATION',
     });
@@ -225,11 +223,11 @@ describe('pilot activation gates (X.17-X.19)', () => {
 
   it('PILOT_ACTIVE succeeds when every gate and approval is satisfied (X.18)', async () => {
     // Satisfy the remaining gates with synthetic evidence.
-    await setSystemConfig(sysAdmin.actor, 'readiness.sopPublished', true, 'test');
-    await setSystemConfig(sysAdmin.actor, 'readiness.uatPassed', true, 'test');
-    await setSystemConfig(sysAdmin.actor, 'readiness.manualFallbackReady', true, 'test');
-    await setSystemConfig(sysAdmin.actor, 'worker.lastHeartbeat', new Date().toISOString(), 'test');
-    await syncEmployees(sysAdmin.actor);
+    await setSystemConfig(manager.actor, 'readiness.sopPublished', true, 'test');
+    await setSystemConfig(manager.actor, 'readiness.uatPassed', true, 'test');
+    await setSystemConfig(manager.actor, 'readiness.manualFallbackReady', true, 'test');
+    await setSystemConfig(manager.actor, 'worker.lastHeartbeat', new Date().toISOString(), 'test');
+    await syncEmployees(manager.actor);
     // Approved active reason category (the X.15 category was retired).
     await upsertReasonCategory(manager.actor, {
       code: 'TEST-S4-GATE',
@@ -277,8 +275,10 @@ describe('pilot activation gates (X.17-X.19)', () => {
       reason: 'Stage 4 test',
     });
     await approveRetentionPolicy(privacy.actor, policy.id);
-    const backup = await createBackup(sysAdmin.actor);
-    await restoreAndVerify(sysAdmin.actor, backup.backupId);
+    // DEC-063: backup and restore evidence comes from the operations runbook
+    // and is attested here, not produced by the application.
+    await setSystemConfig(manager.actor, 'readiness.backupVerified', true, 'test');
+    await setSystemConfig(manager.actor, 'readiness.restoreTested', true, 'test');
     // Resolve any open CRITICAL exceptions left by earlier tests.
     await prisma.caseException.updateMany({
       where: { status: 'OPEN', severity: 'CRITICAL' },
@@ -295,12 +295,11 @@ describe('pilot activation gates (X.17-X.19)', () => {
       scope: { maxActiveCases: 5 },
       rollbackPlan: 'Suspend, then return to fully manual operations.',
     });
-    // Approvals from BOTH authorities are mandatory (L.3).
+    // The HR Manager approval is mandatory (L.3; one approval under DEC-063).
     await expect(applyActivation(manager.actor, rec.id)).rejects.toMatchObject({
       code: 'VALIDATION',
     });
-    await approveActivation(manager.actor, rec.id, 'hr');
-    await approveActivation(sysAdmin.actor, rec.id, 'admin');
+    await approveActivation(manager.actor, rec.id);
     const applied = await applyActivation(manager.actor, rec.id);
     expect(applied.state).toBe('PILOT_ACTIVE');
     expect(await currentActivationState()).toBe('PILOT_ACTIVE');
@@ -312,7 +311,7 @@ describe('pilot activation gates (X.17-X.19)', () => {
 
   it('BASELINE cases are never retrospectively processed (X.19 / L.6)', async () => {
     // Even with the engine flag on and PILOT_ACTIVE, BASELINE stays excluded.
-    await setFlag(sysAdmin.actor, 'automation.workflowEngine', true, 'Stage 4 test');
+    await setFlag(manager.actor, 'automation.workflowEngine', true, 'Stage 4 test');
     const created = await createDraft(officer.actor, {
       ...VALID_DRAFT, // OPERATIONAL + BASELINE
       confirmedLastDay: FIXTURE_CONFIRMED_LAST_DAY,
@@ -324,7 +323,7 @@ describe('pilot activation gates (X.17-X.19)', () => {
       code: 'VALIDATION',
     });
     expect(await prisma.workflowInstance.count({ where: { caseId: created.caseId } })).toBe(0);
-    await setFlag(sysAdmin.actor, 'automation.workflowEngine', false, 'Stage 4 test reset');
+    await setFlag(manager.actor, 'automation.workflowEngine', false, 'Stage 4 test reset');
     // Suspension stops new automated work immediately (L.8).
     await suspendActivation(manager.actor, 'Stage 4 test suspension.');
     expect(await currentActivationState()).toBe('SUSPENDED');
@@ -404,16 +403,14 @@ describe('retention, backup and fallback (X.23-X.26)', () => {
     expect(await prisma.auditEvent.count({ where: { caseId } })).toBeGreaterThan(auditCountBefore);
   });
 
-  it('backup restores critical synthetic evidence into an isolated database (X.25)', async () => {
-    const backup = await createBackup(sysAdmin.actor);
-    const result = await restoreAndVerify(sysAdmin.actor, backup.backupId);
-    expect(result.ok).toBe(true);
-    expect(
-      result.results.find((r) => r.table === 'offboarding_case')!.restoredCount,
-    ).toBeGreaterThan(0);
-    expect(result.results.find((r) => r.table === 'audit_event')!.restoredCount).toBeGreaterThan(0);
-    const record = await prisma.backupRecord.findUniqueOrThrow({ where: { id: backup.backupId } });
-    expect(record.verifiedAt).not.toBeNull();
+  it('backup and restore-test gates are infrastructure attestations, never in-app operations (X.25, DEC-063)', async () => {
+    // The in-app pg_dump/restore tooling retired with the System
+    // Administrator; the gates read the HR Manager's attestation of the
+    // runbook evidence (recorded in X.18) and no backup row is written here.
+    const gates = await evaluateReadinessGates();
+    expect(gates.find((g) => g.key === 'backup')!.ok).toBe(true);
+    expect(gates.find((g) => g.key === 'restoreTest')!.ok).toBe(true);
+    expect(await prisma.backupRecord.count()).toBe(0);
   });
 
   it('manual fallback reconciliation prevents duplicates (X.26)', async () => {
@@ -436,7 +433,7 @@ describe('retention, backup and fallback (X.23-X.26)', () => {
   });
 
   it('access review evidence is append-only (W)', async () => {
-    const review = await generateAccessReview(sysAdmin.actor);
+    const review = await generateAccessReview(manager.actor);
     await expect(
       prisma.accessReview.update({ where: { id: review.id }, data: { note: 'tamper' } }),
     ).rejects.toThrow(/append-only/);

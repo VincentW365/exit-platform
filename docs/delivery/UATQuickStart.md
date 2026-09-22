@@ -85,10 +85,10 @@ As the **HR Manager**:
 
 - **S2, OFF-2026-0002 (immediate resignation).** As the IT Responder: the access-removal
   task is OVERDUE. As the HR Manager: Exceptions shows a CRITICAL escalation.
-- **S3, OFF-2026-0003 (restricted termination).** As the HR Officer, the IT Responder, the Finance Responder,
-  the Line Manager and the System Administrator: searching cases, queues, dashboards and reports
-  finds NOTHING; pasting the case URL gives a plain denial. As the HR Manager it opens
-  normally. No termination letter exists; the survey is off.
+- **S3, OFF-2026-0003 (restricted termination).** As the HR Officer (the only other
+  login since DEC-063): searching cases, queues, dashboards and reports finds NOTHING;
+  pasting the case URL gives a plain denial. As the HR Manager it opens normally. No
+  termination letter exists; the survey is off.
 - **S4, OFF-2026-0004 (corrected document).** As the HR Officer: the old approved
   letter shows INVALIDATED with the correction reason; submit the corrected
   draft; as the HR Manager approve it. The old version stays in history only.
@@ -99,19 +99,19 @@ As the **HR Manager**:
   anywhere. That is a legal requirement, not a gap.
 - **S7/S10, OFF-2026-0007 (blocked clearance).** As the HR Manager: Clearance refuses
   and says exactly why; resolve the blocker, finish the items, clear.
-- **S8, OFF-2026-0008 (failed notification).** As the System Administrator: Administration →
+- **S8, OFF-2026-0008 (failed notification).** As the HR Manager (DEC-063): Administration →
   outbox → the FAILED_RETRYABLE row for this case; the address is masked;
   "Queue retry" is available.
 - **S9, OFF-2026-0009 (finished case).** As the HR Manager: browse history, documents,
   captured mail, completed survey. Privacy check: the HR Officer and HR Manager can see
-  the survey response; the Line Manager, the IT Responder, the Finance Responder and the System Administrator must not. Then Reports:
+  the survey response; nobody else holds a login (DEC-063) - the manager, IT and Finance receive email only. Then Reports:
   run a report with purpose TEST, export CSV, confirm the case appears and
   small groups show "(suppressed)".
 
 ## Part 3 - admin drills
 
 - **S11 (disable a user).** As the HR Manager: reassign an open task on OFF-2026-0010
-  to Second IT Responder with a reason. As the System Administrator: Administration → System →
+  to Second IT Responder with a reason. As the HR Manager (DEC-063): Administration → System →
   disable Second IT Responder (banner: sessions revoked, orphaned task flagged). Sign out;
   "Sign in as Second IT Responder" must refuse. As the HR Manager: reassign the orphaned task
   back.
