@@ -2617,3 +2617,159 @@ kbd {
 .receipt-editor__table tr[data-custom='yes'] th {
   font-weight: var(--weight-normal, 400);
 }
+
+/* --- Exit Center presentation (owner directive, 2026-09-23) --------------
+   Same sections, clearer hierarchy: identity and the primary action in one
+   head, calm zero figures, compact secondary tiles, and one list grammar for
+   everything that needs a decision. */
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-5);
+}
+.page-head__text {
+  flex: 1 1 24rem;
+  min-width: 0;
+}
+.page-head .page-title {
+  margin-bottom: var(--space-1);
+}
+.page-head .page-lede {
+  margin: 0;
+}
+.page-head__actions {
+  flex: 0 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+
+.band__note {
+  margin: var(--space-3) 0 0;
+}
+
+/* Summary figures sit directly under the pipeline; each is a link. */
+.kpi-grid--summary {
+  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  gap: var(--space-3);
+}
+.kpi-link:focus-visible {
+  outline: none;
+}
+.kpi-link:focus-visible .kpi {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.kpi--quiet {
+  border-top-color: var(--border);
+}
+.kpi--quiet .kpi__value {
+  color: var(--text-2);
+}
+
+/* Secondary counts inside a section: the same tile, smaller, and the same
+   width whether a row holds two of them or four. */
+.kpi-grid--tiles {
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.kpi--compact {
+  padding: var(--space-3) var(--space-4);
+  box-shadow: none;
+}
+.kpi--compact .kpi__value {
+  margin-top: var(--space-1);
+  font-size: var(--text-xl);
+}
+
+/* Decisions, one per line: a word for the severity, what it is, the case. */
+.attention-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.attention-list > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.attention-list > li:last-child {
+  border-bottom: 0;
+}
+.attention-list__title {
+  flex: 1 1 16rem;
+  min-width: 0;
+  font-size: var(--text-base);
+}
+.attention-list__meta {
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+.attention-list__case {
+  margin-left: auto;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.panel > h3 + .attention-list {
+  margin-top: 0;
+}
+
+/* One quiet closing line per section, never a paragraph. */
+.section-foot {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+.metric-grid + .section-foot,
+.table-wrap + .metric-grid {
+  margin-top: var(--space-4);
+}
+
+/* Five stages and five queues: three-and-two on a tablet, two-and-two with
+   the last one full width on a phone, never a single orphan tile. */
+@media (max-width: 52rem) {
+  .exit-center .pipeline,
+  .kpi-grid--summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .kpi-grid--tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 40rem) {
+  .page-head__actions {
+    width: 100%;
+  }
+  .page-head__actions .button {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+  .exit-center .pipeline,
+  .kpi-grid--summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .exit-center .pipeline > :last-child:nth-child(odd),
+  .kpi-grid--summary > :last-child:nth-child(odd) {
+    grid-column: span 2;
+  }
+  .attention-list__case {
+    margin-left: 0;
+  }
+  /* Facts read across the full width of a phone row instead of one under
+     another, so a case takes four lines rather than nine. */
+  .exit-center .row-item__facts {
+    flex-basis: 100%;
+  }
+}

@@ -181,7 +181,11 @@ export function Rail({ steps, label }: { steps: readonly RailStep[]; label: stri
   );
 }
 
-/** A figure that dominates, with a note that gives it meaning. */
+/**
+ * A figure that dominates, with a note that gives it meaning. `compact` is
+ * the smaller tile for secondary counts; `quiet` is a zero that should read
+ * as calm rather than as a coloured success (owner directive, 2026-09-23).
+ */
 export function Kpi({
   label,
   value,
@@ -189,6 +193,8 @@ export function Kpi({
   note,
   tone,
   icon,
+  compact,
+  quiet,
 }: {
   label: string;
   value: ReactNode;
@@ -196,9 +202,13 @@ export function Kpi({
   note?: string;
   tone?: Tone;
   icon?: ReactNode;
+  compact?: boolean;
+  quiet?: boolean;
 }) {
   return (
-    <div className={`kpi${toneClass(tone, 'kpi')}`}>
+    <div
+      className={`kpi${toneClass(tone, 'kpi')}${compact ? ' kpi--compact' : ''}${quiet ? ' kpi--quiet' : ''}`}
+    >
       <div className="kpi__label">
         {icon ? <span aria-hidden>{icon}</span> : null}
         {label}

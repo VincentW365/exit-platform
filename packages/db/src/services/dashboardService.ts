@@ -186,6 +186,7 @@ export async function hrDashboard(actor: Actor) {
         departureType: true,
         status: true,
         effectiveSeparationAt: true,
+        assignedOfficer: { select: { displayName: true } },
       },
     }),
     prisma.offboardingCase.count({
@@ -206,8 +207,9 @@ export async function hrDashboard(actor: Actor) {
   const now = new Date();
   return {
     countsByStatus: Object.fromEntries(byStatus.map((r) => [r.status, r._count._all])),
-    upcomingDepartures: upcoming.map((c) => ({
+    upcomingDepartures: upcoming.map(({ assignedOfficer, ...c }) => ({
       ...c,
+      assignedOfficerName: assignedOfficer?.displayName ?? null,
       daysUntil: c.effectiveSeparationAt ? daysUntil(c.effectiveSeparationAt, now) : null,
     })),
     baselineOpenCount: baselineOpen,

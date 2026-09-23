@@ -319,6 +319,12 @@ Deployment-gap protection, permanent from this point on:
   sent, and downloaded as a record PDF; the exit checklist edited as a
   document with an added row, previewed as a PDF and finalized. Screenshots
   land in `artifacts/editable-documents/` (gitignored, synthetic only).
+- `e2e/exit-center-visual.spec.ts` (DEC-070) - the Exit Center for both
+  roles at desktop, laptop, tablet and phone widths: the page identity, no
+  horizontal overflow at any width, and axe at the two desktop widths.
+  Screenshots land in `artifacts/exit-center/<set>/`, where `<set>` is
+  `EXIT_CENTER_SHOTS` (default `after`), so a run before a presentation
+  change and a run after it can be compared side by side.
 - `pnpm regression:offboarding` (`e2e/offboarding-regression/`, its own
   `playwright.regression.config.ts`) - the full offboarding workflow
   regression and evidence pack: one controlled employee through every
