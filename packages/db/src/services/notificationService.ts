@@ -12,14 +12,25 @@ import {
   can,
   canActOnCase,
   contentChecksum,
+  destinationErrors,
+  editedEmailErrors,
+  emailContentEditable,
+  emailDisplayStatus,
+  emailRecipientEditable,
   extractPlaceholders,
   formatDateOnly,
   formatInstant,
+  hasRole,
   isSendControlLevel,
+  manualRecipientErrors,
   maskDestination,
+  normaliseBody,
   notificationIdempotencyKey,
   notificationTransitionError,
+  presentRecipient,
   recipientEmailErrors,
+  recipientUsableErrors,
+  renderEmailHtml,
   resolveSendControl,
   substitute,
   templateContentErrors,
@@ -34,20 +45,108 @@ import {
   type AuditEventType,
   type NotificationAction,
   type NotificationType,
+  type RecipientOverrideKind,
   type SendControlLevel,
 } from '@exit/domain';
 import { z } from 'zod';
 import { getConfig } from '@exit/config';
 import { getPrisma } from '../client.ts';
+import type { Prisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
-import { encryptValue } from '../secretBox.ts';
-import { appendAudit, newCorrelationId } from './auditService.ts';
+import { decryptValue, encryptValue } from '../secretBox.ts';
+import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
 import { loadCaseAccess } from './shared.ts';
 import { autoResolveException, openException } from './exceptionService.ts';
 import { cancelPendingOutboxTx, enqueueOutboxTx, recipientClassForType } from './outboxService.ts';
-import { resolveRoute, resolveStaticTo } from './routingService.ts';
+import {
+  resolveRoute,
+  resolveStaticTo,
+  routingEnvironment,
+  type RoutingCaseFacts,
+} from './routingService.ts';
 import { upsertRecipient } from './recipientService.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
+import { listRevisions, recordRevisionTx } from './revisionService.ts';
+import { readBannerBytes, resolveEmailBannerForNotification } from './emailBannerService.ts';
+import { renderEmailRecordPdfBytes } from './renderRecordsService.ts';
+
+/** The case facts routing resolves a dynamic destination from. */
+function routingFactsOf(c: {
+  id: string;
+  employeeSourceSystem: string;
+  employeeWorkEmail: string | null;
+  employeeDisplayName: string;
+  managerSourceId: string | null;
+  assignedOfficerId: string | null;
+  ownerId: string;
+}): RoutingCaseFacts {
+  return {
+    caseId: c.id,
+    employeeSourceSystem: c.employeeSourceSystem,
+    employeeWorkEmail: c.employeeWorkEmail,
+    employeeDisplayName: c.employeeDisplayName,
+    managerSourceId: c.managerSourceId,
+    assignedOfficerId: c.assignedOfficerId,
+    ownerId: c.ownerId,
+  };
+}
+
+/**
+ * DEC-069: the columns that record what the hierarchy resolved AND the
+ * effective recipient the message goes to. At preparation both are the
+ * same; an override changes the effective one and leaves the auto one alone.
+ */
+function autoRecipientColumns(routed: Awaited<ReturnType<typeof resolveRoute>>) {
+  const to = routed.to;
+  return {
+    autoDestinationKey: to?.destination ?? null,
+    autoRecipientName: to?.displayName ?? null,
+    autoRecipientMask: to ? maskDestination(to.email) : null,
+    autoRecipientCiphertext: to && !to.recipientConfigId ? encryptValue(to.email) : null,
+    autoRecipientConfigId: to?.recipientConfigId ?? null,
+  };
+}
+
+/**
+ * The recipient a message is enqueued to: the record's effective recipient
+ * first (an override or a per-case address), then the record's own
+ * configured mailbox, then the static route as a last resort. A chosen
+ * recipient that is no longer usable blocks sending rather than quietly
+ * falling back to somebody else.
+ */
+async function effectiveEnqueueRecipient(record: {
+  notificationType: NotificationType;
+  recipientConfigId: string | null;
+  caseRecipientCiphertext: string | null;
+  caseRecipientMask: string | null;
+  recipientOverride: RecipientOverrideKind | null;
+}): Promise<{ id: string | null; destinationMask: string } | { blocked: string }> {
+  const prisma = getPrisma();
+  if (record.caseRecipientCiphertext)
+    return { id: null, destinationMask: record.caseRecipientMask ?? '(case recipient)' };
+  if (record.recipientConfigId) {
+    const row = await prisma.recipientConfig.findUnique({
+      where: { id: record.recipientConfigId },
+    });
+    if (row) {
+      const errors = recipientUsableErrors(
+        row,
+        record.notificationType,
+        routingEnvironment(),
+        new Date(),
+      );
+      if (!errors.length) return { id: row.id, destinationMask: row.destinationMask };
+      if (record.recipientOverride)
+        return { blocked: `The chosen recipient can no longer be used: ${errors.join(' ')}` };
+    }
+  }
+  const resolved = await resolveStaticTo(record.notificationType);
+  if ('destination' in resolved)
+    return { id: resolved.id, destinationMask: resolved.destinationMask };
+  return {
+    blocked: 'errors' in resolved ? resolved.errors.join(' ') : 'No recipient is resolved.',
+  };
+}
 
 // --- provider-neutral delivery boundary (K.12-K.15) --------------------------
 
@@ -270,6 +369,14 @@ export async function prepareNotification(actor: Actor, caseId: string, rawInput
       `A ${input.notificationType} notification already exists for this case and effective event.`,
     );
 
+  // DEC-069: a manually prepared message is addressed by the same hierarchy
+  // as a derived one, so it too can be overridden and restored.
+  const routed = await resolveRoute(input.notificationType, routingFactsOf(c));
+  const perCase = routed.to && !routed.to.recipientConfigId ? routed.to : null;
+  const recipientRow = routed.to?.recipientConfigId
+    ? await prisma.recipientConfig.findUnique({ where: { id: routed.to.recipientConfigId } })
+    : null;
+
   const correlationId = newCorrelationId();
   return prisma.$transaction(async (tx) => {
     const record = await tx.notificationRecord.create({
@@ -288,11 +395,48 @@ export async function prepareNotification(actor: Actor, caseId: string, rawInput
         bodySnapshot: body,
         contentChecksum: contentChecksum(`${subject}\n${body}`),
         fieldSnapshot: values,
+        recipientConfigId: perCase ? null : (recipientRow?.id ?? null),
+        recipientName:
+          perCase?.displayName ?? recipientRow?.contactName ?? recipientRow?.displayName ?? null,
+        recipientOrg: recipientRow?.organizationName ?? null,
+        recipientKind: perCase
+          ? 'INTERNAL'
+          : recipientRow
+            ? recipientRow.isExternal
+              ? 'EXTERNAL'
+              : 'INTERNAL'
+            : null,
+        caseRecipientCiphertext: perCase ? encryptValue(perCase.email) : null,
+        caseRecipientMask: perCase ? maskDestination(perCase.email) : null,
+        ...autoRecipientColumns(routed),
         applicabilityNote: input.applicabilityNote ?? null,
         ...(APPLICABILITY_GATED_TYPES.includes(input.notificationType)
           ? { applicabilityConfirmedById: actor.userId, applicabilityConfirmedAt: new Date() }
           : {}),
         createdById: actor.userId,
+      },
+    });
+    await recordRevisionTx(tx, {
+      caseId,
+      documentKind: 'EMAIL',
+      documentId: record.id,
+      kind: 'GENERATED',
+      content: { subject, body, hrNote: null },
+      editedById: actor.userId,
+      note: `Generated from template v${template.version}`,
+    });
+    await appendAudit(tx, {
+      eventType: 'NOTIFICATION_RECIPIENT_RESOLVED',
+      actorType: 'SYSTEM',
+      objectType: 'NotificationRecord',
+      objectId: record.id,
+      caseId,
+      result: routed.to ? 'SUCCESS' : 'FAILURE',
+      correlationId,
+      metadata: {
+        source: routed.to?.destination ?? null,
+        destinationMask: routed.to ? maskDestination(routed.to.email) : null,
+        unresolved: routed.unresolved,
       },
     });
     await appendAudit(tx, {
@@ -463,6 +607,8 @@ export async function prepareDerivedNotification(args: {
             : null,
         caseRecipientCiphertext: perCaseRecipient ? encryptValue(perCaseRecipient.email) : null,
         caseRecipientMask: perCaseRecipient ? maskDestination(perCaseRecipient.email) : null,
+        // DEC-069: the hierarchy's answer, kept beside any later override.
+        ...autoRecipientColumns(routed),
         ccCiphertext: routeCc.length
           ? encryptValue(JSON.stringify(routeCc.map((r) => r.email)))
           : null,
@@ -485,6 +631,14 @@ export async function prepareDerivedNotification(args: {
         createdById: c.ownerId,
       },
     });
+    await recordRevisionTx(tx, {
+      caseId: args.caseId,
+      documentKind: 'EMAIL',
+      documentId: row.id,
+      kind: 'GENERATED',
+      content: { subject, body, hrNote: null },
+      note: `Generated automatically from template v${template.version}`,
+    });
     await appendAudit(tx, {
       eventType: 'NOTIFICATION_AUTO_PREPARED',
       actorType: 'SYSTEM',
@@ -499,6 +653,21 @@ export async function prepareDerivedNotification(args: {
         controlLevel,
         ruleKey: 'derived-action',
         scheduledSendAt: args.scheduledSendAt?.toISOString() ?? null,
+      },
+    });
+    // DEC-069 section 33: the auto-assignment itself is on the record.
+    await appendAudit(tx, {
+      eventType: 'NOTIFICATION_RECIPIENT_RESOLVED',
+      actorType: 'SYSTEM',
+      objectType: 'NotificationRecord',
+      objectId: row.id,
+      caseId: args.caseId,
+      result: routed.to ? 'SUCCESS' : 'FAILURE',
+      correlationId,
+      metadata: {
+        source: routed.to?.destination ?? null,
+        destinationMask: routed.to ? maskDestination(routed.to.email) : null,
+        unresolved: routed.unresolved,
       },
     });
     // Move to the review queue; the state order itself never relaxes.
@@ -557,24 +726,18 @@ export async function attemptAutoRelease(recordId: string, now: Date): Promise<b
   const template = await prisma.notificationTemplate.findFirst({
     where: { notificationType: record.notificationType, status: 'ACTIVE' },
   });
-  // A per-case recipient (an HR-entered address, or the manager this notice
-  // is addressed to) always wins over the shared directory mailbox.
-  // Centralized routing decides whether a shared mailbox is even the right
-  // answer: a route addressed to a PERSON on this case has no department
-  // inbox to fall back to, so an unresolved one stays unresolved rather than
-  // quietly posting someone's departure to a shared address.
-  const routeResolved = await resolveStaticTo(record.notificationType);
-  const resolved = record.caseRecipientCiphertext
-    ? { id: null, destinationMask: record.caseRecipientMask ?? '(case recipient)' }
-    : 'reason' in routeResolved
-      ? { reason: 'NO_RECIPIENT' as const }
-      : routeResolved;
-  const recipientResolved = 'destination' in resolved || !!record.caseRecipientCiphertext;
+  // DEC-069: the record's own recipient - the hierarchy's answer or HR's
+  // override - is what the message goes to. A route addressed to a PERSON on
+  // this case has no department inbox to fall back to, so an unresolved one
+  // stays unresolved rather than quietly posting someone's departure to a
+  // shared address.
+  const effective = await effectiveEnqueueRecipient(record);
+  const recipientResolved = !('blocked' in effective);
 
   const blockers = autoSendBlockers({
     controlLevel,
     recipientResolved,
-    recipientApprovedAndVerified: 'destination' in resolved || !!record.caseRecipientCiphertext,
+    recipientApprovedAndVerified: recipientResolved,
     templateActive: !!template,
     bodyComplete:
       !hasMissingMarkers(record.subjectSnapshot ?? '') &&
@@ -599,10 +762,8 @@ export async function attemptAutoRelease(recordId: string, now: Date): Promise<b
     return false;
   }
 
-  const enqueueRecipient =
-    'destination' in resolved
-      ? { id: resolved.id, destinationMask: resolved.destinationMask }
-      : { id: null, destinationMask: record.caseRecipientMask ?? '(case recipient)' };
+  if ('blocked' in effective) return false;
+  const enqueueRecipient = effective;
   const instance = await prisma.workflowInstance.findFirst({
     where: { caseId: record.caseId },
     orderBy: { activatedAt: 'desc' },
@@ -866,17 +1027,11 @@ export async function transitionNotification(
     // OPERATIONAL requires the notifications flag AND never BASELINE (live
     // activation is additionally pilot-gated at startup/provider level).
     if (await dispatchEligibility(record.caseId)) {
-      // Routing decides the mailbox; a per-case address still wins below.
-      const resolved = await resolveStaticTo(record.notificationType);
-      if ('destination' in resolved) {
-        enqueueRecipient = { id: resolved.id, destinationMask: resolved.destinationMask };
-      } else if (record.caseRecipientCiphertext) {
-        // Directive 6.3 O: the HR-entered case-only recipient dispatches too.
-        enqueueRecipient = {
-          id: null,
-          destinationMask: record.caseRecipientMask ?? '(case recipient)',
-        };
-      }
+      // DEC-069: the record's effective recipient - override, per-case
+      // address, configured mailbox, then the static route.
+      const effective = await effectiveEnqueueRecipient(record);
+      if ('blocked' in effective) throw ServiceError.validation([effective.blocked]);
+      enqueueRecipient = effective;
       if (enqueueRecipient) {
         const instance = await prisma.workflowInstance.findFirst({
           where: { caseId: record.caseId },
@@ -988,7 +1143,7 @@ export async function captureNotificationForDev(actor: Actor, recordId: string) 
 export async function listCaseNotifications(actor: Actor, caseId: string) {
   const { c, ctx } = await loadCaseAccess(actor, caseId);
   if (!canActOnCase(actor, 'notification.view', ctx)) throw ServiceError.forbidden();
-  const records = await getPrisma().notificationRecord.findMany({
+  const rows = await getPrisma().notificationRecord.findMany({
     where: { caseId },
     orderBy: { createdAt: 'desc' },
     include: {
@@ -998,8 +1153,52 @@ export async function listCaseNotifications(actor: Actor, caseId: string) {
       attachedDocument: {
         select: { id: true, documentType: true, version: true, pdfChecksum: true },
       },
+      outbox: {
+        select: { status: true, actualToMask: true, wasTestMode: true, submittedAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
     },
   });
+  const canAct = canActOnCase(actor, 'notification.approveInternal', ctx);
+  // DEC-069: what the page needs to say where a message goes, whether HR
+  // changed that, whether the words can still change, and its history. The
+  // case page shows masked addresses only, as it always has; the full address
+  // is in the preview and the record PDF for those who may release the message.
+  const records = await Promise.all(
+    rows.map(async ({ outbox, ...r }) => {
+      const queued = outbox.some((o) =>
+        ['PENDING', 'CLAIMED', 'FAILED_RETRYABLE'].includes(o.status),
+      );
+      return {
+        ...r,
+        // Never hand ciphertext to a page.
+        caseRecipientCiphertext: undefined,
+        ccCiphertext: undefined,
+        bccCiphertext: undefined,
+        autoRecipientCiphertext: undefined,
+        recipient: presentRecipient({
+          effectiveName: r.recipientName,
+          effectiveMask:
+            r.caseRecipientMask ?? (r.recipientConfigId ? '(configured mailbox)' : null),
+          autoName: r.autoRecipientName,
+          autoMask: r.autoRecipientMask,
+          autoSourceKey: r.autoDestinationKey,
+          overrideKind: r.recipientOverride,
+        }),
+        displayStatus: emailDisplayStatus({
+          status: r.status,
+          queued,
+          captured: r.captures.length > 0,
+        }),
+        deliveredToMask: outbox[0]?.actualToMask ?? null,
+        rehearsal: outbox[0]?.wasTestMode ?? false,
+        contentEditable: canAct && emailContentEditable(r.status),
+        recipientEditable: canAct && emailRecipientEditable(r.status),
+        revisions: await listRevisions('EMAIL', r.id),
+      };
+    }),
+  );
   return {
     caseNumber: c.caseNumber,
     recordPurpose: c.recordPurpose,
@@ -1007,8 +1206,847 @@ export async function listCaseNotifications(actor: Actor, caseId: string) {
     canPrepare:
       canActOnCase(actor, 'notification.prepare', ctx) &&
       ['ACTIVE', 'ON_HOLD', 'CLEARANCE_REVIEW'].includes(c.status),
-    canApproveInternal: canActOnCase(actor, 'notification.approveInternal', ctx),
+    canApproveInternal: canAct,
     canRecordSend: canActOnCase(actor, 'notification.recordSend', ctx),
+  };
+}
+
+// --- DEC-069: editing a message before it is sent ---------------------------------
+
+async function loadEditableRecord(actor: Actor, recordId: string) {
+  const prisma = getPrisma();
+  const record = await prisma.notificationRecord.findUnique({ where: { id: recordId } });
+  if (!record) throw ServiceError.notFound();
+  const { c, ctx } = await loadCaseAccess(actor, record.caseId);
+  if (!canActOnCase(actor, 'notification.approveInternal', ctx)) {
+    await auditDenied(actor, 'ACCESS_DENIED', 'NotificationRecord', recordId, record.caseId);
+    throw ServiceError.forbidden();
+  }
+  return { record, c, ctx };
+}
+
+/**
+ * Directive sections 9 and 12: HR edits the subject, the body and an HR note
+ * on a message that has not yet been handed to the outbox. Every save is a
+ * revision; once queued or sent, the record is history.
+ */
+export async function updateNotificationContent(
+  actor: Actor,
+  recordId: string,
+  input: { subject: string; body: string; hrNote?: string | null },
+) {
+  const { record } = await loadEditableRecord(actor, recordId);
+  if (!emailContentEditable(record.status))
+    throw ServiceError.conflict(
+      'This message has already been queued or sent. Prepare a corrected copy instead; the original stays as sent.',
+    );
+  const subject = input.subject.trim();
+  const body = normaliseBody(input.body);
+  const hrNote = input.hrNote?.trim() ? normaliseBody(input.hrNote) : null;
+  const errors = editedEmailErrors({
+    subject,
+    body,
+    externalProvider: NOTIFICATION_RECIPIENT_CLASS[record.notificationType] === 'EXTERNAL_PROVIDER',
+  });
+  // The secure link, where the template placed one, has to keep its place.
+  for (const marker of ['[link inserted at send time]', '[signing link inserted at send time]']) {
+    if ((record.bodySnapshot ?? '').includes(marker) && !body.includes(marker))
+      errors.push(
+        `Keep the line "${marker}"; the secure link is placed there when the email is sent.`,
+      );
+  }
+  if (hrNote && hrNote.length > 2000) errors.push('The HR note is limited to 2000 characters.');
+  if (errors.length) throw ServiceError.validation(errors);
+
+  const changed =
+    subject !== (record.subjectSnapshot ?? '') ||
+    body !== (record.bodySnapshot ?? '') ||
+    hrNote !== record.hrNote;
+  if (!changed) return { changed: false, revision: null as number | null };
+
+  const now = new Date();
+  const correlationId = newCorrelationId();
+  return getPrisma().$transaction(async (tx) => {
+    const u = await tx.notificationRecord.updateMany({
+      where: { id: recordId, rowVersion: record.rowVersion },
+      data: {
+        subjectSnapshot: subject,
+        bodySnapshot: body,
+        hrNote,
+        contentChecksum: contentChecksum(`${subject}\n${body}`),
+        editedById: actor.userId,
+        editedAt: now,
+        rowVersion: { increment: 1 },
+      },
+    });
+    if (u.count === 0) throw ServiceError.conflict('The message changed; reload and retry.');
+    const rev = await recordRevisionTx(tx, {
+      caseId: record.caseId,
+      documentKind: 'EMAIL',
+      documentId: recordId,
+      kind: 'EDITED',
+      content: { subject, body, hrNote },
+      editedById: actor.userId,
+    });
+    await appendAudit(tx, {
+      eventType: 'NOTIFICATION_EDITED',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'NotificationRecord',
+      objectId: recordId,
+      caseId: record.caseId,
+      result: 'SUCCESS',
+      correlationId,
+      metadata: {
+        notificationType: record.notificationType,
+        revision: rev.revision,
+        subjectChanged: subject !== (record.subjectSnapshot ?? ''),
+        bodyChanged: body !== (record.bodySnapshot ?? ''),
+        noteChanged: hrNote !== record.hrNote,
+      },
+    });
+    return { changed: true, revision: rev.revision };
+  });
+}
+
+/**
+ * Directive section 12: a sent message is never edited. To send corrected
+ * information HR prepares a NEW message from the old one; both stay on the
+ * case and both are audited. The copy waits for review before release.
+ */
+export async function prepareCorrectedNotification(actor: Actor, recordId: string, reason: string) {
+  const { record } = await loadEditableRecord(actor, recordId);
+  if (['DRAFT', 'PENDING_APPROVAL', 'READY_FOR_MANUAL_SEND'].includes(record.status))
+    throw ServiceError.conflict('This message has not been sent yet - edit it directly.');
+  if (!reason.trim()) throw ServiceError.validation(['Give the reason for the corrected copy.']);
+  const prisma = getPrisma();
+  const template = await prisma.notificationTemplate.findFirst({
+    where: { notificationType: record.notificationType, status: 'ACTIVE' },
+    select: { id: true, version: true },
+  });
+  const now = new Date();
+  const correlationId = newCorrelationId();
+  return prisma.$transaction(async (tx) => {
+    const copy = await tx.notificationRecord.create({
+      data: {
+        caseId: record.caseId,
+        notificationType: record.notificationType,
+        templateId: template?.id ?? record.templateId,
+        templateVersion: template?.version ?? record.templateVersion,
+        recipientClass: record.recipientClass,
+        status: 'PENDING_APPROVAL',
+        idempotencyKey: `${record.idempotencyKey}:c${now.getTime()}`,
+        subjectSnapshot: record.subjectSnapshot,
+        bodySnapshot: record.bodySnapshot,
+        contentChecksum: record.contentChecksum,
+        fieldSnapshot: record.fieldSnapshot as Prisma.InputJsonValue,
+        hrNote: record.hrNote,
+        origin: record.origin,
+        derivedActionId: record.derivedActionId,
+        // A correction is always reviewed by a person before it goes.
+        controlLevel: 'HR_REVIEW_THEN_SEND',
+        recipientConfigId: record.recipientConfigId,
+        recipientName: record.recipientName,
+        recipientOrg: record.recipientOrg,
+        recipientKind: record.recipientKind,
+        caseRecipientCiphertext: record.caseRecipientCiphertext,
+        caseRecipientMask: record.caseRecipientMask,
+        autoDestinationKey: record.autoDestinationKey,
+        autoRecipientName: record.autoRecipientName,
+        autoRecipientMask: record.autoRecipientMask,
+        autoRecipientCiphertext: record.autoRecipientCiphertext,
+        autoRecipientConfigId: record.autoRecipientConfigId,
+        recipientOverride: record.recipientOverride,
+        recipientOverrideById: record.recipientOverrideById,
+        recipientOverrideAt: record.recipientOverrideAt,
+        recipientOverrideReason: record.recipientOverrideReason,
+        ccCiphertext: record.ccCiphertext,
+        ccNames: record.ccNames,
+        ccMasks: record.ccMasks,
+        bccCiphertext: record.bccCiphertext,
+        bccNames: record.bccNames,
+        bccMasks: record.bccMasks,
+        attachedDocumentId: record.attachedDocumentId,
+        applicabilityNote: record.applicabilityNote,
+        applicabilityConfirmedById: record.applicabilityConfirmedById,
+        applicabilityConfirmedAt: record.applicabilityConfirmedAt,
+        correctsRecordId: record.id,
+        createdById: actor.userId,
+      },
+    });
+    await recordRevisionTx(tx, {
+      caseId: record.caseId,
+      documentKind: 'EMAIL',
+      documentId: copy.id,
+      kind: 'CORRECTED',
+      content: { subject: copy.subjectSnapshot, body: copy.bodySnapshot, hrNote: copy.hrNote },
+      editedById: actor.userId,
+      note: `Corrected copy of the message sent ${record.sentAt ? formatInstant(record.sentAt) : 'earlier'}: ${reason.trim()}`,
+    });
+    await appendAudit(tx, {
+      eventType: 'NOTIFICATION_CORRECTION_PREPARED',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'NotificationRecord',
+      objectId: copy.id,
+      caseId: record.caseId,
+      result: 'SUCCESS',
+      correlationId,
+      metadata: {
+        correctsRecordId: record.id,
+        notificationType: record.notificationType,
+        reason: reason.trim(),
+      },
+    });
+    return { id: copy.id };
+  });
+}
+
+// --- DEC-069: recipient overrides ----------------------------------------------------
+
+/** One choice HR can pick for a message: a person, a configured group, or typed. */
+export interface RecipientChoice {
+  kind: 'DIRECTORY' | 'CONFIG' | 'CASE_PARTY';
+  id: string;
+  name: string;
+  detail: string;
+  mask: string;
+}
+
+/**
+ * Directive section 24: a searchable picker over known recipients - the
+ * directory, the case's own parties, and the configured groups and
+ * providers - so HR never retypes an address that already exists.
+ */
+export async function searchRecipientChoices(
+  actor: Actor,
+  caseId: string,
+  query: string,
+): Promise<RecipientChoice[]> {
+  const { c, ctx } = await loadCaseAccess(actor, caseId);
+  if (!canActOnCase(actor, 'notification.view', ctx)) throw ServiceError.forbidden();
+  const q = query.trim();
+  const prisma = getPrisma();
+  const choices: RecipientChoice[] = [];
+
+  const facts = routingFactsOf(c);
+  const parties: Array<{ key: string; name: string; email: string | null; detail: string }> = [];
+  if (c.employeeWorkEmail)
+    parties.push({
+      key: 'employee',
+      name: c.employeeDisplayName,
+      email: c.employeeWorkEmail,
+      detail: 'The departing employee',
+    });
+  if (facts.managerSourceId) {
+    const mgr = await prisma.employeeSourceRecord.findUnique({
+      where: {
+        sourceSystem_sourceId: {
+          sourceSystem: c.employeeSourceSystem,
+          sourceId: facts.managerSourceId,
+        },
+      },
+      select: { displayName: true, workEmail: true, jobTitle: true },
+    });
+    if (mgr?.workEmail)
+      parties.push({
+        key: `manager:${facts.managerSourceId}`,
+        name: mgr.displayName,
+        email: mgr.workEmail,
+        detail: `Reporting manager${mgr.jobTitle ? ` - ${mgr.jobTitle}` : ''}`,
+      });
+  }
+  if (c.assignedOfficerId) {
+    const officer = await prisma.user.findUnique({
+      where: { id: c.assignedOfficerId },
+      select: { displayName: true, workEmail: true },
+    });
+    if (officer)
+      parties.push({
+        key: `officer:${c.assignedOfficerId}`,
+        name: officer.displayName,
+        email: officer.workEmail,
+        detail: 'Assigned HR Officer',
+      });
+  }
+  for (const p of parties) {
+    if (!p.email) continue;
+    if (q && !`${p.name} ${p.detail} ${p.email}`.toLowerCase().includes(q.toLowerCase())) continue;
+    choices.push({
+      kind: 'CASE_PARTY',
+      id: p.key,
+      name: p.name,
+      detail: p.detail,
+      mask: maskDestination(p.email),
+    });
+  }
+
+  const groups = await prisma.recipientConfig.findMany({
+    where: {
+      active: true,
+      approvalStatus: 'APPROVED',
+      environment: routingEnvironment(),
+      ...(q
+        ? {
+            OR: [
+              { displayName: { contains: q, mode: 'insensitive' } },
+              { organizationName: { contains: q, mode: 'insensitive' } },
+              { contactName: { contains: q, mode: 'insensitive' } },
+              { purpose: { contains: q, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: { displayName: 'asc' },
+    take: 12,
+  });
+  for (const g of groups)
+    choices.push({
+      kind: 'CONFIG',
+      id: g.id,
+      name: g.displayName,
+      detail: [g.organizationName, g.contactName, g.recipientClass.replace(/_/g, ' ').toLowerCase()]
+        .filter(Boolean)
+        .join(' - '),
+      mask: g.destinationMask,
+    });
+
+  if (q.length >= 2) {
+    const people = await prisma.employeeSourceRecord.findMany({
+      where: {
+        sourceSystem: c.employeeSourceSystem,
+        active: true,
+        NOT: [{ workEmail: null }, { workEmail: '' }],
+        OR: [
+          { displayName: { contains: q, mode: 'insensitive' } },
+          { jobTitle: { contains: q, mode: 'insensitive' } },
+          { department: { contains: q, mode: 'insensitive' } },
+          { workEmail: { contains: q, mode: 'insensitive' } },
+          { sourceId: { contains: q, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: { displayName: 'asc' },
+      take: 12,
+      select: {
+        sourceId: true,
+        displayName: true,
+        jobTitle: true,
+        department: true,
+        workEmail: true,
+      },
+    });
+    for (const p of people)
+      choices.push({
+        kind: 'DIRECTORY',
+        id: p.sourceId,
+        name: p.displayName,
+        detail: [p.jobTitle, p.department].filter(Boolean).join(' - '),
+        mask: maskDestination(p.workEmail!),
+      });
+  }
+  return choices.slice(0, 30);
+}
+
+async function resolveChoice(
+  c: { employeeSourceSystem: string },
+  choice: { kind: 'DIRECTORY' | 'CONFIG' | 'CASE_PARTY'; id: string },
+  facts: RoutingCaseFacts,
+  notificationType: NotificationType,
+): Promise<{
+  name: string;
+  email: string;
+  recipientConfigId: string | null;
+  organization: string | null;
+}> {
+  const prisma = getPrisma();
+  if (choice.kind === 'CONFIG') {
+    const row = await prisma.recipientConfig.findUnique({ where: { id: choice.id } });
+    if (!row) throw ServiceError.validation(['That configured recipient no longer exists.']);
+    const errors = recipientUsableErrors(row, notificationType, routingEnvironment(), new Date());
+    if (errors.length) throw ServiceError.validation(errors);
+    return {
+      name: row.contactName ?? row.displayName,
+      email: decryptValue(row.destinationCiphertext),
+      recipientConfigId: row.id,
+      organization: row.organizationName,
+    };
+  }
+  if (choice.kind === 'CASE_PARTY') {
+    if (choice.id === 'employee' && facts.employeeWorkEmail)
+      return {
+        name: facts.employeeDisplayName,
+        email: facts.employeeWorkEmail,
+        recipientConfigId: null,
+        organization: null,
+      };
+    if (choice.id.startsWith('officer:')) {
+      const u = await prisma.user.findUnique({
+        where: { id: choice.id.slice('officer:'.length) },
+        select: { displayName: true, workEmail: true },
+      });
+      if (u)
+        return {
+          name: u.displayName,
+          email: u.workEmail,
+          recipientConfigId: null,
+          organization: null,
+        };
+    }
+    if (choice.id.startsWith('manager:'))
+      choice = { kind: 'DIRECTORY', id: choice.id.slice('manager:'.length) };
+    else throw ServiceError.validation(['That case party cannot be resolved.']);
+  }
+  const person = await prisma.employeeSourceRecord.findUnique({
+    where: { sourceSystem_sourceId: { sourceSystem: c.employeeSourceSystem, sourceId: choice.id } },
+    select: { displayName: true, workEmail: true, active: true },
+  });
+  if (!person?.workEmail?.trim() || !person.active)
+    throw ServiceError.validation(['That person has no usable email address in the directory.']);
+  return {
+    name: person.displayName,
+    email: person.workEmail.trim(),
+    recipientConfigId: null,
+    organization: null,
+  };
+}
+
+function assertRecipientChangeable(record: {
+  status: NotificationType extends never ? never : string;
+}) {
+  if (!emailRecipientEditable(record.status as never))
+    throw ServiceError.conflict(
+      'The recipient can be changed until the message is queued or sent.',
+    );
+}
+
+/**
+ * Directive sections 16 to 20: change WHO one message goes to. The
+ * auto-assigned recipient stays on the record, visibly, and the directory
+ * hierarchy is untouched.
+ */
+export async function overrideRecipient(
+  actor: Actor,
+  recordId: string,
+  input:
+    | { kind: 'DIRECTORY' | 'CONFIG' | 'CASE_PARTY'; id: string; reason?: string }
+    | { kind: 'MANUAL'; name: string; email: string; organization?: string; reason?: string },
+) {
+  const { record, c } = await loadEditableRecord(actor, recordId);
+  assertRecipientChangeable(record);
+  const prisma = getPrisma();
+  let chosen: {
+    name: string;
+    email: string;
+    recipientConfigId: string | null;
+    organization: string | null;
+  };
+  if (input.kind === 'MANUAL') {
+    const errors = manualRecipientErrors({ name: input.name, email: input.email });
+    errors.push(...destinationErrors(input.email.trim(), routingEnvironment()));
+    if (errors.length) throw ServiceError.validation(errors);
+    chosen = {
+      name: input.name.trim(),
+      email: input.email.trim(),
+      recipientConfigId: null,
+      organization: input.organization?.trim() || null,
+    };
+  } else {
+    chosen = await resolveChoice(c, input, routingFactsOf(c), record.notificationType);
+    const errors = destinationErrors(chosen.email, routingEnvironment());
+    if (errors.length) throw ServiceError.validation(errors);
+  }
+  const overrideKind: RecipientOverrideKind = input.kind === 'MANUAL' ? 'MANUAL' : 'RECIPIENT';
+  const newMask = maskDestination(chosen.email);
+  const originalName = record.recipientOverride ? record.autoRecipientName : record.recipientName;
+  const originalMask = record.recipientOverride
+    ? record.autoRecipientMask
+    : (record.caseRecipientMask ?? null);
+  const correlationId = newCorrelationId();
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    const u = await tx.notificationRecord.updateMany({
+      where: { id: recordId, rowVersion: record.rowVersion },
+      data: {
+        recipientName: chosen.name,
+        recipientOrg: chosen.organization,
+        recipientKind: chosen.recipientConfigId ? record.recipientKind : 'INTERNAL',
+        recipientConfigId: chosen.recipientConfigId,
+        caseRecipientCiphertext: chosen.recipientConfigId ? null : encryptValue(chosen.email),
+        caseRecipientMask: chosen.recipientConfigId ? null : newMask,
+        recipientOverride: overrideKind,
+        recipientOverrideById: actor.userId,
+        recipientOverrideAt: now,
+        recipientOverrideReason: input.reason?.trim().slice(0, 300) || null,
+        rowVersion: { increment: 1 },
+      },
+    });
+    if (u.count === 0) throw ServiceError.conflict('The message changed; reload and retry.');
+    await appendAudit(tx, {
+      eventType:
+        overrideKind === 'MANUAL'
+          ? 'NOTIFICATION_RECIPIENT_MANUAL_ENTERED'
+          : 'NOTIFICATION_RECIPIENT_OVERRIDDEN',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'NotificationRecord',
+      objectId: recordId,
+      caseId: record.caseId,
+      result: 'SUCCESS',
+      correlationId,
+      // Section 33: original and new, masked; never a secret, never a token.
+      metadata: {
+        notificationType: record.notificationType,
+        originalName,
+        originalMask,
+        newName: chosen.name,
+        newMask,
+        autoSource: record.autoDestinationKey,
+        reason: input.reason?.trim() || null,
+      },
+    });
+  });
+  await autoResolveException(
+    record.caseId,
+    'RECIPIENT_MISSING',
+    recordId,
+    'HR chose a recipient for this message.',
+  );
+  if (record.origin === 'DERIVED' && record.status === 'PENDING_APPROVAL')
+    await attemptAutoRelease(recordId, new Date());
+  return { mask: newMask };
+}
+
+/**
+ * Directive sections 21 to 23: keep the person, change the address for THIS
+ * message only. The directory is never written; a configured recipient may
+ * be updated through its own controlled lifecycle when the user holds that
+ * authority and asks for it explicitly.
+ */
+export async function overrideRecipientAddress(
+  actor: Actor,
+  recordId: string,
+  input: { email: string; reason?: string; updateStored?: boolean },
+) {
+  const { record } = await loadEditableRecord(actor, recordId);
+  assertRecipientChangeable(record);
+  const email = input.email.trim();
+  const errors = manualRecipientErrors({ name: record.recipientName ?? 'recipient', email });
+  errors.push(...destinationErrors(email, routingEnvironment()));
+  if (errors.length) throw ServiceError.validation(errors);
+  const prisma = getPrisma();
+  const originalMask = record.caseRecipientMask ?? record.autoRecipientMask;
+  const newMask = maskDestination(email);
+  const correlationId = newCorrelationId();
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    const u = await tx.notificationRecord.updateMany({
+      where: { id: recordId, rowVersion: record.rowVersion },
+      data: {
+        // The person stays; the destination for this message changes.
+        recipientConfigId: null,
+        caseRecipientCiphertext: encryptValue(email),
+        caseRecipientMask: newMask,
+        recipientOverride: record.recipientOverride === 'RECIPIENT' ? 'RECIPIENT' : 'ADDRESS',
+        recipientOverrideById: actor.userId,
+        recipientOverrideAt: now,
+        recipientOverrideReason: input.reason?.trim().slice(0, 300) || null,
+        rowVersion: { increment: 1 },
+      },
+    });
+    if (u.count === 0) throw ServiceError.conflict('The message changed; reload and retry.');
+    await appendAudit(tx, {
+      eventType: 'NOTIFICATION_RECIPIENT_ADDRESS_OVERRIDDEN',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'NotificationRecord',
+      objectId: recordId,
+      caseId: record.caseId,
+      result: 'SUCCESS',
+      correlationId,
+      metadata: {
+        notificationType: record.notificationType,
+        recipientName: record.recipientName,
+        originalMask,
+        newMask,
+        storedUpdated: Boolean(input.updateStored && record.recipientConfigId),
+        reason: input.reason?.trim() || null,
+      },
+    });
+  });
+
+  // "Update stored recipient email": only for a configured recipient, only
+  // for a user who maintains that directory, through its own lifecycle.
+  if (input.updateStored && record.recipientConfigId) {
+    if (!can(actor, 'recipients.editTechnical'))
+      throw ServiceError.forbidden(
+        'Updating the stored recipient address requires recipient-directory authority.',
+      );
+    const row = await prisma.recipientConfig.findUnique({
+      where: { id: record.recipientConfigId },
+    });
+    if (row)
+      await upsertRecipient(
+        actor,
+        {
+          recipientClass: row.recipientClass,
+          displayName: row.displayName,
+          destination: email,
+          allowedTypes: row.allowedTypes,
+          changeReason: `Address corrected from case message ${recordId}: ${input.reason?.trim() || 'no reason given'}`,
+          organizationName: row.organizationName ?? undefined,
+          contactName: row.contactName ?? undefined,
+          purpose: row.purpose ?? undefined,
+        },
+        row.id,
+      );
+  }
+  await autoResolveException(
+    record.caseId,
+    'RECIPIENT_MISSING',
+    recordId,
+    'HR entered an address for this message.',
+  );
+  if (record.origin === 'DERIVED' && record.status === 'PENDING_APPROVAL')
+    await attemptAutoRelease(recordId, new Date());
+  return { mask: newMask };
+}
+
+/**
+ * Directive section 27: put the communication back to the recipient the
+ * hierarchy resolves NOW - re-resolved live, so a corrected directory or
+ * configuration is honoured - without HR rediscovering anyone.
+ */
+export async function restoreAutoRecipient(actor: Actor, recordId: string) {
+  const { record, c } = await loadEditableRecord(actor, recordId);
+  assertRecipientChangeable(record);
+  if (!record.recipientOverride)
+    throw ServiceError.conflict('This message uses the auto-assigned recipient already.');
+  const routed = await resolveRoute(record.notificationType, routingFactsOf(c));
+  if (!routed.to)
+    throw ServiceError.validation(
+      routed.unresolved.length
+        ? routed.unresolved
+        : ['The hierarchy cannot resolve a recipient at the moment.'],
+    );
+  const prisma = getPrisma();
+  const recipientRow = routed.to.recipientConfigId
+    ? await prisma.recipientConfig.findUnique({ where: { id: routed.to.recipientConfigId } })
+    : null;
+  const perCase = routed.to.recipientConfigId ? null : routed.to;
+  const correlationId = newCorrelationId();
+  const newMask = maskDestination(routed.to.email);
+  await prisma.$transaction(async (tx) => {
+    const u = await tx.notificationRecord.updateMany({
+      where: { id: recordId, rowVersion: record.rowVersion },
+      data: {
+        recipientConfigId: recipientRow?.id ?? null,
+        recipientName:
+          perCase?.displayName ?? recipientRow?.contactName ?? recipientRow?.displayName ?? null,
+        recipientOrg: recipientRow?.organizationName ?? null,
+        recipientKind: perCase
+          ? 'INTERNAL'
+          : recipientRow
+            ? recipientRow.isExternal
+              ? 'EXTERNAL'
+              : 'INTERNAL'
+            : null,
+        caseRecipientCiphertext: perCase ? encryptValue(perCase.email) : null,
+        caseRecipientMask: perCase ? newMask : null,
+        ...autoRecipientColumns(routed),
+        recipientOverride: null,
+        recipientOverrideById: null,
+        recipientOverrideAt: null,
+        recipientOverrideReason: null,
+        rowVersion: { increment: 1 },
+      },
+    });
+    if (u.count === 0) throw ServiceError.conflict('The message changed; reload and retry.');
+    await appendAudit(tx, {
+      eventType: 'NOTIFICATION_RECIPIENT_RESTORED',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'NotificationRecord',
+      objectId: recordId,
+      caseId: record.caseId,
+      result: 'SUCCESS',
+      correlationId,
+      metadata: {
+        notificationType: record.notificationType,
+        previousOverride: record.recipientOverride,
+        newName: routed.to?.displayName ?? null,
+        newMask,
+        source: routed.to?.destination ?? null,
+      },
+    });
+  });
+  return { mask: newMask };
+}
+
+// --- DEC-069: preview and PDF record ---------------------------------------------------
+
+/** Everything the preview and the PDF need, decrypted in memory only. */
+async function composeForReader(actor: Actor, recordId: string) {
+  const prisma = getPrisma();
+  const record = await prisma.notificationRecord.findUnique({
+    where: { id: recordId },
+    include: {
+      case: { select: { caseNumber: true, assignedOfficerId: true, ownerId: true } },
+      attachedDocument: { select: { documentType: true, version: true } },
+      outbox: {
+        select: { actualToMask: true, wasTestMode: true, submittedAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
+  });
+  if (!record) throw ServiceError.notFound();
+  const { ctx } = await loadCaseAccess(actor, record.caseId);
+  if (!canActOnCase(actor, 'notification.view', ctx)) throw ServiceError.forbidden();
+  const seesFull =
+    hasRole(actor, 'HR_MANAGER') || canActOnCase(actor, 'notification.approveInternal', ctx);
+  // The case page shows the masked address, as it always has; the full
+  // address goes only into the PDF, for those who may release the message.
+  let toAddress: string;
+  let toMask: string;
+  if (record.caseRecipientCiphertext) {
+    toMask = record.caseRecipientMask ?? '';
+    toAddress = seesFull ? decryptValue(record.caseRecipientCiphertext) : toMask;
+  } else if (record.recipientConfigId) {
+    const row = await prisma.recipientConfig.findUnique({
+      where: { id: record.recipientConfigId },
+    });
+    toMask = row ? row.destinationMask : '(recipient not configured)';
+    toAddress = row && seesFull ? decryptValue(row.destinationCiphertext) : toMask;
+  } else toAddress = toMask = '(recipient not resolved)';
+  const cc =
+    seesFull && record.ccCiphertext
+      ? (JSON.parse(decryptValue(record.ccCiphertext)) as string[])
+      : record.ccMasks;
+  const bcc =
+    seesFull && record.bccCiphertext
+      ? (JSON.parse(decryptValue(record.bccCiphertext)) as string[])
+      : record.bccMasks;
+  const sender = await hrSenderFor(record.caseId);
+  const sent = ['SENT', 'MANUALLY_SENT', 'ACKNOWLEDGED', 'CONFIRMED_COMPLETE'].includes(
+    record.status,
+  );
+  const body = [record.bodySnapshot ?? '', record.hrNote ? `\n\n${record.hrNote}` : ''].join('');
+  return { record, ctx, seesFull, toAddress, toMask, cc, bcc, sender, sent, body };
+}
+
+/** Directive section 10: the message as the recipient will see it. */
+export async function getNotificationPreview(actor: Actor, recordId: string) {
+  const { record, toMask, sender, sent, body } = await composeForReader(actor, recordId);
+  const banner = await resolveEmailBannerForNotification({
+    caseId: record.caseId,
+    notificationType: record.notificationType,
+    correlationId: newCorrelationId(),
+  });
+  // The platform's own authorized image route serves the preview image; the
+  // outgoing message carries the inline part or the hosted URL instead.
+  const image = banner
+    ? {
+        ...banner.image,
+        src: banner.image.src.startsWith('cid:')
+          ? `/api/email-banner/${banner.kind === 'PERSONAL' ? 'me' : 'department'}`
+          : banner.image.src,
+      }
+    : null;
+  return {
+    to: { name: record.recipientName, address: toMask },
+    cc: record.ccMasks,
+    bcc: record.bccMasks,
+    subject: record.subjectSnapshot ?? '',
+    html: renderEmailHtml({ bodyText: body, banner: image }),
+    text: body,
+    attachments: record.attachedDocument
+      ? [
+          `${record.attachedDocument.documentType.replace(/_/g, ' ').toLowerCase()} v${record.attachedDocument.version} (PDF)`,
+        ]
+      : [],
+    sender: `${sender.name}, ${sender.title}`,
+    sent,
+    bannerKind: banner?.kind ?? null,
+  };
+}
+
+/**
+ * Directive sections 11 and 34: the message as a PDF - a preview before
+ * sending, the record afterwards, showing the recipient it actually went to.
+ */
+export async function notificationRecordPdf(actor: Actor, recordId: string) {
+  const { record, toAddress, cc, bcc, sender, sent, body, seesFull } = await composeForReader(
+    actor,
+    recordId,
+  );
+  const banner = await resolveEmailBannerForNotification({
+    caseId: record.caseId,
+    notificationType: record.notificationType,
+    correlationId: newCorrelationId(),
+  });
+  let bannerImage: { bytes: Buffer; width: number; height: number } | null = null;
+  if (banner) {
+    try {
+      bannerImage = {
+        bytes: await readBannerBytes(banner.ref),
+        width: banner.ref.width,
+        height: banner.ref.height,
+      };
+    } catch {
+      bannerImage = null;
+    }
+  }
+  const outbox = record.outbox[0] ?? null;
+  const note = record.recipientOverride
+    ? `Recipient adjusted by HR before sending (${record.recipientOverride.toLowerCase()} override). Auto-assigned: ${record.autoRecipientName ?? record.autoRecipientMask ?? 'not resolved'}.`
+    : null;
+  const bytes = await renderEmailRecordPdfBytes({
+    kind: sent ? 'RECORD' : 'PREVIEW',
+    title: record.subjectSnapshot ?? record.notificationType.replace(/_/g, ' ').toLowerCase(),
+    caseReference: record.case.caseNumber,
+    recordReference: record.id.slice(0, 8),
+    to: [
+      {
+        name: record.recipientName,
+        address: seesFull ? toAddress : (record.caseRecipientMask ?? toAddress),
+      },
+    ],
+    cc,
+    bcc,
+    subject: record.subjectSnapshot ?? '',
+    body,
+    generatedAt: record.createdAt,
+    sentAt: record.sentAt ?? record.manualSentAt ?? outbox?.submittedAt ?? null,
+    sender: `${sender.name}, ${sender.title}`,
+    attachments: record.attachedDocument
+      ? [
+          `${record.attachedDocument.documentType.replace(/_/g, ' ').toLowerCase()} v${record.attachedDocument.version} (PDF)`,
+        ]
+      : [],
+    banner: bannerImage,
+    note,
+    redirectedTo: outbox?.wasTestMode ? (outbox.actualToMask ?? null) : null,
+  });
+  await appendAudit(getPrisma(), {
+    eventType: 'DOC_DOWNLOADED',
+    actorType: 'USER',
+    actorId: actor.userId,
+    effectiveRoles: actor.roles,
+    objectType: 'NotificationRecord',
+    objectId: recordId,
+    caseId: record.caseId,
+    result: 'SUCCESS',
+    correlationId: newCorrelationId(),
+    metadata: { notificationType: record.notificationType, kind: sent ? 'RECORD' : 'PREVIEW' },
+  });
+  return {
+    bytes,
+    fileName: `${record.case.caseNumber}-email-${record.notificationType.toLowerCase()}-${sent ? 'record' : 'preview'}.pdf`,
   };
 }
 

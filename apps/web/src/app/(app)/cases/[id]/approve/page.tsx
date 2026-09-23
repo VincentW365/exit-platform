@@ -348,6 +348,21 @@ export default async function CaseApprovalPage({
                           .join(', ')}
                       </span>
                     ) : null}
+                    {/* DEC-069 section 31: what HR already did on the prepared message. */}
+                    {item.override ? (
+                      <span className="meta">
+                        <Chip tone="attention">{item.override.label}</Chip> sending to{' '}
+                        {item.override.toName ?? item.override.toMask ?? 'a chosen recipient'}
+                        {item.override.toMask && item.override.toName
+                          ? ` (${item.override.toMask})`
+                          : ''}
+                        ; auto-assigned{' '}
+                        {item.override.autoName ?? item.override.autoMask ?? 'nobody'}
+                      </span>
+                    ) : null}
+                    {item.recipientUnresolved ? (
+                      <Chip tone="critical">Recipient not resolved on the prepared message</Chip>
+                    ) : null}
                     {item.applicable ? <span className="meta">{item.timing}</span> : null}
                   </li>
                 ))}

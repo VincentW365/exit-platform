@@ -103,6 +103,20 @@ Rules:
 | Add case to My Work | Via assignment | Automatic through assignment |
 | Remove case from officer My Work | Via reassignment or case state | No |
 
+## Editing documents, emails and recipients (DEC-069, 2026-09-23)
+
+Editing a draft letter, saving the action form, editing the exit checklist,
+editing an unsent email, preparing a corrected copy, changing a recipient or
+an address and restoring the auto-assigned recipient all sit on the existing
+case-edit authorities (`doc.edit`, `form.edit`, `asset.manage`,
+`notification.approveInternal`), so they follow case ownership: the **HR
+Manager** on any case they can see, the **assigned HR Officer** on the
+cases they own, and **another HR Officer** reads only. Downloading a draft
+or final PDF follows the existing download authority. **Update stored
+recipient email** is additionally gated on recipient-directory authority
+(`recipients.editTechnical`) and goes through that directory's approval and
+verification; nothing ever writes to BambooHR. No recipient correction after
+case approval asks for a second HR Manager approval.
 ## Signing authority (DEC-068, 2026-09-23)
 
 Creating, copying, emailing, resending, extending and revoking a signing

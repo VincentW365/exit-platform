@@ -2,16 +2,18 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import {
   ServiceError,
+  getCase,
   getReturnItemsChecklist,
   listCaseAssets,
   listIssuedAssetsForEmployee,
+  listSignatureRequests,
 } from '@exit/db';
 import { formatInstant, ASSET_TYPES, ASSET_TYPE_LABELS } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { CaseTitle, Feedback } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
 import { addAssetAction, assetDispositionAction, selectAssetsAction } from './actions';
-import { ReturnChecklistPanel, type ChecklistView } from './ReturnChecklistPanel';
+import { ReceiptWorkspace } from './ReceiptWorkspace';
 import { humanize } from '@/lib/text';
 import { Chip, Row, Rows, SectionHead } from '@/components/patterns';
 import { BoxIcon, CardIcon, KeyIcon, LaptopIcon, PhoneIcon, ShirtIcon } from '@/components/icons';
@@ -79,7 +81,10 @@ export default async function CaseAssetsPage({
     throw e;
   }
 
-  const checklist = (await getReturnItemsChecklist(actor, id)) as ChecklistView | null;
+  const checklist = await getReturnItemsChecklist(actor, id);
+  // DEC-069: the receipt collects signatures like the action form does.
+  const signatures = checklist ? await listSignatureRequests(actor, id) : null;
+  const caseView = checklist ? await getCase(actor, id) : null;
   const m = data.metrics;
   // What the directory says this employee holds - alive from the first day
   // of the case, before activation turns these into recovery items.
@@ -102,8 +107,14 @@ export default async function CaseAssetsPage({
         asset creates a review exception for authorized HR/Finance review only.
       </p>
 
-      {checklist ? (
-        <ReturnChecklistPanel caseId={id} checklist={checklist} />
+      {checklist && signatures ? (
+        <ReceiptWorkspace
+          caseId={id}
+          checklist={checklist}
+          signatures={signatures}
+          employeeName={caseView?.case.employeeDisplayName ?? 'Employee'}
+          employeeEmail={caseView?.case.employeeWorkEmail ?? null}
+        />
       ) : (
         <section className="panel" aria-labelledby="return-checklist-h">
           <h2 id="return-checklist-h" style={{ marginTop: 0 }}>

@@ -79,6 +79,10 @@ TO exit_app;
 -- superseded; it is never updated in place beyond that and never deleted.
 GRANT SELECT, INSERT, UPDATE ON signature_record TO exit_app;
 
+-- DEC-069: the revision log of every editable document is history. Read and
+-- insert only; a trigger refuses UPDATE and DELETE as a second control.
+GRANT SELECT, INSERT ON document_revision TO exit_app;
+
 -- Attestations: insert + read + update (update restricted by trigger to the
 -- invalidation fields only; core columns are database-immutable).
 GRANT SELECT, INSERT, UPDATE ON attestation TO exit_app;

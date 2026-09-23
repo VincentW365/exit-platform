@@ -16,9 +16,12 @@
  * Read-only; the decision itself is the ordinary audited case transition.
  */
 import {
+  autoAssignmentSource,
   canActOnCase,
   canViewCase,
   deriveRequiredActions,
+  RECIPIENT_OVERRIDE_LABELS,
+  type RecipientOverrideKind,
   destinationLabel,
   hasRole,
   letterTypeForDeparture,
@@ -142,6 +145,20 @@ export interface PlannedCommunication {
   cc: PlannedDestination[];
   /** Business-language reasons a destination could not be resolved. */
   unresolved: string[];
+  /** DEC-069 section 31: the prepared message this plan line became, if any. */
+  recordId?: string | null;
+  /** An override HR already made on that message, shown beside the plan. */
+  override?: {
+    kind: RecipientOverrideKind;
+    label: string;
+    toName: string | null;
+    toMask: string | null;
+    autoName: string | null;
+    autoMask: string | null;
+    source: string;
+  } | null;
+  /** The prepared message still has nobody to go to. */
+  recipientUnresolved?: boolean;
 }
 
 export interface AudienceGroup {
@@ -453,6 +470,44 @@ export async function getCaseApprovalSummary(
         full,
       }),
     );
+  }
+  // DEC-069 section 31: once messages exist, the plan also shows the
+  // overrides HR already made on them and any recipient still unresolved -
+  // the same facts the Email Actions tab shows, in the approver's view.
+  const prepared = await getPrisma().notificationRecord.findMany({
+    where: { caseId, status: { notIn: ['CANCELLED', 'SUPERSEDED'] } },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      notificationType: true,
+      recipientName: true,
+      caseRecipientMask: true,
+      recipientConfigId: true,
+      autoRecipientName: true,
+      autoRecipientMask: true,
+      autoDestinationKey: true,
+      recipientOverride: true,
+    },
+  });
+  const latestByType = new Map<string, (typeof prepared)[number]>();
+  for (const r of prepared)
+    if (!latestByType.has(r.notificationType)) latestByType.set(r.notificationType, r);
+  for (const p of planned) {
+    const r = latestByType.get(p.notificationType);
+    if (!r) continue;
+    p.recordId = r.id;
+    p.recipientUnresolved = !r.caseRecipientMask && !r.recipientConfigId;
+    p.override = r.recipientOverride
+      ? {
+          kind: r.recipientOverride,
+          label: RECIPIENT_OVERRIDE_LABELS[r.recipientOverride],
+          toName: r.recipientName,
+          toMask: r.caseRecipientMask,
+          autoName: r.autoRecipientName,
+          autoMask: r.autoRecipientMask,
+          source: autoAssignmentSource(r.autoDestinationKey),
+        }
+      : null;
   }
   const groups: AudienceGroup[] = GROUP_ORDER.map((audience) => {
     const items = planned.filter((p) => p.audience === audience);

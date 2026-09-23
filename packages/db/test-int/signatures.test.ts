@@ -551,7 +551,7 @@ describe('the HR signature applied in the application', () => {
 
     // No second live signature can be stacked on the same block.
     await expect(applyHrSignature(officer.actor, formId, { dataUrl: MARK })).rejects.toThrow(
-      /already on this form/i,
+      /already on this (form|document)/i,
     );
 
     await supersedeHrSignature(officer.actor, formId, 'Signed in the wrong box.');
@@ -580,9 +580,16 @@ describe('the final PDF', () => {
       marks: blocksForSigner('EMPLOYEE').map((b) => ({ blockKey: b.key, dataUrl: MARK })),
       consented: true,
     });
-    await applyHrSignature(officer.actor, formId, { dataUrl: MARK });
-
+    // DEC-069 section 5: HR's checklist work after the employee signed is
+    // allowed; the HR signature then locks the version, so it is applied last.
     await updateActionFormHr(officer.actor, formId, { hrChecklist: HR_CHECKLIST });
+    await applyHrSignature(officer.actor, formId, { dataUrl: MARK });
+    await expect(
+      updateActionFormHr(officer.actor, formId, { hrRemarks: 'Changed after signing' }),
+    ).rejects.toThrow(/Your signature is on this version/i);
+    await expect(
+      updateActionFormHr(officer.actor, formId, { ackStatus: 'NOT_OBTAINED', ackReason: 'x' }),
+    ).rejects.toThrow(/signature/i);
     await submitActionForm(officer.actor, formId);
     await completeActionForm(officer.actor, formId);
 

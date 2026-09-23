@@ -25,8 +25,68 @@ import {
 import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
-import { renderActionFormPdf } from './renderService.ts';
+import {
+  renderActionFormPdf,
+  renderActionFormPdfBytes,
+  type FormRenderInput,
+} from './renderService.ts';
+import { listRevisions, recordRevisionTx } from './revisionService.ts';
 import { revokeRequestsForFormTx } from './signatureService.ts';
+
+/** The HR-entered parts of a form version, as the revision log stores them. */
+function formNarrative(f: {
+  hrChecklist: unknown;
+  financeChecklist: unknown;
+  financeNotes: string | null;
+  ackStatus: string;
+  ackDate: Date | null;
+  ackMethod: string | null;
+  ackReason: string | null;
+  hrRemarks: string | null;
+  priorStatus: string;
+  newStatus: string;
+}) {
+  return {
+    hrChecklist: f.hrChecklist,
+    financeChecklist: f.financeChecklist,
+    financeNotes: f.financeNotes,
+    ackStatus: f.ackStatus,
+    ackDate: f.ackDate ? f.ackDate.toISOString().slice(0, 10) : null,
+    ackMethod: f.ackMethod,
+    ackReason: f.ackReason,
+    hrRemarks: f.hrRemarks,
+    priorStatus: f.priorStatus,
+    newStatus: f.newStatus,
+  };
+}
+
+/**
+ * DEC-069 section 5: what a signature covers is never edited in place.
+ *
+ * The employee's marks cover the case facts (frozen in the version anyway)
+ * and the acknowledgement they signed: those cannot change on this version.
+ * The HR signature covers the officer's own completion evidence: while it
+ * stands, the form is locked; the officer replaces their signature and signs
+ * again, or starts a new version. HR's checklist work after the employee has
+ * signed is not a change to anything the employee signed.
+ */
+async function assertEditableDespiteSignatures(
+  formId: string,
+  touchesAcknowledgement: boolean,
+): Promise<void> {
+  const marks = await getPrisma().signatureRecord.findMany({
+    where: { documentId: formId, supersededAt: null },
+    select: { signerRole: true },
+  });
+  if (marks.some((m) => m.signerRole !== 'EMPLOYEE'))
+    throw ServiceError.conflict(
+      'Your signature is on this version. Replace it before changing the form, or start a new version; the signed version is kept.',
+    );
+  if (touchesAcknowledgement && marks.some((m) => m.signerRole === 'EMPLOYEE'))
+    throw ServiceError.conflict(
+      'The employee has signed the acknowledgement on this version, so it cannot be changed here. Start a new version if it must change.',
+    );
+}
 import { assertFeatureAllowed, loadCaseAccess } from './shared.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
 
@@ -106,6 +166,15 @@ export async function createActionForm(actor: Actor, caseId: string) {
         createdById: actor.userId,
       },
     });
+    await recordRevisionTx(tx, {
+      caseId,
+      documentKind: 'ACTION_FORM',
+      documentId: f.id,
+      kind: 'GENERATED',
+      content: { fieldSnapshot: f.fieldSnapshot, ...formNarrative(f) },
+      editedById: actor.userId,
+      note: 'Generated from the case',
+    });
     await appendAudit(tx, {
       eventType: 'FORM_CREATED',
       actorType: 'USER',
@@ -119,6 +188,118 @@ export async function createActionForm(actor: Actor, caseId: string) {
       metadata: { formVersion: f.version },
     });
     return f;
+  });
+}
+
+/**
+ * DEC-069 section 5: a material change to a completed or signed form is a
+ * NEW version. The old one is superseded and kept with its attestations
+ * invalidated and its open signing requests revoked; the new draft starts
+ * from fresh case data and the previous HR-entered content. Signatures never
+ * move across.
+ */
+export async function startNewFormVersion(actor: Actor, formId: string, reason: string) {
+  const { f, c, ctx } = await loadForm(actor, formId);
+  if (!canActOnCase(actor, 'form.edit', ctx)) {
+    await auditDenied(actor, 'ACCESS_DENIED', 'ActionFormVersion', formId, f.caseId);
+    throw ServiceError.forbidden();
+  }
+  if (!reason.trim()) throw ServiceError.validation(['Give the reason for the new version.']);
+  if (['VOIDED', 'SUPERSEDED'].includes(f.status))
+    throw ServiceError.conflict('This version is already closed.');
+  const prisma = getPrisma();
+  const latest = await prisma.actionFormVersion.findFirst({
+    where: { caseId: f.caseId },
+    orderBy: { version: 'desc' },
+    select: { version: true },
+  });
+  const correlationId = newCorrelationId();
+  const now = new Date();
+  return prisma.$transaction(async (tx) => {
+    const u = await tx.actionFormVersion.updateMany({
+      where: { id: formId, rowVersion: f.rowVersion },
+      data: {
+        status: 'SUPERSEDED',
+        outdatedReason: reason.trim().slice(0, 300),
+        rowVersion: { increment: 1 },
+      },
+    });
+    if (u.count === 0) throw ServiceError.conflict('The form changed; reload and retry.');
+    await tx.attestation.updateMany({
+      where: { subjectType: 'ACTION_FORM', subjectId: formId, invalidatedAt: null },
+      data: {
+        invalidatedAt: now,
+        invalidatedReason: `Superseded by a new version: ${reason.trim()}`,
+      },
+    });
+    await revokeRequestsForFormTx(
+      tx,
+      formId,
+      f.caseId,
+      `Superseded by a new version: ${reason.trim()}`.slice(0, 300),
+    );
+    const next = await tx.actionFormVersion.create({
+      data: {
+        caseId: f.caseId,
+        version: (latest?.version ?? f.version) + 1,
+        status: 'DRAFT',
+        fieldSnapshot: formFieldSnapshot(c) as object,
+        priorStatus: f.priorStatus,
+        newStatus: f.newStatus,
+        hrChecklist: f.hrChecklist as object,
+        financeChecklist: f.financeChecklist as object,
+        financeNotes: f.financeNotes,
+        hrRemarks: f.hrRemarks,
+        // The acknowledgement was given on the OLD content. It is collected
+        // again, or recorded again, against the new version.
+        ackStatus: 'PENDING',
+        ackReason: null,
+        createdById: actor.userId,
+      },
+    });
+    await recordRevisionTx(tx, {
+      caseId: f.caseId,
+      documentKind: 'ACTION_FORM',
+      documentId: formId,
+      kind: 'SUPERSEDED',
+      content: { fieldSnapshot: f.fieldSnapshot, ...formNarrative(f) },
+      editedById: actor.userId,
+      note: `Superseded by version ${next.version}: ${reason.trim()}`,
+    });
+    await recordRevisionTx(tx, {
+      caseId: f.caseId,
+      documentKind: 'ACTION_FORM',
+      documentId: next.id,
+      kind: 'GENERATED',
+      content: { fieldSnapshot: next.fieldSnapshot, ...formNarrative(next) },
+      editedById: actor.userId,
+      note: `Started from version ${f.version}`,
+    });
+    await appendAudit(tx, {
+      eventType: 'FORM_SUPERSEDED',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'ActionFormVersion',
+      objectId: formId,
+      caseId: f.caseId,
+      result: 'SUCCESS',
+      correlationId,
+      metadata: { formVersion: f.version, replacementVersion: next.version, reason: reason.trim() },
+    });
+    await appendAudit(tx, {
+      eventType: 'FORM_CREATED',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'ActionFormVersion',
+      objectId: next.id,
+      caseId: f.caseId,
+      result: 'SUCCESS',
+      correlationId,
+      metadata: { formVersion: next.version, replaces: f.version },
+    });
+    return { id: next.id, version: next.version };
   });
 }
 
@@ -149,6 +330,24 @@ export async function getActionForm(actor: Actor, caseId: string) {
   // Directive 6.3 corrections 1-2: the optional HR-Manager review step is
   // configuration-gated and OFF by default.
   const requireHrReview = (await getSystemConfigValue('actionForm.requireHrReview')) === true;
+
+  // DEC-069: the version history, and whether this version is locked by a
+  // signature already applied to it.
+  const revisions = current ? await listRevisions('ACTION_FORM', current.id) : [];
+  const [liveMarks, openSignatureRequests, signedSignatureRequests] = current
+    ? await Promise.all([
+        prisma.signatureRecord.findMany({
+          where: { documentId: current.id, supersededAt: null },
+          select: { signerRole: true },
+        }),
+        prisma.signatureRequest.count({ where: { formId: current.id, status: 'PENDING' } }),
+        prisma.signatureRequest.count({ where: { formId: current.id, status: 'SIGNED' } }),
+      ])
+    : [[], 0, 0];
+  const signedBy = {
+    employee: liveMarks.some((m) => m.signerRole === 'EMPLOYEE'),
+    hr: liveMarks.some((m) => m.signerRole !== 'EMPLOYEE'),
+  };
 
   const capabilities = {
     canEdit: canActOnCase(actor, 'form.edit', ctx),
@@ -196,6 +395,12 @@ export async function getActionForm(actor: Actor, caseId: string) {
     employeeDisplayName: c.employeeDisplayName,
     employeeWorkEmail: c.employeeWorkEmail,
     level,
+    revisions,
+    /** The HR signature locks the form until replaced or a new version starts. */
+    signedLock: signedBy.hr,
+    signedBy,
+    openSignatureRequests,
+    signedSignatureRequests,
     current: current ? mask(current) : null,
     history: forms.slice(1).map((x) => ({ id: x.id, version: x.version, status: x.status })),
     attestations: attestations.map((a) => ({
@@ -242,6 +447,14 @@ export async function updateActionFormHr(
   );
   if (input.hrRemarks && input.hrRemarks.length > 2000)
     errors.push('HR remarks are limited to 2000 characters.');
+  const touchesAck =
+    (input.ackStatus !== undefined && input.ackStatus !== f.ackStatus) ||
+    (input.ackDate !== undefined &&
+      (input.ackDate?.toISOString().slice(0, 10) ?? null) !==
+        (f.ackDate?.toISOString().slice(0, 10) ?? null)) ||
+    (input.ackMethod !== undefined && (input.ackMethod?.trim() || null) !== f.ackMethod) ||
+    (input.ackReason !== undefined && (input.ackReason?.trim() || null) !== f.ackReason);
+  await assertEditableDespiteSignatures(formId, touchesAck);
   if (input.ackEvidenceAttachmentId) {
     const att = await getPrisma().attachment.findUnique({
       where: { id: input.ackEvidenceAttachmentId },
@@ -269,6 +482,16 @@ export async function updateActionFormHr(
       },
     });
     if (u.count === 0) throw ServiceError.conflict('The form changed; reload and retry.');
+    const after = await tx.actionFormVersion.findUniqueOrThrow({ where: { id: formId } });
+    const rev = await recordRevisionTx(tx, {
+      caseId: f.caseId,
+      documentKind: 'ACTION_FORM',
+      documentId: formId,
+      kind: 'EDITED',
+      content: { fieldSnapshot: after.fieldSnapshot, ...formNarrative(after) },
+      editedById: actor.userId,
+      note: 'HR section saved',
+    });
     await appendAudit(tx, {
       eventType: 'FORM_UPDATED',
       actorType: 'USER',
@@ -279,7 +502,7 @@ export async function updateActionFormHr(
       caseId: f.caseId,
       result: 'SUCCESS',
       correlationId,
-      metadata: { formVersion: f.version, section: 'hr' },
+      metadata: { formVersion: f.version, section: 'hr', revision: rev.revision },
     });
   });
 }
@@ -318,6 +541,7 @@ export async function updateActionFormFinance(
   if (input.financeNotes && input.financeNotes.length > 1000)
     errors.push('Finance notes are limited to 1000 characters.');
   if (errors.length) throw ServiceError.validation(errors);
+  await assertEditableDespiteSignatures(formId, false);
 
   const correlationId = newCorrelationId();
   return getPrisma().$transaction(async (tx) => {
@@ -332,6 +556,16 @@ export async function updateActionFormFinance(
       },
     });
     if (u.count === 0) throw ServiceError.conflict('The form changed; reload and retry.');
+    const after = await tx.actionFormVersion.findUniqueOrThrow({ where: { id: formId } });
+    const rev = await recordRevisionTx(tx, {
+      caseId: f.caseId,
+      documentKind: 'ACTION_FORM',
+      documentId: formId,
+      kind: 'EDITED',
+      content: { fieldSnapshot: after.fieldSnapshot, ...formNarrative(after) },
+      editedById: actor.userId,
+      note: 'Finance evidence saved',
+    });
     await appendAudit(tx, {
       eventType: 'FORM_UPDATED',
       actorType: 'USER',
@@ -342,7 +576,7 @@ export async function updateActionFormFinance(
       caseId: f.caseId,
       result: 'SUCCESS',
       correlationId,
-      metadata: { formVersion: f.version, section: 'finance' },
+      metadata: { formVersion: f.version, section: 'finance', revision: rev.revision },
     });
   });
 }
@@ -449,6 +683,14 @@ async function transitionForm(
           correlationId,
         },
       });
+      await recordRevisionTx(tx, {
+        caseId: f.caseId,
+        documentKind: 'ACTION_FORM',
+        documentId: formId,
+        kind: 'FINALIZED',
+        content: { fieldSnapshot: f.fieldSnapshot, ...formNarrative(f) },
+        editedById: actor.userId,
+      });
     }
 
     await appendAudit(tx, {
@@ -486,14 +728,10 @@ export async function renderApprovedForm(formId: string, correlationId: string):
   const f = await prisma.actionFormVersion.findUnique({ where: { id: formId } });
   if (!f || !['COMPLETE', 'APPROVED'].includes(f.status) || f.pdfObjectKey) return;
 
-  const snap = f.fieldSnapshot as Record<string, string | null>;
   const attestations = await prisma.attestation.findMany({
     where: { subjectType: 'ACTION_FORM', subjectId: formId, invalidatedAt: null },
     orderBy: { createdAt: 'asc' },
   });
-  const hrChecklist = f.hrChecklist as Record<string, string>;
-  const financeChecklist = f.financeChecklist as Record<string, string>;
-  const fmtDate = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : '-');
 
   const { signatureSummaryForForm, readVerifiedSignature } = await import('./signatureService.ts');
   const summary = await signatureSummaryForForm(formId);
@@ -512,73 +750,10 @@ export async function renderApprovedForm(formId: string, correlationId: string):
         height: s.height,
       })),
     );
-    const pdf = await renderActionFormPdf({
-      confidentiality: 'Restricted - HR internal record',
-      caseReference: snap['caseReference'] ?? '',
-      formVersion: `v${f.version}`,
-      approvedAt: f.updatedAt,
-      sections: [
-        {
-          heading: '1. Employee and case details',
-          rows: [
-            ['Case reference', snap['caseReference'] ?? ''],
-            ['Employee ID', snap['employeeId'] ?? ''],
-            ['Employee name', snap['employeeName'] ?? ''],
-            ['Position', snap['position'] ?? ''],
-            ['Department', snap['department'] ?? ''],
-            ['Location', snap['location'] ?? ''],
-          ],
-        },
-        {
-          heading: '2. Separation details',
-          rows: [
-            ['Departure type', snap['departureType'] ?? ''],
-            ['Resignation received', fmtDate(snap['receivedAt'])],
-            ['Final working date', fmtDate(snap['confirmedLastDay'])],
-            ['Effective separation (instant)', snap['effectiveSeparationAt'] ?? '-'],
-            ['Reason capture status', snap['reasonCaptureStatus'] ?? ''],
-          ],
-        },
-        {
-          heading: '3. Employment status',
-          rows: [
-            ['Prior status', f.priorStatus],
-            ['New status', f.newStatus],
-          ],
-        },
-        {
-          heading: '4. HR checklist (completion evidence, not approval)',
-          rows: HR_CHECKLIST_ITEMS.map((i) => [i.label, hrChecklist[i.key] ?? 'PENDING']),
-        },
-        {
-          heading: '5. Finance checklist (all work performed outside this application)',
-          rows: FINANCE_CHECKLIST_ITEMS.map((i) => [i.label, financeChecklist[i.key] ?? 'PENDING']),
-        },
-        {
-          heading: '6. Employee acknowledgement (not an internal approval)',
-          rows: [
-            ['Status', f.ackStatus],
-            ['Date', f.ackDate ? f.ackDate.toISOString().slice(0, 10) : '-'],
-            ['Method', f.ackMethod ?? '-'],
-          ],
-        },
-      ],
-      approvals: attestations.map((a) => ({
-        label:
-          a.kind === 'MANAGER_FORM_APPROVAL'
-            ? 'Manager approval'
-            : a.kind === 'HR_FORM_COMPLETION'
-              ? 'HR completion'
-              : 'HR final approval',
-        name: a.actorDisplayName,
-        role: a.actorRole,
-        at: a.createdAt,
-      })),
-      // DEC-068: the marks applied to this version, read and verified now so
-      // a tampered or missing image fails the render instead of printing a
-      // form that silently lost a signature.
-      signatures: marks,
-    });
+    // DEC-068: the marks applied to this version, read and verified now so
+    // a tampered or missing image fails the render instead of printing a
+    // form that silently lost a signature.
+    const pdf = await renderActionFormPdf(buildFormRenderInput(f, attestations, marks, false));
     await prisma.$transaction(async (tx) => {
       await tx.actionFormVersion.updateMany({
         where: { id: formId, status: { in: ['COMPLETE', 'APPROVED'] }, pdfObjectKey: null },
@@ -605,6 +780,162 @@ export async function renderApprovedForm(formId: string, correlationId: string):
       data: { subjectType: 'ACTION_FORM', subjectId: formId, status: 'QUEUED', correlationId },
     });
   }
+}
+
+/** The sheet as the renderer prints it, for the final PDF and the preview. */
+function buildFormRenderInput(
+  f: {
+    version: number;
+    fieldSnapshot: unknown;
+    priorStatus: string;
+    newStatus: string;
+    hrChecklist: unknown;
+    financeChecklist: unknown;
+    financeNotes: string | null;
+    ackStatus: string;
+    ackDate: Date | null;
+    ackMethod: string | null;
+    hrRemarks: string | null;
+    updatedAt: Date;
+  },
+  attestations: ReadonlyArray<{
+    kind: string;
+    actorDisplayName: string;
+    actorRole: string;
+    createdAt: Date;
+  }>,
+  marks: NonNullable<FormRenderInput['signatures']>,
+  draft: boolean,
+): FormRenderInput {
+  const snap = f.fieldSnapshot as Record<string, string | null>;
+  const hrChecklist = f.hrChecklist as Record<string, string>;
+  const financeChecklist = f.financeChecklist as Record<string, string>;
+  const fmtDate = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : '-');
+  return {
+    draft,
+    confidentiality: 'Restricted - HR internal record',
+    caseReference: snap['caseReference'] ?? '',
+    formVersion: `v${f.version}`,
+    approvedAt: f.updatedAt,
+    sections: [
+      {
+        heading: '1. Employee and case details',
+        rows: [
+          ['Case reference', snap['caseReference'] ?? ''],
+          ['Employee ID', snap['employeeId'] ?? ''],
+          ['Employee name', snap['employeeName'] ?? ''],
+          ['Position', snap['position'] ?? ''],
+          ['Department', snap['department'] ?? ''],
+          ['Location', snap['location'] ?? ''],
+        ],
+      },
+      {
+        heading: '2. Separation details',
+        rows: [
+          ['Departure type', snap['departureType'] ?? ''],
+          ['Resignation received', fmtDate(snap['receivedAt'])],
+          ['Final working date', fmtDate(snap['confirmedLastDay'])],
+          ['Effective separation (instant)', snap['effectiveSeparationAt'] ?? '-'],
+          ['Reason capture status', snap['reasonCaptureStatus'] ?? ''],
+        ],
+      },
+      {
+        heading: '3. Employment status',
+        rows: [
+          ['Prior status', f.priorStatus],
+          ['New status', f.newStatus],
+        ],
+      },
+      {
+        heading: '4. HR checklist (completion evidence, not approval)',
+        rows: HR_CHECKLIST_ITEMS.map((i) => [i.label, hrChecklist[i.key] ?? 'PENDING']),
+      },
+      {
+        heading: '5. Finance checklist (all work performed outside this application)',
+        rows: [
+          ...FINANCE_CHECKLIST_ITEMS.map(
+            (i) => [i.label, financeChecklist[i.key] ?? 'PENDING'] as [string, string],
+          ),
+          ...(f.financeNotes ? [['Finance notes', f.financeNotes] as [string, string]] : []),
+        ],
+      },
+      {
+        heading: '6. Employee acknowledgement (not an internal approval)',
+        rows: [
+          ['Status', f.ackStatus],
+          ['Date', f.ackDate ? f.ackDate.toISOString().slice(0, 10) : '-'],
+          ['Method', f.ackMethod ?? '-'],
+        ],
+      },
+      // DEC-069: the narrative HR wrote is part of the form, so it prints.
+      ...(f.hrRemarks
+        ? [{ heading: '7. General remarks', rows: [['Remarks', f.hrRemarks] as [string, string]] }]
+        : []),
+    ],
+    approvals: attestations.map((a) => ({
+      label:
+        a.kind === 'MANAGER_FORM_APPROVAL'
+          ? 'Manager approval'
+          : a.kind === 'HR_FORM_COMPLETION'
+            ? 'HR completion'
+            : 'HR final approval',
+      name: a.actorDisplayName,
+      role: a.actorRole,
+      at: a.createdAt,
+    })),
+    signatures: marks,
+  };
+}
+
+/**
+ * DEC-069 section 7: the current saved form as a PDF at any time, marked as a
+ * draft until completion renders the checksummed final. Never stored.
+ */
+export async function previewActionFormPdf(actor: Actor, formId: string) {
+  const { f, ctx } = await loadForm(actor, formId);
+  if (!canActOnCase(actor, 'doc.download', ctx)) {
+    await auditDenied(actor, 'ACCESS_DENIED', 'ActionFormVersion', formId, f.caseId);
+    throw ServiceError.forbidden();
+  }
+  const prisma = getPrisma();
+  const attestations = await prisma.attestation.findMany({
+    where: { subjectType: 'ACTION_FORM', subjectId: formId, invalidatedAt: null },
+    orderBy: { createdAt: 'asc' },
+  });
+  const { signatureSummaryForForm, readVerifiedSignature } = await import('./signatureService.ts');
+  const summary = await signatureSummaryForForm(formId);
+  const marks = await Promise.all(
+    summary.applied.map(async (s) => ({
+      blockLabel: s.blockLabel,
+      signerName: s.signerName,
+      signerRole: SIGNER_ROLE_LABELS[s.signerRole],
+      signatureType: s.signatureType,
+      provenance: s.provenance,
+      signedAt: s.signedAt,
+      bytes: await readVerifiedSignature(s),
+      width: s.width,
+      height: s.height,
+    })),
+  );
+  const draft = !['COMPLETE', 'APPROVED'].includes(f.status);
+  const bytes = await renderActionFormPdfBytes(buildFormRenderInput(f, attestations, marks, draft));
+  await appendAudit(prisma, {
+    eventType: 'DOC_DOWNLOADED',
+    actorType: 'USER',
+    actorId: actor.userId,
+    effectiveRoles: actor.roles,
+    objectType: 'ActionFormVersion',
+    objectId: formId,
+    caseId: f.caseId,
+    result: 'SUCCESS',
+    correlationId: newCorrelationId(),
+    metadata: { formVersion: f.version, preview: true },
+  });
+  const snap = f.fieldSnapshot as Record<string, string>;
+  return {
+    bytes,
+    fileName: `${snap['caseReference'] ?? 'case'}-action-form-v${f.version}${draft ? '-draft' : ''}.pdf`,
+  };
 }
 
 /** Material case correction: supersede finalized forms / flag live drafts. */

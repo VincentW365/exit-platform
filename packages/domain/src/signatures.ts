@@ -221,24 +221,64 @@ export const ACTION_FORM_SIGNATURE_BLOCKS: readonly SignatureBlock[] = [
   },
 ];
 
-export function blocksForSigner(signer: SignerRole): readonly SignatureBlock[] {
-  return ACTION_FORM_SIGNATURE_BLOCKS.filter((b) => b.signer === signer);
+/** The documents the platform collects signatures on (DEC-069 adds the receipt). */
+export const SIGNATURE_DOCUMENT_KINDS = ['ACTION_FORM', 'ASSET_RECEIPT'] as const;
+export type SignatureDocumentKind = (typeof SIGNATURE_DOCUMENT_KINDS)[number];
+
+export const SIGNATURE_DOCUMENT_TITLES: Readonly<Record<SignatureDocumentKind, string>> = {
+  ACTION_FORM: 'Employee Action Form',
+  ASSET_RECEIPT: 'Exit Checklist for Return Items',
+};
+
+/**
+ * The Exit Checklist for Return Items (DEC-053, DEC-069). The printed form
+ * carries a "Received By" line and an employee acknowledgement; those are the
+ * two signature blocks, in the form's own words. Nothing else is added.
+ */
+export const ASSET_RECEIPT_SIGNATURE_BLOCKS: readonly SignatureBlock[] = [
+  {
+    key: 'receiptAcknowledgement',
+    label: 'Employee acknowledgement',
+    type: 'SIGNATURE',
+    signer: 'EMPLOYEE',
+  },
+  {
+    key: 'receiptReceivedBy',
+    label: 'Items received by',
+    type: 'SIGNATURE',
+    signer: 'HR_OFFICER',
+  },
+];
+
+export function signatureBlocksFor(kind: SignatureDocumentKind): readonly SignatureBlock[] {
+  return kind === 'ASSET_RECEIPT' ? ASSET_RECEIPT_SIGNATURE_BLOCKS : ACTION_FORM_SIGNATURE_BLOCKS;
 }
 
-export function signatureBlock(key: string): SignatureBlock | null {
-  return ACTION_FORM_SIGNATURE_BLOCKS.find((b) => b.key === key) ?? null;
+export function blocksForSigner(
+  signer: SignerRole,
+  kind: SignatureDocumentKind = 'ACTION_FORM',
+): readonly SignatureBlock[] {
+  return signatureBlocksFor(kind).filter((b) => b.signer === signer);
+}
+
+export function signatureBlock(
+  key: string,
+  kind: SignatureDocumentKind = 'ACTION_FORM',
+): SignatureBlock | null {
+  return signatureBlocksFor(kind).find((b) => b.key === key) ?? null;
 }
 
 /**
  * Which blocks are still missing for a signer. Used to decide whether a
- * submission is complete and whether the form may be marked signed.
+ * submission is complete and whether the document may be marked signed.
  */
 export function missingBlocks(
   signer: SignerRole,
   applied: readonly string[],
+  kind: SignatureDocumentKind = 'ACTION_FORM',
 ): readonly SignatureBlock[] {
   const done = new Set(applied);
-  return blocksForSigner(signer).filter((b) => !done.has(b.key));
+  return blocksForSigner(signer, kind).filter((b) => !done.has(b.key));
 }
 
 // --- consent ------------------------------------------------------------------

@@ -254,7 +254,8 @@ export async function issueDocumentByEmail(
         ? routed.unresolved
         : ['This case has no employee email address. Record one before issuing the letter.'],
     );
-  const destination = routed.to.email;
+  const routedTo = routed.to;
+  const destination = routedTo.email;
   const errors = destinationErrors(destination, routingEnvironment());
   if (errors.length) throw ServiceError.validation(errors);
 
@@ -334,6 +335,12 @@ export async function issueDocumentByEmail(
         recipientKind: 'EXTERNAL',
         caseRecipientCiphertext: encryptValue(destination),
         caseRecipientMask: maskDestination(destination),
+        // DEC-069: the hierarchy's answer, kept for the record.
+        autoDestinationKey: routedTo.destination,
+        autoRecipientName: routedTo.displayName ?? c.employeeDisplayName,
+        autoRecipientMask: maskDestination(destination),
+        autoRecipientCiphertext: encryptValue(destination),
+        autoRecipientConfigId: routedTo.recipientConfigId,
         ccCiphertext: cc.emails.length ? encryptValue(JSON.stringify(cc.emails)) : null,
         ccNames: cc.names,
         ccMasks: cc.masks,

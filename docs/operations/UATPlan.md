@@ -163,6 +163,36 @@ sign-off.
    extended, revoked and completed - and that no entry anywhere contains
    the signing link itself.**
 
+### UAT-4c Editable documents, email records and recipient changes (DEC-069)
+
+1. **Open a draft letter on the Documents tab. Confirm it opens in an editor
+   that reads as a letter, that the employee's name and the dates are
+   locked, that a sentence can be added and another removed, and that
+   "Save wording" records a new version in the history.**
+2. **Download the draft PDF and confirm it is marked as a draft preview;
+   finalize and confirm the final PDF carries the edited wording.**
+3. **On the Action Form, download the PDF before completion, save a
+   remark twice, and confirm the version history lists both saves.**
+4. **Sign the form as the officer and confirm the form is locked; start a
+   new version with a reason and confirm the old version is kept with its
+   signature and the new one has none.**
+5. **On Email Actions, confirm the manager notice shows "Auto-assigned
+   from the employee's reporting manager". Change the recipient from the
+   picker and confirm the card says "Recipient overridden" with the
+   original beside it; confirm the employee's directory manager is
+   unchanged; restore the auto-assigned recipient.**
+6. **Change only the email address for one message and confirm the person
+   stays the same; edit the subject and body; open the preview and
+   download the preview PDF; send; confirm the record PDF shows the final
+   address and that the sent message can no longer be edited.**
+7. **Prepare a corrected copy of the sent message and confirm both remain
+   on the case.**
+8. **On Assets, edit the exit checklist: mark an item returned with a
+   quantity and condition, add a row, save; download the draft PDF;
+   collect the signatures; finalize; start a new version and confirm the
+   signed version is kept.**
+9. **Confirm the audit centre records each edit, override, restore and
+   finalization, with no email address or link in any entry.**
 ### UAT-5 Clearance and completion (HR Manager)
 
 1. **Complete all clearance conditions; approve clearance; complete the

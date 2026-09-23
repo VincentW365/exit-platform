@@ -55,23 +55,38 @@ export function SignaturePanel({
   employeeName,
   employeeEmail,
   data,
+  documentKind = 'ACTION_FORM',
+  returnTo,
 }: {
   caseId: string;
+  /** The form version or the receipt version signatures are collected on. */
   formId: string;
   /** Signatures are collected before the version is finalized. */
   formEditable: boolean;
   employeeName: string;
   employeeEmail: string | null;
   data: Data;
+  /** DEC-069: the same panel serves the Exit Checklist for Return Items. */
+  documentKind?: 'ACTION_FORM' | 'ASSET_RECEIPT';
+  /** Where the actions return to; the action form tab unless told otherwise. */
+  returnTo?: string;
 }) {
-  const open = data.requests.filter((r) => r.status === 'PENDING');
+  const hrBlockKey = documentKind === 'ASSET_RECEIPT' ? 'receiptReceivedBy' : 'hrCompletion';
+  const requests = data.requests.filter(
+    (r) => r.documentKind === documentKind && r.documentId === formId,
+  );
+  const signatures = data.signatures.filter(
+    (s) => s.documentKind === documentKind && s.documentId === formId,
+  );
+  const open = requests.filter((r) => r.status === 'PENDING');
   // A new request is offered only when none is live. An expired one is
   // extended or revoked first, so two links never compete.
-  const employeeRequest = data.requests.find(
+  const employeeRequest = requests.find(
     (r) => r.signerRole === 'EMPLOYEE' && (r.status === 'PENDING' || r.status === 'EXPIRED'),
   );
-  const hrSignature = data.signatures.find((s) => s.blockKey === 'hrCompletion');
+  const hrSignature = signatures.find((s) => s.blockKey === hrBlockKey);
   const manage = data.canManage && formEditable;
+  const scope = { kind: documentKind, returnTo: returnTo ?? '' };
 
   return (
     <section className="panel" aria-labelledby="sig-heading">
@@ -87,6 +102,8 @@ export function SignaturePanel({
         <form action={createSignatureRequestAction} className="stack">
           <input type="hidden" name="formId" value={formId} />
           <input type="hidden" name="caseId" value={caseId} />
+          <input type="hidden" name="documentKind" value={scope.kind} />
+          <input type="hidden" name="returnTo" value={scope.returnTo} />
           <input type="hidden" name="signerName" value={employeeName} />
           <label className="field">
             <span className="field__label">Send to</span>
@@ -106,7 +123,7 @@ export function SignaturePanel({
         </form>
       ) : null}
 
-      {data.requests.map((r) => {
+      {requests.map((r) => {
         const active = r.status === 'PENDING';
         // Expired is recoverable: the owner asked for Extend or Reactivate
         // rather than forcing HR to issue a second link.
@@ -157,6 +174,7 @@ export function SignaturePanel({
                     <form action={sendSignatureRequestAction} className="actions-row">
                       <input type="hidden" name="requestId" value={r.id} />
                       <input type="hidden" name="caseId" value={caseId} />
+                      <input type="hidden" name="returnTo" value={scope.returnTo} />
                       <label className="field field--inline">
                         <span className="field__label">Email address</span>
                         <input
@@ -177,6 +195,7 @@ export function SignaturePanel({
                 <form action={extendSignatureRequestAction} className="actions-row">
                   <input type="hidden" name="requestId" value={r.id} />
                   <input type="hidden" name="caseId" value={caseId} />
+                  <input type="hidden" name="returnTo" value={scope.returnTo} />
                   <label className="field field--inline">
                     <span className="field__label">Extend by</span>
                     <select name="addDays" className="input" defaultValue="7">
@@ -206,6 +225,7 @@ export function SignaturePanel({
                   <form action={revokeSignatureRequestAction} className="stack">
                     <input type="hidden" name="requestId" value={r.id} />
                     <input type="hidden" name="caseId" value={caseId} />
+                    <input type="hidden" name="returnTo" value={scope.returnTo} />
                     <label className="field">
                       <span className="field__label">Reason</span>
                       <input type="text" name="reason" className="input" maxLength={300} required />
@@ -222,7 +242,11 @@ export function SignaturePanel({
       })}
 
       {/* --- the HR signature -------------------------------------------- */}
-      <h3 style={{ marginTop: 'var(--space-5)' }}>Human Resources signature</h3>
+      <h3 style={{ marginTop: 'var(--space-5)' }}>
+        {documentKind === 'ASSET_RECEIPT'
+          ? 'Items received by (Human Resources)'
+          : 'Human Resources signature'}
+      </h3>
       {hrSignature ? (
         <div className="stack">
           <p>
@@ -239,6 +263,8 @@ export function SignaturePanel({
             <form action={clearHrSignatureAction}>
               <input type="hidden" name="formId" value={formId} />
               <input type="hidden" name="caseId" value={caseId} />
+              <input type="hidden" name="documentKind" value={scope.kind} />
+              <input type="hidden" name="returnTo" value={scope.returnTo} />
               <button type="submit" className="secondary compact">
                 Replace and sign again
               </button>
@@ -246,7 +272,14 @@ export function SignaturePanel({
           ) : null}
         </div>
       ) : manage ? (
-        <HrSignatureField formId={formId} caseId={caseId} action={applyHrSignatureAction} />
+        <HrSignatureField
+          formId={formId}
+          caseId={caseId}
+          action={applyHrSignatureAction}
+          documentKind={scope.kind}
+          returnTo={scope.returnTo}
+          label={documentKind === 'ASSET_RECEIPT' ? 'Items received by' : 'Human Resources'}
+        />
       ) : (
         <p className="meta">Not signed yet.</p>
       )}
@@ -254,7 +287,7 @@ export function SignaturePanel({
       {open.length > 0 ? (
         <p className="meta" style={{ marginTop: 'var(--space-4)' }}>
           {open.length} signature {open.length === 1 ? 'request is' : 'requests are'} still open.
-          Completing the form finalizes this version and closes them.
+          Finalizing this version closes them.
         </p>
       ) : null}
     </section>

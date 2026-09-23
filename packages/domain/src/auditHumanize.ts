@@ -225,6 +225,30 @@ function sentence(e: HumanizableEvent): string {
           : `${who} recorded the exit checklist`;
       return `${opener}${tail}`;
     }
+    // DEC-069: the receipt as an editable, versioned document.
+    case 'RETURN_CHECKLIST_EDITED':
+      return `${who} edited the exit checklist (${str(m, 'rows') ?? '?'} rows${str(m, 'notesChanged') === 'true' || m.notesChanged === true ? ', notes updated' : ''})`;
+    case 'RETURN_CHECKLIST_FINALIZED':
+      return `${who} finalized the exit checklist (version ${str(m, 'version') ?? '?'}) and rendered its PDF`;
+    case 'RETURN_CHECKLIST_SUPERSEDED':
+      return `${who} superseded exit checklist version ${str(m, 'version') ?? '?'} with a new version${withReason}`;
+    // DEC-069: editing generated wording and messages; recipient overrides.
+    case 'DOC_CONTENT_EDITED':
+      return `${who} edited the wording of the ${str(m, 'documentType')?.toLowerCase().replace(/_/g, ' ') ?? 'document'} (version ${str(m, 'documentVersion') ?? '?'}, revision ${str(m, 'revision') ?? '?'})`;
+    case 'NOTIFICATION_EDITED':
+      return `${who} edited the ${str(m, 'subjectChanged') === 'true' || m.subjectChanged === true ? 'subject and message' : 'message'} of the email before sending`;
+    case 'NOTIFICATION_CORRECTION_PREPARED':
+      return `${who} prepared a corrected copy of a sent email; the original is kept as sent${withReason}`;
+    case 'NOTIFICATION_RECIPIENT_RESOLVED':
+      return `The recipient was auto-assigned from ${str(m, 'source') ?? 'the hierarchy'}${str(m, 'destinationMask') ? ` (${str(m, 'destinationMask')})` : ' - nobody could be resolved'}`;
+    case 'NOTIFICATION_RECIPIENT_OVERRIDDEN':
+      return `${who} changed the recipient from ${str(m, 'originalName') ?? str(m, 'originalMask') ?? 'the auto-assigned recipient'} to ${str(m, 'newName') ?? str(m, 'newMask') ?? 'another recipient'} for this message only${withReason}`;
+    case 'NOTIFICATION_RECIPIENT_ADDRESS_OVERRIDDEN':
+      return `${who} changed the email address for ${str(m, 'recipientName') ?? 'the recipient'} on this message only (${str(m, 'originalMask') ?? '?'} to ${str(m, 'newMask') ?? '?'})${withReason}`;
+    case 'NOTIFICATION_RECIPIENT_MANUAL_ENTERED':
+      return `${who} entered a manual recipient (${str(m, 'newMask') ?? '?'}) for this message${withReason}`;
+    case 'NOTIFICATION_RECIPIENT_RESTORED':
+      return `${who} restored the auto-assigned recipient (${str(m, 'newName') ?? str(m, 'newMask') ?? 'from the hierarchy'})`;
     // The resignation acceptance letter (DEC-054).
     case 'CASE_EMPLOYEE_ADDRESS_RECORDED':
       return str(m, 'nowRecorded') === 'true' || m.nowRecorded === true

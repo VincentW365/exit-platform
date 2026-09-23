@@ -19,6 +19,8 @@ import {
   letterTypeForDeparture,
   maskDestination,
   substitute,
+  editedLetterBodyErrors,
+  normaliseBody,
   DOWNLOADABLE_DOC_STATUSES,
   EDITABLE_DOC_STATUSES,
   LIVE_DOC_STATUSES,
@@ -29,8 +31,14 @@ import {
 import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
-import { renderLetterPdf, readVerifiedPdf } from './renderService.ts';
+import { renderLetterPdf, renderLetterPdfBytes, readVerifiedPdf } from './renderService.ts';
+import { listRevisions, recordRevisionTx } from './revisionService.ts';
 import { assertFeatureAllowed, assertFullView, loadCaseAccess } from './shared.ts';
+
+/** The wording a version is finalized from: HR's edit when there is one. */
+function bodyFor(d: { editedBody: string | null; template: { contentBody: string } | null }) {
+  return d.editedBody ?? d.template?.contentBody ?? '';
+}
 
 const LETTER_TITLES: Partial<Record<DocumentType, string>> = {
   RESIGNATION_ACCEPTANCE_WITH_NOTICE: 'Acknowledgement and Acceptance of Resignation',
@@ -114,6 +122,16 @@ export async function createLetterDraft(actor: Actor, caseId: string) {
         fieldSnapshot: fieldSnapshot as object,
         createdById: actor.userId,
       },
+    });
+    // DEC-069: version history starts with the generated wording.
+    await recordRevisionTx(tx, {
+      caseId,
+      documentKind: 'LETTER',
+      documentId: d.id,
+      kind: 'GENERATED',
+      content: { body: template.contentBody, fieldSnapshot },
+      editedById: actor.userId,
+      note: `Generated from template v${template.version}`,
     });
     await appendAudit(tx, {
       eventType: 'DOC_CREATED',
@@ -212,11 +230,17 @@ export async function getCaseDocuments(actor: Actor, caseId: string) {
     orderBy: [{ documentType: 'asc' }, { version: 'desc' }],
     // The template body lets the page show a draft's content BEFORE it is
     // finalized (DEC-066: the officer reviews, then finalizes).
-    include: { template: { select: { name: true, contentBody: true } } },
+    include: {
+      template: { select: { name: true, contentBody: true, allowedPlaceholders: true } },
+    },
   });
   const attestations = await getPrisma().attestation.findMany({
     where: { subjectType: 'DOCUMENT', subjectId: { in: docs.map((x) => x.id) } },
   });
+  // DEC-069: the version history of each document, newest first.
+  const revisions = Object.fromEntries(
+    await Promise.all(docs.map(async (d) => [d.id, await listRevisions('LETTER', d.id)] as const)),
+  );
   // DEC-054: what the page needs to address and send the letter. The
   // employee's address is shown to HR because HR typed it; the email is
   // masked because nothing on a page needs the whole address.
@@ -227,6 +251,7 @@ export async function getCaseDocuments(actor: Actor, caseId: string) {
   return {
     docs,
     attestations,
+    revisions,
     delivery: {
       employeeAddress: c.employeeAddress,
       employeeEmailMask: c.employeeWorkEmail ? maskDestination(c.employeeWorkEmail) : null,
@@ -275,9 +300,7 @@ export async function getDocumentForView(actor: Actor, docId: string) {
     attestations,
     preview:
       d.contentSnapshot ??
-      (d.template
-        ? previewContent(d.template.contentBody, d.fieldSnapshot as DocumentFieldSnapshot)
-        : null),
+      (d.template ? previewContent(bodyFor(d), d.fieldSnapshot as DocumentFieldSnapshot) : null),
     capabilities: {
       canEdit: canActOnCase(actor, 'doc.edit', ctx),
       canFinalize: canActOnCase(actor, 'doc.finalize', ctx),
@@ -314,6 +337,14 @@ export async function refreshDraftFields(actor: Actor, docId: string) {
         rowVersion: { increment: 1 },
       },
     });
+    await recordRevisionTx(tx, {
+      caseId: d.caseId,
+      documentKind: 'LETTER',
+      documentId: docId,
+      kind: 'FIELDS_REFRESHED',
+      content: { body: bodyFor(d), fieldSnapshot },
+      editedById: actor.userId,
+    });
     await appendAudit(tx, {
       eventType: 'DOC_UPDATED',
       actorType: 'USER',
@@ -332,6 +363,151 @@ export async function refreshDraftFields(actor: Actor, docId: string) {
     });
     return updated;
   });
+}
+
+/**
+ * DEC-069 sections 1 to 3: HR edits the generated wording of a draft letter.
+ *
+ * The body is held in the template's own format, so the facts keep coming
+ * from the case: the editor shows them as locked chips and this rule refuses
+ * a save that removed one. Everything around them - the narrative - is HR's
+ * to add, remove and reword. Each save is a recorded revision.
+ */
+export async function updateDraftBody(actor: Actor, docId: string, rawBody: string) {
+  const { d, ctx } = await loadDoc(actor, docId);
+  if (!canActOnCase(actor, 'doc.edit', ctx)) {
+    await auditDenied(actor, 'ACCESS_DENIED', 'DocumentInstance', docId, d.caseId);
+    throw ServiceError.forbidden();
+  }
+  if (!EDITABLE_DOC_STATUSES.includes(d.status as never))
+    throw ServiceError.conflict(
+      'This version is finalized. Supersede it with a corrected version to change the wording.',
+    );
+  if (d.documentType === 'MANUAL_EXCEPTION_DOCUMENT' || !d.template)
+    throw ServiceError.conflict('This document has no generated wording to edit.');
+
+  const body = normaliseBody(rawBody);
+  const template = await getPrisma().documentTemplate.findUniqueOrThrow({
+    where: { id: d.templateId! },
+    select: { allowedPlaceholders: true, contentBody: true },
+  });
+  const errors = editedLetterBodyErrors({
+    type: d.documentType,
+    body,
+    templateBody: template.contentBody,
+    allowedPlaceholders: template.allowedPlaceholders,
+  });
+  if (errors.length) throw ServiceError.validation(errors);
+
+  const unchanged = body === bodyFor(d);
+  if (unchanged) return { revision: null as number | null, changed: false };
+
+  const correlationId = newCorrelationId();
+  const now = new Date();
+  // Back to the template wording exactly means no edit is held at all.
+  const editedBody = body === template.contentBody ? null : body;
+  return getPrisma().$transaction(async (tx) => {
+    const u = await tx.documentInstance.updateMany({
+      where: { id: docId, rowVersion: d.rowVersion },
+      data: {
+        editedBody,
+        editedById: actor.userId,
+        editedAt: now,
+        // An edit reopens a draft that had failed validation.
+        status: 'DRAFT',
+        validationErrors: undefined,
+        rowVersion: { increment: 1 },
+      },
+    });
+    if (u.count === 0) throw ServiceError.conflict('The document changed; reload and retry.');
+    const rev = await recordRevisionTx(tx, {
+      caseId: d.caseId,
+      documentKind: 'LETTER',
+      documentId: docId,
+      kind: 'EDITED',
+      content: { body, fieldSnapshot: d.fieldSnapshot },
+      editedById: actor.userId,
+      note: editedBody === null ? 'Reverted to the template wording' : null,
+    });
+    await appendAudit(tx, {
+      eventType: 'DOC_CONTENT_EDITED',
+      actorType: 'USER',
+      actorId: actor.userId,
+      effectiveRoles: actor.roles,
+      objectType: 'DocumentInstance',
+      objectId: docId,
+      caseId: d.caseId,
+      result: 'SUCCESS',
+      correlationId,
+      // What changed is in the revision log; the audit names the revision.
+      metadata: {
+        documentType: d.documentType,
+        documentVersion: d.version,
+        revision: rev.revision,
+        contentChecksum: rev.contentChecksum,
+        revertedToTemplate: editedBody === null,
+        characters: body.length,
+      },
+    });
+    return { revision: rev.revision, changed: true };
+  });
+}
+
+/**
+ * DEC-069 section 7: the current saved wording as a PDF, before finalization.
+ * Rendered on demand from the draft, marked as a draft on every page, and
+ * never stored - the checksummed record is the finalized render.
+ */
+export async function previewDocumentPdf(actor: Actor, docId: string) {
+  const { d, ctx } = await loadDoc(actor, docId);
+  if (!canActOnCase(actor, 'doc.download', ctx)) {
+    await auditDenied(actor, 'ACCESS_DENIED', 'DocumentInstance', docId, d.caseId);
+    throw ServiceError.forbidden();
+  }
+  if (d.documentType === 'MANUAL_EXCEPTION_DOCUMENT' || !d.template)
+    throw ServiceError.conflict('This document has no generated wording to preview.');
+  if (!EDITABLE_DOC_STATUSES.includes(d.status as never) && !d.contentSnapshot)
+    throw ServiceError.conflict('This version is being rendered; download the final PDF instead.');
+
+  const snap = d.fieldSnapshot as DocumentFieldSnapshot;
+  const bodyText =
+    d.contentSnapshot ??
+    previewContent(bodyFor(d), snap, {
+      name: '(signatory name - completed when finalized)',
+      title: '(signatory title - completed when finalized)',
+    });
+  const bytes = await renderLetterPdfBytes({
+    draft: !d.contentSnapshot,
+    title: LETTER_TITLES[d.documentType] ?? 'Controlled Document',
+    confidentiality: 'Confidential - HR controlled document',
+    caseReference: snap.CASE_REFERENCE ?? '',
+    documentReference: `DOC-${d.version}`,
+    templateVersion: snap.TEMPLATE_VERSION ?? `v${d.templateVersion}`,
+    documentVersion: snap.DOCUMENT_VERSION ?? `v${d.version}`,
+    bodyText,
+    approverName: snap.HR_APPROVER_NAME ?? '',
+    approverTitle: snap.HR_APPROVER_TITLE ?? '',
+    approvedAt: d.approvedAt ?? new Date(),
+    attestationNote: d.contentSnapshot
+      ? 'This is an authenticated application attestation, not a qualified or advanced electronic signature.'
+      : 'Draft preview: no attestation has been recorded and this text is not the issued document.',
+  });
+  await appendAudit(getPrisma(), {
+    eventType: 'DOC_DOWNLOADED',
+    actorType: 'USER',
+    actorId: actor.userId,
+    effectiveRoles: actor.roles,
+    objectType: 'DocumentInstance',
+    objectId: docId,
+    caseId: d.caseId,
+    result: 'SUCCESS',
+    correlationId: newCorrelationId(),
+    metadata: { documentType: d.documentType, documentVersion: d.version, preview: true },
+  });
+  return {
+    bytes,
+    fileName: `${snap.CASE_REFERENCE ?? 'document'}-${d.documentType.toLowerCase()}-v${d.version}-draft.pdf`,
+  };
 }
 
 // --- transitions -------------------------------------------------------------
@@ -426,7 +602,8 @@ export async function finalizeDocument(actor: Actor, docId: string) {
   } else {
     if (!d.template) throw ServiceError.conflict('Template missing for this document.');
     const snapshot = d.fieldSnapshot as DocumentFieldSnapshot;
-    const errors = documentValidationErrors(d.documentType, d.template.contentBody, snapshot);
+    // DEC-069: the wording finalized is the wording HR reviewed and edited.
+    const errors = documentValidationErrors(d.documentType, bodyFor(d), snapshot);
     // Date-order check from live case values (C.5): confirmed >= received,
     // compared as CALENDAR DAYS in the business zone. The last working day is a
     // date-only column (midnight UTC) and the received value is an instant, so
@@ -489,7 +666,7 @@ export async function finalizeDocument(actor: Actor, docId: string) {
       HR_APPROVER_NAME: finalizer.displayName,
       HR_APPROVER_TITLE: finalizerTitle,
     };
-    finalContent = substitute(d.template.contentBody, signed);
+    finalContent = substitute(bodyFor(d), signed);
     if (hasMissingMarkers(finalContent))
       throw ServiceError.validation([
         'The document still contains unresolved fields; refresh the draft from the case and try again.',
@@ -515,6 +692,14 @@ export async function finalizeDocument(actor: Actor, docId: string) {
     });
     if (u.count === 0)
       throw ServiceError.conflict('The document was changed or already decided; reload and retry.');
+    await recordRevisionTx(tx, {
+      caseId: d.caseId,
+      documentKind: 'LETTER',
+      documentId: docId,
+      kind: 'FINALIZED',
+      content: { body: bodyFor(d), fieldSnapshot, contentSnapshot: finalContent },
+      editedById: actor.userId,
+    });
     await tx.attestation.create({
       data: {
         subjectType: 'DOCUMENT',
@@ -728,6 +913,9 @@ export async function supersedeAndRecreate(actor: Actor, docId: string, reason: 
       data: { status: 'SUPERSEDED', outdatedReason: reason.trim(), rowVersion: { increment: 1 } },
     });
     if (u.count === 0) throw ServiceError.conflict('The document changed; reload and retry.');
+    // DEC-069: HR's wording carries into the corrected version when the
+    // template is the same one, so a date correction never costs the edit.
+    const carried = template.id === d.templateId ? d.editedBody : null;
     const replacement = await tx.documentInstance.create({
       data: {
         caseId: d.caseId,
@@ -737,8 +925,31 @@ export async function supersedeAndRecreate(actor: Actor, docId: string, reason: 
         version: d.version + 1,
         status: 'DRAFT',
         fieldSnapshot: fieldSnapshot as object,
+        editedBody: carried,
+        editedById: carried ? d.editedById : null,
+        editedAt: carried ? d.editedAt : null,
         createdById: actor.userId,
       },
+    });
+    await recordRevisionTx(tx, {
+      caseId: d.caseId,
+      documentKind: 'LETTER',
+      documentId: docId,
+      kind: 'SUPERSEDED',
+      content: { body: bodyFor(d), fieldSnapshot: d.fieldSnapshot },
+      editedById: actor.userId,
+      note: `Superseded by version ${replacement.version}: ${reason.trim()}`,
+    });
+    await recordRevisionTx(tx, {
+      caseId: d.caseId,
+      documentKind: 'LETTER',
+      documentId: replacement.id,
+      kind: 'GENERATED',
+      content: { body: carried ?? template.contentBody, fieldSnapshot },
+      editedById: actor.userId,
+      note: carried
+        ? `Started from version ${d.version}, keeping its edited wording`
+        : `Started from version ${d.version}`,
     });
     await appendAudit(tx, {
       eventType: 'DOC_SUPERSEDED',
@@ -858,7 +1069,8 @@ export async function outdateDocumentsForCaseChange(caseId: string, reason: stri
         });
         if (template) {
           const fieldSnapshot = await snapshotForCase(caseId, d.version + 1, template.version);
-          await tx.documentInstance.create({
+          const carried = template.id === d.templateId ? d.editedBody : null;
+          const replacement = await tx.documentInstance.create({
             data: {
               caseId,
               documentType: d.documentType,
@@ -867,8 +1079,27 @@ export async function outdateDocumentsForCaseChange(caseId: string, reason: stri
               version: d.version + 1,
               status: 'DRAFT',
               fieldSnapshot: fieldSnapshot as object,
+              editedBody: carried,
+              editedById: carried ? d.editedById : null,
+              editedAt: carried ? d.editedAt : null,
               createdById: d.createdById,
             },
+          });
+          await recordRevisionTx(tx, {
+            caseId,
+            documentKind: 'LETTER',
+            documentId: d.id,
+            kind: 'SUPERSEDED',
+            content: { body: d.editedBody ?? template.contentBody, fieldSnapshot: d.fieldSnapshot },
+            note: `Material case correction: ${reason}`,
+          });
+          await recordRevisionTx(tx, {
+            caseId,
+            documentKind: 'LETTER',
+            documentId: replacement.id,
+            kind: 'GENERATED',
+            content: { body: carried ?? template.contentBody, fieldSnapshot },
+            note: `Started from version ${d.version} after a material case correction`,
           });
         }
         await appendAudit(tx, {

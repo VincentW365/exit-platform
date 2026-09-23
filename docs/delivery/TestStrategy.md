@@ -309,6 +309,16 @@ Deployment-gap protection, permanent from this point on:
   locked-down state afterwards; plus extend, revoke and the neutral
   refusal an outsider sees. Screenshots land in
   `artifacts/action-form-signing/` (gitignored, synthetic only).
+- `e2e/editable-documents.spec.ts` (DEC-069) - the operating model end to
+  end: a generated letter edited in the document editor with the facts
+  locked, draft and final PDFs, version history, finalization with the
+  edited wording; the action form with a PDF at every stage, versions kept,
+  the officer's signature locking the version and Start new version keeping
+  the old one; the manager notice with its auto-assigned recipient,
+  overridden for one message from the picker, previewed, edited, restored,
+  sent, and downloaded as a record PDF; the exit checklist edited as a
+  document with an added row, previewed as a PDF and finalized. Screenshots
+  land in `artifacts/editable-documents/` (gitignored, synthetic only).
 - `pnpm regression:offboarding` (`e2e/offboarding-regression/`, its own
   `playwright.regression.config.ts`) - the full offboarding workflow
   regression and evidence pack: one controlled employee through every

@@ -30,11 +30,16 @@ export const dynamic = 'force-dynamic';
  * the items being returned.
  */
 
-/** Items above the KEYS sub-heading, exactly as the sheet numbers them. */
-function splitItems<T extends { itemKey: string }>(items: readonly T[]) {
+/**
+ * Items above the KEYS sub-heading, exactly as the sheet numbers them. Rows HR
+ * added for property the printed form does not list (DEC-069) have no
+ * catalogue key; they are shown read-only here, because the recipient of the
+ * secure link answers the company's own rows and HR records the rest.
+ */
+function splitItems<T extends { itemKey: string | null }>(items: readonly T[]) {
   return {
-    main: items.filter((i) => !i.itemKey.startsWith('KEYS_')),
-    keys: items.filter((i) => i.itemKey.startsWith('KEYS_')),
+    main: items.filter((i) => !(i.itemKey ?? '').startsWith('KEYS_')),
+    keys: items.filter((i) => (i.itemKey ?? '').startsWith('KEYS_')),
   };
 }
 
@@ -62,10 +67,25 @@ function ItemRow({
   index,
   number,
 }: {
-  item: { id: string; itemKey: string; label: string; status: string; remarks: string | null };
+  item: {
+    id: string;
+    itemKey: string | null;
+    label: string;
+    status: string;
+    remarks: string | null;
+  };
   index: number;
   number: number;
 }) {
+  if (!item.itemKey)
+    return (
+      <tr>
+        <td className="form-table__num">{number}.</td>
+        <th scope="row">{item.label}</th>
+        <td className="meta">Recorded by HR</td>
+        <td className="meta">{item.remarks ?? '-'}</td>
+      </tr>
+    );
   return (
     <tr>
       <td className="form-table__num">{number}.</td>

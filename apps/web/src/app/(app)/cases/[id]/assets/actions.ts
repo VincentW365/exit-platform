@@ -5,8 +5,12 @@ import { revalidatePath } from 'next/cache';
 import {
   ServiceError,
   addAssetRecoveryItem,
+  finalizeReturnItemsChecklist,
+  markReceiptReady,
   recordReturnItemsChecklist,
   setAssetDisposition,
+  startNewReceiptVersion,
+  updateReturnItemsChecklist,
 } from '@exit/db';
 import { ASSET_TYPE_LABELS, RETURN_ITEM_CATALOGUE } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
@@ -123,6 +127,74 @@ export async function recordChecklistAction(formData: FormData): Promise<void> {
     if (e instanceof ServiceError) back(caseId, { err: errText(e) });
     throw e;
   }
+}
+
+// --- DEC-069: the receipt as an editable, versioned document ------------------
+
+async function runReceipt(
+  formData: FormData,
+  fn: (actor: Parameters<typeof updateReturnItemsChecklist>[0], caseId: string) => Promise<string>,
+): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  const caseId = str(formData, 'caseId');
+  try {
+    const ok = await fn(actor, caseId);
+    revalidatePath(`/cases/${caseId}/assets`);
+    back(caseId, { ok });
+  } catch (e) {
+    if (e instanceof ServiceError) back(caseId, { err: errText(e) });
+    throw e;
+  }
+}
+
+export async function updateReceiptAction(formData: FormData): Promise<void> {
+  const count = Math.min(60, Math.max(0, Number(str(formData, 'rowCount')) || 0));
+  const rows = Array.from({ length: count }, (_, i) => {
+    const get = (k: string) => str(formData, `row.${i}.${k}`);
+    const quantity = get('quantity');
+    return {
+      id: get('id') || null,
+      itemKey: get('itemKey') || null,
+      label: get('label'),
+      status: get('status'),
+      remarks: get('remarks') || null,
+      quantity: quantity === '' ? null : Number(quantity),
+      condition: get('condition') || null,
+      returnedAt: get('returnedAt') || null,
+      assetReference: get('assetReference') || null,
+    };
+  });
+  await runReceipt(formData, async (actor, caseId) => {
+    await updateReturnItemsChecklist(actor, caseId, {
+      rows,
+      hrNotes: str(formData, 'hrNotes') || null,
+      receivedByName: str(formData, 'receivedByName') || null,
+      receivedAt: str(formData, 'receivedAt') || null,
+    });
+    return 'Checklist saved as a new version.';
+  });
+}
+
+export async function markReceiptReadyAction(formData: FormData): Promise<void> {
+  await runReceipt(formData, async (actor, caseId) => {
+    await markReceiptReady(actor, caseId);
+    return 'Checklist marked as reviewed and ready.';
+  });
+}
+
+export async function finalizeReceiptAction(formData: FormData): Promise<void> {
+  await runReceipt(formData, async (actor, caseId) => {
+    await finalizeReturnItemsChecklist(actor, caseId);
+    return 'Checklist finalized; its PDF has been rendered.';
+  });
+}
+
+export async function startNewReceiptVersionAction(formData: FormData): Promise<void> {
+  await runReceipt(formData, async (actor, caseId) => {
+    const next = await startNewReceiptVersion(actor, caseId, str(formData, 'reason'));
+    return `Checklist version ${next.version} started. The previous version is kept with its signatures.`;
+  });
 }
 
 export async function assetDispositionAction(formData: FormData): Promise<void> {

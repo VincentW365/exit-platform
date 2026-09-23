@@ -13,6 +13,7 @@ import {
   returnActionForm,
   revokeSignatureRequest,
   sendSignatureRequestEmail,
+  startNewFormVersion,
   submitActionForm,
   updateActionFormFinance,
   supersedeHrSignature,
@@ -23,12 +24,25 @@ import { FINANCE_CHECKLIST_ITEMS, HR_CHECKLIST_ITEMS, type ChecklistState } from
 import { requireAuth } from '@/lib/auth';
 import { touchSession } from '@/lib/session';
 
-function back(caseId: string, opts: { err?: string; ok?: string }): never {
+/**
+ * DEC-069: the signature actions also serve the Exit Checklist for Return
+ * Items on the Assets tab, so a form may say where to return to. Only a
+ * case tab of this case is ever accepted.
+ */
+function returnPath(caseId: string, requested: string): string {
+  const allowed = new RegExp(`^/cases/${caseId}/(action-form|assets)$`);
+  return allowed.test(requested) ? requested : `/cases/${caseId}/action-form`;
+}
+
+function back(caseId: string, opts: { err?: string; ok?: string; to?: string }): never {
   const p = new URLSearchParams();
   if (opts.err) p.set('err', opts.err.slice(0, 900));
   if (opts.ok) p.set('ok', opts.ok);
-  redirect(`/cases/${caseId}/action-form?${p.toString()}`);
+  redirect(`${returnPath(caseId, opts.to ?? '')}?${p.toString()}`);
 }
+
+const documentKindOf = (fd: FormData): 'ACTION_FORM' | 'ASSET_RECEIPT' =>
+  String(fd.get('documentKind') ?? '') === 'ASSET_RECEIPT' ? 'ASSET_RECEIPT' : 'ACTION_FORM';
 
 function errText(e: unknown): string {
   if (e instanceof ServiceError) return e.details.length ? e.details.join('|') : e.message;
@@ -57,12 +71,13 @@ async function run(
   const { actor } = await requireAuth();
   await touchSession();
   const caseId = str(formData, 'caseId');
+  const to = str(formData, 'returnTo');
   try {
     const ok = await fn(actor as never, formData);
-    revalidatePath(`/cases/${caseId}/action-form`);
-    back(caseId, { ok });
+    revalidatePath(returnPath(caseId, to));
+    back(caseId, { ok, to });
   } catch (e) {
-    if (e instanceof ServiceError) back(caseId, { err: errText(e) });
+    if (e instanceof ServiceError) back(caseId, { err: errText(e), to });
     throw e;
   }
 }
@@ -127,6 +142,14 @@ export async function returnFormAction(formData: FormData): Promise<void> {
   });
 }
 
+/** DEC-069 section 5: a signed or completed form changes only as a new version. */
+export async function startNewFormVersionAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    const next = await startNewFormVersion(actor, str(fd, 'formId'), str(fd, 'reason'));
+    return `Version ${next.version} started. The previous version is kept with its signatures.`;
+  });
+}
+
 export async function voidFormAction(formData: FormData): Promise<void> {
   await run(formData, async (actor, fd) => {
     await voidActionForm(actor, str(fd, 'formId'), str(fd, 'reason'));
@@ -142,6 +165,7 @@ export async function createSignatureRequestAction(formData: FormData): Promise<
       signerRole: 'EMPLOYEE',
       signerName: str(fd, 'signerName') || undefined,
       signerEmail: str(fd, 'signerEmail') || null,
+      documentKind: documentKindOf(fd),
     });
     return 'Signature request ready. Copy the link or send it by email.';
   });
@@ -183,14 +207,20 @@ export async function applyHrSignatureAction(formData: FormData): Promise<void> 
     await applyHrSignature(actor, str(fd, 'formId'), {
       dataUrl: String(fd.get('dataUrl') ?? ''),
       provenance: str(fd, 'provenance') === 'TYPED' ? 'TYPED' : 'DRAWN',
+      documentKind: documentKindOf(fd),
     });
-    return 'Your signature has been added to the form.';
+    return 'Your signature has been added.';
   });
 }
 
 export async function clearHrSignatureAction(formData: FormData): Promise<void> {
   await run(formData, async (actor, fd) => {
-    await supersedeHrSignature(actor, str(fd, 'formId'), str(fd, 'reason') || undefined);
+    await supersedeHrSignature(
+      actor,
+      str(fd, 'formId'),
+      str(fd, 'reason') || undefined,
+      documentKindOf(fd),
+    );
     return 'The previous signature has been replaced. You can sign again.';
   });
 }

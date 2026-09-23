@@ -1,32 +1,24 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { ServiceError, listCaseNotifications } from '@exit/db';
+import { ServiceError, getNotificationPreview, listCaseNotifications } from '@exit/db';
 import {
+  can,
   formatInstant,
-  formatScheduledFor,
-  isSendControlLevel,
   EVIDENCE_CHANNELS,
   MANUAL_SEND_METHODS,
-  NOTIFICATION_STATUS_LABELS,
   NOTIFICATION_TYPES,
   type EvidenceChannel,
-  type NotificationStatus,
   type NotificationType,
-  type SendControlLevel,
 } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
-import { humanize } from '@/lib/text';
-import { Activity, Event, SectionHead } from '@/components/patterns';
-import { MailIcon } from '@/components/icons';
 import { CaseTitle, Feedback } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
+import { EmailCard } from './EmailCard';
 import {
-  approveEmailAction,
   captureDevAction,
   notificationTransitionAction,
   prepareNotificationAction,
   recordEvidenceAction,
-  setCaseRecipientAction,
 } from './actions';
 
 export const metadata: Metadata = { title: 'Email Actions' };
@@ -48,28 +40,6 @@ const TYPE_LABELS: Readonly<Record<NotificationType, string>> = {
   OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION: 'Other external provider notification',
 };
 
-const BADGE: Readonly<Record<NotificationStatus, string>> = {
-  DRAFT: 'badge--neutral',
-  PENDING_APPROVAL: 'badge--warning',
-  APPROVED: 'badge--info',
-  READY_FOR_MANUAL_SEND: 'badge--info',
-  MANUALLY_SENT: 'badge--success',
-  CANCELLED: 'badge--neutral',
-  FAILED: 'badge--danger',
-  SUPERSEDED: 'badge--neutral',
-  SENT: 'badge--info',
-  ACKNOWLEDGED: 'badge--success',
-  CONFIRMED_COMPLETE: 'badge--success',
-};
-
-/** Prose only - the control-level enum never appears in HR-facing copy. */
-const CONTROL_HINT: Readonly<Record<SendControlLevel, string>> = {
-  AUTO_SEND: 'Sends automatically once everything it needs is in place.',
-  HR_REVIEW_THEN_SEND: 'Needs your review before it is sent.',
-  // Legacy level (DEC-066): released by the HR person executing the case.
-  HR_MANAGER_APPROVAL_REQUIRED: 'Needs your review before it is sent.',
-};
-
 const EVIDENCE_CHANNEL_LABELS: Readonly<Record<EvidenceChannel, string>> = {
   EMAIL: 'Email reply',
   PHONE: 'Phone call',
@@ -83,6 +53,12 @@ const LIVE_STATUSES: readonly string[] = [
   'READY_FOR_MANUAL_SEND',
 ];
 
+/**
+ * The case's communications as a workspace (DEC-069): each message shows who
+ * it goes to and why, what it says, what it looks like, and what HR can still
+ * do before it is sent. Automation prepares and addresses everything first;
+ * HR intervenes only where necessary, and every intervention is audited.
+ */
 export default async function CaseNotificationsPage({
   params,
   searchParams,
@@ -109,10 +85,20 @@ export default async function CaseNotificationsPage({
     throw e;
   }
 
-  // notification.enterRecipient and notification.recordEvidence share the
-  // ordinary HR case-work gate that canApproveInternal reflects; the service
-  // enforces the exact permission on every submit.
+  // The rendered preview of every message, as the recipient will see it.
+  const previews = new Map<string, Awaited<ReturnType<typeof getNotificationPreview>>>();
+  await Promise.all(
+    data.records.map(async (r) => {
+      try {
+        previews.set(r.id, await getNotificationPreview(actor, r.id));
+      } catch {
+        // A preview that cannot be built is not a reason to hide the record.
+      }
+    }),
+  );
+
   const canHrAct = data.canApproveInternal;
+  const canUpdateStored = can(actor, 'recipients.editTechnical');
 
   return (
     <>
@@ -120,8 +106,9 @@ export default async function CaseNotificationsPage({
       <CaseNav caseId={id} active="notifications" />
       <Feedback err={sp.err} ok={sp.ok} />
       <p className="hint" role="note">
-        Routine notifications are prepared and sent automatically. You only need to act on items
-        marked &lsquo;Needs your review&rsquo; or &lsquo;Recipient required&rsquo;.
+        Routine notifications are prepared and addressed automatically from the business hierarchy.
+        Review, edit or re-address a message before it is sent; once sent, it is a record and a
+        correction is a new message.
       </p>
 
       {data.records.length === 0 ? (
@@ -133,160 +120,17 @@ export default async function CaseNotificationsPage({
 
       {data.records.map((r) => {
         const typeLabel = TYPE_LABELS[r.notificationType] ?? 'Notification';
-        const recipientMissing = !r.recipientConfigId && !r.caseRecipientMask;
         const live = LIVE_STATUSES.includes(r.status);
-        // Who may release a waiting item (DEC-066): the HR person executing
-        // the approved case - the assigned HR Officer or the HR Manager. The
-        // case approval already covered every recipient the plan showed, so
-        // no recipient class or control level asks for a second approver.
-        const canRelease = data.canApproveInternal;
-
-        const recipientDisplay = (() => {
-          const who = [r.recipientName, r.recipientOrg].filter(Boolean).join(', ');
-          if (r.caseRecipientMask)
-            return `${who || 'Recipient entered on this case'} - ${r.caseRecipientMask}`;
-          if (r.recipientConfigId)
-            return who ? `${who} (approved directory recipient)` : '(approved directory recipient)';
-          return null;
-        })();
-
         return (
-          <section className="panel" key={r.id} aria-label={`${typeLabel} email action`}>
-            {/* A communication reads as a message: who it goes to, what it
-                says, and where it got to - not as a database record. */}
-            <SectionHead
-              icon={<MailIcon />}
-              tone={
-                ['ACKNOWLEDGED', 'CONFIRMED_COMPLETE', 'SENT', 'MANUALLY_SENT'].includes(r.status)
-                  ? 'done'
-                  : r.status === 'FAILED'
-                    ? 'critical'
-                    : 'progress'
-              }
-              title={typeLabel}
-              description={recipientDisplay ? `To ${recipientDisplay}` : undefined}
-              aside={
-                <span className={`badge ${BADGE[r.status] ?? 'badge--neutral'}`}>
-                  {NOTIFICATION_STATUS_LABELS[r.status] ?? r.status}
-                </span>
-              }
-            />
-            {r.subjectSnapshot ? (
-              <p className="value" style={{ marginTop: 0 }}>
-                {r.subjectSnapshot}
-              </p>
-            ) : null}
-            {live && isSendControlLevel(r.controlLevel) ? (
-              <p className="hint">{CONTROL_HINT[r.controlLevel]}</p>
-            ) : null}
-            {r.ccNames.length > 0 ? (
-              <p className="hint">
-                Copied:{' '}
-                {r.ccNames
-                  .map(
-                    (name, i) =>
-                      `${name || 'Recipient'}${r.ccMasks[i] ? ` (${r.ccMasks[i]})` : ''}`,
-                  )
-                  .join('; ')}
-              </p>
-            ) : null}
-            {r.attachedDocument ? (
-              <p className="hint">
-                Attached: {humanize(r.attachedDocument.documentType)} v{r.attachedDocument.version}{' '}
-                <span className="meta">
-                  checksum {r.attachedDocument.pdfChecksum?.slice(0, 12) ?? '-'}
-                </span>
-              </p>
-            ) : null}
-            <div className="well" style={{ marginTop: 'var(--space-3)' }}>
-              <Activity label={`${typeLabel} delivery history`}>
-                <Event time={formatInstant(r.createdAt)} title="Prepared" />
-                {r.scheduledSendAt && !r.sentAt ? (
-                  <Event
-                    time={formatScheduledFor(r.scheduledSendAt)}
-                    title="Scheduled to send"
-                    tone="auto"
-                  />
-                ) : null}
-                {r.sentAt ? (
-                  <Event time={formatInstant(r.sentAt)} title="Sent" tone="done" />
-                ) : null}
-                {r.manualSentAt ? (
-                  <Event time={formatInstant(r.manualSentAt)} title="Sent by hand" tone="done" />
-                ) : null}
-                {r.acknowledgedAt ? (
-                  <Event
-                    time={formatInstant(r.acknowledgedAt)}
-                    title="Acknowledged by the recipient"
-                    tone="done"
-                  />
-                ) : null}
-                {r.completionConfirmedAt ? (
-                  <Event
-                    time={formatInstant(r.completionConfirmedAt)}
-                    title="Confirmed complete"
-                    detail={r.completionEvidenceNote ?? undefined}
-                    tone="done"
-                  />
-                ) : null}
-              </Activity>
-            </div>
-
-            <details>
-              <summary>Preview content</summary>
-              <p>
-                <strong>Subject:</strong> {r.subjectSnapshot}
-              </p>
-              <pre style={{ whiteSpace: 'pre-wrap' }}>{r.bodySnapshot}</pre>
-            </details>
-
-            {recipientMissing && live && canHrAct ? (
-              <div
-                className="panel"
-                style={{ borderLeft: '4px solid var(--danger, #b00020)', marginTop: '0.75rem' }}
-              >
-                <h3 style={{ marginTop: 0, fontSize: '1rem' }}>
-                  <span className="badge badge--danger">Recipient Required</span>
-                </h3>
-                <p className="hint">
-                  No approved recipient is configured for this email. Enter one for this case;
-                  optionally save it as an approved recipient for future cases (approval and
-                  verification still apply). Development recipients must use a reserved{' '}
-                  <code>.test</code> or <code>.invalid</code> domain, <code>@localhost</code>, or a{' '}
-                  <code>capture://</code> channel.
-                </p>
-                <form action={setCaseRecipientAction} className="stack">
-                  <input type="hidden" name="caseId" value={id} />
-                  <input type="hidden" name="recordId" value={r.id} />
-                  <div className="field">
-                    <label htmlFor={`rn-${r.id}`}>Recipient Name</label>
-                    <input id={`rn-${r.id}`} name="recipientName" required maxLength={200} />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`ro-${r.id}`}>Organization</label>
-                    <input id={`ro-${r.id}`} name="organization" required maxLength={200} />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`re-${r.id}`}>Email Address</label>
-                    <input id={`re-${r.id}`} name="email" type="email" required maxLength={320} />
-                  </div>
-                  <label>
-                    <input type="checkbox" name="saveForFuture" /> Save as Approved Recipient for
-                    Future Cases
-                  </label>
-                  <button type="submit">Save recipient</button>
-                </form>
-              </div>
-            ) : null}
-
-            {r.status === 'PENDING_APPROVAL' && canRelease ? (
-              <form action={approveEmailAction} style={{ display: 'inline-block' }}>
-                <input type="hidden" name="caseId" value={id} />
-                <input type="hidden" name="recordId" value={r.id} />
-                <button type="submit">Review and release</button>
-              </form>
-            ) : null}
-
+          <EmailCard
+            key={r.id}
+            caseId={id}
+            typeLabel={typeLabel}
+            r={r}
+            preview={previews.get(r.id) ?? null}
+            canRelease={canHrAct}
+            canUpdateStored={canUpdateStored}
+          >
             {(r.status === 'SENT' || r.status === 'ACKNOWLEDGED') && canHrAct ? (
               <details className="action">
                 <summary>Record evidence</summary>
@@ -346,7 +190,7 @@ export default async function CaseNotificationsPage({
                     <button type="submit">Submit for review</button>
                   </form>
                 ) : null}
-                {r.status === 'PENDING_APPROVAL' && canRelease ? (
+                {r.status === 'PENDING_APPROVAL' && canHrAct ? (
                   <details className="action" style={{ display: 'inline-block' }}>
                     <summary>Return for correction</summary>
                     <form action={notificationTransitionAction}>
@@ -424,7 +268,7 @@ export default async function CaseNotificationsPage({
                 ) : null}
               </details>
             ) : null}
-          </section>
+          </EmailCard>
         );
       })}
 

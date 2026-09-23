@@ -88,6 +88,17 @@ Audit events provide evidence of who did what, to which object, when, under whic
 | SIGNATURE_APPLIED | Document | One mark was applied to one block of one form version (DEC-068) | block key and label, signature type, signer role, drawn or typed, pixel size — **never the image** |
 | SIGNATURE_SUPERSEDED | Document | A mistaken HR signature was replaced; the original is retained (DEC-068) | record id, block key and label, signature type, reason |
 | SIGNATURE_REQUEST_COMPLETED | Document | The signer submitted the signed form (DEC-068) | request id, signer role and name, document title, marks applied, the declaration text, form version |
+| DOC_CONTENT_EDITED | Document | HR edited the wording of a draft letter (DEC-069) | document type and version, revision number and checksum, whether it reverted to the template, character count - never the text |
+| NOTIFICATION_EDITED | Communication | HR edited the subject, body or HR note of an unsent email (DEC-069) | notification type, revision number, which parts changed |
+| NOTIFICATION_CORRECTION_PREPARED | Communication | HR prepared a corrected copy of a sent email; the original stays as sent (DEC-069) | the sent record it corrects, notification type, reason |
+| NOTIFICATION_RECIPIENT_RESOLVED | Communication | The hierarchy resolved (or failed to resolve) the recipient at preparation (DEC-069) | source destination key, masked destination, unresolved reasons |
+| NOTIFICATION_RECIPIENT_OVERRIDDEN | Communication | HR changed who one message goes to (DEC-069) | original name and mask, new name and mask, auto source, reason |
+| NOTIFICATION_RECIPIENT_ADDRESS_OVERRIDDEN | Communication | HR changed only the address for one message (DEC-069) | recipient name, original and new mask, whether the stored recipient was also updated, reason |
+| NOTIFICATION_RECIPIENT_MANUAL_ENTERED | Communication | HR entered a manual recipient for one message (DEC-069) | original name and mask, new name and mask, reason |
+| NOTIFICATION_RECIPIENT_RESTORED | Communication | HR restored the auto-assigned recipient (DEC-069) | previous override kind, restored name and mask, source |
+| RETURN_CHECKLIST_EDITED | Asset | HR edited the exit checklist as a document (DEC-069) | version, revision, row counts added/removed, notes changed, unresolved count |
+| RETURN_CHECKLIST_FINALIZED | Asset | HR finalized an exit checklist version and rendered its PDF (DEC-069) | version, PDF checksum, open signature requests at the time |
+| RETURN_CHECKLIST_SUPERSEDED | Asset | HR superseded a signed or final checklist version with a new one (DEC-069) | version, replacement version, reason |
 | USER_EMAIL_BANNER_CHANGED | Identity | A user uploaded or removed their own personal email banner image (DEC-067) | user, cleared flag, width/height/bytes of the JPG (never the image) |
 | CONFIG_EMAIL_BANNER_CHANGED | Configuration | The HR Manager set, changed or removed the department email banner (DEC-067) | reason, width/height/bytes/file name, enabled flag, whether a hosted URL is set, cleared flag |
 | NOTIFICATION_PREPARED | Notification | Notification draft created | case, notification, type, template/version |

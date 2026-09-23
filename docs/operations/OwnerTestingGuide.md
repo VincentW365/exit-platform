@@ -144,6 +144,7 @@ automated controlled emails and confirm through secure links (section 6).
 | Feature flags & config | Administration → System | The five automation flags; escalation thresholds; send-control levels |
 | Email banner | Administration → System → Email banner | Upload the supplied JPG; it appears at the bottom of captured emails in `/dev/mailbox` (DEC-067). Personal banners live under My settings |
 | Action form signatures | A case → Action form → Signatures | Create a signature request, copy the link or email it, resend, extend or revoke it, and sign the Human Resources block yourself. The employee signs from the link with no account (DEC-068) |
+| Editing documents and emails | A case → Documents / Action form / Email Actions / Assets | Edit a generated letter with the facts locked, download a PDF at any stage, see the version history, edit and preview an email, change or restore its recipient, download the email record PDF, edit and finalize the exit checklist (DEC-069) |
 | Email delivery status | Administration → Email delivery status | Technical outbox view: captured/submitted rows, retries, dead letters |
 | Organization | Administration → Organization | The live directory coverage and hierarchy health |
 | Pilot readiness | Administration → Pilot | 24 readiness gates (9 active templates, verified recipients, attested backups, …) |

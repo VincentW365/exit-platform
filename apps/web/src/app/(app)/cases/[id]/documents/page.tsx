@@ -37,6 +37,7 @@ import { humanize } from '@/lib/text';
 import { EmptyState } from '@/components/EmptyState';
 import { DocObject } from '@/components/patterns';
 import { DocumentIcon } from '@/components/icons';
+import { DocumentWorkspace } from './DocumentWorkspace';
 
 export const metadata: Metadata = { title: 'Case Documents' };
 export const dynamic = 'force-dynamic';
@@ -208,11 +209,24 @@ export default async function CaseDocumentsPage({
                   </span>
                 }
                 actions={
-                  docsData.capabilities.canDownload &&
-                  DOWNLOADABLE_DOC_STATUSES.includes(d.status as DocumentStatus) ? (
-                    <a className="button secondary compact" href={`/api/documents/${d.id}/pdf`}>
-                      Download PDF
-                    </a>
+                  // DEC-069 section 7: a PDF at every stage. The draft
+                  // preview is marked as such; the final is the checksummed
+                  // record.
+                  docsData.capabilities.canDownload ? (
+                    DOWNLOADABLE_DOC_STATUSES.includes(d.status as DocumentStatus) ? (
+                      <a className="button secondary compact" href={`/api/documents/${d.id}/pdf`}>
+                        Download PDF
+                      </a>
+                    ) : d.templateId && d.status !== 'VOIDED' ? (
+                      <a
+                        className="button secondary compact"
+                        href={`/api/documents/${d.id}/preview-pdf`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Download PDF (draft)
+                      </a>
+                    ) : null
                   ) : null
                 }
               />
@@ -250,18 +264,45 @@ export default async function CaseDocumentsPage({
                 EDITABLE_DOC_STATUSES.includes(d.status as DocumentStatus) ? (
                 // DEC-066 section 26: the officer reviews the draft, then
                 // finalizes it - so the draft content is readable here, with
-                // the signatory lines completed at finalization.
-                <details className="action">
-                  <summary>Preview draft (fields as currently captured)</summary>
-                  <div className="doc-preview">
-                    {previewContent(d.template.contentBody, d.fieldSnapshot as never)}
-                  </div>
-                </details>
+                // the signatory lines completed at finalization. DEC-069: and
+                // edits it, with the facts locked and each save kept.
+                <>
+                  <details className="action">
+                    <summary>
+                      Preview{d.editedBody ? ' (edited wording)' : ' (template wording)'}
+                    </summary>
+                    <div className="doc-preview">
+                      {previewContent(
+                        d.editedBody ?? d.template.contentBody,
+                        d.fieldSnapshot as never,
+                      )}
+                    </div>
+                  </details>
+                  <DocumentWorkspace
+                    caseId={id}
+                    docId={d.id}
+                    body={d.editedBody ?? d.template.contentBody}
+                    fieldSnapshot={d.fieldSnapshot as never}
+                    revisions={docsData.revisions[d.id] ?? []}
+                    editable={docsData.capabilities.canEdit}
+                  />
+                </>
               ) : (
                 <p className="hint">
                   Draft - finalizing captures the exact content, attests it and renders the PDF.
                 </p>
               )}
+
+              {d.contentSnapshot ? (
+                <DocumentWorkspace
+                  caseId={id}
+                  docId={d.id}
+                  body={d.editedBody ?? d.template?.contentBody ?? ''}
+                  fieldSnapshot={d.fieldSnapshot as never}
+                  revisions={docsData.revisions[d.id] ?? []}
+                  editable={false}
+                />
+              ) : null}
 
               <dl className="kv" style={{ marginTop: '0.5rem' }}>
                 <dt>Template / Document Version</dt>

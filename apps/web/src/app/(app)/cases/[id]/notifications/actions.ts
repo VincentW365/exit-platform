@@ -5,10 +5,15 @@ import { revalidatePath } from 'next/cache';
 import {
   ServiceError,
   captureNotificationForDev,
+  overrideRecipient,
+  overrideRecipientAddress,
+  prepareCorrectedNotification,
   prepareNotification,
   recordManualEvidence,
+  restoreAutoRecipient,
   setCaseRecipient,
   transitionNotification,
+  updateNotificationContent,
 } from '@exit/db';
 import { EVIDENCE_CHANNELS, type EvidenceChannel } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
@@ -81,6 +86,68 @@ export async function setCaseRecipientAction(formData: FormData): Promise<void> 
     return saveForFuture
       ? 'Recipient recorded for this case and submitted to the approved recipient directory (approval and verification still apply).'
       : 'Recipient recorded for this case.';
+  });
+}
+
+// --- DEC-069: editing, correcting and re-addressing a message -----------------
+
+export async function updateNotificationContentAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    const outcome = await updateNotificationContent(actor, str(fd, 'recordId'), {
+      subject: str(fd, 'subject'),
+      body: String(fd.get('body') ?? ''),
+      hrNote: str(fd, 'hrNote') || null,
+    });
+    return outcome.changed ? `Email saved as version ${outcome.revision}.` : 'No changes to save.';
+  });
+}
+
+export async function prepareCorrectionAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    await prepareCorrectedNotification(actor, str(fd, 'recordId'), str(fd, 'reason'));
+    return 'A corrected copy is ready for review. The original stays as sent.';
+  });
+}
+
+export async function overrideRecipientAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    const kind = str(fd, 'choiceKind');
+    const outcome =
+      kind === 'MANUAL'
+        ? await overrideRecipient(actor, str(fd, 'recordId'), {
+            kind: 'MANUAL',
+            name: str(fd, 'name'),
+            email: str(fd, 'email'),
+            organization: str(fd, 'organization') || undefined,
+            reason: str(fd, 'reason') || undefined,
+          })
+        : await overrideRecipient(actor, str(fd, 'recordId'), {
+            kind: kind === 'CONFIG' ? 'CONFIG' : kind === 'CASE_PARTY' ? 'CASE_PARTY' : 'DIRECTORY',
+            id: str(fd, 'choiceId'),
+            reason: str(fd, 'reason') || undefined,
+          });
+    return `Recipient changed for this message (${outcome.mask}). The auto-assigned recipient is kept and can be restored.`;
+  });
+}
+
+export async function overrideAddressAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    const updateStored = fd.get('scope') === 'stored';
+    const outcome = await overrideRecipientAddress(actor, str(fd, 'recordId'), {
+      email: str(fd, 'email'),
+      reason: str(fd, 'reason') || undefined,
+      updateStored,
+    });
+    return updateStored
+      ? `Email address changed (${outcome.mask}) and submitted to the recipient directory (approval and verification still apply).`
+      : `Email address changed for this message only (${outcome.mask}).`;
+  });
+}
+
+export async function restoreAutoRecipientAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    const outcome = await restoreAutoRecipient(actor, str(fd, 'recordId'));
+    return `Auto-assigned recipient restored (${outcome.mask}).`;
   });
 }
 

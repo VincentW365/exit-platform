@@ -135,8 +135,10 @@ export async function computeClearanceFacts(caseId: string): Promise<{
     };
   });
 
-  const returnChecklistRow = await prisma.returnItemsChecklist.findUnique({
-    where: { caseId },
+  // DEC-069: the receipt is versioned; clearance reads the live version.
+  const returnChecklistRow = await prisma.returnItemsChecklist.findFirst({
+    where: { caseId, lifecycle: { notIn: ['SUPERSEDED', 'VOIDED'] } },
+    orderBy: { version: 'desc' },
     include: { items: { orderBy: { sortOrder: 'asc' } } },
   });
 

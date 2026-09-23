@@ -50,6 +50,8 @@ export * from './services/derivedActionService.ts';
 export * from './services/caseApprovalService.ts';
 export * from './services/emailBannerService.ts';
 export * from './services/signatureService.ts';
+export * from './services/revisionService.ts';
+export * from './services/renderRecordsService.ts';
 export * from './services/ackTokenService.ts';
 export * from './services/notificationTemplateService.ts';
 export { timed } from './services/timing.ts';

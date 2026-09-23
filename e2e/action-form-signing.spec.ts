@@ -244,15 +244,10 @@ test('branded form -> signature request -> employee signs by link -> HR signs ->
     .toBeGreaterThan(0);
   await snap(page, '10-hr-sees-signatures', true);
 
-  const hrPad = after.locator('.sigpad[data-mode="SIGNATURE"]');
-  await drawOn(page, hrPad);
-  await page.getByRole('button', { name: 'Add my signature to the form' }).click();
-  await expect(page.getByText('Your signature has been added to the form.')).toBeVisible();
-  await snap(page, '11-hr-signature-applied', true);
-
   // --- 12. Complete the form and download the signed PDF -------------------
   // The acknowledgement is already recorded as an electronic signature, so
-  // the officer only records the checklist evidence around it.
+  // the officer only records the checklist evidence around it. DEC-069: the
+  // officer's own signature is applied last, because it locks the version.
   await expect(page.locator('#ackStatus')).toHaveValue('ACKNOWLEDGED');
   for (const key of [
     'caseInfoVerified',
@@ -279,8 +274,19 @@ test('branded form -> signature request -> employee signs by link -> HR signs ->
   }
   await page.getByRole('button', { name: 'Save Finance evidence' }).click();
   await expect(page.getByText('Finance evidence saved.')).toBeVisible();
-  // The signature survived the save: it is evidence, not a form field.
+  // The employee's signature survived the saves: it is evidence, not a field.
+  await expect(page.locator('.form-table img.sigmark')).toHaveCount(1);
+
+  // --- 11. HR signs in the application, which locks the version -----------
+  const hrPad = page.locator(
+    'section[aria-labelledby="sig-heading"] .sigpad[data-mode="SIGNATURE"]',
+  );
+  await drawOn(page, hrPad);
+  await page.getByRole('button', { name: 'Add my signature' }).click();
+  await expect(page.getByText('Your signature has been added.')).toBeVisible();
   await expect(page.locator('.form-table img.sigmark')).toHaveCount(2);
+  await expect(page.getByText(/Your signature is on this version|content is locked/)).toBeVisible();
+  await snap(page, '11-hr-signature-applied', true);
 
   await page.getByRole('button', { name: 'Finish preparation (ready for review)' }).click();
   await expect(page.getByText('Form finished and ready for review.')).toBeVisible();

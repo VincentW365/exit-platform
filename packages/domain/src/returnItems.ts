@@ -111,6 +111,82 @@ export function deriveChecklistStatus(
   return items.some((i) => isUnresolved(i.status)) ? 'COMPLETED_WITH_OUTSTANDING' : 'COMPLETED';
 }
 
+// --- the receipt as an editable, versioned document (DEC-069) ------------------
+
+/**
+ * Where the receipt stands as a DOCUMENT, apart from whether the company has
+ * its property back (which stays the derived checklist status above).
+ */
+export const RECEIPT_LIFECYCLES = ['DRAFT', 'READY', 'FINAL', 'SUPERSEDED', 'VOIDED'] as const;
+export type ReceiptLifecycleState = (typeof RECEIPT_LIFECYCLES)[number];
+
+export const RECEIPT_LIFECYCLE_LABELS: Readonly<Record<ReceiptLifecycleState, string>> = {
+  DRAFT: 'Draft',
+  READY: 'Ready',
+  FINAL: 'Final',
+  SUPERSEDED: 'Superseded',
+  VOIDED: 'Voided',
+};
+
+/** HR's own notes on the receipt: narrative, editable until final. */
+export const RECEIPT_NOTES_LIMIT = 2000;
+
+/** One row as HR edits it. Catalogue rows keep their key; added rows have none. */
+export interface ReceiptRowInput {
+  id?: string | null;
+  itemKey?: ReturnItemKey | null;
+  label: string;
+  status: ReturnItemStatus;
+  remarks?: string | null;
+  quantity?: number | null;
+  condition?: string | null;
+  /** ISO date (YYYY-MM-DD) or null. */
+  returnedAt?: string | null;
+  assetReference?: string | null;
+}
+
+/**
+ * Editing rules (directive section 14). The printed form's ten rows are
+ * never removed - an item that does not apply is marked "not applicable" -
+ * and rows HR adds must name the item. Everything else is optional detail.
+ */
+export function receiptRowErrors(rows: ReadonlyArray<ReceiptRowInput>): string[] {
+  const errors: string[] = [];
+  const seenKeys = new Set<ReturnItemKey>();
+  for (const [i, row] of rows.entries()) {
+    const where = row.label.trim() || `Row ${i + 1}`;
+    if (row.itemKey) {
+      if (seenKeys.has(row.itemKey)) errors.push(`${where}: the form lists this item once.`);
+      seenKeys.add(row.itemKey);
+    } else if (!row.label.trim()) {
+      errors.push(`Row ${i + 1}: name the item.`);
+    }
+    if (row.label.length > 120)
+      errors.push(`${where}: the item name is limited to 120 characters.`);
+    if (!(RETURN_ITEM_STATUSES as readonly string[]).includes(row.status))
+      errors.push(`${where}: choose a valid status.`);
+    if (row.remarks && row.remarks.length > 500)
+      errors.push(`${where}: remarks are limited to 500 characters.`);
+    if (row.condition && row.condition.length > 300)
+      errors.push(`${where}: the condition is limited to 300 characters.`);
+    if (row.assetReference && row.assetReference.length > 120)
+      errors.push(`${where}: the asset reference is limited to 120 characters.`);
+    if (row.quantity != null) {
+      if (!Number.isInteger(row.quantity) || row.quantity < 0 || row.quantity > 9999)
+        errors.push(`${where}: the quantity must be a whole number between 0 and 9999.`);
+    }
+    if (row.returnedAt && !/^\d{4}-\d{2}-\d{2}$/.test(row.returnedAt))
+      errors.push(`${where}: the returned date must be a valid date.`);
+  }
+  for (const item of RETURN_ITEM_CATALOGUE) {
+    if (!seenKeys.has(item.key))
+      errors.push(
+        `${item.label} is on the company form and cannot be removed; mark it not applicable instead.`,
+      );
+  }
+  return errors;
+}
+
 /** Items the company is still chasing, for the case view and metrics. */
 export function unresolvedItems<T extends { status: ReturnItemStatus }>(
   items: ReadonlyArray<T>,

@@ -10,7 +10,7 @@
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
-import { signInAs, signOut } from './support/case';
+import { openActiveHrValidatedCase, signInAs, signOut } from './support/case';
 
 const MOBILE = { width: 375, height: 812 };
 
@@ -81,16 +81,16 @@ test('the secure link opens the checklist directly and records it without a sign
 });
 
 test('HR sees the checklist on the case and can record it directly', async ({ page }) => {
-  test.setTimeout(180_000);
-  await signInAs(page, 'HR Officer');
+  test.setTimeout(300_000);
 
-  // Any ACTIVE case will do - the checklist exists from activation onwards.
-  await page.goto('/cases?status=ACTIVE');
-  const firstCase = page.locator('.rows a[href*="/cases/"]').first();
-  test.skip((await firstCase.count()) === 0, 'No active case in this seed state.');
-  await firstCase.click();
-  await page.waitForURL(/\/cases\/[^/]+$/);
-  const caseUrl = page.url();
+  // A case of its own: the checklist exists from activation onwards, and an
+  // earlier run may have signed or finalized the newest case's receipt, which
+  // makes that version read-only (DEC-069). The officer records it as the
+  // case's assigned officer.
+  await signInAs(page, 'HR Manager');
+  const caseUrl = await openActiveHrValidatedCase(page);
+  await signOut(page);
+  await signInAs(page, 'HR Officer');
   await page.goto(`${caseUrl}/assets`);
 
   const panel = page.locator('section[aria-labelledby="return-checklist-h"]');
@@ -110,10 +110,14 @@ test('HR sees the checklist on the case and can record it directly', async ({ pa
     panel.locator('summary').filter({ hasText: /The (completed )?checklist/ }),
   ).toHaveCount(1);
 
-  // The HR-side record form is available and pre-filled from what exists.
-  const record = panel.locator('summary').filter({ hasText: 'Record the checklist for HR' });
+  // The HR-side record form is available and pre-filled from what exists
+  // (DEC-069: one "Edit checklist" disclosure, whether or not the employee
+  // has returned the form).
+  const record = panel.locator('summary').filter({ hasText: 'Edit checklist' });
   await expect(record).toBeVisible();
-  await record.click();
+  // The editor opens by itself while nothing has come back yet.
+  const editor = panel.locator('details.action', { hasText: 'Edit checklist' });
+  if ((await editor.getAttribute('open')) === null) await record.click();
   await expect(page.getByRole('button', { name: 'Save Checklist' })).toBeVisible();
   await signOut(page);
 });

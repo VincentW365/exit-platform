@@ -370,8 +370,9 @@ export async function runReport(
     }
     // DEC-053: did the checklist come back, and did it come back clean?
     case 'returnChecklist': {
+      // DEC-069: one live version per case counts; superseded ones are history.
       const checklists = await prisma.returnItemsChecklist.findMany({
-        where: { case: { is: where } },
+        where: { case: { is: where }, lifecycle: { notIn: ['SUPERSEDED', 'VOIDED'] } },
         select: { status: true, sentAt: true, submittedAt: true },
       });
       const byStatus = new Map<string, number>();
@@ -384,7 +385,9 @@ export async function runReport(
         .sort((a, b) => a - b);
       const outstanding = await prisma.returnItemsChecklistEntry.count({
         where: {
-          checklist: { is: { case: { is: where } } },
+          checklist: {
+            is: { case: { is: where }, lifecycle: { notIn: ['SUPERSEDED', 'VOIDED'] } },
+          },
           status: { in: ['NOT_RETURNED', 'LOST_OR_DAMAGED'] },
         },
       });

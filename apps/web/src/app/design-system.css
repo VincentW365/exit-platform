@@ -2452,3 +2452,168 @@ kbd {
   max-height: 2rem;
   max-width: 5rem;
 }
+
+/* --- DEC-069: editable documents, versions, recipients ------------------- */
+
+.workspace {
+  margin-top: var(--space-3);
+}
+.workspace__toolbar {
+  margin-bottom: var(--space-3);
+}
+
+/* The document editor: readable paragraphs, facts as locked chips. */
+.doc-editor__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+.doc-editor__surface {
+  min-height: 14rem;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-0, #fff);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.doc-editor__surface:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.doc-editor__surface p {
+  margin: 0 0 1em;
+}
+.doc-editor__surface p:last-child {
+  margin-bottom: 0;
+}
+.doc-editor__fact {
+  display: inline;
+  padding: 0 0.3em;
+  border-radius: 4px;
+  background: var(--accent-soft, #e8eef7);
+  border-bottom: 2px solid var(--brand-navy, #1f3a5f);
+  font-family: inherit;
+  cursor: not-allowed;
+  user-select: all;
+}
+:root[data-theme='dark'] .doc-editor__fact,
+:root:not([data-theme='light']) .doc-editor__fact {
+  background: rgba(255, 255, 255, 0.08);
+}
+:root[data-theme='light'] .doc-editor__fact {
+  background: #e8eef7;
+}
+
+/* Version history. */
+.revisions__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.revisions__item {
+  display: grid;
+  grid-template-columns: 3rem 1fr auto;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  align-items: baseline;
+}
+.revisions__num {
+  font-weight: var(--weight-semibold);
+  color: var(--text-2);
+}
+@media (max-width: 40rem) {
+  .revisions__item {
+    grid-template-columns: 3rem 1fr;
+  }
+  .revisions__when {
+    grid-column: 2;
+  }
+}
+
+/* A communication's recipient block: the hierarchy's answer and any override. */
+.recipient {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin: var(--space-3) 0;
+  background: var(--surface-1);
+}
+.recipient[data-override='RECIPIENT'],
+.recipient[data-override='ADDRESS'],
+.recipient[data-override='MANUAL'] {
+  border-left: 4px solid var(--warning-ink, #8a5a00);
+}
+.recipient[data-unresolved='yes'] {
+  border-left: 4px solid var(--danger, #b00020);
+}
+.recipient__to {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+.recipient__source {
+  margin: var(--space-1) 0 0;
+}
+.recipient__actions {
+  margin-top: var(--space-2);
+}
+.recipient-picker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 18rem;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.recipient-picker__choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.recipient-picker__choice.is-chosen {
+  background: var(--accent-soft, #e8eef7);
+  outline: 2px solid var(--brand-navy, #1f3a5f);
+  outline-offset: -2px;
+}
+.recipient-picker__name {
+  font-weight: var(--weight-semibold);
+}
+
+.email-card__tools {
+  margin: var(--space-3) 0;
+}
+.email-preview-head {
+  margin-bottom: var(--space-2);
+}
+.email-editor textarea {
+  font-family: inherit;
+}
+
+/* The receipt editor: a wide ruled table that scrolls, never overflows. */
+.receipt-editor__table {
+  display: block;
+  overflow-x: auto;
+}
+.receipt-editor__table input[type='text'],
+.receipt-editor__table select {
+  min-width: 7rem;
+}
+.receipt-editor__table tr[data-custom='yes'] th {
+  font-weight: var(--weight-normal, 400);
+}

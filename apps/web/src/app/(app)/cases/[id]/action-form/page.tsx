@@ -17,6 +17,8 @@ import { requireAuth } from '@/lib/auth';
 import { CaseTitle, Feedback } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
 import { SignaturePanel } from './SignaturePanel';
+import { RevisionHistory } from '@/components/RevisionHistory';
+import { FORM_DISPLAY_LABELS, formDisplayStatus } from '@exit/domain';
 import {
   completeFormAction,
   createFormAction,
@@ -24,6 +26,7 @@ import {
   returnFormAction,
   saveFinanceSectionAction,
   saveHrSectionAction,
+  startNewFormVersionAction,
   submitFormAction,
   voidFormAction,
 } from './actions';
@@ -174,11 +177,24 @@ export default async function ActionFormPage({
     | null;
   const cap = data.capabilities;
   const snap = (f?.fieldSnapshot ?? {}) as Record<string, string | null>;
-  const editable = f ? EDITABLE_STATUSES.includes(f.status) : false;
+  // DEC-069 section 5: a version with a signature on it is not edited in
+  // place. The sheet reads, the toolbar offers a new version.
+  const signedLock = data.signedLock;
+  const editable = f ? EDITABLE_STATUSES.includes(f.status) && !signedLock : false;
+  const display = f
+    ? formDisplayStatus({
+        status: f.status as ActionFormStatus,
+        openSignatureRequests: data.openSignatureRequests,
+        signedSignatureRequests: data.signedSignatureRequests,
+      })
+    : null;
   const reviewable = f ? REVIEWABLE_STATUSES.includes(f.status) : false;
   const legacyRow = f ? ['PENDING_MANAGER', 'PENDING_HR'].includes(f.status) : false;
   const closed = f ? CLOSED_STATUSES.includes(f.status) : false;
-  const canEditSheet = !!f && cap.canEdit && 'hrChecklist' in f && !!f.hrChecklist;
+  // DEC-069 section 5: the officer's signature locks the sheet's controls;
+  // finishing preparation is a transition, not an edit, and stays available.
+  const canEditSheet = !!f && cap.canEdit && 'hrChecklist' in f && !!f.hrChecklist && !signedLock;
+  const canFinishPreparation = !!f && cap.canSubmit && EDITABLE_STATUSES.includes(f.status);
   // Informed completion: it is NOT blocked on the Finance checklist, but the
   // completing officer must see what the immutable PDF will record.
   const financePendingCount =
@@ -191,11 +207,18 @@ export default async function ActionFormPage({
   const chosenAction = f ? actionTypeFor(String(snap['departureType'] ?? '')) : 'Resignation';
   const completion = data.attestations.find((a) => a.kind === 'HR_FORM_COMPLETION');
   const signatures = await listSignatureRequests(actor, id);
-  const employeeSignature = signatures.signatures.find((s) => s.blockKey === 'acknowledgement');
-  const hrSignature = signatures.signatures.find((s) => s.blockKey === 'hrCompletion');
+  // Only THIS version's marks belong on this sheet: a superseded version
+  // keeps its own signatures, and they never appear on its replacement.
+  const formMarks = signatures.signatures.filter(
+    (s) => s.documentKind === 'ACTION_FORM' && s.documentId === f?.id,
+  );
+  const employeeSignature = formMarks.find((s) => s.blockKey === 'acknowledgement');
+  const hrSignature = formMarks.find((s) => s.blockKey === 'hrCompletion');
   // Informed completion (the Finance pattern): completion is NOT blocked on
   // signatures, but the officer must see what the immutable PDF will record.
-  const openSignatureRequests = signatures.requests.filter((r) => r.status === 'PENDING').length;
+  const openSignatureRequests = signatures.requests.filter(
+    (r) => r.status === 'PENDING' && r.documentKind === 'ACTION_FORM' && r.documentId === f?.id,
+  ).length;
   const managerHistorical = data.attestations.find(
     (a) => a.kind === 'MANAGER_FORM_APPROVAL' && !a.invalidatedAt,
   );
@@ -234,14 +257,63 @@ export default async function ActionFormPage({
             style={{ maxWidth: '52rem', margin: '0 auto var(--space-3)' }}
           >
             <span className={`badge ${FORM_BADGE[f.status] ?? 'badge--neutral'}`}>
-              {FORM_STATUS_LABELS[f.status as ActionFormStatus] ?? humanize(f.status)}
+              {display
+                ? FORM_DISPLAY_LABELS[display]
+                : (FORM_STATUS_LABELS[f.status as ActionFormStatus] ?? humanize(f.status))}
             </span>
-            <span className="meta">Version {f.version}</span>
+            <span className="meta">
+              Version {f.version}
+              {display && display !== 'FINAL'
+                ? ` · ${FORM_STATUS_LABELS[f.status as ActionFormStatus] ?? humanize(f.status)}`
+                : ''}
+            </span>
+            {/* DEC-069 section 7: a PDF at every stage - draft until final. */}
             {f.hasPdf ? (
               <a className="button secondary compact" href={`/api/action-forms/${f.id}/pdf`}>
                 Download final PDF
               </a>
+            ) : !closed ? (
+              <a
+                className="button secondary compact"
+                href={`/api/action-forms/${f.id}/preview-pdf`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Download PDF (draft)
+              </a>
             ) : null}
+            {cap.canEdit &&
+            (closed || signedLock) &&
+            !['VOIDED', 'SUPERSEDED'].includes(f.status) ? (
+              <details className="action" style={{ display: 'inline-block' }}>
+                <summary>Start new version</summary>
+                <form action={startNewFormVersionAction} className="stack">
+                  <input type="hidden" name="caseId" value={id} />
+                  <input type="hidden" name="formId" value={f.id} />
+                  <p className="hint">
+                    This version is kept exactly as it is, with its signatures. The new version
+                    starts from the current case data and the HR entries, and any signatures are
+                    collected again.
+                  </p>
+                  <label className="field">
+                    <span className="field__label">Reason</span>
+                    <input type="text" name="reason" className="input" maxLength={300} required />
+                  </label>
+                  <button type="submit" className="secondary">
+                    Start new version
+                  </button>
+                </form>
+              </details>
+            ) : null}
+          </div>
+          {signedLock && !closed ? (
+            <p className="banner-baseline" style={{ maxWidth: '52rem', margin: '0 auto 1rem' }}>
+              Your signature is on this version, so its content is locked. Replace your signature to
+              edit it, or start a new version; the signed version is kept.
+            </p>
+          ) : null}
+          <div style={{ maxWidth: '52rem', margin: '0 auto var(--space-3)' }}>
+            <RevisionHistory revisions={data.revisions} />
           </div>
           {f.returnReason && ['RETURNED', 'RETURNED_FOR_CORRECTION'].includes(f.status) ? (
             <p className="banner-baseline" style={{ maxWidth: '52rem', margin: '0 auto 1rem' }}>
@@ -635,7 +707,7 @@ export default async function ActionFormPage({
               data={signatures}
             />
 
-            {canEditSheet && editable ? (
+            {canFinishPreparation ? (
               <form action={submitFormAction} style={{ marginBottom: 'var(--space-3)' }}>
                 <input type="hidden" name="caseId" value={id} />
                 <input type="hidden" name="formId" value={f.id} />

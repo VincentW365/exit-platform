@@ -390,3 +390,27 @@ Rules:
 - **Marks belong to the form version they were applied to.** Completion locks
   them; a material case correction supersedes the version and revokes its open
   requests rather than moving marks onto the replacement.
+
+## 11. Document versions and revisions (DEC-069, 2026-09-23)
+
+Two levels, deliberately distinct:
+
+- A **version** is a row (letter version, form version, receipt version).
+  It follows its own state machine above. A material change to a finalized
+  or signed version starts the next version; the old one becomes
+  SUPERSEDED with its attestations invalidated and its open signing requests
+  revoked, and keeps its signatures.
+- A **revision** is one save inside a version, in the append-only
+  `document_revision` log: GENERATED, EDITED, FIELDS_REFRESHED, FINALIZED,
+  SUPERSEDED, CORRECTED. Revisions are never edited or deleted.
+
+Display statuses are derived, never stored: forms and receipts read Draft /
+Ready / Awaiting signature / Signed / Final from the stored status and the
+signature requests; emails read Draft / Ready to send / Queued / Sent /
+Failed from the notification status and the outbox.
+
+The receipt (`ReturnItemsChecklist.lifecycle`): DRAFT -> READY (marked
+reviewed; any edit returns it to DRAFT) -> FINAL (locked, PDF stored), with
+SUPERSEDED / VOIDED as terminal bookkeeping. The derived checklist status
+(not started / in progress / completed / completed with outstanding) is
+unchanged and independent of the lifecycle.

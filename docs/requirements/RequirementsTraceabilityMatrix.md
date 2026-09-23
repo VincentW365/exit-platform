@@ -120,6 +120,13 @@ HR-validated workflow simplification evidence (Directive 6.3, 2026-08-16): the e
 | REQ-DOC-025 | Signature is not approval | Owner directive 2026-09-23 (DEC-068) | APPROVED | MUST | 2 | `packages/domain/test/signatures.test.ts` (no manager block); `packages/db/test-int/signatures.test.ts` |
 | REQ-DOC-026 | Signing links | Owner directive 2026-09-23 (DEC-068) | APPROVED | MUST | 2 | `packages/db/test-int/signatures.test.ts` (neutral failures, single claim); `e2e/action-form-signing.spec.ts` |
 | REQ-DOC-027 | Signing link lifetime and delivery | Owner directive 2026-09-23 (DEC-068) | APPROVED | MUST | 2 | `packages/domain/test/signatures.test.ts` (window, ceiling); `packages/db/test-int/signatures.test.ts` (one request, no token in audit) |
+| REQ-DOC-028 | Editable generated forms | Owner directive 2026-09-23 (DEC-069) | APPROVED | MUST | 2 | `packages/domain/test/documentEditing.test.ts`; `packages/db/test-int/editableDocuments.test.ts`; `e2e/editable-documents.spec.ts` |
+| REQ-DOC-029 | Document version history | Owner directive 2026-09-23 (DEC-069) | APPROVED | MUST | 2 | `packages/db/test-int/editableDocuments.test.ts` (revision log, immutability) |
+| REQ-DOC-030 | PDF at every stage | Owner directive 2026-09-23 (DEC-069) | APPROVED | MUST | 2 | `packages/db/test-int/editableDocuments.test.ts`, `assetReceipt.test.ts`; `e2e/editable-documents.spec.ts` |
+| REQ-DOC-031 | Signed-version protection | Owner directive 2026-09-23 (DEC-069) | APPROVED | MUST | 2 | `packages/db/test-int/editableDocuments.test.ts`, `assetReceipt.test.ts`, `signatures.test.ts` |
+| REQ-DOC-032 | Asset receipt document | Owner directive 2026-09-23 (DEC-069) | APPROVED | MUST | 2 | `packages/db/test-int/assetReceipt.test.ts`; `e2e/editable-documents.spec.ts` |
+| REQ-NOT-0E1 | Editable emails with preview and PDF | Owner directive 2026-09-23 (DEC-069) | APPROVED | MUST | 2 | `packages/db/test-int/emailEditingAndRecipients.test.ts`; `e2e/editable-documents.spec.ts` |
+| REQ-NOT-0E2 | Recipient overrides on hierarchy auto-assignment | Owner directive 2026-09-23 (DEC-069) | APPROVED | MUST | 2 | `packages/db/test-int/emailEditingAndRecipients.test.ts` (hierarchy untouched, restore, audit); `e2e/editable-documents.spec.ts` |
 | REQ-NOTIFY-001 | Versioned notification templates | DMAIC pp. 12, 25-26 | PROVISIONAL | MUST | 5 | Admin test |
 | REQ-NOTIFY-002 | Applicability rules | DEC-016 | PROVISIONAL | MUST | 5 | Rule tests |
 | REQ-NOTIFY-003 | Transactional outbox | Reliability architecture | PROVISIONAL | MUST | 5 | Integration test |

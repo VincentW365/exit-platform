@@ -454,3 +454,45 @@ ended in the meantime fails the send rather than mailing a dead link. The
 `SIGNATURE_REQUEST` template carries the employee's first name, the document
 title, the link, its expiry date in words, the case reference and the HR
 sender block, so it also carries the sender's banner under section 15.5.
+
+### 15.7 Editable generated documents, email editing and recipient overrides (DEC-069, 2026-09-23)
+
+**Editing a letter.** The draft keeps HR's wording in the template's own
+format - plain text with `[[PLACEHOLDER]]` tokens retained - in
+`editedBody`. The editor renders the tokens as locked chips carrying the
+current case value, and HR edits the narrative around them. A save is
+validated like a template (plain text, allow-listed placeholders) plus one
+rule of its own: every placeholder the letter type requires and the template
+used must still be present. Finalization substitutes the case facts into
+`editedBody ?? template.contentBody`, so the facts are always the case's.
+
+**Version history.** `document_revision` records every generation, edit,
+field refresh, finalization, supersession and correction with the editor and
+the content checksum. It is append-only by privilege and by trigger.
+
+**PDFs at every stage.** The renderers now return bytes separately from
+storing them. A draft preview (letter, form, receipt) is rendered on demand
+from the current saved state, carries "DRAFT PREVIEW" under the title and in
+the footer, and is never stored; the finalized render remains the stored,
+checksummed record. Email PDFs (`renderEmailRecordPdfBytes`) are rendered on
+demand from the immutable notification record and its outbox row: a preview
+before sending, the record afterwards, with the recipient the message
+actually went to and the JPG banner at its own proportions.
+
+**Email editing.** Subject, body and an HR note are editable while the
+record is DRAFT, PENDING_APPROVAL or READY_FOR_MANUAL_SEND - the states
+before the outbox holds it. A correction to a sent message is a new record
+prepared from it (`correctsRecordId`), reviewed before release.
+
+**Recipient overrides.** At preparation the record stores the hierarchy's
+answer (`autoDestinationKey`, name, masked address, ciphertext or
+configuration id) beside the effective recipient it already stored. An
+override rewrites only the effective recipient and marks the record
+(`recipientOverride` RECIPIENT / ADDRESS / MANUAL, by whom, when, why); the
+auto columns and the directory are untouched. Restore re-resolves the route
+live and clears the override. Enqueueing - both the review release and the
+automatic release - now uses the record's effective recipient first, then
+its configured mailbox if still usable, then the static route; a chosen
+recipient that is no longer usable blocks the send. The picker searches the
+case parties, approved recipient configuration and the directory, returning
+masked addresses only; the full address is decrypted at send time.

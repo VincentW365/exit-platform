@@ -442,6 +442,7 @@ model OffboardingCase {
   statusHistory        CaseStatusHistory[]
   signatureRequests    SignatureRequest[]
   signatureRecords     SignatureRecord[]
+  documentRevisions    DocumentRevision[]
   participants         CaseParticipant[]
   notes                CaseNote[]
   attachments          Attachment[]
@@ -453,7 +454,7 @@ model OffboardingCase {
   workflowTasks        WorkflowTask[]
   notifications        NotificationRecord[]
   assetRecoveryItems   AssetRecoveryItem[]
-  returnItemsChecklist ReturnItemsChecklist?
+  returnItemsChecklists ReturnItemsChecklist[]
   handover             HandoverRecord?
   exceptions           CaseException[]
   clearanceRecords     ClearanceRecord[]
@@ -890,6 +891,13 @@ model DocumentInstance {
   rowVersion            Int               @default(0)
 
   /// DEC-054: the email that carried this document to the employee.
+  /// DEC-069: HR's edited wording for THIS version, in the template's own
+  /// format (plain text, placeholders retained so the facts stay live).
+  /// Null means the template body is used unchanged.
+  editedBody   String?
+  editedById   String?   @db.Uuid
+  editedAt     DateTime?
+
   emails    NotificationRecord[] @relation("documentEmail")
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
@@ -1243,8 +1251,13 @@ model SignatureRequest {
   id              String                 @id @default(uuid()) @db.Uuid
   caseId          String                 @db.Uuid
   case            OffboardingCase        @relation(fields: [caseId], references: [id])
-  formId          String                 @db.Uuid
-  form            ActionFormVersion      @relation(fields: [formId], references: [id])
+  /// DEC-069: which document this request signs. Exactly one of formId /
+  /// checklistId is set, according to the kind.
+  documentKind    SignatureDocumentKind  @default(ACTION_FORM)
+  formId          String?                @db.Uuid
+  form            ActionFormVersion?     @relation(fields: [formId], references: [id])
+  checklistId     String?                @db.Uuid
+  checklist       ReturnItemsChecklist?  @relation(fields: [checklistId], references: [id])
   documentTitle   String
   signerRole      SignerRole
   signerName      String
@@ -1292,9 +1305,13 @@ model SignatureRecord {
   id              String              @id @default(uuid()) @db.Uuid
   caseId          String              @db.Uuid
   case            OffboardingCase     @relation(fields: [caseId], references: [id])
-  /// The form version this mark belongs to - the signed facts, frozen.
-  documentId      String              @db.Uuid
-  document        ActionFormVersion   @relation(fields: [documentId], references: [id])
+  /// The document version this mark belongs to - the signed facts, frozen.
+  /// DEC-069: a form version or a receipt version, per documentKind.
+  documentKind    SignatureDocumentKind @default(ACTION_FORM)
+  documentId      String?             @db.Uuid
+  document        ActionFormVersion?  @relation(fields: [documentId], references: [id])
+  checklistId     String?             @db.Uuid
+  checklist       ReturnItemsChecklist? @relation(fields: [checklistId], references: [id])
   requestId       String?             @db.Uuid
   request         SignatureRequest?   @relation(fields: [requestId], references: [id])
   /// Who signed: a user id for an HR signer, the request id for an external
@@ -1747,6 +1764,26 @@ model NotificationRecord {
   /// outgoing body keeps a marker; the live URL is resolved at dispatch, so
   /// no stored snapshot ever contains a working signing link.
   signatureRequestId String? @db.Uuid
+
+  /// DEC-069: the hierarchy's answer, kept beside any override so the
+  /// original auto-assignment is never erased and can be restored.
+  autoDestinationKey      String?
+  autoRecipientName       String?
+  autoRecipientMask       String?
+  autoRecipientCiphertext String?
+  autoRecipientConfigId   String?                @db.Uuid
+  recipientOverride       RecipientOverrideKind?
+  recipientOverrideById   String?                @db.Uuid
+  recipientOverrideAt     DateTime?
+  recipientOverrideReason String?
+  /// DEC-069: HR's own note appended to the message, and who last edited
+  /// the subject or body before sending.
+  hrNote                  String?
+  editedById              String?                @db.Uuid
+  editedAt                DateTime?
+  /// DEC-069: a corrected copy names the sent message it replaces; the
+  /// original stays exactly as sent.
+  correctsRecordId        String?                @db.Uuid
 
   /// Directive 6.3 T/U: acknowledgement / completion evidence (token or
   /// HR-recorded). Delivery alone is never completion.
@@ -2577,8 +2614,21 @@ model ClearanceRecord {
 /// record by itself.
 model ReturnItemsChecklist {
   id                     String                      @id @default(uuid()) @db.Uuid
-  caseId                 String                      @unique @db.Uuid
+  caseId                 String                      @db.Uuid
   case                   OffboardingCase             @relation(fields: [caseId], references: [id])
+  /// DEC-069: the receipt is a versioned document. One LIVE version per
+  /// case; a material change after signing supersedes it with the next.
+  version                Int                         @default(1)
+  lifecycle              ReceiptLifecycle            @default(DRAFT)
+  /// HR's own notes on the receipt - narrative, editable until final.
+  hrNotes                String?
+  finalizedById          String?                     @db.Uuid
+  finalizedAt            DateTime?
+  pdfObjectKey           String?                     @unique
+  pdfChecksum            String?
+  outdatedReason         String?
+  supersededReason       String?
+  createdById            String?                     @db.Uuid
   status                 ReturnChecklistStatus       @default(NOT_STARTED)
   /// When the secure link was emailed, and to whom (masked - never raw).
   sentAt                 DateTime?
@@ -2598,7 +2648,11 @@ model ReturnItemsChecklist {
   createdAt              DateTime                    @default(now())
   updatedAt              DateTime                    @updatedAt
   items                  ReturnItemsChecklistEntry[]
+  signatureRequests      SignatureRequest[]
+  signatures             SignatureRecord[]
 
+  @@unique([caseId, version])
+  @@index([caseId])
   @@map("return_items_checklist")
 }
 
@@ -2608,11 +2662,19 @@ model ReturnItemsChecklistEntry {
   id          String               @id @default(uuid()) @db.Uuid
   checklistId String               @db.Uuid
   checklist   ReturnItemsChecklist @relation(fields: [checklistId], references: [id])
-  itemKey     ReturnItemKey
+  /// Null for a row HR added for property the printed form does not list.
+  itemKey     ReturnItemKey?
   label       String
   sortOrder   Int
   status      ReturnItemStatus     @default(OUTSTANDING)
   remarks     String?
+  /// DEC-069: the receipt detail the form implies - how many, in what
+  /// condition, when, and any asset number.
+  quantity       Int?
+  condition      String?
+  returnedAt     DateTime?
+  assetReference String?
+  custom         Boolean           @default(false)
   updatedAt   DateTime             @updatedAt
 
   @@unique([checklistId, itemKey])
@@ -2646,4 +2708,68 @@ enum ReturnChecklistStatus {
   IN_PROGRESS
   COMPLETED
   COMPLETED_WITH_OUTSTANDING
+}
+
+/// DEC-069: the receipt as a document, apart from whether property is back.
+enum ReceiptLifecycle {
+  DRAFT
+  READY
+  FINAL
+  SUPERSEDED
+  VOIDED
+}
+
+/// DEC-069: which documents collect signatures.
+enum SignatureDocumentKind {
+  ACTION_FORM
+  ASSET_RECEIPT
+}
+
+/// DEC-069: how one communication's recipient differs from the hierarchy.
+enum RecipientOverrideKind {
+  RECIPIENT
+  ADDRESS
+  MANUAL
+}
+
+/// DEC-069: which record a revision belongs to.
+enum DocumentKind {
+  LETTER
+  ACTION_FORM
+  ASSET_RECEIPT
+  EMAIL
+}
+
+enum RevisionKind {
+  GENERATED
+  EDITED
+  FIELDS_REFRESHED
+  FINALIZED
+  SUPERSEDED
+  CORRECTED
+}
+
+/// DEC-069: every save of an editable document, kept forever. The only copy
+/// is never overwritten; this table is what "version history" reads.
+/// Append-only: the runtime role may insert and read, and a trigger refuses
+/// UPDATE and DELETE outright.
+model DocumentRevision {
+  id              String          @id @default(uuid()) @db.Uuid
+  caseId          String          @db.Uuid
+  case            OffboardingCase @relation(fields: [caseId], references: [id])
+  documentKind    DocumentKind
+  /// The letter, form version, receipt version or email record this belongs to.
+  documentId      String          @db.Uuid
+  revision        Int
+  kind            RevisionKind
+  /// The editable parts exactly as they stood after this change.
+  content         Json
+  contentChecksum String
+  note            String?
+  editedById      String?         @db.Uuid
+  editedAt        DateTime        @default(now())
+
+  @@unique([documentKind, documentId, revision])
+  @@index([caseId])
+  @@map("document_revision")
 }

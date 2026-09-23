@@ -12,16 +12,17 @@ import { BRAND, formatInstant } from '@exit/domain';
 import { getConfig } from '@exit/config';
 import { getStorage, newObjectKey } from '../storage.ts';
 
-const PRODUCER = "Bert's Auto Parts - Offboarding Platform";
+export const PRODUCER = "Bert's Auto Parts - Offboarding Platform";
 
-// Document palette: conservative professional tones, print-safe.
-const INK = '#111111';
-const BODY_INK = '#1a1a1a';
-const MUTED = '#666666';
-const FAINT = '#777777';
-const RULE = '#d4d8dd';
-const ACCENT = '#1f3a5f';
-const CONFIDENTIAL = '#8a1f11';
+// Document palette: conservative professional tones, print-safe. Exported so
+// the record renderers (DEC-069) share one look with the letters and forms.
+export const INK = '#111111';
+export const BODY_INK = '#1a1a1a';
+export const MUTED = '#666666';
+export const FAINT = '#777777';
+export const RULE = '#d4d8dd';
+export const ACCENT = '#1f3a5f';
+export const CONFIDENTIAL = '#8a1f11';
 
 /**
  * Approved brand logo for formal documents (Directive 5.1 H/I). Loaded once
@@ -62,7 +63,7 @@ export interface RenderedPdf {
   byteLength: number;
 }
 
-interface LetterRenderInput {
+export interface LetterRenderInput {
   title: string;
   confidentiality: string;
   caseReference: string;
@@ -74,9 +75,17 @@ interface LetterRenderInput {
   approverTitle: string;
   approvedAt: Date;
   attestationNote: string;
+  /**
+   * DEC-069: a preview of the current saved wording before finalization.
+   * Marked plainly on the page so it can never be mistaken for the issued
+   * document; never stored, never checksummed against the record.
+   */
+  draft?: boolean;
 }
 
-function newDoc(deterministicDate: Date, title: string): InstanceType<typeof PDFDocument> {
+export type Pdf = InstanceType<typeof PDFDocument>;
+
+export function newDoc(deterministicDate: Date, title: string): Pdf {
   return new PDFDocument({
     size: 'LETTER',
     margins: { top: 72, bottom: 72, left: 72, right: 72 },
@@ -92,7 +101,7 @@ function newDoc(deterministicDate: Date, title: string): InstanceType<typeof PDF
   });
 }
 
-function collect(doc: InstanceType<typeof PDFDocument>): Promise<Buffer> {
+export function collect(doc: Pdf): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     doc.on('data', (c: Buffer) => chunks.push(c));
@@ -107,7 +116,7 @@ function collect(doc: InstanceType<typeof PDFDocument>): Promise<Buffer> {
  * tag right-aligned, closed by a rule with a short accent segment. Uses
  * absolute coordinates so the layout is identical regardless of prior state.
  */
-function header(doc: InstanceType<typeof PDFDocument>, confidentiality: string): void {
+export function header(doc: Pdf, confidentiality: string): void {
   const left = doc.page.margins.left;
   const right = doc.page.width - doc.page.margins.right;
   const width = right - left;
@@ -161,7 +170,24 @@ function header(doc: InstanceType<typeof PDFDocument>, confidentiality: string):
   doc.fillColor(BODY_INK);
 }
 
-function footer(doc: InstanceType<typeof PDFDocument>, refLine: string): void {
+/**
+ * DEC-069: the mark every unfinalized preview carries, directly under the
+ * title, so a draft printed and left on a desk still says what it is.
+ */
+export function draftNotice(doc: Pdf, what: string): void {
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(8.5)
+    .fillColor(CONFIDENTIAL)
+    .text(`DRAFT PREVIEW - ${what.toUpperCase()} NOT FINALIZED. WORDING MAY STILL CHANGE.`, {
+      characterSpacing: 0.4,
+      lineGap: 1,
+    })
+    .fillColor(BODY_INK);
+  doc.moveDown(0.6);
+}
+
+export function footer(doc: Pdf, refLine: string): void {
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
@@ -189,16 +215,18 @@ function footer(doc: InstanceType<typeof PDFDocument>, refLine: string): void {
   }
 }
 
-export async function renderLetterPdf(input: LetterRenderInput): Promise<RenderedPdf> {
+/** The letter as bytes: the final render stores them, a preview streams them. */
+export async function renderLetterPdfBytes(input: LetterRenderInput): Promise<Buffer> {
   const doc = newDoc(input.approvedAt, input.title);
-  header(doc, input.confidentiality);
+  header(doc, input.draft ? `${input.confidentiality} - draft` : input.confidentiality);
 
   doc
     .font('Helvetica-Bold')
     .fontSize(13.5)
     .fillColor(INK)
     .text(input.title, { characterSpacing: 0.2, lineGap: 2 });
-  doc.moveDown(1.1);
+  doc.moveDown(input.draft ? 0.5 : 1.1);
+  if (input.draft) draftNotice(doc, 'letter');
 
   // Paragraphs are separated by blank lines; single newlines inside a
   // paragraph are intentional line breaks (date line, signature block) and
@@ -240,17 +268,23 @@ export async function renderLetterPdf(input: LetterRenderInput): Promise<Rendere
 
   footer(
     doc,
-    `Case ${input.caseReference} · ${input.documentReference} · Template ${input.templateVersion} · Document ${input.documentVersion}`,
+    `${input.draft ? 'DRAFT PREVIEW · ' : ''}Case ${input.caseReference} · ${input.documentReference} · Template ${input.templateVersion} · Document ${input.documentVersion}`,
   );
 
-  const bytes = await collect(doc);
+  return collect(doc);
+}
+
+export async function renderLetterPdf(input: LetterRenderInput): Promise<RenderedPdf> {
+  const bytes = await renderLetterPdfBytes(input);
   const checksum = createHash('sha256').update(bytes).digest('hex');
   const objectKey = newObjectKey();
   await getStorage().put(objectKey, bytes);
   return { objectKey, checksum, byteLength: bytes.byteLength };
 }
 
-interface FormRenderInput {
+export interface FormRenderInput {
+  /** DEC-069: a preview of the current saved form, marked as such. */
+  draft?: boolean;
   confidentiality: string;
   caseReference: string;
   formVersion: string;
@@ -281,7 +315,7 @@ interface FormRenderInput {
  * role and the date beneath it. The box is a maximum, never a target - a
  * short set of initials stays small rather than being stretched to fill it.
  */
-function signatureRow(
+export function signatureRow(
   doc: InstanceType<typeof PDFDocument>,
   mark: NonNullable<FormRenderInput['signatures']>[number],
 ): void {
@@ -327,7 +361,7 @@ function signatureRow(
 }
 
 /** Ruled section heading; never orphaned at the bottom of a page. */
-function sectionHeading(doc: InstanceType<typeof PDFDocument>, text: string): void {
+export function sectionHeading(doc: Pdf, text: string): void {
   const left = doc.page.margins.left;
   const right = doc.page.width - doc.page.margins.right;
   if (doc.y > doc.page.height - doc.page.margins.bottom - 56) doc.addPage();
@@ -341,7 +375,7 @@ function sectionHeading(doc: InstanceType<typeof PDFDocument>, text: string): vo
 }
 
 /** Two-column field row: muted label, dark value; wraps either side cleanly. */
-function fieldRow(doc: InstanceType<typeof PDFDocument>, label: string, value: string): void {
+export function fieldRow(doc: Pdf, label: string, value: string): void {
   const left = doc.page.margins.left;
   const right = doc.page.width - doc.page.margins.right;
   const labelW = 200;
@@ -362,16 +396,17 @@ function fieldRow(doc: InstanceType<typeof PDFDocument>, label: string, value: s
   doc.y = Math.max(labelBottom, doc.y) + 5;
 }
 
-export async function renderActionFormPdf(input: FormRenderInput): Promise<RenderedPdf> {
+export async function renderActionFormPdfBytes(input: FormRenderInput): Promise<Buffer> {
   const title = 'Employee Action Form - Offboarding';
   const doc = newDoc(input.approvedAt, title);
-  header(doc, input.confidentiality);
+  header(doc, input.draft ? `${input.confidentiality} - draft` : input.confidentiality);
   doc
     .font('Helvetica-Bold')
     .fontSize(13.5)
     .fillColor(INK)
     .text(title, { characterSpacing: 0.2, lineGap: 2 });
-  doc.moveDown(1);
+  doc.moveDown(input.draft ? 0.5 : 1);
+  if (input.draft) draftNotice(doc, 'form');
 
   for (const section of input.sections) {
     sectionHeading(doc, section.heading);
@@ -403,8 +438,15 @@ export async function renderActionFormPdf(input: FormRenderInput): Promise<Rende
     )
     .fillColor('black');
 
-  footer(doc, `Case ${input.caseReference} · Action form ${input.formVersion}`);
-  const bytes = await collect(doc);
+  footer(
+    doc,
+    `${input.draft ? 'DRAFT PREVIEW · ' : ''}Case ${input.caseReference} · Action form ${input.formVersion}`,
+  );
+  return collect(doc);
+}
+
+export async function renderActionFormPdf(input: FormRenderInput): Promise<RenderedPdf> {
+  const bytes = await renderActionFormPdfBytes(input);
   const checksum = createHash('sha256').update(bytes).digest('hex');
   const objectKey = newObjectKey();
   await getStorage().put(objectKey, bytes);

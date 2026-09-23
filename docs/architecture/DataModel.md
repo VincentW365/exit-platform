@@ -239,6 +239,24 @@ Important fields:
   deleted, and the "one live mark per block" uniqueness is a partial index on
   `supersededAt IS NULL`.
 
+#### `DocumentRevision` (DEC-069)
+
+One revision of an editable document: which record it belongs to (letter,
+action form version, receipt version, email), a running revision number,
+the kind of change, the editable content as it stood, its checksum, the
+editor and the instant. Append-only: the runtime role inserts and reads; a
+trigger refuses UPDATE and DELETE.
+
+Related additions: `DocumentInstance.editedBody/editedById/editedAt` (HR's
+wording in the template's format); `NotificationRecord.auto*` (the
+hierarchy's resolved recipient), `recipientOverride*`, `hrNote`,
+`editedById/At`, `correctsRecordId`; `ReturnItemsChecklist.version`,
+`lifecycle`, `hrNotes`, `finalized*`, `pdf*`, `supersededReason`, with a
+`(caseId, version)` unique in place of one row per case;
+`ReturnItemsChecklistEntry.quantity`, `condition`, `returnedAt`,
+`assetReference`, `custom`, and a nullable `itemKey` for added rows;
+`SignatureRequest`/`SignatureRecord.documentKind` and `checklistId`, so
+signatures bind to a form version or a receipt version.
 ### Notifications
 
 #### `Notification`

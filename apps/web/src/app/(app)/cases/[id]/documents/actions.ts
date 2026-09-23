@@ -12,6 +12,7 @@ import {
   refreshDraftFields,
   setEmployeeAddress,
   supersedeAndRecreate,
+  updateDraftBody,
   voidDocument,
 } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
@@ -52,6 +53,20 @@ export async function createLetterAction(formData: FormData): Promise<void> {
   await run(formData, async (actor, fd) => {
     await createLetterDraft(actor as never, str(fd, 'caseId'));
     return 'Draft document created from the active template.';
+  });
+}
+
+/** DEC-069: HR saves the edited wording of a draft letter (a new revision). */
+export async function updateDraftBodyAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    const outcome = await updateDraftBody(
+      actor as never,
+      str(fd, 'docId'),
+      String(fd.get('body') ?? ''),
+    );
+    return outcome.changed
+      ? `Wording saved as version ${outcome.revision}.`
+      : 'No changes to save.';
   });
 }
 

@@ -34,6 +34,14 @@ recorded completions feed the pilot readiness gate.
 - Action form completion (Directive 6.3): the officer prepares, reviews and
   COMPLETES ordinary forms; the suggested acknowledgement treatment per
   departure type; when the optional HR-Manager review step applies.
+- Editing generated documents and emails (DEC-069): why a generated letter is a
+  starting point; what the locked boxes are and why a wrong fact is fixed on
+  the case; reading the version history; downloading a draft PDF; when a
+  signed version needs a new version instead of an edit; editing and
+  previewing an email before sending; why a sent message is never changed
+  and how to send a correction; changing a recipient for one message, the
+  difference from changing the directory, and Restore auto-assigned
+  recipient; editing and finalizing the exit checklist.
 - Collecting signatures (DEC-068): creating a signature request; choosing
   between Copy Signing Link and Send by Email, and why both point at the
   same link; what the employee sees on a phone; Resend, Extend and Revoke

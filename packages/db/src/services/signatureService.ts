@@ -46,11 +46,15 @@ import {
   hasMissingMarkers,
   substitute,
   SIGNATURE_CONSENT_TEXT,
+  SIGNATURE_DOCUMENT_TITLES,
   SIGNATURE_LINK_DEFAULT_DAYS,
   SIGNATURE_LINK_MAX_DAYS,
   SIGNER_ROLE_LABELS,
+  RETURN_ITEM_STATUS_LABEL,
   type Actor,
+  type ReturnItemStatus,
   type SignatureBlock,
+  type SignatureDocumentKind,
   type SignatureProvenance,
   type SignatureType,
   type SignerRole,
@@ -91,14 +95,89 @@ function signingUrl(rawToken: string): string {
 /** The marker a stored email body carries instead of a working link. */
 export const SIGNING_LINK_MARKER = '[signing link inserted at send time]';
 
+/**
+ * DEC-069: signatures are collected on more than one document. Everything
+ * the signing rules need to know about a document, whichever kind it is.
+ */
+interface SigningDocument {
+  kind: SignatureDocumentKind;
+  id: string;
+  caseId: string;
+  version: number;
+  /** Signatures are locked: the version is finalized, superseded or voided. */
+  locked: boolean;
+  /** The block the HR signer completes inside the application. */
+  hrBlockKey: string;
+}
+
+const FORM_LOCKED = ['COMPLETE', 'APPROVED', 'VOIDED', 'SUPERSEDED'];
+const RECEIPT_LOCKED = ['FINAL', 'SUPERSEDED', 'VOIDED'];
+
+async function loadSigningDocument(
+  kind: SignatureDocumentKind,
+  id: string,
+): Promise<SigningDocument | null> {
+  const prisma = getPrisma();
+  if (kind === 'ASSET_RECEIPT') {
+    const r = await prisma.returnItemsChecklist.findUnique({
+      where: { id },
+      select: { id: true, caseId: true, version: true, lifecycle: true },
+    });
+    if (!r) return null;
+    return {
+      kind,
+      id: r.id,
+      caseId: r.caseId,
+      version: r.version,
+      locked: RECEIPT_LOCKED.includes(r.lifecycle),
+      hrBlockKey: 'receiptReceivedBy',
+    };
+  }
+  const f = await prisma.actionFormVersion.findUnique({
+    where: { id },
+    select: { id: true, caseId: true, version: true, status: true },
+  });
+  if (!f) return null;
+  return {
+    kind: 'ACTION_FORM',
+    id: f.id,
+    caseId: f.caseId,
+    version: f.version,
+    locked: FORM_LOCKED.includes(f.status),
+    hrBlockKey: 'hrCompletion',
+  };
+}
+
+/** The column a request or a mark binds to, per document kind. */
+function documentWhere(kind: SignatureDocumentKind, id: string) {
+  return kind === 'ASSET_RECEIPT' ? { checklistId: id } : { formId: id };
+}
+function markWhere(kind: SignatureDocumentKind, id: string) {
+  return kind === 'ASSET_RECEIPT' ? { checklistId: id } : { documentId: id };
+}
+
 async function loadRequest(actor: Actor, requestId: string) {
   const request = await getPrisma().signatureRequest.findUnique({
     where: { id: requestId },
-    include: { form: { select: { id: true, status: true, version: true } } },
+    include: {
+      form: { select: { id: true, status: true, version: true } },
+      checklist: { select: { id: true, lifecycle: true, version: true } },
+    },
   });
   if (!request) throw ServiceError.notFound();
   const { c, ctx } = await loadCaseAccess(actor, request.caseId);
   return { request, c, ctx };
+}
+
+/** Whether the document a request belongs to still accepts signatures. */
+function requestDocumentLocked(request: {
+  documentKind: SignatureDocumentKind;
+  form: { status: string } | null;
+  checklist: { lifecycle: string } | null;
+}): boolean {
+  if (request.documentKind === 'ASSET_RECEIPT')
+    return !request.checklist || RECEIPT_LOCKED.includes(request.checklist.lifecycle);
+  return !request.form || FORM_LOCKED.includes(request.form.status);
 }
 
 /** Manage = create, copy, email, extend, revoke: the assigned officer or the manager. */
@@ -110,34 +189,41 @@ function assertCanManage(actor: Actor, ctx: Parameters<typeof canActOnCase>[2]):
 
 export async function createSignatureRequest(
   actor: Actor,
-  formId: string,
-  input: { signerRole: SignerRole; signerName?: string; signerEmail?: string | null },
+  documentId: string,
+  input: {
+    signerRole: SignerRole;
+    signerName?: string;
+    signerEmail?: string | null;
+    /** DEC-069: which document; the Employee Action Form unless stated. */
+    documentKind?: SignatureDocumentKind;
+  },
 ): Promise<{ id: string; expiresAt: Date }> {
   const prisma = getPrisma();
-  const form = await prisma.actionFormVersion.findUnique({ where: { id: formId } });
+  const kind = input.documentKind ?? 'ACTION_FORM';
+  const form = await loadSigningDocument(kind, documentId);
   if (!form) throw ServiceError.notFound();
   const { c, ctx } = await loadCaseAccess(actor, form.caseId);
   if (!canActOnCase(actor, 'form.edit', ctx)) {
     await auditDenied(actor, 'ACCESS_DENIED', 'SignatureRequest', 'create', form.caseId);
     throw ServiceError.forbidden();
   }
-  if (['COMPLETE', 'APPROVED', 'VOIDED', 'SUPERSEDED'].includes(form.status))
+  if (form.locked)
     throw ServiceError.conflict(
-      'This form version is finalized. Signatures are collected before completion.',
+      'This version is finalized. Signatures are collected before completion.',
     );
 
-  const blocks = blocksForSigner(input.signerRole);
+  const blocks = blocksForSigner(input.signerRole, kind);
   if (blocks.length === 0)
-    throw ServiceError.validation(['This form has nothing for that signer to sign.']);
+    throw ServiceError.validation(['This document has nothing for that signer to sign.']);
 
-  // One live request per signer per form: resend and copy share it
+  // One live request per signer per document: resend and copy share it
   // (directive 2 section 9), rather than piling up duplicate requirements.
   const live = await prisma.signatureRequest.findFirst({
-    where: { formId, signerRole: input.signerRole, status: 'PENDING' },
+    where: { ...documentWhere(kind, documentId), signerRole: input.signerRole, status: 'PENDING' },
   });
   if (live)
     throw ServiceError.conflict(
-      `A signature request for the ${SIGNER_ROLE_LABELS[input.signerRole].toLowerCase()} is already open on this form.`,
+      `A signature request for the ${SIGNER_ROLE_LABELS[input.signerRole].toLowerCase()} is already open on this document.`,
     );
 
   const email = (input.signerEmail ?? '').trim() || null;
@@ -155,8 +241,9 @@ export async function createSignatureRequest(
     const request = await tx.signatureRequest.create({
       data: {
         caseId: form.caseId,
-        formId,
-        documentTitle: 'Employee Action Form',
+        documentKind: kind,
+        ...documentWhere(kind, documentId),
+        documentTitle: SIGNATURE_DOCUMENT_TITLES[kind],
         signerRole: input.signerRole,
         signerName: input.signerName?.trim() || c.employeeDisplayName,
         signerEmail: email,
@@ -186,7 +273,8 @@ export async function createSignatureRequest(
       metadata: {
         signerRole: input.signerRole,
         documentTitle: request.documentTitle,
-        formVersion: form.version,
+        documentKind: kind,
+        documentVersion: form.version,
         blocks: blocks.length,
         expiresAt: request.expiresAt.toISOString(),
         destinationMask: email ? maskDestination(email) : null,
@@ -535,6 +623,8 @@ export async function expireSignatureRequests(now: Date = new Date()): Promise<n
 
 export interface SignatureRequestCard {
   id: string;
+  documentKind: SignatureDocumentKind;
+  documentId: string | null;
   signerRole: SignerRole;
   signerLabel: string;
   signerName: string;
@@ -558,6 +648,8 @@ export async function listSignatureRequests(
   requests: SignatureRequestCard[];
   signatures: Array<{
     id: string;
+    documentKind: SignatureDocumentKind;
+    documentId: string | null;
     blockKey: string;
     blockLabel: string;
     signatureType: SignatureType;
@@ -586,6 +678,8 @@ export async function listSignatureRequests(
   return {
     requests: requests.map((r) => ({
       id: r.id,
+      documentKind: r.documentKind,
+      documentId: r.documentKind === 'ASSET_RECEIPT' ? r.checklistId : r.formId,
       signerRole: r.signerRole,
       signerLabel: SIGNER_ROLE_LABELS[r.signerRole],
       signerName: r.signerName,
@@ -605,6 +699,8 @@ export async function listSignatureRequests(
     })),
     signatures: signatures.map((s) => ({
       id: s.id,
+      documentKind: s.documentKind,
+      documentId: s.documentKind === 'ASSET_RECEIPT' ? s.checklistId : s.documentId,
       blockKey: s.blockKey,
       blockLabel: s.blockLabel,
       signatureType: s.signatureType,
@@ -669,9 +765,10 @@ interface PreparedMark {
 async function prepareMarks(
   marks: readonly MarkInput[],
   signerRole: SignerRole,
+  kind: SignatureDocumentKind = 'ACTION_FORM',
 ): Promise<PreparedMark[]> {
   const decoded = marks.map((mark) => {
-    const block = signatureBlock(mark.blockKey);
+    const block = signatureBlock(mark.blockKey, kind);
     if (!block) throw ServiceError.validation(['That section is not part of this form.']);
     if (block.signer !== signerRole)
       throw ServiceError.forbidden('That section is signed by somebody else.');
@@ -707,7 +804,8 @@ async function recordMarkTx(
   args: {
     mark: PreparedMark;
     caseId: string;
-    formId: string;
+    documentKind: SignatureDocumentKind;
+    documentId: string;
     requestId: string | null;
     signerReference: string;
     signerName: string;
@@ -721,7 +819,8 @@ async function recordMarkTx(
   await tx.signatureRecord.create({
     data: {
       caseId: args.caseId,
-      documentId: args.formId,
+      documentKind: args.documentKind,
+      ...markWhere(args.documentKind, args.documentId),
       requestId: args.requestId,
       signerReference: args.signerReference,
       signerName: args.signerName,
@@ -766,34 +865,38 @@ async function recordMarkTx(
  */
 export async function applyHrSignature(
   actor: Actor,
-  formId: string,
-  input: { dataUrl: string; provenance?: 'DRAWN' | 'TYPED' },
+  documentId: string,
+  input: { dataUrl: string; provenance?: 'DRAWN' | 'TYPED'; documentKind?: SignatureDocumentKind },
 ): Promise<void> {
   const prisma = getPrisma();
-  const form = await prisma.actionFormVersion.findUnique({ where: { id: formId } });
+  const kind = input.documentKind ?? 'ACTION_FORM';
+  const form = await loadSigningDocument(kind, documentId);
   if (!form) throw ServiceError.notFound();
   const { ctx } = await loadCaseAccess(actor, form.caseId);
   if (!canActOnCase(actor, 'form.edit', ctx)) throw ServiceError.forbidden();
-  if (['COMPLETE', 'APPROVED', 'VOIDED', 'SUPERSEDED'].includes(form.status))
-    throw ServiceError.conflict('This form version is finalized; its signatures are locked.');
+  if (form.locked)
+    throw ServiceError.conflict('This version is finalized; its signatures are locked.');
 
   const user = await prisma.user.findUniqueOrThrow({ where: { id: actor.userId } });
   const existing = await prisma.signatureRecord.findFirst({
-    where: { documentId: formId, blockKey: 'hrCompletion', supersededAt: null },
+    where: { ...markWhere(kind, documentId), blockKey: form.hrBlockKey, supersededAt: null },
   });
-  if (existing) throw ServiceError.conflict('A Human Resources signature is already on this form.');
+  if (existing)
+    throw ServiceError.conflict('A Human Resources signature is already on this document.');
 
   const correlationId = newCorrelationId();
   const now = new Date();
   const [prepared] = await prepareMarks(
-    [{ blockKey: 'hrCompletion', dataUrl: input.dataUrl, provenance: input.provenance }],
+    [{ blockKey: form.hrBlockKey, dataUrl: input.dataUrl, provenance: input.provenance }],
     'HR_OFFICER',
+    kind,
   );
   await prisma.$transaction(async (tx) => {
     await recordMarkTx(tx, {
       mark: prepared!,
       caseId: form.caseId,
-      formId,
+      documentKind: kind,
+      documentId,
       requestId: null,
       signerReference: actor.userId,
       signerName: user.displayName,
@@ -812,19 +915,24 @@ export async function applyHrSignature(
  */
 export async function supersedeHrSignature(
   actor: Actor,
-  formId: string,
+  documentId: string,
   reason = 'Replaced before completion.',
+  documentKind: SignatureDocumentKind = 'ACTION_FORM',
 ): Promise<void> {
   const prisma = getPrisma();
-  const form = await prisma.actionFormVersion.findUnique({ where: { id: formId } });
+  const form = await loadSigningDocument(documentKind, documentId);
   if (!form) throw ServiceError.notFound();
   const { ctx } = await loadCaseAccess(actor, form.caseId);
   if (!canActOnCase(actor, 'form.edit', ctx)) throw ServiceError.forbidden();
-  if (['COMPLETE', 'APPROVED', 'VOIDED', 'SUPERSEDED'].includes(form.status))
-    throw ServiceError.conflict('This form version is finalized; its signatures are locked.');
+  if (form.locked)
+    throw ServiceError.conflict('This version is finalized; its signatures are locked.');
 
   const live = await prisma.signatureRecord.findFirst({
-    where: { documentId: formId, blockKey: 'hrCompletion', supersededAt: null },
+    where: {
+      ...markWhere(documentKind, documentId),
+      blockKey: form.hrBlockKey,
+      supersededAt: null,
+    },
   });
   if (!live) throw ServiceError.conflict('There is no Human Resources signature to replace.');
 
@@ -869,21 +977,99 @@ export interface SigningView {
   expiresAt: Date;
   blocks: Array<{ key: string; label: string; type: SignatureType; applied: boolean }>;
   /** Only what the signer needs to understand what they are signing. */
-  form: {
-    caseReference: string;
-    employeeName: string;
-    employeeNumber: string | null;
-    position: string;
-    department: string;
-    location: string;
-    departureType: string;
-    receivedAt: string | null;
-    confirmedLastDay: string | null;
-    effectiveSeparationAt: string | null;
-    priorStatus: string;
-    newStatus: string;
-  };
+  document: SigningReview;
   consentText: string;
+}
+
+export type SigningReview =
+  | {
+      kind: 'ACTION_FORM';
+      form: {
+        caseReference: string;
+        employeeName: string;
+        employeeNumber: string | null;
+        position: string;
+        department: string;
+        location: string;
+        departureType: string;
+        receivedAt: string | null;
+        confirmedLastDay: string | null;
+        effectiveSeparationAt: string | null;
+        priorStatus: string;
+        newStatus: string;
+      };
+    }
+  | {
+      kind: 'ASSET_RECEIPT';
+      receipt: {
+        caseReference: string;
+        employeeName: string;
+        reasonForExit: string;
+        dateOfExit: string;
+        rows: Array<{
+          number: number;
+          label: string;
+          group: 'KEYS' | null;
+          statusLabel: string;
+          remarks: string | null;
+          quantity: number | null;
+          condition: string | null;
+          returnedAt: string | null;
+          assetReference: string | null;
+        }>;
+        receivedByName: string | null;
+        receivedAt: string | null;
+        hrNotes: string | null;
+        outstanding: string[];
+      };
+    };
+
+/** The receipt as the signer reads it: the sheet, row by row. */
+async function receiptReview(checklistId: string): Promise<SigningReview | null> {
+  const prisma = getPrisma();
+  const r = await prisma.returnItemsChecklist.findUnique({
+    where: { id: checklistId },
+    include: {
+      items: { orderBy: { sortOrder: 'asc' } },
+      case: {
+        select: {
+          caseNumber: true,
+          employeeDisplayName: true,
+          departureType: true,
+          confirmedLastDay: true,
+          effectiveSeparationAt: true,
+        },
+      },
+    },
+  });
+  if (!r) return null;
+  const dateOfExit = r.case.confirmedLastDay ?? r.case.effectiveSeparationAt;
+  return {
+    kind: 'ASSET_RECEIPT',
+    receipt: {
+      caseReference: r.case.caseNumber,
+      employeeName: r.case.employeeDisplayName,
+      reasonForExit: r.case.departureType.toLowerCase().replace(/_/g, ' '),
+      dateOfExit: dateOfExit ? dateOfExit.toISOString().slice(0, 10) : '',
+      rows: r.items.map((i, index) => ({
+        number: index + 1,
+        label: i.label,
+        group: i.itemKey?.startsWith('KEYS_') ? ('KEYS' as const) : null,
+        statusLabel: RETURN_ITEM_STATUS_LABEL[i.status as ReturnItemStatus] ?? i.status,
+        remarks: i.remarks,
+        quantity: i.quantity,
+        condition: i.condition,
+        returnedAt: i.returnedAt ? i.returnedAt.toISOString().slice(0, 10) : null,
+        assetReference: i.assetReference,
+      })),
+      receivedByName: r.receivedByName,
+      receivedAt: r.receivedAt ? r.receivedAt.toISOString().slice(0, 10) : null,
+      hrNotes: r.hrNotes,
+      outstanding: r.items
+        .filter((i) => ['OUTSTANDING', 'NOT_RETURNED', 'LOST_OR_DAMAGED'].includes(i.status))
+        .map((i) => i.label),
+    },
+  };
 }
 
 /**
@@ -897,7 +1083,11 @@ export async function getSigningView(
   const prisma = getPrisma();
   const request = await prisma.signatureRequest.findUnique({
     where: { tokenHash: hashSignatureToken(rawToken) },
-    include: { form: true, signatures: { select: { blockKey: true } } },
+    include: {
+      form: true,
+      checklist: { select: { id: true, lifecycle: true } },
+      signatures: { select: { blockKey: true } },
+    },
   });
   if (!request?.tokenHash) return { state: 'INVALID' };
   if (!signatureTokenMatchesHash(rawToken, request.tokenHash)) return { state: 'INVALID' };
@@ -910,8 +1100,7 @@ export async function getSigningView(
   if (status === 'SIGNED') return { state: 'COMPLETED' };
   if (status === 'EXPIRED') return { state: 'EXPIRED' };
   if (status !== 'PENDING') return { state: 'INVALID' };
-  if (['COMPLETE', 'APPROVED', 'VOIDED', 'SUPERSEDED'].includes(request.form.status))
-    return { state: 'INVALID' };
+  if (requestDocumentLocked(request)) return { state: 'INVALID' };
 
   // Recorded once, and awaited: an audit entry written on a promise nobody
   // waits for is an audit entry that may never exist.
@@ -938,22 +1127,17 @@ export async function getSigningView(
     }
   }
 
-  const snap = request.form.fieldSnapshot as Record<string, string | null>;
   const applied = new Set(request.signatures.map((s) => s.blockKey));
-  return {
-    state: 'OPEN',
-    view: {
-      requestId: request.id,
-      documentTitle: request.documentTitle,
-      signerName: request.signerName,
-      signerLabel: SIGNER_ROLE_LABELS[request.signerRole],
-      expiresAt: request.expiresAt,
-      blocks: blocksForSigner(request.signerRole).map((b) => ({
-        key: b.key,
-        label: b.label,
-        type: b.type,
-        applied: applied.has(b.key),
-      })),
+  let document: SigningReview;
+  if (request.documentKind === 'ASSET_RECEIPT') {
+    const review = request.checklistId ? await receiptReview(request.checklistId) : null;
+    if (!review) return { state: 'INVALID' };
+    document = review;
+  } else {
+    if (!request.form) return { state: 'INVALID' };
+    const snap = request.form.fieldSnapshot as Record<string, string | null>;
+    document = {
+      kind: 'ACTION_FORM',
       form: {
         caseReference: snap['caseReference'] ?? '',
         employeeName: snap['employeeName'] ?? '',
@@ -968,6 +1152,23 @@ export async function getSigningView(
         priorStatus: request.form.priorStatus,
         newStatus: request.form.newStatus,
       },
+    };
+  }
+  return {
+    state: 'OPEN',
+    view: {
+      requestId: request.id,
+      documentTitle: request.documentTitle,
+      signerName: request.signerName,
+      signerLabel: SIGNER_ROLE_LABELS[request.signerRole],
+      expiresAt: request.expiresAt,
+      blocks: blocksForSigner(request.signerRole, request.documentKind).map((b) => ({
+        key: b.key,
+        label: b.label,
+        type: b.type,
+        applied: applied.has(b.key),
+      })),
+      document,
       consentText: SIGNATURE_CONSENT_TEXT,
     },
   };
@@ -993,7 +1194,10 @@ export async function submitSignatures(
   const prisma = getPrisma();
   const request = await prisma.signatureRequest.findUnique({
     where: { tokenHash: hashSignatureToken(rawToken) },
-    include: { form: true },
+    include: {
+      form: { select: { status: true, version: true } },
+      checklist: { select: { lifecycle: true, version: true } },
+    },
   });
   if (!request?.tokenHash) return { ok: false, state: 'INVALID' };
   if (!signatureTokenMatchesHash(rawToken, request.tokenHash))
@@ -1007,13 +1211,17 @@ export async function submitSignatures(
   if (status === 'SIGNED') return { ok: false, state: 'COMPLETED' };
   if (status === 'EXPIRED') return { ok: false, state: 'EXPIRED' };
   if (status !== 'PENDING') return { ok: false, state: 'INVALID' };
-  if (['COMPLETE', 'APPROVED', 'VOIDED', 'SUPERSEDED'].includes(request.form.status))
-    return { ok: false, state: 'INVALID' };
+  if (requestDocumentLocked(request)) return { ok: false, state: 'INVALID' };
+  const documentId =
+    request.documentKind === 'ASSET_RECEIPT' ? request.checklistId : request.formId;
+  if (!documentId) return { ok: false, state: 'INVALID' };
+  const documentVersion =
+    request.documentKind === 'ASSET_RECEIPT' ? request.checklist?.version : request.form?.version;
 
   if (!input.consented)
     return { ok: false, state: 'INVALID', errors: ['Confirm the declaration before submitting.'] };
   const supplied = input.marks.map((m) => m.blockKey);
-  const missing = missingBlocks(request.signerRole, supplied);
+  const missing = missingBlocks(request.signerRole, supplied, request.documentKind);
   if (missing.length)
     return {
       ok: false,
@@ -1028,7 +1236,7 @@ export async function submitSignatures(
   // consumes the request and a network put never holds a lock.
   let prepared: PreparedMark[];
   try {
-    prepared = await prepareMarks(input.marks, request.signerRole);
+    prepared = await prepareMarks(input.marks, request.signerRole, request.documentKind);
   } catch (e) {
     if (e instanceof ServiceError && e.code === 'VALIDATION')
       return { ok: false, state: 'INVALID', errors: [...e.details] };
@@ -1059,7 +1267,8 @@ export async function submitSignatures(
         await recordMarkTx(tx, {
           mark,
           caseId: request.caseId,
-          formId: request.formId,
+          documentKind: request.documentKind,
+          documentId,
           requestId: request.id,
           signerReference: request.id,
           signerName: request.signerName,
@@ -1071,17 +1280,28 @@ export async function submitSignatures(
 
       // Directive 1 section 9: the DECISION is recorded as data, separately
       // from the images. The employee signing applies the acknowledgement the
-      // form already carries - it does not invent a new approval.
-      if (request.signerRole === 'EMPLOYEE') {
+      // document already carries - it does not invent a new approval.
+      if (request.signerRole === 'EMPLOYEE' && request.documentKind === 'ACTION_FORM') {
         await tx.actionFormVersion.updateMany({
           where: {
-            id: request.formId,
+            id: documentId,
             status: { notIn: ['COMPLETE', 'APPROVED', 'VOIDED', 'SUPERSEDED'] },
           },
           data: {
             ackStatus: 'ACKNOWLEDGED',
             ackDate: now,
             ackMethod: 'Electronic signature (secure link)',
+            rowVersion: { increment: 1 },
+          },
+        });
+      }
+      if (request.signerRole === 'EMPLOYEE' && request.documentKind === 'ASSET_RECEIPT') {
+        // The checklist's own employee-acknowledgement line (DEC-053).
+        await tx.returnItemsChecklist.updateMany({
+          where: { id: documentId, lifecycle: { notIn: ['FINAL', 'SUPERSEDED', 'VOIDED'] } },
+          data: {
+            employeeAcknowledgedBy: request.signerName,
+            employeeAcknowledgedAt: now,
             rowVersion: { increment: 1 },
           },
         });
@@ -1101,7 +1321,8 @@ export async function submitSignatures(
           documentTitle: request.documentTitle,
           marks: input.marks.length,
           consent: SIGNATURE_CONSENT_TEXT,
-          formVersion: request.form.version,
+          documentKind: request.documentKind,
+          documentVersion,
         },
       });
     });
@@ -1114,7 +1335,13 @@ export async function submitSignatures(
 }
 
 /** What the completion screen and the PDF need to know about signing. */
-export async function signatureSummaryForForm(formId: string): Promise<{
+export const signatureSummaryForForm = (formId: string) =>
+  signatureSummaryFor('ACTION_FORM', formId);
+
+export async function signatureSummaryFor(
+  kind: SignatureDocumentKind,
+  documentId: string,
+): Promise<{
   applied: Array<{
     blockKey: string;
     blockLabel: string;
@@ -1133,10 +1360,12 @@ export async function signatureSummaryForForm(formId: string): Promise<{
   const prisma = getPrisma();
   const [applied, pendingRequests] = await Promise.all([
     prisma.signatureRecord.findMany({
-      where: { documentId: formId, supersededAt: null },
+      where: { ...markWhere(kind, documentId), supersededAt: null },
       orderBy: { signedAt: 'asc' },
     }),
-    prisma.signatureRequest.count({ where: { formId, status: 'PENDING' } }),
+    prisma.signatureRequest.count({
+      where: { ...documentWhere(kind, documentId), status: 'PENDING' },
+    }),
   ]);
   return {
     applied: applied.map((s) => ({
@@ -1161,14 +1390,18 @@ export async function signatureSummaryForForm(formId: string): Promise<{
  * requests must stop working: the signed facts they were issued against no
  * longer exist (directive 1 section 22).
  */
-export async function revokeRequestsForFormTx(
+export const revokeRequestsForFormTx = (tx: Tx, formId: string, caseId: string, reason: string) =>
+  revokeRequestsForDocumentTx(tx, 'ACTION_FORM', formId, caseId, reason);
+
+export async function revokeRequestsForDocumentTx(
   tx: Tx,
-  formId: string,
+  kind: SignatureDocumentKind,
+  documentId: string,
   caseId: string,
   reason: string,
 ): Promise<number> {
   const revoked = await tx.signatureRequest.updateMany({
-    where: { formId, status: 'PENDING' },
+    where: { ...documentWhere(kind, documentId), status: 'PENDING' },
     data: {
       status: 'REVOKED',
       revokedAt: new Date(),
@@ -1181,12 +1414,12 @@ export async function revokeRequestsForFormTx(
     await appendAudit(tx, {
       eventType: 'SIGNATURE_REQUEST_REVOKED',
       actorType: 'SYSTEM',
-      objectType: 'ActionFormVersion',
-      objectId: formId,
+      objectType: kind === 'ASSET_RECEIPT' ? 'ReturnItemsChecklist' : 'ActionFormVersion',
+      objectId: documentId,
       caseId,
       result: 'SUCCESS',
       correlationId: newCorrelationId(),
-      metadata: { reason, count: revoked.count },
+      metadata: { reason, count: revoked.count, documentKind: kind },
     });
   }
   return revoked.count;

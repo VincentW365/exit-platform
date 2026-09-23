@@ -89,7 +89,6 @@ export default async function SignPage({
   }
 
   const { view } = outcome;
-  const f = view.form;
   const failed = query['error'] === '1';
 
   return (
@@ -116,19 +115,85 @@ export default async function SignPage({
         reviewText="I confirm that I have reviewed the information shown above."
         action={submitSigningAction}
       >
-        <dl className="signing__facts">
-          <Row label="Employee" value={f.employeeName} />
-          <Row label="Employee number" value={f.employeeNumber} />
-          <Row label="Position" value={f.position} />
-          <Row label="Department" value={f.department} />
-          <Row label="Location" value={f.location} />
-          <Row label="Separation type" value={f.departureType} />
-          <Row label="Notice received" value={f.receivedAt} />
-          <Row label="Final working day" value={f.confirmedLastDay} />
-          <Row label="Effective date of separation" value={f.effectiveSeparationAt} />
-          <Row label="Employment status" value={`${f.priorStatus} to ${f.newStatus}`} />
-          <Row label="Case reference" value={f.caseReference} />
-        </dl>
+        {view.document.kind === 'ACTION_FORM' ? (
+          <dl className="signing__facts">
+            <Row label="Employee" value={view.document.form.employeeName} />
+            <Row label="Employee number" value={view.document.form.employeeNumber} />
+            <Row label="Position" value={view.document.form.position} />
+            <Row label="Department" value={view.document.form.department} />
+            <Row label="Location" value={view.document.form.location} />
+            <Row label="Separation type" value={view.document.form.departureType} />
+            <Row label="Notice received" value={view.document.form.receivedAt} />
+            <Row label="Final working day" value={view.document.form.confirmedLastDay} />
+            <Row
+              label="Effective date of separation"
+              value={view.document.form.effectiveSeparationAt}
+            />
+            <Row
+              label="Employment status"
+              value={`${view.document.form.priorStatus} to ${view.document.form.newStatus}`}
+            />
+            <Row label="Case reference" value={view.document.form.caseReference} />
+          </dl>
+        ) : (
+          // DEC-069: the Exit Checklist for Return Items, row by row, as the
+          // company's printed sheet lists it.
+          <>
+            <dl className="signing__facts">
+              <Row label="Employee" value={view.document.receipt.employeeName} />
+              <Row label="Reason for exit" value={view.document.receipt.reasonForExit} />
+              <Row label="Date of exit" value={view.document.receipt.dateOfExit} />
+              <Row label="Case reference" value={view.document.receipt.caseReference} />
+            </dl>
+            <table className="form-table">
+              <caption className="sr-only">Return items and their recorded status</caption>
+              <thead>
+                <tr>
+                  <th scope="col" aria-label="Number" className="form-table__num" />
+                  <th scope="col">Items</th>
+                  <th scope="col">Check (&#10003;)</th>
+                  <th scope="col">Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {view.document.receipt.rows.map((r, i) => (
+                  <tr key={i}>
+                    <td className="form-table__num">{r.number}.</td>
+                    <th scope="row">
+                      {r.group === 'KEYS' ? 'Keys - ' : ''}
+                      {r.label}
+                    </th>
+                    <td>{r.statusLabel}</td>
+                    <td>
+                      {[
+                        r.remarks,
+                        r.quantity != null ? `Qty ${r.quantity}` : null,
+                        r.condition,
+                        r.returnedAt ? `Returned ${r.returnedAt}` : null,
+                        r.assetReference ? `Ref ${r.assetReference}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <dl className="signing__facts">
+              <Row label="Items received by" value={view.document.receipt.receivedByName} />
+              <Row label="Date received" value={view.document.receipt.receivedAt} />
+              {view.document.receipt.outstanding.length > 0 ? (
+                <Row
+                  label="Still outstanding"
+                  value={view.document.receipt.outstanding.join(', ')}
+                />
+              ) : null}
+            </dl>
+            {view.document.receipt.hrNotes ? (
+              <p className="hint">{view.document.receipt.hrNotes}</p>
+            ) : null}
+          </>
+        )}
         <p className="hint">
           If anything above is wrong, do not sign. Contact Human Resources and they will correct the
           form and send you a new link.
