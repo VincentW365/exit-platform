@@ -37,6 +37,11 @@ async function assertNoHorizontalOverflow(page: Page, label: string): Promise<vo
 }
 
 test('every rebuilt surface holds its width from mobile to laptop', async ({ page }) => {
+  // 13 routes at 3 widths is 39 full page loads on the dev server, at about
+  // 1.5 s each once compiled and 3-4 s each cold (measured 2026-09-23). The
+  // default 60 s budget was met only on a fast day; the assertion is about
+  // layout, not speed, so give the sweep the time its loads need.
+  test.setTimeout(180_000);
   await signInAs(page, 'HR Officer');
 
   // Work from a real case so the case surfaces have content to lay out. A
