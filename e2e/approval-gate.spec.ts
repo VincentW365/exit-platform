@@ -243,19 +243,3 @@ test('create with benefits -> draft summary -> one approval -> officer executes 
   await expect(page.getByText('Correct the approved benefits selection')).toBeVisible();
   await signOut(page);
 });
-
-test('my settings: a user keeps their own email banner', async ({ page }) => {
-  await signInAs(page, 'HR Officer');
-  await page.getByRole('link', { name: 'My settings' }).click();
-  await expect(page).toHaveURL(/\/settings$/);
-  await page.getByLabel('Banner lines').fill('Human Resources Department\n876-555-0100 ext. 12');
-  await page.getByRole('button', { name: 'Save banner' }).click();
-  await expect(page.getByText('Email banner saved.')).toBeVisible();
-  await expect(page.getByLabel('Signature preview')).toContainText('876-555-0100 ext. 12');
-  await snap(page, '06-my-settings-email-banner', true);
-  await axeCheck(page, 'my-settings');
-  await page.getByLabel('Banner lines').fill('');
-  await page.getByRole('button', { name: 'Save banner' }).click();
-  await expect(page.getByText('Email banner removed.')).toBeVisible();
-  await signOut(page);
-});

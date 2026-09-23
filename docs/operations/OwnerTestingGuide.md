@@ -142,6 +142,7 @@ automated controlled emails and confirm through secure links (section 6).
 | Recipient directory | Administration → Recipient directory | Organizations, purposes, contacts; approval + verification lifecycle; masked destinations |
 | Notification templates | Administration → Notification templates | Draft a v-next, preview with sample values, test-send to capture, activate (HR Manager) |
 | Feature flags & config | Administration → System | The five automation flags; escalation thresholds; send-control levels |
+| Email banner | Administration → System → Email banner | Upload the supplied JPG; it appears at the bottom of captured emails in `/dev/mailbox` (DEC-067). Personal banners live under My settings |
 | Email delivery status | Administration → Email delivery status | Technical outbox view: captured/submitted rows, retries, dead letters |
 | Organization | Administration → Organization | The live directory coverage and hierarchy health |
 | Pilot readiness | Administration → Pilot | 24 readiness gates (9 active templates, verified recipients, attested backups, …) |

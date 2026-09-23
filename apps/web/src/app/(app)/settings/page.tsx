@@ -1,25 +1,25 @@
 import type { Metadata } from 'next';
-import { getMySettings } from '@exit/db';
-import { EMAIL_BANNER_MAX_CHARS, EMAIL_BANNER_MAX_LINES, formatInstant } from '@exit/domain';
+import { getDepartmentBannerConfig, getMySettings } from '@exit/db';
+import { EMAIL_BANNER_MAX_BYTES, formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Feedback } from '@/components/ui';
 import { Field, FormActions } from '@/components/forms';
-import { Fact, Facts, SectionHead } from '@/components/patterns';
+import { Chip, Fact, Facts, SectionHead } from '@/components/patterns';
 import { MailIcon, UserIcon } from '@/components/icons';
 import { roleList } from '@/lib/text';
-import { saveEmailBannerAction } from './actions';
+import { clearPersonalBannerAction, uploadPersonalBannerAction } from './actions';
 
 export const metadata: Metadata = { title: 'My Settings' };
 export const dynamic = 'force-dynamic';
 
 /**
- * My Settings (owner directive 2026-09-22, section 8; DEC-066).
+ * My Settings (owner directives 2026-09-22 section 8 and 2026-09-23; DEC-067).
  *
- * Every signed-in user keeps their own email banner: the plain-text lines the
- * platform appends beneath their name and title on every outgoing email they
- * are the sender of (letters and notifications on their cases). It is the
- * user's own signature block, not a company setting, and only its owner
- * edits it.
+ * A user may keep a PERSONAL email signature banner: a supplied JPG graphic,
+ * never recreated from text. It is attached only to emails written as coming
+ * from this person (the HR sender block names them). Everything else carries
+ * the department banner the HR Manager configures under Administration.
  */
 export default async function MySettingsPage({
   searchParams,
@@ -28,12 +28,10 @@ export default async function MySettingsPage({
 }) {
   const { actor } = await requireAuth();
   const sp = await searchParams;
-  const me = await getMySettings(actor);
-
-  const preview = [me.displayName, me.jobTitle, ...(me.emailBanner ?? '').split('\n')]
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .join('\n');
+  const [me, department] = await Promise.all([getMySettings(actor), getDepartmentBannerConfig()]);
+  const maxMb = Math.round(EMAIL_BANNER_MAX_BYTES / 1024 / 1024);
+  // A changing query string defeats the browser cache after an upload.
+  const bust = me.personalBanner?.updatedAt?.getTime() ?? 0;
 
   return (
     <>
@@ -62,44 +60,83 @@ export default async function MySettingsPage({
             id="banner-h"
             icon={<MailIcon />}
             title="Email banner"
-            description="Added beneath your name and title on every email the platform sends on your behalf."
+            description="Your personal signature graphic, placed at the bottom of emails that are written as coming from you."
+            aside={
+              me.personalBanner ? (
+                <Chip tone="done">Personal banner set</Chip>
+              ) : department.enabled && department.banner ? (
+                <Chip tone="neutral">Using the department banner</Chip>
+              ) : (
+                <Chip tone="neutral">No banner</Chip>
+              )
+            }
           />
-          <form action={saveEmailBannerAction} className="stack">
+
+          {me.personalBanner ? (
+            <figure className="email-banner-preview" aria-label="Current personal email banner">
+              {/* eslint-disable-next-line @next/next/no-img-element -- the stored asset, served by the platform */}
+              <img
+                src={`/api/email-banner/me?v=${bust}`}
+                alt={me.personalBanner.altText}
+                width={me.personalBanner.width}
+                height={me.personalBanner.height}
+              />
+              <figcaption className="meta">
+                {me.personalBanner.fileName} · {me.personalBanner.width} ×{' '}
+                {me.personalBanner.height} px
+                {me.personalBanner.updatedAt
+                  ? ` · uploaded ${formatInstant(me.personalBanner.updatedAt)}`
+                  : ''}
+              </figcaption>
+            </figure>
+          ) : department.enabled && department.banner ? (
+            <p className="hint" role="note">
+              Until you upload one, your emails carry the department banner configured by the HR
+              Manager.
+            </p>
+          ) : (
+            <p className="hint" role="note">
+              No banner is configured yet. Emails go out without one until the HR Manager sets the
+              department banner or you upload a personal one.
+            </p>
+          )}
+
+          <form action={uploadPersonalBannerAction} className="stack">
             <Field
-              id="emailBanner"
-              label="Banner lines"
-              optional
-              hint={`Up to ${EMAIL_BANNER_MAX_LINES} lines and ${EMAIL_BANNER_MAX_CHARS} characters of plain text - a phone number, an extension, a department line. Leave empty for no banner.`}
+              id="bannerFile"
+              label={me.personalBanner ? 'Replace banner (JPG)' : 'Upload banner (JPG)'}
+              hint={`A .jpg file up to ${maxMb} MB. It is shown at its own size and scales down on small screens; it is never stretched or cropped.`}
             >
-              <textarea
-                id="emailBanner"
-                name="emailBanner"
-                rows={5}
-                maxLength={EMAIL_BANNER_MAX_CHARS}
-                defaultValue={me.emailBanner ?? ''}
-                placeholder={'Human Resources Department\n876-555-0100 ext. 12'}
+              <input
+                id="bannerFile"
+                name="bannerFile"
+                type="file"
+                accept=".jpg,.jpeg,image/jpeg"
+                required
               />
             </Field>
-            <FormActions
-              note={
-                me.emailBannerUpdatedAt
-                  ? `Last changed ${formatInstant(me.emailBannerUpdatedAt)}.`
-                  : 'No banner yet.'
-              }
-            >
-              <button type="submit">Save banner</button>
+            <FormActions note="Plain-text emails always keep their text; the banner is added to the HTML version.">
+              <button type="submit">Upload banner</button>
             </FormActions>
           </form>
-          <h3 className="label" style={{ marginBottom: 'var(--space-2)' }}>
-            How your signature will read
-          </h3>
-          <pre
-            className="well"
-            style={{ whiteSpace: 'pre-wrap', margin: 0, fontFamily: 'inherit' }}
-            aria-label="Signature preview"
-          >
-            {preview}
-          </pre>
+
+          {me.personalBanner ? (
+            <ConfirmDialog
+              trigger="Remove personal banner"
+              triggerClassName="secondary compact"
+              title="Remove your personal email banner?"
+              consequence={[
+                'Emails written as coming from you will carry the department banner instead, or none if there is no department banner.',
+                'Nothing already sent changes.',
+              ]}
+            >
+              <form action={clearPersonalBannerAction} className="stack">
+                <button type="submit" className="danger">
+                  Remove banner
+                </button>
+              </form>
+            </ConfirmDialog>
+          ) : null}
         </section>
       </div>
     </>

@@ -25,7 +25,6 @@ import {
   notificationIdempotencyKey,
   RENDERABLE_LETTER_TYPES,
   substitute,
-  withEmailBanner,
   type DocumentType,
 } from '@exit/domain';
 import { z } from 'zod';
@@ -298,9 +297,7 @@ export async function issueDocumentByEmail(
     CASE_REFERENCE: c.caseNumber,
     CONFIRMED_LAST_WORKING_DATE: c.confirmedLastDay ? formatDateOnly(c.confirmedLastDay) : '',
     HR_SENDER_NAME: officer.name,
-    // The sender title carries the user-maintained email banner beneath it
-    // (DEC-066 section 8), so every template keeps its existing placeholders.
-    HR_SENDER_TITLE: withEmailBanner(officer.title, officer.banner),
+    HR_SENDER_TITLE: officer.title,
   };
   const subject = substitute(template.subjectTemplate, values);
   const body = substitute(template.bodyTemplate, values);
@@ -408,26 +405,23 @@ export async function issueDocumentByEmail(
   return { recordId, destinationMask: maskDestination(destination), ccCount: cc.emails.length };
 }
 
-/** Name, title and banner for the officer whose signature block the email carries. */
-async function hrSender(
-  userId: string | null,
-): Promise<{ name: string; title: string; banner: string | null }> {
-  if (!userId) return { name: 'Human Resources', title: 'Human Resources', banner: null };
+/**
+ * Name and title for the officer whose signature block the email carries.
+ * The signature IMAGE (DEC-067) is added by the outbox to the HTML part.
+ */
+async function hrSender(userId: string | null): Promise<{ name: string; title: string }> {
+  if (!userId) return { name: 'Human Resources', title: 'Human Resources' };
   const prisma = getPrisma();
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { displayName: true, workEmail: true, emailBanner: true },
+    select: { displayName: true, workEmail: true },
   });
-  if (!user) return { name: 'Human Resources', title: 'Human Resources', banner: null };
+  if (!user) return { name: 'Human Resources', title: 'Human Resources' };
   const directory = user.workEmail
     ? await prisma.employeeSourceRecord.findFirst({
         where: { workEmail: user.workEmail },
         select: { jobTitle: true },
       })
     : null;
-  return {
-    name: user.displayName,
-    title: directory?.jobTitle ?? 'Human Resources',
-    banner: user.emailBanner,
-  };
+  return { name: user.displayName, title: directory?.jobTitle ?? 'Human Resources' };
 }

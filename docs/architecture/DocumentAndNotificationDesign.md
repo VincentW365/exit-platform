@@ -382,3 +382,30 @@ supersession of the prior ACTIVE version, and every lifecycle step is
 audited (TEMPLATE_NOTIFICATION_*). The ACKNOWLEDGEMENT_LINK placeholder is
 resolved only at dispatch time; stored snapshots keep a marker, never a
 live link.
+
+### 15.5 Email banner image (DEC-067, 2026-09-23)
+
+Every dispatched email has two parts. The **plain-text part** is the
+template body exactly as before - complete on its own, links included - so
+a client that blocks images loses nothing. The **HTML part** is built at
+dispatch from that same outgoing text (after any rehearsal redirect):
+paragraphs with the URLs turned into links, spacing, then the banner as a
+normal `<img>` (`display:block; width:100%; max-width:<own width>px;
+height:auto`, concise alt text). The banner is a supplied JPG graphic kept
+in object storage (`branding/` keys, checksummed); the platform never
+recreates it from text, never crops or stretches it, and never uses it as a
+CSS background.
+
+Delivery was evaluated in the directive's order: a **hosted HTTPS URL** is
+used when the HR Manager configures one; otherwise the image travels
+**inline by Content-ID** (Microsoft Graph: an inline file attachment), which
+works with any provider and depends on no host. No Base64 image is embedded
+in the HTML.
+
+Which banner: a **personal** banner (My Settings) only where the template
+carries the HR sender block and is signed by the case's assigned officer;
+otherwise the **department** banner (Administration → System → Email
+banner); otherwise none. A banner that cannot be read is logged
+(`email_banner_unavailable`) and skipped - the email still goes. The
+development capture stores the HTML part and the banner reference so
+`/dev/mailbox` shows the complete presentation.

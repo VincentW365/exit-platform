@@ -391,6 +391,17 @@ these cases for destructive testing:
 | B | Avery Immediate (`UAT-1002`) | Immediate resignation | A second HR Officer login mapped from the directory (e.g. Jordan Officer), to exercise reassignment |
 | C | Cameron Termination (`UAT-1003`) | Termination | HR Officer |
 
+### Email banner (DEC-067)
+
+Signed in as the **HR Manager**, Administration → System → **Email banner**: upload
+the company's supplied banner JPG (as supplied - the platform does not alter it), set
+the alt text and a reason. Leave the hosted URL empty unless the graphic is published
+on an https host suitable for email retrieval; inline delivery works everywhere. After
+the first captured email, open `/dev/mailbox`: the message states "Banner: department
+(W × H px)", the HTML preview shows the image scaled to the column, and the plain-text
+part still carries every link. A tester may also upload a personal banner under **My
+settings**; it appears only on emails written as coming from that tester.
+
 ### Ownership check (DEC-065)
 
 Signed in as the **HR Officer**, create the Draft case and verify at once - with no
@@ -504,6 +515,7 @@ protection credentials.
 | 10 | Documents persist | Generate a letter, redeploy, download it again — byte-identical |
 | 11 | Private documents | Document URLs refuse unauthenticated and unauthorised access |
 | 12 | Notifications | With the worker running, a release by the assigned HR Officer reaches `SUBMITTED` and appears in `/dev/mailbox` |
+| 18 | Email banner (DEC-067) | The supplied JPG uploaded under Administration is shown at its own size; a captured email's HTML preview carries it once as a normal image that scales at mobile width with no horizontal scroll; the plain-text part keeps its links; removing the banner still lets emails send |
 | 17 | Single authorization gate (DEC-066) | The HR Officer creates a case with benefits selected at intake and submits it; the HR Manager approves it once from the Case Approval Summary (every audience shows a resolved destination or an explicit "Recipient not configured"); the officer then finalizes and sends the letter, completes the form and releases the provider notification with no further HR Manager control anywhere; a second officer login, where mapped, can read the case but not execute it |
 | 13 | No external mail | Nothing is delivered to any real mailbox; every destination is a capture or reserved domain |
 | 14 | Uploads labelled | Attachments are accepted and clearly marked as not scanned |

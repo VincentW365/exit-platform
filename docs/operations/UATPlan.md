@@ -124,6 +124,12 @@ sign-off.
 4. (6.3) Draft, preview and test-send a notification template revision
    (synthetic sample values only); activate it as the HR Manager and verify
    the prior version is superseded.
+5. **(DEC-067) Upload the supplied banner JPG under Administration → System →
+   Email banner; capture any email; verify in the development mailbox that
+   the HTML preview shows the banner once at the bottom, scaled at a mobile
+   width without clipping or horizontal scroll, that the plain-text part
+   still carries the links, and that removing the banner does not stop the
+   next email.**
 
 ### UAT-5 Clearance and completion (HR Manager)
 

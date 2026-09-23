@@ -24,10 +24,25 @@ export interface OutboundAttachment {
   bytes: Buffer;
 }
 
+/** An image the HTML part references by Content-ID (DEC-067 email banner). */
+export interface InlineImage {
+  contentId: string;
+  fileName: string;
+  mimeType: string;
+  bytes: Buffer;
+}
+
 export interface OutboundMessage {
   outboxId: string;
   subject: string;
+  /** The plain-text part: always present, always complete on its own. */
   body: string;
+  /**
+   * The HTML part (DEC-067): the same text with usable links plus the banner
+   * image near the bottom. Absent when nothing needs HTML.
+   */
+  html?: string;
+  inlineImages?: readonly InlineImage[];
   /** Decrypted destination - held in memory only, never logged. */
   destination: string;
   /** Decrypted copied recipients - same handling as the destination. */
@@ -36,6 +51,16 @@ export interface OutboundMessage {
   bcc?: readonly string[];
   attachments?: readonly OutboundAttachment[];
   correlationId: string;
+  /** What the development mailbox records about the banner it carried. */
+  bannerCapture?: {
+    objectKey: string;
+    checksum: string;
+    mimeType: string;
+    alt: string;
+    width: number;
+    height: number;
+    kind: string;
+  } | null;
 }
 
 export interface SendResult {
@@ -79,16 +104,29 @@ class DevCaptureProvider implements EmailProvider {
     const attached = (message.attachments ?? [])
       .map((a) => `${a.fileName} (${a.bytes.byteLength} bytes)`)
       .join(', ');
+    const banner = message.bannerCapture ?? null;
     const capture = await prisma.notificationCapture.create({
       data: {
         recordId: outbox.notificationRecordId,
         subject: message.subject,
         body: message.body,
+        html: message.html ?? null,
+        bannerObjectKey: banner?.objectKey ?? null,
+        bannerChecksum: banner?.checksum ?? null,
+        bannerMime: banner?.mimeType ?? null,
+        bannerAlt: banner?.alt ?? null,
+        bannerWidth: banner?.width ?? null,
+        bannerHeight: banner?.height ?? null,
+        bannerKind: banner?.kind ?? null,
         note: [
           `Captured by the DEVELOPMENT mailbox (outbox ${message.outboxId}). NOT an external delivery.`,
           message.cc?.length ? `Copied recipients: ${message.cc.length}.` : null,
           message.bcc?.length ? `Blind copies: ${message.bcc.length}.` : null,
           attached ? `Attached: ${attached}.` : null,
+          // Section 6: the banner is named even when a preview cannot show it.
+          banner
+            ? `Email banner: ${banner.kind.toLowerCase()} (${banner.width} x ${banner.height} px, ${message.inlineImages?.length ? 'inline' : 'hosted'}).`
+            : 'Email banner: none configured.',
         ]
           .filter(Boolean)
           .join(' '),
@@ -102,6 +140,8 @@ class DevCaptureProvider implements EmailProvider {
 export function buildGraphSendRequest(message: {
   subject: string;
   body: string;
+  html?: string;
+  inlineImages?: readonly InlineImage[];
   destination: string;
   senderMailbox: string;
   cc?: readonly string[];
@@ -110,7 +150,11 @@ export function buildGraphSendRequest(message: {
 }): { url: string; payload: Record<string, unknown> } {
   const inner: Record<string, unknown> = {
     subject: message.subject,
-    body: { contentType: 'Text', content: message.body },
+    // DEC-067: the HTML part carries the banner; Graph sends one body, so
+    // the HTML is used when present and the text body otherwise.
+    body: message.html
+      ? { contentType: 'HTML', content: message.html }
+      : { contentType: 'Text', content: message.body },
     toRecipients: [{ emailAddress: { address: message.destination } }],
   };
   if (message.cc?.length) {
@@ -119,14 +163,25 @@ export function buildGraphSendRequest(message: {
   if (message.bcc?.length) {
     inner.bccRecipients = message.bcc.map((address) => ({ emailAddress: { address } }));
   }
-  if (message.attachments?.length) {
-    inner.attachments = message.attachments.map((a) => ({
+  const attachments = [
+    ...(message.attachments ?? []).map((a) => ({
       '@odata.type': '#microsoft.graph.fileAttachment',
       name: a.fileName,
       contentType: a.mimeType,
       contentBytes: a.bytes.toString('base64'),
-    }));
-  }
+    })),
+    // Inline images are file attachments flagged inline with a Content-ID
+    // the HTML references as cid:... - the reliable Graph mechanism.
+    ...(message.inlineImages ?? []).map((i) => ({
+      '@odata.type': '#microsoft.graph.fileAttachment',
+      name: i.fileName,
+      contentType: i.mimeType,
+      contentBytes: i.bytes.toString('base64'),
+      isInline: true,
+      contentId: i.contentId,
+    })),
+  ];
+  if (attachments.length) inner.attachments = attachments;
   return {
     url: `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(message.senderMailbox)}/sendMail`,
     payload: { message: inner, saveToSentItems: true },

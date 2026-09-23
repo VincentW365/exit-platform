@@ -122,8 +122,14 @@ function sentence(e: HumanizableEvent): string {
       return `${who} finalized the exact document version under the approved case (attested) and released it for rendering`;
     case 'USER_EMAIL_BANNER_CHANGED':
       return str(m, 'cleared') === 'true' || m.cleared === true
-        ? `${who} removed their email banner`
-        : `${who} updated their email banner`;
+        ? `${who} removed their personal email banner image`
+        : `${who} uploaded a personal email banner image (${str(m, 'width') ?? '?'} x ${str(m, 'height') ?? '?'} px)`;
+    case 'CONFIG_EMAIL_BANNER_CHANGED':
+      return str(m, 'cleared') === 'true' || m.cleared === true
+        ? `${who} removed the department email banner${withReason}`
+        : str(m, 'optionsOnly') === 'true' || m.optionsOnly === true
+          ? `${who} changed the department email banner settings${withReason}`
+          : `${who} set the department email banner image (${str(m, 'width') ?? '?'} x ${str(m, 'height') ?? '?'} px)${withReason}`;
     case 'DOC_APPROVAL_INVALIDATED':
       return `A material case change invalidated the document approval`;
     case 'NOTIFICATION_APPROVED':

@@ -2274,3 +2274,39 @@ kbd {
   font-family: Georgia, serif;
   margin-top: 0.5rem;
 }
+
+/* ---------------------------------------------------------------------------
+   EMAIL BANNER (DEC-067): the supplied graphic, shown at its own size and
+   scaled down with the column - never stretched, cropped or a background.
+   ------------------------------------------------------------------------ */
+.email-banner-preview {
+  margin: 0 0 var(--space-4);
+}
+.email-banner-preview img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.email-banner-preview figcaption {
+  margin-top: var(--space-1);
+}
+
+/* A captured email as a reader would see it: the HTML part in its own
+   document, isolated from the application styles. */
+.email-preview {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  overflow: hidden;
+  margin-bottom: var(--space-3);
+}
+.email-preview__frame {
+  display: block;
+  width: 100%;
+  min-height: 10rem;
+  border: 0;
+}

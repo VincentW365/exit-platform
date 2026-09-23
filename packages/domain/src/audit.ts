@@ -196,8 +196,10 @@ export const AUDIT_EVENT_TYPES = [
   // Directive 6.2 (E): directory-mapped account creation and re-enable.
   'IDENTITY_USER_CREATED',
   'IDENTITY_USER_ENABLED',
-  /** A user changed their own outgoing-email banner (DEC-066 section 8). */
+  /** A user set or cleared their own personal email banner image (DEC-067). */
   'USER_EMAIL_BANNER_CHANGED',
+  /** The HR Manager set, changed or cleared the department email banner (DEC-067). */
+  'CONFIG_EMAIL_BANNER_CHANGED',
   'IDENTITY_ACCESS_REVIEW',
   'ROLE_EXPIRED_REVOKED',
   'SYNC_RUN_COMPLETED',

@@ -183,11 +183,16 @@ model User {
   deactivatedAt         DateTime?
   /// Sessions issued before this instant are rejected (immediate revocation).
   sessionsInvalidatedAt DateTime?
-  /// DEC-066 section 8: a short signature banner (name/title lines, phone,
-  /// tagline) the user maintains under My Settings. Appended beneath the HR
-  /// sender block of every outgoing email that carries this user as sender.
-  /// Plain text only - the email pipeline is text-only by design.
-  emailBanner          String?
+  /// DEC-067: the user's PERSONAL email signature image (a supplied JPG kept
+  /// in object storage, never recreated from text). Attached only to emails
+  /// that are written as coming from this person. Null = no personal banner.
+  emailBannerObjectKey String?
+  emailBannerChecksum  String?
+  emailBannerMime      String?
+  emailBannerWidth     Int?
+  emailBannerHeight    Int?
+  emailBannerAlt       String?
+  emailBannerFileName  String?
   emailBannerUpdatedAt DateTime?
 
   roleAssignments RoleAssignment[]  @relation("assignee")
@@ -1754,6 +1759,17 @@ model NotificationCapture {
   note       String
   subject    String
   body       String
+  /// DEC-067: the HTML part as it would have been delivered, and the banner
+  /// image it references, so the development mailbox shows the complete
+  /// email presentation (section 6).
+  html            String?
+  bannerObjectKey String?
+  bannerChecksum  String?
+  bannerMime      String?
+  bannerAlt       String?
+  bannerWidth     Int?
+  bannerHeight    Int?
+  bannerKind      String?
 
   @@index([recordId])
   @@map("notification_capture")

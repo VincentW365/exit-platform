@@ -78,7 +78,8 @@ Audit events provide evidence of who did what, to which object, when, under whic
 | DOCUMENT_SUPERSEDED | Document | Issued document superseded | old/new document, reason, actor |
 | DOCUMENT_VOIDED | Document | Draft/non-issued document voided | document, actor, reason |
 | DOC_FINALIZED | Document | Validated, attested and released for rendering by the HR person executing the approved case (DEC-066) | document type/version, content checksum, `authority: CASE_APPROVAL`, case approver and approval instant, case status |
-| USER_EMAIL_BANNER_CHANGED | Identity | A user set or cleared their own outgoing-email banner (DEC-066 section 8) | user, cleared flag, line count (never the text) |
+| USER_EMAIL_BANNER_CHANGED | Identity | A user uploaded or removed their own personal email banner image (DEC-067) | user, cleared flag, width/height/bytes of the JPG (never the image) |
+| CONFIG_EMAIL_BANNER_CHANGED | Configuration | The HR Manager set, changed or removed the department email banner (DEC-067) | reason, width/height/bytes/file name, enabled flag, whether a hosted URL is set, cleared flag |
 | NOTIFICATION_PREPARED | Notification | Notification draft created | case, notification, type, template/version |
 | NOTIFICATION_RECIPIENTS_RESOLVED | Notification | Final recipient set resolved | notification, recipient count/types, config versions |
 | NOTIFICATION_SUBMITTED_FOR_APPROVAL | Notification | Notification submitted | notification, actor |

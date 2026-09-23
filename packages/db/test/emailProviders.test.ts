@@ -41,6 +41,36 @@ describe('graph send request', () => {
     ]);
   });
 
+  it('sends the HTML part with the banner as an inline Content-ID attachment (DEC-067)', () => {
+    const banner = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xd9]);
+    const html =
+      '<html><body><p>Please find the letter attached.</p><img src="cid:email-banner" alt="x" /></body></html>';
+    const { payload } = buildGraphSendRequest({
+      ...BASE,
+      html,
+      inlineImages: [
+        {
+          contentId: 'email-banner',
+          fileName: 'hr-banner.jpg',
+          mimeType: 'image/jpeg',
+          bytes: banner,
+        },
+      ],
+    });
+    const message = (payload as { message: Record<string, unknown> }).message;
+    expect(message.body).toEqual({ contentType: 'HTML', content: html });
+    expect(message.attachments).toEqual([
+      {
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: 'hr-banner.jpg',
+        contentType: 'image/jpeg',
+        contentBytes: banner.toString('base64'),
+        isInline: true,
+        contentId: 'email-banner',
+      },
+    ]);
+  });
+
   it('attaches the rendered letter as base64 file content', () => {
     const bytes = Buffer.from('%PDF-1.7 synthetic', 'utf8');
     const { payload } = buildGraphSendRequest({

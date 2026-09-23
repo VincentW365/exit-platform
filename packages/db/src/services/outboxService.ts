@@ -14,6 +14,7 @@ import {
   isRetryableError,
   maskDestination,
   parseTestMode,
+  renderEmailHtml,
   testModeErrors,
   ProviderError,
   OUTBOX_MAX_ATTEMPTS,
@@ -27,6 +28,7 @@ import type { PrismaClient } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
 import { getEmailProvider, type OutboundAttachment } from './emailProviders.ts';
+import { resolveEmailBannerForNotification } from './emailBannerService.ts';
 import { decryptValue } from '../secretBox.ts';
 import { openException, autoResolveException } from './exceptionService.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
@@ -339,10 +341,33 @@ export async function processOutbox(
         });
       }
 
+      // DEC-067: the banner image travels in an HTML part built from the
+      // OUTGOING text (after any rehearsal redirect), so both parts say the
+      // same thing. A banner that cannot be resolved is logged, not fatal.
+      const banner = await resolveEmailBannerForNotification({
+        caseId: item.notificationRecord.caseId,
+        notificationType: item.notificationRecord.notificationType,
+        correlationId: item.correlationId,
+      });
+      const html = renderEmailHtml({ bodyText: outgoing.body, banner: banner?.image ?? null });
+
       const sendResult = await provider.send({
         outboxId: item.id,
         subject: outgoing.subject,
         body: outgoing.body,
+        html,
+        inlineImages: banner?.inline ? [banner.inline] : undefined,
+        bannerCapture: banner
+          ? {
+              objectKey: banner.ref.objectKey,
+              checksum: banner.ref.checksum,
+              mimeType: banner.ref.mimeType,
+              alt: banner.ref.altText,
+              width: banner.ref.width,
+              height: banner.ref.height,
+              kind: banner.kind,
+            }
+          : null,
         destination: outgoing.destination,
         cc: outgoing.cc?.length ? outgoing.cc : undefined,
         bcc: outgoing.bcc?.length ? outgoing.bcc : undefined,

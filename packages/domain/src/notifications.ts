@@ -143,43 +143,6 @@ export const NOTIFICATION_PLACEHOLDERS: Readonly<Record<NotificationType, readon
   ],
 };
 
-// --- sender email banner (DEC-066 section 8) --------------------------------
-
-/** Longest banner a user may keep: a few signature lines, never a letter. */
-export const EMAIL_BANNER_MAX_LINES = 5;
-export const EMAIL_BANNER_MAX_CHARS = 300;
-
-/** Normalize a banner: trimmed lines, blank lines dropped, CRLF tolerated. */
-export function normalizeEmailBanner(text: string | null | undefined): string {
-  return (text ?? '')
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .join('\n');
-}
-
-/** Validation for a banner a user is saving. Empty means "no banner". */
-export function emailBannerErrors(text: string | null | undefined): string[] {
-  const normalized = normalizeEmailBanner(text);
-  const errors: string[] = [];
-  if (normalized.length > EMAIL_BANNER_MAX_CHARS)
-    errors.push(`The email banner is limited to ${EMAIL_BANNER_MAX_CHARS} characters.`);
-  if (normalized.split('\n').length > EMAIL_BANNER_MAX_LINES)
-    errors.push(`The email banner is limited to ${EMAIL_BANNER_MAX_LINES} lines.`);
-  if (/<[a-z!/][^>]*>/i.test(normalized))
-    errors.push('The email banner is plain text; HTML is not sent.');
-  return errors;
-}
-
-/**
- * The banner travels beneath the sender title, so every notification
- * template keeps its existing HR_SENDER_NAME / HR_SENDER_TITLE placeholders.
- */
-export function withEmailBanner(title: string, banner: string | null | undefined): string {
-  const normalized = normalizeEmailBanner(banner);
-  return normalized ? `${title}\n${normalized}` : title;
-}
-
 /** Types that require confirmed applicability before a record exists (K.9/K.10). */
 export const APPLICABILITY_GATED_TYPES: readonly NotificationType[] = [
   'SAGICOR_GROUP_HEALTH_REMOVAL',

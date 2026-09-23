@@ -27,8 +27,9 @@ export interface StorageAdapter {
 }
 
 // Legacy bare keys plus Stage 4 prefixed keys (quarantine/clean/rejected/
-// generated) - always system-generated randomness, never employee names.
-const KEY_PATTERN = /^(?:(?:quarantine|clean|rejected|generated)\/)?[a-f0-9]{48}$/;
+// generated) and the DEC-067 branding class (email banner images) - always
+// system-generated randomness, never employee names.
+const KEY_PATTERN = /^(?:(?:quarantine|clean|rejected|generated|branding)\/)?[a-f0-9]{48}$/;
 
 export function newObjectKey(): string {
   return randomBytes(24).toString('hex');
@@ -36,7 +37,7 @@ export function newObjectKey(): string {
 
 /** Stage 4 (section G): path-prefixed key for a specific storage class. */
 export function newPrefixedObjectKey(
-  prefix: 'quarantine' | 'clean' | 'rejected' | 'generated',
+  prefix: 'quarantine' | 'clean' | 'rejected' | 'generated' | 'branding',
 ): string {
   return `${prefix}/${newObjectKey()}`;
 }

@@ -40,7 +40,9 @@
 | UX-036 | Help/Runbooks | All roles | Find role-specific SOP and fallback guidance | No sensitive examples. |
 | UX-037 | Create Case — Benefits & Providers / HR Ownership | HR | Select the benefit providers to be told, and (HR Manager) name the executing officer, before the case is created | Selectable cards, not dropdowns; unticked = not applicable; the officer owns what they create (DEC-065/066). |
 | UX-038 | Case Approval Summary | HR Manager (officers read it) | Approve the case once, or return it with a reason, after seeing the employee record, exit details, ownership, benefits, every recipient with its resolved destination and readiness, the planned documents and forms and the workflow | Two-column cards; addresses full for the HR Manager and masked for others; "Recipient not configured" is explicit; approval text states what it authorizes (DEC-066). |
-| UX-039 | My Settings | All roles | Keep the plain-text email banner appended beneath the user's sender block on outgoing email | Own account only; audited; preview of the signature. |
+| UX-039 | My Settings | All roles | Upload or remove the personal email signature banner (a supplied JPG) | Own account only; audited; the stored image previewed at its own size; applied only to emails written as coming from that person (DEC-067). |
+| UX-040 | Administration — Email banner | HR Manager | Upload the department banner JPG, set alt text, enable/disable, optional hosted HTTPS URL | Configurable asset reference (DEC-067); never altered; audited; preview of the stored image. |
+| UX-041 | Captured Email (development mailbox) | HR roles, non-production | Verify the complete email presentation: subject, recipient class, HTML part with links and the banner image, plain-text part | Banner named (kind, size, alt) or "No email banner"; the image scales to the reader's width without clipping. |
 
 ## Screen acceptance pattern
 

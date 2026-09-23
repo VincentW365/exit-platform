@@ -5,15 +5,18 @@ import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import {
   ServiceError,
+  clearDepartmentBanner,
   disableUser,
   generateAccessReview,
   purgeLiveDirectory,
   reconciliationReport,
   requestManualDirectoryRefresh,
   runQueuedDirectorySyncs,
+  setDepartmentBannerImage,
   setSystemConfig,
   syncEmployees,
   testDirectoryConnection,
+  updateDepartmentBannerOptions,
 } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { touchSession } from '@/lib/session';
@@ -48,6 +51,64 @@ export async function setConfigAction(formData: FormData): Promise<void> {
     );
     revalidatePath('/admin/system');
     back({ ok: 'Configuration saved (values only; secrets stay as references).' });
+  } catch (e) {
+    if (e instanceof ServiceError) back({ err: errText(e) });
+    throw e;
+  }
+}
+
+/** DEC-067: the HR Manager supplies the department email banner (a JPG). */
+export async function uploadDepartmentBannerAction(formData: FormData): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  const file = formData.get('bannerFile');
+  try {
+    if (!(file instanceof File) || file.size === 0)
+      throw ServiceError.validation(['Choose a .jpg file to upload.']);
+    const cfg = await setDepartmentBannerImage(
+      actor,
+      {
+        fileName: file.name,
+        declaredMime: file.type,
+        bytes: new Uint8Array(await file.arrayBuffer()),
+      },
+      { altText: str(formData, 'altText') || undefined, reason: str(formData, 'reason') },
+    );
+    revalidatePath('/admin/system');
+    back({
+      ok: `Department email banner saved (${cfg.banner?.width} × ${cfg.banner?.height} px) and enabled.`,
+    });
+  } catch (e) {
+    if (e instanceof ServiceError) back({ err: errText(e) });
+    throw e;
+  }
+}
+
+export async function updateDepartmentBannerAction(formData: FormData): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  try {
+    await updateDepartmentBannerOptions(actor, {
+      enabled: str(formData, 'enabled') === 'true',
+      altText: str(formData, 'altText'),
+      hostedUrl: str(formData, 'hostedUrl'),
+      reason: str(formData, 'reason'),
+    });
+    revalidatePath('/admin/system');
+    back({ ok: 'Department email banner settings saved.' });
+  } catch (e) {
+    if (e instanceof ServiceError) back({ err: errText(e) });
+    throw e;
+  }
+}
+
+export async function clearDepartmentBannerAction(formData: FormData): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  try {
+    await clearDepartmentBanner(actor, str(formData, 'reason'));
+    revalidatePath('/admin/system');
+    back({ ok: 'Department email banner removed.' });
   } catch (e) {
     if (e instanceof ServiceError) back({ err: errText(e) });
     throw e;

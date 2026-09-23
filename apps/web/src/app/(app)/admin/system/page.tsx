@@ -14,6 +14,7 @@ import {
   reconciliationReport,
   ServiceError,
   directorySyncStatus,
+  getDepartmentBannerConfig,
 } from '@exit/db';
 import { bambooDirectoryStatus } from '@exit/config';
 import { can, formatInstant } from '@exit/domain';
@@ -21,6 +22,7 @@ import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
 import {
   accessReviewAction,
+  clearDepartmentBannerAction,
   disableUserAction,
   purgeDirectoryAction,
   reconciliationAction,
@@ -28,7 +30,10 @@ import {
   setConfigAction,
   syncEmployeesAction,
   testDirectoryConnectionAction,
+  updateDepartmentBannerAction,
+  uploadDepartmentBannerAction,
 } from './actions';
+import { EmailBannerAdmin } from './EmailBannerAdmin';
 import { humanize, roleList } from '@/lib/text';
 
 export const metadata: Metadata = { title: 'System Administration' };
@@ -123,6 +128,15 @@ export default async function SystemAdminPage({
           </form>
         </details>
       </section>
+
+      <EmailBannerAdmin
+        config={await getDepartmentBannerConfig()}
+        actions={{
+          upload: uploadDepartmentBannerAction,
+          update: updateDepartmentBannerAction,
+          clear: clearDepartmentBannerAction,
+        }}
+      />
 
       <section className="panel" aria-labelledby="id-h">
         <h2 id="id-h" style={{ marginTop: 0 }}>

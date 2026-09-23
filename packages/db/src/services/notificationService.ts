@@ -24,7 +24,6 @@ import {
   substitute,
   templateContentErrors,
   hasMissingMarkers,
-  withEmailBanner,
   APPLICABILITY_GATED_TYPES,
   DEFAULT_SEND_CONTROL,
   MANUAL_SEND_METHODS,
@@ -92,8 +91,8 @@ export async function listNotificationTemplates(actor: Actor) {
 
 /**
  * HR signature block for a case: assigned officer, else the case owner. The
- * title carries the user-maintained email banner beneath it (DEC-066
- * section 8) so every template keeps its existing placeholders.
+ * signature IMAGE (DEC-067) is added by the outbox to the HTML part; the
+ * text block stays name and title only - never typed contact details.
  */
 async function hrSenderFor(caseId: string): Promise<{ name: string; title: string }> {
   const prisma = getPrisma();
@@ -105,7 +104,7 @@ async function hrSenderFor(caseId: string): Promise<{ name: string; title: strin
   if (!userId) return { name: '', title: '' };
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { displayName: true, workEmail: true, emailBanner: true },
+    select: { displayName: true, workEmail: true },
   });
   if (!user) return { name: '', title: '' };
   const directory = user.workEmail
@@ -114,10 +113,7 @@ async function hrSenderFor(caseId: string): Promise<{ name: string; title: strin
         select: { jobTitle: true },
       })
     : null;
-  return {
-    name: user.displayName,
-    title: withEmailBanner(directory?.jobTitle ?? 'Human Resources', user.emailBanner),
-  };
+  return { name: user.displayName, title: directory?.jobTitle ?? 'Human Resources' };
 }
 
 // --- per-case notification records -------------------------------------------

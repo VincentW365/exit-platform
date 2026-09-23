@@ -146,7 +146,8 @@ Legend: `Full` means within approved record scope, not unrestricted database acc
 | Exit responses | Identifiable access | Identifiable access if authorized | Respond through the survey link only |
 | Reports/exports | HR reports, controlled export, scheduling | Operational reports and exports | None |
 | Audit Centre | Full (restricted rows minimized unless participating) | None | None |
-| Configuration | HR business configuration and platform administration | None | None |
+| Configuration | HR business configuration and platform administration, including the department email banner (DEC-067) | None | None |
+| Personal email banner | Own account only | Own account only | None |
 | Roles/access | Grant/revoke (no self-grant), directory account mapping, access reviews | None | None |
 | Pilot | Propose, approve (one approval), apply, suspend | None | None |
 | Backups / restore tests | Attest the runbook evidence | None | Performed by the infrastructure operator outside the application |
