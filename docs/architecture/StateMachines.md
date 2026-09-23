@@ -353,3 +353,40 @@ hours for IT access removal, 14 days otherwise.
   evidence (IT: completion confirmed or approved exception; Finance: sent;
   providers: sent where applicable). Unresolved-asset exception coverage is
   per item (LR-007).
+
+## 10. Signature request state machine (DEC-068, 2026-09-23)
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: request created for one signer on one form version
+    PENDING --> PENDING: copied / emailed / resent / extended
+    PENDING --> SIGNED: signer submits every required mark
+    PENDING --> REVOKED: HR revokes, or the form version is superseded
+    PENDING --> EXPIRED: the configured window runs out
+    EXPIRED --> PENDING: HR extends it, on the same link
+    SIGNED --> [*]
+    REVOKED --> [*]
+```
+
+Rules:
+
+- **Creation is not delivery.** Copy Signing Link and Send by Email address
+  the same PENDING request; a resend reuses it. One live request per signer
+  per form version, so two competing links can never exist.
+- **PENDING is read against the clock**, so a request whose expiry has passed
+  presents as Expired immediately; the worker sweep then ends it formally and
+  destroys the reusable token.
+- **Extension** moves the expiry forward from the later of now and the current
+  expiry, never past the configured ceiling measured from issue.
+- **Completion and revocation destroy the encrypted token**, so nothing
+  reusable survives a final state. **Expiry keeps it recoverable**: Extend Link
+  puts an expired request back to PENDING on the same link, which is what the
+  owner asked for instead of forcing a second link. The one-way hash is kept
+  throughout, so a returning signer is told accurately which state applies, in
+  the owner's wording.
+- **Submission is a single atomic claim**: the request flips to SIGNED in the
+  same transaction that writes the marks, so a replayed link cannot land a
+  second submission or overwrite a signature.
+- **Marks belong to the form version they were applied to.** Completion locks
+  them; a material case correction supersedes the version and revokes its open
+  requests rather than moving marks onto the replacement.

@@ -78,6 +78,16 @@ Audit events provide evidence of who did what, to which object, when, under whic
 | DOCUMENT_SUPERSEDED | Document | Issued document superseded | old/new document, reason, actor |
 | DOCUMENT_VOIDED | Document | Draft/non-issued document voided | document, actor, reason |
 | DOC_FINALIZED | Document | Validated, attested and released for rendering by the HR person executing the approved case (DEC-066) | document type/version, content checksum, `authority: CASE_APPROVAL`, case approver and approval instant, case status |
+| SIGNATURE_REQUEST_CREATED | Document | A signing request was opened for one named signer on one form version (DEC-068) | request id, signer role, document title, form version, block count, expiry, masked destination — **never the link or the token** |
+| SIGNATURE_LINK_COPIED | Document | HR copied the signing link to share it through another approved channel (DEC-068) | request id, signer role, document title — **never the link or the token** |
+| SIGNATURE_REQUEST_EMAILED | Communication | The signing request was emailed or re-emailed to the signer (DEC-068) | request id, masked destination, resend flag, attempt number, whether the recipient was changed |
+| SIGNATURE_REQUEST_EXTENDED | Document | The signing link was given longer to run (DEC-068) | request id, previous expiry, new expiry, whether the configured ceiling capped it, reason |
+| SIGNATURE_REQUEST_REVOKED | Document | The signing link was stopped immediately (DEC-068) | request id, reason, signer role; a system revocation from a material case correction names the count |
+| SIGNATURE_REQUEST_EXPIRED | Document | The worker sweep ended an overdue signing request (DEC-068) | request id, signer role, expiry |
+| SIGNATURE_LINK_OPENED | Document | The signer opened the secure signing page for the first time (DEC-068) | request id, signer role |
+| SIGNATURE_APPLIED | Document | One mark was applied to one block of one form version (DEC-068) | block key and label, signature type, signer role, drawn or typed, pixel size — **never the image** |
+| SIGNATURE_SUPERSEDED | Document | A mistaken HR signature was replaced; the original is retained (DEC-068) | record id, block key and label, signature type, reason |
+| SIGNATURE_REQUEST_COMPLETED | Document | The signer submitted the signed form (DEC-068) | request id, signer role and name, document title, marks applied, the declaration text, form version |
 | USER_EMAIL_BANNER_CHANGED | Identity | A user uploaded or removed their own personal email banner image (DEC-067) | user, cleared flag, width/height/bytes of the JPG (never the image) |
 | CONFIG_EMAIL_BANNER_CHANGED | Configuration | The HR Manager set, changed or removed the department email banner (DEC-067) | reason, width/height/bytes/file name, enabled flag, whether a hosted URL is set, cleared flag |
 | NOTIFICATION_PREPARED | Notification | Notification draft created | case, notification, type, template/version |

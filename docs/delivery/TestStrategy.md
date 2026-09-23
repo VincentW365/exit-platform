@@ -297,6 +297,18 @@ Deployment-gap protection, permanent from this point on:
   the automated stand-in for the directive's keyboard-only walkthrough; a
   human walkthrough on the UAT workstation is still owed and is recorded
   in the UAT plan when done.
+- `e2e/action-form-signing.spec.ts` (DEC-068) - the twelve-step signing
+  workflow end to end: the branded Action Form, a signature request, Copy
+  Signing Link and Send by Email addressing the same request, the captured
+  email carrying the resolved link, the signer opening it on a phone-sized
+  context with no account, a refusal that names exactly what is missing,
+  initials drawn once with real pointer events and applied to every
+  section, the full signature, the declaration, submission, a reopened
+  link that says it was already completed, the marks on the sheet, the HR
+  signature applied in the application, the completed PDF, and the
+  locked-down state afterwards; plus extend, revoke and the neutral
+  refusal an outsider sees. Screenshots land in
+  `artifacts/action-form-signing/` (gitignored, synthetic only).
 - `pnpm regression:offboarding` (`e2e/offboarding-regression/`, its own
   `playwright.regression.config.ts`) - the full offboarding workflow
   regression and evidence pack: one controlled employee through every

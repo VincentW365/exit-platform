@@ -71,8 +71,13 @@ GRANT SELECT, INSERT, UPDATE ON
   action_token,
   return_items_checklist,
   return_items_checklist_entry,
-  directory_sync_run
+  directory_sync_run,
+  signature_request
 TO exit_app;
+
+-- DEC-068: an applied mark is evidence. It may be written once and
+-- superseded; it is never updated in place beyond that and never deleted.
+GRANT SELECT, INSERT, UPDATE ON signature_record TO exit_app;
 
 -- Attestations: insert + read + update (update restricted by trigger to the
 -- invalidation fields only; core columns are database-immutable).

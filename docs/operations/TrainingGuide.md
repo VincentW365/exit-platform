@@ -34,6 +34,13 @@ recorded completions feed the pilot readiness gate.
 - Action form completion (Directive 6.3): the officer prepares, reviews and
   COMPLETES ordinary forms; the suggested acknowledgement treatment per
   departure type; when the optional HR-Manager review step applies.
+- Collecting signatures (DEC-068): creating a signature request; choosing
+  between Copy Signing Link and Send by Email, and why both point at the
+  same link; what the employee sees on a phone; Resend, Extend and Revoke
+  and when each is right; signing the Human Resources block yourself;
+  reading the status card; and the two things to remember - a signature is
+  evidence of who signed and never an approval, and the link is shared only
+  with the signer.
 
 ### HR Benefits and providers (SOP-03a, Directive 6.3 - HR Officer and HR Manager)
 

@@ -103,6 +103,19 @@ Rules:
 | Add case to My Work | Via assignment | Automatic through assignment |
 | Remove case from officer My Work | Via reassignment or case state | No |
 
+## Signing authority (DEC-068, 2026-09-23)
+
+Creating, copying, emailing, resending, extending and revoking a signing
+request all sit on the existing `form.edit` authority, so they follow case
+ownership exactly: the **HR Manager** may act on any case they can see, the
+**assigned HR Officer** on the cases they own, and **another HR Officer**
+sees the signature status and may do none of it. Every one of these is
+checked on the server for every request.
+
+The **external signer** holds no platform role, account or session. The link
+authorizes one named signer to sign one form version and nothing else; it
+never reveals the wider case, and submitting it creates no identity.
+
 ## Single authorization gate (DEC-066, 2026-09-22)
 
 The HR Manager approves the offboarding case **once**, on the Case Approval
@@ -177,6 +190,7 @@ Legend: `Full` means within approved record scope, not unrestricted database acc
 The product should support:
 
 - HR Officer prepares and submits the case; HR Manager approves it once, on a summary of everything the approval authorizes (DEC-066). After that, the assigned officer executes and the manager intervenes; there is no per-document or per-notification second approver.
+- a signature is evidence of who signed, never an authorization. Collecting one never adds an approval step, and the platform never infers approval from the presence of a signature image (DEC-068).
 - role grant requester is not the sole approver; nobody grants a role to themself.
 - template/workflow author is not the sole activator.
 - break-glass user cannot approve their own access.

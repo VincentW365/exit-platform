@@ -118,6 +118,26 @@ function sentence(e: HumanizableEvent): string {
       return `${who} created a document draft`;
     case 'DOC_APPROVED':
       return `${who} approved the exact document version (attested)`;
+    case 'SIGNATURE_REQUEST_CREATED':
+      return `${who} created a signature request for ${str(m, 'signerRole')?.toLowerCase().replaceAll('_', ' ') ?? 'a signer'} on the ${str(m, 'documentTitle') ?? 'form'}`;
+    case 'SIGNATURE_LINK_COPIED':
+      return `${who} copied the secure signing link to share it another way`;
+    case 'SIGNATURE_REQUEST_EMAILED':
+      return `${who} emailed the signing request to ${str(m, 'destinationMask') ?? 'the signer'}${str(m, 'resend') === 'true' || m.resend === true ? ' again' : ''}`;
+    case 'SIGNATURE_REQUEST_EXTENDED':
+      return `${who} extended the signing link to ${when(str(m, 'expiresAt'))}${withReason}`;
+    case 'SIGNATURE_REQUEST_REVOKED':
+      return `${who} revoked the signing request${withReason}`;
+    case 'SIGNATURE_REQUEST_EXPIRED':
+      return `The signing link expired`;
+    case 'SIGNATURE_LINK_OPENED':
+      return `The signer opened the secure signing page`;
+    case 'SIGNATURE_APPLIED':
+      return `The signer applied their ${str(m, 'signatureType') === 'INITIALS' ? 'initials' : 'signature'} to "${str(m, 'blockLabel') ?? 'a section'}"`;
+    case 'SIGNATURE_SUPERSEDED':
+      return `${who} replaced the ${str(m, 'signatureType') === 'INITIALS' ? 'initials' : 'signature'} on "${str(m, 'blockLabel') ?? 'a section'}"${withReason}`;
+    case 'SIGNATURE_REQUEST_COMPLETED':
+      return `${str(m, 'signerName') ?? 'The signer'} signed the ${str(m, 'documentTitle') ?? 'form'} (${str(m, 'marks') ?? '0'} marks applied)`;
     case 'DOC_FINALIZED':
       return `${who} finalized the exact document version under the approved case (attested) and released it for rendering`;
     case 'USER_EMAIL_BANNER_CHANGED':

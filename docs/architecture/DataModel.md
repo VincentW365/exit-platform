@@ -201,6 +201,44 @@ Store template bytes/markup, placeholder schema, render engine version and appro
 
 Store exact data snapshot, status, issued file and supersession chain.
 
+#### `SignatureRequest` (DEC-068)
+
+One signer, one form version, one link.
+
+Important fields:
+
+- signer role, name and destination (the destination is masked everywhere it
+  is displayed outside the control where HR types it);
+- status: PENDING / SIGNED / REVOKED / EXPIRED;
+- `tokenHash` — sha256 of the signing token, unique, the lookup key;
+- `tokenCiphertext` — the same token under the platform's AES-256-GCM box, so
+  the one link can be copied and re-sent; destroyed at every terminal state,
+  while the hash is retained so a returning signer gets an accurate message;
+- issue and expiry instants, and the extension count;
+- the blocks this signer must complete, frozen when the request was made;
+- delivery evidence: last sent, send count, masked destination;
+- completion evidence: first opened, signed at, the declaration text and
+  instant, a hashed client address and a truncated user agent (supporting
+  evidence only, never identification on its own).
+
+#### `SignatureRecord` (DEC-068)
+
+One applied mark. The image lives in private object storage; this row is the
+record that proves who applied it.
+
+Important fields:
+
+- case, form version and (for a link signature) the request;
+- signer reference, name and role; a user id for an HR signer, the request id
+  for an external one;
+- signature type (INITIALS / SIGNATURE), block key and label;
+- provenance (DRAWN / TYPED);
+- storage key, sha256 checksum, media type and pixel size;
+- signed instant;
+- supersession: instant, reason and actor. A mistaken mark is superseded, not
+  deleted, and the "one live mark per block" uniqueness is a partial index on
+  `supersededAt IS NULL`.
+
 ### Notifications
 
 #### `Notification`

@@ -409,3 +409,48 @@ banner); otherwise none. A banner that cannot be read is logged
 (`email_banner_unavailable`) and skipped - the email still goes. The
 development capture stores the HTML part and the banner reference so
 `/dev/mailbox` shows the complete presentation.
+
+### 15.6 Signature requests and signing links (DEC-068, 2026-09-23)
+
+A **signature request** is a long-lived, revocable invitation for one named
+signer to sign one Employee Action Form version. Creating it is not sending
+it: HR may Copy Signing Link and share it through another approved channel,
+or Send by Email, and both address the same request. Resend Email reuses the
+live request rather than issuing a competing one, so a signer who kept the
+first message is never left with two links.
+
+**Lifetime** is configuration, not a constant in signing logic:
+`signature.linkValidDays` (default 30) sets the window and
+`signature.linkMaxDays` (default 90) caps it, including extensions, measured
+from when the request was issued. Both live in SystemConfig and are neutral
+about hosting and email provider. A link ends at the earliest of completion,
+revocation, supersession of the form version by a material case correction,
+or its expiry; it is unaffected by worker restarts, redeploys or the signer
+closing their browser. Extend Link adds 7, 14, 30 or a chosen number of days
+and is audited with the previous and the new expiry. Extending an **expired**
+request reactivates it on the same link, which is what "please send me a new
+one" usually means in practice; revocation and completion are final and
+cannot be reversed.
+
+**Token handling** reuses the platform's existing primitives: a 256-bit
+CSPRNG value whose sha256 hash is stored for lookup. Because a long-lived
+link must also be copyable and re-sendable, the raw value is additionally
+held encrypted at rest with the same AES-256-GCM box that protects recipient
+destinations. Completion and revocation destroy that ciphertext, so nothing
+reusable survives a final state; expiry, which the owner asked to be
+reversible, keeps it recoverable while refusing every use. The one-way hash
+is retained throughout, only so a returning signer is told accurately that
+the request was completed, expired or revoked. The raw value never reaches
+an audit event, a log, a stored email body or an analytics payload. Copy
+Signing Link is an authorized POST that returns the link in its response body
+for the browser to copy; a redirect carrying it as a query parameter would
+put it in the address bar, the browser history and the server request log, so
+that route is not used.
+
+**The email** follows the same rule as the acknowledgement links: the stored
+body keeps the marker `[signing link inserted at send time]`, and the outbox
+resolves the live URL into the outgoing message at dispatch. A request that
+ended in the meantime fails the send rather than mailing a dead link. The
+`SIGNATURE_REQUEST` template carries the employee's first name, the document
+title, the link, its expiry date in words, the case reference and the HR
+sender block, so it also carries the sender's banner under section 15.5.

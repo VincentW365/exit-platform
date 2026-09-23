@@ -31,6 +31,8 @@ export interface SweepResult {
   instancesRecalculated: number;
   // Directive 6.3: automated email-action supervision.
   tokensExpired: number;
+  /** DEC-068: signing links whose window has run out. */
+  signatureRequestsExpired: number;
   ackOverdue: number;
   autoReleased: number;
   surveysScheduled: number;
@@ -48,6 +50,7 @@ export async function runStage3Sweep(now: Date = new Date()): Promise<SweepResul
     handoverOverdue: 0,
     instancesRecalculated: 0,
     tokensExpired: 0,
+    signatureRequestsExpired: 0,
     ackOverdue: 0,
     autoReleased: 0,
     surveysScheduled: 0,
@@ -238,6 +241,13 @@ export async function runStage3Sweep(now: Date = new Date()): Promise<SweepResul
   // 6. Directive 6.3 T: expire stale confirmation links (hash nulled).
   const { expireActionTokens } = await import('./ackTokenService.ts');
   result.tokensExpired = await expireActionTokens(now);
+
+  // 6b. DEC-068: end signing requests past their window, so the link stops
+  // resolving and the case screen and the signer see the same thing. The
+  // page already reads an overdue request as expired, so this sweep is the
+  // record and the key destruction, not the enforcement.
+  const { expireSignatureRequests } = await import('./signatureService.ts');
+  result.signatureRequestsExpired = await expireSignatureRequests(now);
 
   // 7. Directive 6.3 U.6: sent-but-unconfirmed IT actions escalate to HR at
   // the deadline (the exact effective separation time); other email actions

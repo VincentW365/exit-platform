@@ -45,6 +45,8 @@ const TYPE_TO_RECIPIENT_CLASS: Record<string, RecipientClassName> = {
   SAGICOR_GROUP_HEALTH_REMOVAL: 'SAGICOR_GROUP_HEALTH',
   NCB_GROUP_LIFE_REMOVAL: 'NCB_GROUP_LIFE',
   SURVEY_INVITATION_REFERENCE: 'EMPLOYEE_PERSONAL',
+  // DEC-068: the signer is normally the departing employee.
+  SIGNATURE_REQUEST: 'EMPLOYEE_PERSONAL',
   MANUAL_EXCEPTION_NOTIFICATION: 'EMPLOYEE_PERSONAL',
   // Directive 6.3 N: configurable provider purposes.
   PAYROLL_OR_BANK_NOTIFICATION: 'PAYROLL_BANK',
@@ -218,6 +220,7 @@ export async function processOutbox(
           caseRecipientCiphertext: true,
           recipientName: true,
           caseRecipientMask: true,
+          signatureRequestId: true,
           ccCiphertext: true,
           bccCiphertext: true,
           attachedDocumentId: true,
@@ -303,6 +306,24 @@ export async function processOutbox(
         outgoingBody = outgoingBody.includes('[link inserted at send time]')
           ? outgoingBody.replace('[link inserted at send time]', linkBlock)
           : `${outgoingBody}\n\n${linkBlock}`;
+      }
+
+      // DEC-068: the same discipline for a signing link. The request already
+      // holds its token; dispatch resolves the live URL into the outgoing
+      // body only. A request that ended in the meantime fails the send rather
+      // than mailing a dead link.
+      if (item.notificationRecord.signatureRequestId) {
+        const { signingUrlForDispatch, SIGNING_LINK_MARKER } =
+          await import('./signatureService.ts');
+        const url = await signingUrlForDispatch(item.notificationRecord.signatureRequestId);
+        if (!url)
+          throw new ProviderError(
+            'RECIPIENT_INVALID',
+            'The signing request is no longer active, so no link could be sent.',
+          );
+        outgoingBody = outgoingBody.includes(SIGNING_LINK_MARKER)
+          ? outgoingBody.replaceAll(SIGNING_LINK_MARKER, url)
+          : `${outgoingBody}\n\n${url}`;
       }
 
       // DEC-054: copied recipients and the rendered document this email

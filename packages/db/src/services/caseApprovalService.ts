@@ -101,6 +101,7 @@ const PURPOSE: Record<NotificationType, string> = {
   SAGICOR_GROUP_HEALTH_REMOVAL: 'Group health cover removal',
   NCB_GROUP_LIFE_REMOVAL: 'Group life cover removal',
   SURVEY_INVITATION_REFERENCE: 'Exit survey invitation',
+  SIGNATURE_REQUEST: 'Request to review and sign a form (secure link)',
   MANUAL_EXCEPTION_NOTIFICATION: 'Manual exception notice',
   PAYROLL_OR_BANK_NOTIFICATION: 'Payroll or bank notification',
   OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION: 'Other provider notification',

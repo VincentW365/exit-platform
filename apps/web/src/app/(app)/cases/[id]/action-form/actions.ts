@@ -4,12 +4,18 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import {
   ServiceError,
+  applyHrSignature,
   completeActionForm,
   createActionForm,
+  createSignatureRequest,
+  extendSignatureRequest,
   hrReviewForm,
   returnActionForm,
+  revokeSignatureRequest,
+  sendSignatureRequestEmail,
   submitActionForm,
   updateActionFormFinance,
+  supersedeHrSignature,
   updateActionFormHr,
   voidActionForm,
 } from '@exit/db';
@@ -125,5 +131,66 @@ export async function voidFormAction(formData: FormData): Promise<void> {
   await run(formData, async (actor, fd) => {
     await voidActionForm(actor, str(fd, 'formId'), str(fd, 'reason'));
     return 'Form voided.';
+  });
+}
+
+// --- DEC-068: electronic initials and signatures ---------------------------
+
+export async function createSignatureRequestAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    await createSignatureRequest(actor, str(fd, 'formId'), {
+      signerRole: 'EMPLOYEE',
+      signerName: str(fd, 'signerName') || undefined,
+      signerEmail: str(fd, 'signerEmail') || null,
+    });
+    return 'Signature request ready. Copy the link or send it by email.';
+  });
+}
+
+export async function sendSignatureRequestAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    const outcome = await sendSignatureRequestEmail(actor, str(fd, 'requestId'), {
+      email: str(fd, 'signerEmail') || null,
+    });
+    return outcome.resend
+      ? `Signature request sent again to ${outcome.destinationMask}.`
+      : `Signature request sent to ${outcome.destinationMask}.`;
+  });
+}
+
+export async function extendSignatureRequestAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    const days = Number(str(fd, 'addDays') || '7');
+    const outcome = await extendSignatureRequest(actor, str(fd, 'requestId'), {
+      addDays: Number.isFinite(days) ? days : 7,
+      reason: str(fd, 'reason') || undefined,
+    });
+    return outcome.cappedByMaximum
+      ? 'Link extended to the maximum allowed date.'
+      : 'Link extended.';
+  });
+}
+
+export async function revokeSignatureRequestAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    await revokeSignatureRequest(actor, str(fd, 'requestId'), str(fd, 'reason'));
+    return 'Signing link revoked. It no longer works.';
+  });
+}
+
+export async function applyHrSignatureAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    await applyHrSignature(actor, str(fd, 'formId'), {
+      dataUrl: String(fd.get('dataUrl') ?? ''),
+      provenance: str(fd, 'provenance') === 'TYPED' ? 'TYPED' : 'DRAWN',
+    });
+    return 'Your signature has been added to the form.';
+  });
+}
+
+export async function clearHrSignatureAction(formData: FormData): Promise<void> {
+  await run(formData, async (actor, fd) => {
+    await supersedeHrSignature(actor, str(fd, 'formId'), str(fd, 'reason') || undefined);
+    return 'The previous signature has been replaced. You can sign again.';
   });
 }

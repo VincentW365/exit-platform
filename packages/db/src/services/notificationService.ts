@@ -94,7 +94,7 @@ export async function listNotificationTemplates(actor: Actor) {
  * signature IMAGE (DEC-067) is added by the outbox to the HTML part; the
  * text block stays name and title only - never typed contact details.
  */
-async function hrSenderFor(caseId: string): Promise<{ name: string; title: string }> {
+export async function hrSenderFor(caseId: string): Promise<{ name: string; title: string }> {
   const prisma = getPrisma();
   const c = await prisma.offboardingCase.findUnique({
     where: { id: caseId },

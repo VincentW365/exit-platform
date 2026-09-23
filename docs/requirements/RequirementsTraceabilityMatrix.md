@@ -114,6 +114,12 @@ HR-validated workflow simplification evidence (Directive 6.3, 2026-08-16): the e
 | REQ-DOC-019 | Field source review | KPI-003 | PROVISIONAL | SHOULD | 2 | UI test |
 | REQ-DOC-020 | Template activation approval | Change control | PROVISIONAL | MUST | 2 | Authorization test |
 | REQ-DOC-021 | Confidential marking | DMAIC pp. 24-27 | PROVISIONAL | MUST | 2 | Generation test |
+| REQ-DOC-022 | Action Form branding | Owner directive 2026-09-23 (DEC-068) | APPROVED | MUST | 2 | `e2e/action-form-signing.spec.ts` (logo asset, aspect ratio, header) |
+| REQ-DOC-023 | Electronic initials and signatures | Owner directive 2026-09-23 (DEC-068) | APPROVED | MUST | 2 | `e2e/action-form-signing.spec.ts` (pointer drawing, apply-everywhere); `packages/domain/test/signatures.test.ts` |
+| REQ-DOC-024 | Signature evidence | Owner directive 2026-09-23 (DEC-068) | APPROVED | MUST | 2 | `packages/db/test-int/signatures.test.ts`; `runtimePrivileges.test.ts` (no DELETE) |
+| REQ-DOC-025 | Signature is not approval | Owner directive 2026-09-23 (DEC-068) | APPROVED | MUST | 2 | `packages/domain/test/signatures.test.ts` (no manager block); `packages/db/test-int/signatures.test.ts` |
+| REQ-DOC-026 | Signing links | Owner directive 2026-09-23 (DEC-068) | APPROVED | MUST | 2 | `packages/db/test-int/signatures.test.ts` (neutral failures, single claim); `e2e/action-form-signing.spec.ts` |
+| REQ-DOC-027 | Signing link lifetime and delivery | Owner directive 2026-09-23 (DEC-068) | APPROVED | MUST | 2 | `packages/domain/test/signatures.test.ts` (window, ceiling); `packages/db/test-int/signatures.test.ts` (one request, no token in audit) |
 | REQ-NOTIFY-001 | Versioned notification templates | DMAIC pp. 12, 25-26 | PROVISIONAL | MUST | 5 | Admin test |
 | REQ-NOTIFY-002 | Applicability rules | DEC-016 | PROVISIONAL | MUST | 5 | Rule tests |
 | REQ-NOTIFY-003 | Transactional outbox | Reliability architecture | PROVISIONAL | MUST | 5 | Integration test |

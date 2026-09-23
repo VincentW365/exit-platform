@@ -21,6 +21,8 @@ export const NOTIFICATION_TYPES = [
   // Directive 6.3 K/N: configurable external purposes beyond Sagicor/NCB.
   'PAYROLL_OR_BANK_NOTIFICATION',
   'OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION',
+  /** DEC-068: asks a named signer to review and sign a form by secure link. */
+  'SIGNATURE_REQUEST',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -57,6 +59,8 @@ export const NOTIFICATION_RECIPIENT_CLASS: Readonly<
   RESIGNATION_ACCEPTANCE_LETTER: 'EMPLOYEE',
   PAYROLL_OR_BANK_NOTIFICATION: 'EXTERNAL_PROVIDER',
   OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION: 'EXTERNAL_PROVIDER',
+  // Addressed to the person being asked to sign - normally the employee.
+  SIGNATURE_REQUEST: 'EMPLOYEE',
 };
 
 /**
@@ -135,6 +139,18 @@ export const NOTIFICATION_PLACEHOLDERS: Readonly<Record<NotificationType, readon
     'EMPLOYEE_LEGAL_NAME',
     'EMPLOYEE_REFERENCE',
     'EFFECTIVE_SEPARATION_DATE',
+  ],
+  // DEC-068: what needs signing, who it concerns, the secure link and when
+  // it stops working. No reason, no checklist content, no pay data.
+  SIGNATURE_REQUEST: [
+    'EMPLOYEE_LEGAL_NAME',
+    'EMPLOYEE_FIRST_NAME',
+    'CASE_REFERENCE',
+    'DOCUMENT_TITLE',
+    'SIGNING_LINK',
+    'SIGNING_LINK_EXPIRY',
+    'HR_SENDER_NAME',
+    'HR_SENDER_TITLE',
   ],
   OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION: [
     'EMPLOYEE_LEGAL_NAME',

@@ -44,6 +44,9 @@
 | UX-040 | Administration — Email banner | HR Manager | Upload the department banner JPG, set alt text, enable/disable, optional hosted HTTPS URL | Configurable asset reference (DEC-067); never altered; audited; preview of the stored image. |
 | UX-041 | Captured Email (development mailbox) | HR roles, non-production | Verify the complete email presentation: subject, recipient class, HTML part with links and the banner image, plain-text part | Banner named (kind, size, alt) or "No email banner"; the image scales to the reader's width without clipping. |
 
+| UX-042 | Employee Action Form — Signatures | HR Manager anywhere; assigned HR Officer on owned cases; other HR Officers read only | Create a signature request, Copy Signing Link, Send by Email, Resend Email, Extend Link, Revoke Link; sign the Human Resources block in the application | One request per signer per form version, so copy and email address the same link; status card names signer, document, status, masked destination, created, expires and last emailed; business wording only, no token or expiry jargon; signing is not approval (DEC-068). |
+| UX-043 | Review and Sign (public, no sign-in) | The named signer, by secure link | Read the employee, separation and status details, confirm the review, draw initials once and apply them to each section, sign, tick the declaration and submit | Mobile-first single column; company logo; pointer input for finger, stylus, trackpad and mouse; typed fallback shown as typed; shows nothing of the wider case; completed, expired and revoked links each say so in the owner's wording (DEC-068). |
+
 ## Screen acceptance pattern
 
 Every operational screen must define:

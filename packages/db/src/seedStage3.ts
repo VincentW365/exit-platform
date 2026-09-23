@@ -1287,6 +1287,17 @@ Case reference: [[CASE_REFERENCE]]`,
     minimumDataNote:
       'Name and case reference only; the survey link is generated separately and never stored in this record.',
   },
+  // DEC-068: asks a named signer to open the form and sign it. The link
+  // itself is never stored here - the marker is replaced at dispatch.
+  {
+    notificationType: 'SIGNATURE_REQUEST' as const,
+    recipientClass: 'EMPLOYEE' as const,
+    name: 'DEV Signature request',
+    subjectTemplate: 'Please review and sign: [[DOCUMENT_TITLE]] - [[CASE_REFERENCE]]',
+    bodyTemplate: `${DEV_TEMPLATE_MARK}\n\nDear [[EMPLOYEE_FIRST_NAME]],\n\nYour [[DOCUMENT_TITLE]] is ready for your review and signature. Please open the secure link below, read the details shown, and add your initials and signature.\n\n[[SIGNING_LINK]]\n\nThis link is valid until [[SIGNING_LINK_EXPIRY]]. If it expires before you have signed, contact Human Resources and we will send you a new one.\n\nCase reference: [[CASE_REFERENCE]].\n\n[[HR_SENDER_NAME]]\n[[HR_SENDER_TITLE]]`,
+    minimumDataNote:
+      'Name, document title, case reference and the signing link only. The link is resolved at dispatch and never stored in this record (DEC-068).',
+  },
   {
     notificationType: 'MANUAL_EXCEPTION_NOTIFICATION' as const,
     recipientClass: 'EMPLOYEE' as const,

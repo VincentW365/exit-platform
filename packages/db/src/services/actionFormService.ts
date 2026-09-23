@@ -18,6 +18,7 @@ import {
   FINANCE_CHECKLIST_ITEMS,
   FORM_LIVE_STATUSES,
   HR_CHECKLIST_ITEMS,
+  SIGNER_ROLE_LABELS,
   type Actor,
   type ChecklistState,
 } from '@exit/domain';
@@ -25,6 +26,7 @@ import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
 import { renderActionFormPdf } from './renderService.ts';
+import { revokeRequestsForFormTx } from './signatureService.ts';
 import { assertFeatureAllowed, loadCaseAccess } from './shared.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
 
@@ -189,6 +191,10 @@ export async function getActionForm(actor: Actor, caseId: string) {
 
   return {
     caseNumber: c.caseNumber,
+    // DEC-068: who a signature request would address, and where it would go
+    // by default. HR can change the address before sending.
+    employeeDisplayName: c.employeeDisplayName,
+    employeeWorkEmail: c.employeeWorkEmail,
     level,
     current: current ? mask(current) : null,
     history: forms.slice(1).map((x) => ({ id: x.id, version: x.version, status: x.status })),
@@ -489,7 +495,23 @@ export async function renderApprovedForm(formId: string, correlationId: string):
   const financeChecklist = f.financeChecklist as Record<string, string>;
   const fmtDate = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : '-');
 
+  const { signatureSummaryForForm, readVerifiedSignature } = await import('./signatureService.ts');
+  const summary = await signatureSummaryForForm(formId);
+
   try {
+    const marks = await Promise.all(
+      summary.applied.map(async (s) => ({
+        blockLabel: s.blockLabel,
+        signerName: s.signerName,
+        signerRole: SIGNER_ROLE_LABELS[s.signerRole],
+        signatureType: s.signatureType,
+        provenance: s.provenance,
+        signedAt: s.signedAt,
+        bytes: await readVerifiedSignature(s),
+        width: s.width,
+        height: s.height,
+      })),
+    );
     const pdf = await renderActionFormPdf({
       confidentiality: 'Restricted - HR internal record',
       caseReference: snap['caseReference'] ?? '',
@@ -552,6 +574,10 @@ export async function renderApprovedForm(formId: string, correlationId: string):
         role: a.actorRole,
         at: a.createdAt,
       })),
+      // DEC-068: the marks applied to this version, read and verified now so
+      // a tampered or missing image fails the render instead of printing a
+      // form that silently lost a signature.
+      signatures: marks,
     });
     await prisma.$transaction(async (tx) => {
       await tx.actionFormVersion.updateMany({
@@ -630,6 +656,16 @@ export async function outdateFormsForCaseChange(caseId: string, reason: string):
           data: { outdatedReason: reason, rowVersion: { increment: 1 } },
         });
       }
+      // DEC-068 section 22: a signer must never be asked to sign facts that
+      // have since changed. Open requests against this version stop working;
+      // marks already applied stay with the version they were applied to and
+      // are never transplanted onto the replacement.
+      await revokeRequestsForFormTx(
+        tx,
+        f.id,
+        caseId,
+        `Material case correction: ${reason}`.slice(0, 300),
+      );
     });
   }
 }

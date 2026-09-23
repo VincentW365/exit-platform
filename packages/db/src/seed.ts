@@ -10,6 +10,8 @@ import { loadRootEnvFile } from '@exit/config';
 import {
   DEFAULT_CLOSE_OF_BUSINESS,
   DEFAULT_SEND_CONTROL,
+  SIGNATURE_LINK_DEFAULT_DAYS,
+  SIGNATURE_LINK_MAX_DAYS,
   RESIGNATION_ACCEPTANCE_LETTER_BODY,
 } from '@exit/domain';
 loadRootEnvFile(import.meta.dirname);
@@ -257,6 +259,29 @@ async function main(): Promise<void> {
       key: 'case.closeOfBusiness',
       value: DEFAULT_CLOSE_OF_BUSINESS,
       reason: 'Default close of business for derived effective separation times.',
+    },
+    update: {},
+  });
+
+  // DEC-068: how long a signing link stays usable. Generous by default,
+  // because a departing employee may be away from a computer for weeks, and
+  // capped so the platform never issues a permanently valid link. Platform
+  // neutral: no email provider or host has any bearing on these numbers.
+  await prisma.systemConfig.upsert({
+    where: { key: 'signature.linkValidDays' },
+    create: {
+      key: 'signature.linkValidDays',
+      value: SIGNATURE_LINK_DEFAULT_DAYS,
+      reason: 'DEC-068 default signing-link validity in days.',
+    },
+    update: {},
+  });
+  await prisma.systemConfig.upsert({
+    where: { key: 'signature.linkMaxDays' },
+    create: {
+      key: 'signature.linkMaxDays',
+      value: SIGNATURE_LINK_MAX_DAYS,
+      reason: 'DEC-068 maximum signing-link validity in days, including extensions.',
     },
     update: {},
   });

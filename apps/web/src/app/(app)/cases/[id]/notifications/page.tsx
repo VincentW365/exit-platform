@@ -42,6 +42,7 @@ const TYPE_LABELS: Readonly<Record<NotificationType, string>> = {
   SAGICOR_GROUP_HEALTH_REMOVAL: 'Sagicor group health removal',
   NCB_GROUP_LIFE_REMOVAL: 'NCB group life removal',
   SURVEY_INVITATION_REFERENCE: 'Exit survey invitation',
+  SIGNATURE_REQUEST: 'Signature request',
   MANUAL_EXCEPTION_NOTIFICATION: 'Manual exception notice',
   PAYROLL_OR_BANK_NOTIFICATION: 'Payroll or bank notification',
   OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION: 'Other external provider notification',

@@ -256,7 +256,74 @@ interface FormRenderInput {
   formVersion: string;
   sections: ReadonlyArray<{ heading: string; rows: ReadonlyArray<[string, string]> }>;
   approvals: ReadonlyArray<{ label: string; name: string; role: string; at: Date }>;
+  /**
+   * DEC-068: the initials and signatures applied to this version, as image
+   * bytes already verified against their recorded checksums. Deliberately
+   * separate from `approvals`: a signature is evidence of who signed, not a
+   * decision to authorize anything.
+   */
+  signatures?: ReadonlyArray<{
+    blockLabel: string;
+    signerName: string;
+    signerRole: string;
+    signatureType: 'INITIALS' | 'SIGNATURE';
+    provenance: 'DRAWN' | 'TYPED';
+    signedAt: Date;
+    bytes: Buffer;
+    width: number;
+    height: number;
+  }>;
   approvedAt: Date;
+}
+
+/**
+ * One applied mark: the image at its own aspect ratio, with the signer, the
+ * role and the date beneath it. The box is a maximum, never a target - a
+ * short set of initials stays small rather than being stretched to fill it.
+ */
+function signatureRow(
+  doc: InstanceType<typeof PDFDocument>,
+  mark: NonNullable<FormRenderInput['signatures']>[number],
+): void {
+  const left = doc.page.margins.left;
+  const right = doc.page.width - doc.page.margins.right;
+  const maxW = mark.signatureType === 'INITIALS' ? 72 : 168;
+  const maxH = mark.signatureType === 'INITIALS' ? 30 : 48;
+  const scale = Math.min(maxW / mark.width, maxH / mark.height, 1);
+  const drawW = Math.max(1, mark.width * scale);
+  const drawH = Math.max(1, mark.height * scale);
+  const blockH = drawH + 26;
+  if (doc.y > doc.page.height - doc.page.margins.bottom - blockH) doc.addPage();
+
+  const top = doc.y;
+  doc
+    .font('Helvetica')
+    .fontSize(9.5)
+    .fillColor(MUTED)
+    .text(mark.blockLabel, left, top, { width: 186, lineGap: 1 });
+  const labelBottom = doc.y;
+
+  try {
+    doc.image(mark.bytes, left + 200, top, { width: drawW, height: drawH });
+  } catch {
+    // A mark that will not decode must not lose the form: the record of who
+    // signed still prints, and the missing image is stated plainly.
+    doc
+      .font('Helvetica-Oblique')
+      .fontSize(9)
+      .fillColor(MUTED)
+      .text('[signature image unavailable]', left + 200, top, { width: right - left - 200 });
+  }
+  const caption =
+    `${mark.signerName} (${mark.signerRole}) - ${formatInstant(mark.signedAt)}` +
+    (mark.provenance === 'TYPED' ? ' - typed' : '');
+  doc
+    .font('Helvetica')
+    .fontSize(8.5)
+    .fillColor(MUTED)
+    .text(caption, left + 200, top + drawH + 3, { width: right - left - 200, lineGap: 1 });
+  doc.x = left;
+  doc.y = Math.max(labelBottom, top + drawH + 16) + 6;
 }
 
 /** Ruled section heading; never orphaned at the bottom of a page. */
@@ -317,6 +384,11 @@ export async function renderActionFormPdf(input: FormRenderInput): Promise<Rende
   sectionHeading(doc, 'Approvals (authenticated attestations)');
   for (const a of input.approvals) {
     fieldRow(doc, a.label, `${a.name} (${a.role}) - ${formatInstant(a.at)}`);
+  }
+
+  if (input.signatures && input.signatures.length > 0) {
+    sectionHeading(doc, 'Initials and signatures');
+    for (const mark of input.signatures) signatureRow(doc, mark);
   }
 
   if (doc.y > doc.page.height - doc.page.margins.bottom - 48) doc.addPage();

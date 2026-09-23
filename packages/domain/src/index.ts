@@ -35,3 +35,4 @@ export * from './emailActions.ts';
 export * from './derivedActions.ts';
 export * from './requiredActions.ts';
 export * from './emailBanner.ts';
+export * from './signatures.ts';

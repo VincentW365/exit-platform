@@ -2,8 +2,9 @@ import type { Metadata } from 'next';
 import { Field } from '@/components/forms';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { notFound } from 'next/navigation';
-import { ServiceError, getActionForm } from '@exit/db';
+import { ServiceError, getActionForm, listSignatureRequests } from '@exit/db';
 import {
+  BRAND,
   FINANCE_CHECKLIST_ITEMS,
   FORM_STATUS_LABELS,
   HR_CHECKLIST_ITEMS,
@@ -15,6 +16,7 @@ import {
 import { requireAuth } from '@/lib/auth';
 import { CaseTitle, Feedback } from '@/components/ui';
 import { CaseNav } from '../CaseNav';
+import { SignaturePanel } from './SignaturePanel';
 import {
   completeFormAction,
   createFormAction,
@@ -188,6 +190,12 @@ export default async function ActionFormPage({
     iso ? String(iso).slice(0, 10) : '-';
   const chosenAction = f ? actionTypeFor(String(snap['departureType'] ?? '')) : 'Resignation';
   const completion = data.attestations.find((a) => a.kind === 'HR_FORM_COMPLETION');
+  const signatures = await listSignatureRequests(actor, id);
+  const employeeSignature = signatures.signatures.find((s) => s.blockKey === 'acknowledgement');
+  const hrSignature = signatures.signatures.find((s) => s.blockKey === 'hrCompletion');
+  // Informed completion (the Finance pattern): completion is NOT blocked on
+  // signatures, but the officer must see what the immutable PDF will record.
+  const openSignatureRequests = signatures.requests.filter((r) => r.status === 'PENDING').length;
   const managerHistorical = data.attestations.find(
     (a) => a.kind === 'MANAGER_FORM_APPROVAL' && !a.invalidatedAt,
   );
@@ -263,6 +271,17 @@ export default async function ActionFormPage({
 
           <div className="paper">
             <header className="paper__letterhead">
+              {/* DEC-068 section 1: the approved logo asset itself, at its own
+                  aspect ratio - never redrawn in text or CSS. The same file
+                  the PDF renderer uses, so screen, print and PDF agree. */}
+              {/* eslint-disable-next-line @next/next/no-img-element -- approved static brand asset */}
+              <img
+                src={BRAND.logoWebPath}
+                alt={BRAND.logoAlt}
+                className="paper__logo"
+                width={BRAND.logoWidth}
+                height={BRAND.logoHeight}
+              />
               <div className="paper__org">Bert&apos;s Auto Parts</div>
               <p className="paper__title">Employee Action Form</p>
               <p className="paper__ref">
@@ -294,6 +313,16 @@ export default async function ActionFormPage({
                 <span className="value">
                   {snap['department']} / {snap['location']}
                 </span>
+              </div>
+              {/* DEC-068 section 2: position and separation type belong in the
+                  header a signer reads, not only in the body of the sheet. */}
+              <div>
+                <span className="label">Position:</span>
+                <span className="value">{snap['position'] ?? '-'}</span>
+              </div>
+              <div>
+                <span className="label">Separation Type:</span>
+                <span className="value">{snap['departureType'] ?? '-'}</span>
               </div>
             </div>
 
@@ -540,6 +569,19 @@ export default async function ActionFormPage({
                         {f.ackMethod ? ` (${f.ackMethod})` : ''}
                       </>
                     )}
+                    {/* DEC-068: the mark itself, where the paper form has a
+                        signature line. Shown as evidence beside the
+                        acknowledgement it accompanies, never in place of it. */}
+                    {employeeSignature ? (
+                      <div>
+                        {/* eslint-disable-next-line @next/next/no-img-element -- authorized private route */}
+                        <img
+                          src={`/api/signatures/${employeeSignature.id}/image`}
+                          alt={`Signature of ${employeeSignature.signerName}`}
+                          className="sigmark"
+                        />
+                      </div>
+                    ) : null}
                   </td>
                 </tr>
                 <tr>
@@ -562,6 +604,16 @@ export default async function ActionFormPage({
                     ) : (
                       <span className="meta">Pending completion by the assigned HR Officer.</span>
                     )}
+                    {hrSignature ? (
+                      <div>
+                        {/* eslint-disable-next-line @next/next/no-img-element -- authorized private route */}
+                        <img
+                          src={`/api/signatures/${hrSignature.id}/image`}
+                          alt={`Signature of ${hrSignature.signerName}`}
+                          className="sigmark"
+                        />
+                      </div>
+                    ) : null}
                   </td>
                 </tr>
               </tbody>
@@ -570,6 +622,19 @@ export default async function ActionFormPage({
 
           {/* Lifecycle actions live under the sheet, as app chrome. */}
           <div style={{ maxWidth: '52rem', margin: '0 auto' }}>
+            {/* DEC-068: signature requests and applied marks. */}
+            <SignaturePanel
+              caseId={id}
+              formId={f.id}
+              // Signatures are collected until the version is finalized, which
+              // is the same boundary the service enforces - not the narrower
+              // "still being edited" one.
+              formEditable={!closed}
+              employeeName={data.employeeDisplayName}
+              employeeEmail={data.employeeWorkEmail}
+              data={signatures}
+            />
+
             {canEditSheet && editable ? (
               <form action={submitFormAction} style={{ marginBottom: 'var(--space-3)' }}>
                 <input type="hidden" name="caseId" value={id} />
@@ -578,6 +643,14 @@ export default async function ActionFormPage({
               </form>
             ) : null}
 
+            {reviewable && cap.canComplete && openSignatureRequests > 0 ? (
+              <p className="banner-baseline" role="status">
+                {openSignatureRequests} signature{' '}
+                {openSignatureRequests === 1 ? 'request is' : 'requests are'} still open. Completing
+                the form freezes this version and the final PDF will record only the initials and
+                signatures collected so far.
+              </p>
+            ) : null}
             {reviewable && cap.canComplete && financePendingCount > 0 ? (
               <p className="banner-baseline" role="status">
                 The Finance evidence still has {financePendingCount} item(s) marked Pending.

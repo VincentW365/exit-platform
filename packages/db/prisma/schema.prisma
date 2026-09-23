@@ -440,6 +440,8 @@ model OffboardingCase {
 
   snapshot             EmployeeSnapshot?
   statusHistory        CaseStatusHistory[]
+  signatureRequests    SignatureRequest[]
+  signatureRecords     SignatureRecord[]
   participants         CaseParticipant[]
   notes                CaseNote[]
   attachments          Attachment[]
@@ -960,6 +962,10 @@ model ActionFormVersion {
   createdAt               DateTime              @default(now())
   updatedAt               DateTime              @updatedAt
 
+  /// DEC-068: electronic initials and signatures applied to this version.
+  signatureRequests SignatureRequest[]
+  signatures        SignatureRecord[]
+
   @@unique([caseId, version])
   @@index([status])
   @@map("action_form_version")
@@ -1197,6 +1203,130 @@ enum NotificationType {
   RETURN_ITEMS_CHECKLIST
   /// The rendered resignation acceptance letter, emailed to the employee.
   RESIGNATION_ACCEPTANCE_LETTER
+  /// DEC-068: asks a named signer to review and sign a form by secure link.
+  SIGNATURE_REQUEST
+}
+
+/// DEC-068: electronic initials and signatures.
+enum SignerRole {
+  EMPLOYEE
+  HR_OFFICER
+  HR_MANAGER
+  OTHER
+}
+
+enum SignatureType {
+  INITIALS
+  SIGNATURE
+}
+
+enum SignatureRequestStatus {
+  PENDING
+  SIGNED
+  REVOKED
+  EXPIRED
+}
+
+enum SignatureProvenance {
+  DRAWN
+  TYPED
+}
+
+/// One request for one signer to sign one form (DEC-068).
+///
+/// The secure link is long-lived, extendable, resendable and revocable, so
+/// the raw token must survive to be copied or re-sent: the hash is stored for
+/// lookup (unique, nulled the moment the request ends) and the raw value is
+/// held encrypted at rest with the same box that protects recipient
+/// destinations. Neither ever reaches a log or an audit event.
+model SignatureRequest {
+  id              String                 @id @default(uuid()) @db.Uuid
+  caseId          String                 @db.Uuid
+  case            OffboardingCase        @relation(fields: [caseId], references: [id])
+  formId          String                 @db.Uuid
+  form            ActionFormVersion      @relation(fields: [formId], references: [id])
+  documentTitle   String
+  signerRole      SignerRole
+  signerName      String
+  /// Where the platform would email it. Plain, like the case work email it
+  /// comes from; masked everywhere it is displayed outside the edit control.
+  signerEmail     String?
+  status          SignatureRequestStatus @default(PENDING)
+  /// sha256 hex of the signing token; nulled on completion/revocation/expiry.
+  tokenHash       String?                @unique
+  /// AES-256-GCM ciphertext of the same token; cleared at the same moment.
+  tokenCiphertext String?
+  issuedAt        DateTime               @default(now())
+  expiresAt       DateTime
+  /// Which blocks this signer must complete, frozen when the request is made.
+  requiredBlocks  String[]
+  lastSentAt      DateTime?
+  sentCount       Int                    @default(0)
+  lastSentToMask  String?
+  firstOpenedAt   DateTime?
+  signedAt        DateTime?
+  revokedAt       DateTime?
+  revokedReason   String?
+  extendedCount   Int                    @default(0)
+  /// The confirmation the signer ticked, stored with the completion.
+  consentText     String?
+  consentAt       DateTime?
+  signerIpHash    String?
+  signerUserAgent String?
+  createdById     String                 @db.Uuid
+  rowVersion      Int                    @default(0)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  signatures SignatureRecord[]
+
+  @@index([caseId])
+  @@index([formId])
+  @@index([status, expiresAt])
+  @@map("signature_request")
+}
+
+/// One applied mark: initials on a section, or a full signature (DEC-068).
+/// The image itself lives in private object storage; this row is the record.
+model SignatureRecord {
+  id              String              @id @default(uuid()) @db.Uuid
+  caseId          String              @db.Uuid
+  case            OffboardingCase     @relation(fields: [caseId], references: [id])
+  /// The form version this mark belongs to - the signed facts, frozen.
+  documentId      String              @db.Uuid
+  document        ActionFormVersion   @relation(fields: [documentId], references: [id])
+  requestId       String?             @db.Uuid
+  request         SignatureRequest?   @relation(fields: [requestId], references: [id])
+  /// Who signed: a user id for an HR signer, the request id for an external
+  /// one. Never an unauthenticated free-text claim of identity on its own.
+  signerReference String
+  signerName      String
+  signerRole      SignerRole
+  signatureType   SignatureType
+  /// Which block of the form this mark was applied to.
+  blockKey        String
+  blockLabel      String
+  provenance      SignatureProvenance @default(DRAWN)
+  /// Private object-storage key; never a public URL.
+  storageKey      String              @unique
+  checksum        String
+  mimeType        String              @default("image/png")
+  width           Int
+  height          Int
+  signedAt        DateTime            @default(now())
+  /// A mistaken mark is superseded, never deleted: signing evidence is
+  /// history, and the runtime role holds no DELETE anywhere. The unique
+  /// "one mark per block" index is partial on supersededAt IS NULL and is
+  /// created in SQL, which is why it is not declared here.
+  supersededAt     DateTime?
+  supersededReason String?
+  supersededById   String?            @db.Uuid
+  createdAt       DateTime            @default(now())
+
+  @@index([caseId])
+  @@index([requestId])
+  @@index([documentId, blockKey])
+  @@map("signature_record")
 }
 
 enum NotificationStatus {
@@ -1612,6 +1742,11 @@ model NotificationRecord {
   /// checksum - never duplicated into the record or the outbox.
   attachedDocumentId String?           @db.Uuid
   attachedDocument   DocumentInstance? @relation("documentEmail", fields: [attachedDocumentId], references: [id])
+
+  /// DEC-068: the signature request this email carries the link for. The
+  /// outgoing body keeps a marker; the live URL is resolved at dispatch, so
+  /// no stored snapshot ever contains a working signing link.
+  signatureRequestId String? @db.Uuid
 
   /// Directive 6.3 T/U: acknowledgement / completion evidence (token or
   /// HR-recorded). Delivery alone is never completion.

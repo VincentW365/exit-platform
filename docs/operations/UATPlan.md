@@ -131,6 +131,38 @@ sign-off.
    still carries the links, and that removing the banner does not stop the
    next email.**
 
+### UAT-4b Signing the Employee Action Form (DEC-068)
+
+1. **Open the Employee Action Form on an approved case and confirm the
+   company logo appears at the head of the sheet at its own proportions,
+   above a header naming the employee, employee number, position,
+   department and location, separation type, effective date and case
+   reference.**
+2. **Create a signature request for the employee. Confirm the status card
+   names the signer, the document, the status, the destination, when it was
+   created and when it expires, and that no HR Manager approval is asked
+   for anywhere.**
+3. **Copy Signing Link. Confirm the whole address is copied in one piece and
+   that the confirmation says "Signing link copied".**
+4. **Send by Email, run an outbox pass, and confirm the captured message in
+   `/dev/mailbox` carries the same link and states the date it runs until.**
+5. **Open the link on a phone (or a phone-sized window) with no sign-in.
+   Confirm there is no HR navigation or role switcher, that only the
+   details needed to sign are shown, and that submitting without every mark
+   names exactly what is missing.**
+6. **Draw your initials once, apply them to the remaining sections, sign,
+   tick the declaration and submit. Confirm the thank-you page, then reopen
+   the link and confirm it says the request has already been completed.**
+7. **Back in the platform, confirm the marks appear on the sheet, sign the
+   Human Resources block, complete the form, and confirm the downloaded PDF
+   shows the logo, the initials, both signatures and their dates.**
+8. **On a second request, use Extend Link and confirm the new date; then
+   Revoke Link with a reason and confirm the signer sees "This signing
+   request is no longer valid." and nothing about the case.**
+9. **Confirm the audit centre shows the request created, copied, emailed,
+   extended, revoked and completed - and that no entry anywhere contains
+   the signing link itself.**
+
 ### UAT-5 Clearance and completion (HR Manager)
 
 1. **Complete all clearance conditions; approve clearance; complete the

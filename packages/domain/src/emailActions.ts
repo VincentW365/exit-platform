@@ -68,6 +68,10 @@ export const DEFAULT_SEND_CONTROL: Readonly<Record<NotificationType, SendControl
   MANUAL_EXCEPTION_NOTIFICATION: 'HR_REVIEW_THEN_SEND',
   PAYROLL_OR_BANK_NOTIFICATION: 'HR_REVIEW_THEN_SEND',
   OTHER_EXTERNAL_OFFBOARDING_NOTIFICATION: 'HR_REVIEW_THEN_SEND',
+  // DEC-068: an HR person pressed "Send by email" on a specific signature
+  // request. That IS the human review; queueing it for a second one would
+  // only delay a message somebody just asked to send.
+  SIGNATURE_REQUEST: 'AUTO_SEND',
 };
 
 export function isSendControlLevel(v: unknown): v is SendControlLevel {
@@ -214,6 +218,9 @@ export function allowedTokenPurposes(type: NotificationType): readonly ActionTok
     // The letter carries itself. Asking a departing employee to click a link
     // to acknowledge their own acceptance letter would be theatre.
     case 'RESIGNATION_ACCEPTANCE_LETTER':
+    // DEC-068: the signing link IS the action; it is its own long-lived
+    // request, not an acknowledgement token issued at dispatch.
+    case 'SIGNATURE_REQUEST':
       return [];
     case 'SAGICOR_GROUP_HEALTH_REMOVAL':
     case 'NCB_GROUP_LIFE_REMOVAL':

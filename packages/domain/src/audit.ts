@@ -200,6 +200,18 @@ export const AUDIT_EVENT_TYPES = [
   'USER_EMAIL_BANNER_CHANGED',
   /** The HR Manager set, changed or cleared the department email banner (DEC-067). */
   'CONFIG_EMAIL_BANNER_CHANGED',
+  // DEC-068: electronic initials and signatures. The signing token never
+  // appears in any of these events - only the request id.
+  'SIGNATURE_REQUEST_CREATED',
+  'SIGNATURE_LINK_COPIED',
+  'SIGNATURE_REQUEST_EMAILED',
+  'SIGNATURE_REQUEST_EXTENDED',
+  'SIGNATURE_REQUEST_REVOKED',
+  'SIGNATURE_REQUEST_EXPIRED',
+  'SIGNATURE_LINK_OPENED',
+  'SIGNATURE_APPLIED',
+  'SIGNATURE_SUPERSEDED',
+  'SIGNATURE_REQUEST_COMPLETED',
   'IDENTITY_ACCESS_REVIEW',
   'ROLE_EXPIRED_REVOKED',
   'SYNC_RUN_COMPLETED',

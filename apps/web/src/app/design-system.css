@@ -2310,3 +2310,145 @@ kbd {
   min-height: 10rem;
   border: 0;
 }
+
+/* --- DEC-068: signing ---------------------------------------------------- */
+
+/* The approved logo on the on-screen sheet, at its own aspect ratio. Height
+   is fixed and width follows, so the mark is never stretched or cropped. */
+.paper__logo {
+  display: block;
+  height: 4.5rem;
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto var(--space-2);
+}
+
+/* One signing control, used for a full signature and for initials. */
+.sigpad {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+  background: var(--surface-1);
+}
+.sigpad__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.sigpad__label {
+  font-weight: var(--weight-semibold);
+}
+/* State is words plus a tick, never colour alone (WCAG 2.2, section 32). */
+.sigpad__state {
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+.sigpad[data-applied='yes'] .sigpad__state {
+  color: var(--success-ink, var(--text-1));
+  font-weight: var(--weight-semibold);
+}
+.sigpad__canvas {
+  display: block;
+  width: 100%;
+  border: 1px dashed var(--line-strong, var(--line));
+  border-radius: var(--radius-sm);
+  background: var(--surface-0, #fff);
+  /* Only the pad stops touch panning: the page around it still scrolls. */
+  touch-action: none;
+  cursor: crosshair;
+}
+.sigpad__canvas:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.sigpad__applied {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0, #fff);
+  padding: var(--space-2);
+  min-height: 5rem;
+  display: flex;
+  align-items: center;
+}
+.sigpad__appliedImage {
+  max-width: 100%;
+  max-height: 6rem;
+  width: auto;
+  height: auto;
+}
+.sigpad__hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+.sigpad__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.sigpad__typed {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--line);
+}
+
+/* The public signing page: one column, comfortable on a phone. */
+.signing {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-3) var(--space-8);
+}
+.signing__brand {
+  margin-bottom: var(--space-4);
+}
+.signing__lede {
+  color: var(--text-2);
+  margin-bottom: var(--space-4);
+}
+.signing__review,
+.signing__marks,
+.signing__consent {
+  margin-bottom: var(--space-5);
+}
+.signing__facts {
+  margin: 0 0 var(--space-3);
+}
+.signing__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+.signing__row dt {
+  flex: 0 0 12rem;
+  color: var(--text-2);
+}
+.signing__row dd {
+  margin: 0;
+  font-weight: var(--weight-semibold);
+}
+@media (max-width: 30rem) {
+  .signing__row dt {
+    flex-basis: 100%;
+  }
+}
+
+/* Applied marks on the sheet and in the case view. */
+.sigmark {
+  display: inline-block;
+  max-height: 3rem;
+  max-width: 12rem;
+  width: auto;
+  height: auto;
+  vertical-align: bottom;
+}
+.sigmark--initials {
+  max-height: 2rem;
+  max-width: 5rem;
+}

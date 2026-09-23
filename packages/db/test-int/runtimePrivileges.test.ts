@@ -113,6 +113,14 @@ describe('runtime role cannot tamper with Stage 3 workflow evidence (Directive 3
     await expectDenied(`DELETE FROM task_correction WHERE 1=0`);
   });
 
+  it('cannot DELETE signing evidence (DEC-068)', async () => {
+    // A signature or a signing request that existed is history. A mistaken
+    // mark is superseded in place; nothing is ever removed.
+    await expectDenied(`DELETE FROM signature_record WHERE 1=0`);
+    await expectDenied(`DELETE FROM signature_request WHERE 1=0`);
+    await expectDenied(`TRUNCATE TABLE signature_record CASCADE`);
+  });
+
   it('cannot disable the Stage 3 protection triggers', async () => {
     await expectDenied(`ALTER TABLE workflow_task DISABLE TRIGGER trg_access_task_never_waived`);
     await expectDenied(
