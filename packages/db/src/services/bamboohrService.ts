@@ -31,6 +31,7 @@ import { bambooDirectoryStatus, getConfig } from '@exit/config';
 import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
+import { directoryMode, scheduledSyncEnabled } from './directoryModeService.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
 
 export interface BambooEmployee extends EmployeeFieldSet {
@@ -403,7 +404,8 @@ export class LiveBambooDirectoryAdapter implements BambooAdapter {
 }
 
 export async function getBambooAdapter(): Promise<BambooAdapter> {
-  const mode = await getSystemConfigValue('bamboohr.mode');
+  // DEC-071: live whenever a credential is configured, unless set explicitly.
+  const mode = await directoryMode();
   const real: BambooAdapter =
     mode === 'live' ? new LiveBambooDirectoryAdapter() : new FixtureBambooAdapter();
   // Simulated outage (owner directive, 2026-09-15, sections 18/37): an
@@ -683,16 +685,16 @@ export async function liveDirectoryPresence(): Promise<{ present: boolean; recor
 }
 
 /**
- * D.2: scheduled synchronization is PREPARED but disabled unless the
- * system configuration flag is explicitly set. Called by the worker sweep.
+ * D.2: scheduled synchronization, on whenever the directory is live unless
+ * the system configuration flag says otherwise (DEC-071). Called by the
+ * worker sweep.
  */
 export async function scheduledDirectorySyncIfEnabled(): Promise<
   'disabled' | 'fresh' | 'ran' | 'failed'
 > {
   // Kept for callers that predate the directory engine; the worker now calls
-  // directorySyncTick directly. Scheduled reconciliation stays behind the
-  // bamboohr.scheduledSync switch.
-  const enabled = (await getSystemConfigValue('bamboohr.scheduledSync')) === true;
+  // directorySyncTick directly.
+  const enabled = await scheduledSyncEnabled();
   if (!enabled) return 'disabled';
   const { directorySyncTick } = await import('./directorySyncService.ts');
   const r = await directorySyncTick(new Date());

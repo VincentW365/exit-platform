@@ -47,6 +47,7 @@ import {
   type BambooAdapter,
   type BambooEmployee,
 } from './bamboohrService.ts';
+import { directoryMode, scheduledSyncEnabled } from './directoryModeService.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
 
 const PURGED_PREFIX = 'PURGED-';
@@ -833,7 +834,7 @@ export async function directorySyncTick(
   options: { adapter?: BambooAdapter } = {},
 ): Promise<{ queued: DirectorySyncKind[]; executed: SyncExecution[]; skipped: 'locked' | null }> {
   const queued: DirectorySyncKind[] = [];
-  const enabled = (await getSystemConfigValue('bamboohr.scheduledSync')) === true;
+  const enabled = await scheduledSyncEnabled();
   if (enabled) {
     const s = await directorySyncSettings();
     if (nightlyDue(await lastSuccessfulAt(['NIGHTLY']), now, s)) {
@@ -854,10 +855,17 @@ export async function directorySyncTick(
 export async function directoryStartupCheck(
   now = new Date(),
 ): Promise<{ needed: boolean; executed: SyncExecution[]; skipped: 'locked' | null }> {
-  const enabled = (await getSystemConfigValue('bamboohr.scheduledSync')) === true;
+  const enabled = await scheduledSyncEnabled();
   if (!enabled) return { needed: false, executed: [], skipped: null };
   const s = await directorySyncSettings();
-  const needed = startupSyncNeeded(await lastSuccessfulAt(), now, s);
+  // DEC-071: a live directory with nothing mirrored yet - a fresh deployment,
+  // or a credential added after the fixtures were loaded - fills at once.
+  const emptyLiveMirror =
+    (await directoryMode()) === 'live' &&
+    (await getPrisma().employeeSourceRecord.count({
+      where: { sourceSystem: SOURCE_SYSTEM_FOR_MODE.live },
+    })) === 0;
+  const needed = emptyLiveMirror || startupSyncNeeded(await lastSuccessfulAt(), now, s);
   if (!needed) return { needed: false, executed: [], skipped: null };
   await requestDirectorySync({ kind: 'STARTUP' });
   const r = await runQueuedDirectorySyncs({ now });
@@ -902,11 +910,11 @@ export interface DirectorySyncStatusView {
 /** Everything the administration screens and the freshness banner show. */
 export async function directorySyncStatus(now = new Date()): Promise<DirectorySyncStatusView> {
   const prisma = getPrisma();
-  const mode = (await getSystemConfigValue('bamboohr.mode')) === 'live' ? 'live' : 'fixture';
+  const mode = await directoryMode();
   const sourceSystem = SOURCE_SYSTEM_FOR_MODE[mode];
   const [scheduled, outage, settings, employees, totalRecords, archived, lastRun, activeRun] =
     await Promise.all([
-      getSystemConfigValue('bamboohr.scheduledSync'),
+      scheduledSyncEnabled(),
       getSystemConfigValue('bamboohr.simulateOutage'),
       directorySyncSettings(),
       prisma.employeeSourceRecord.count({
@@ -934,7 +942,7 @@ export async function directorySyncStatus(now = new Date()): Promise<DirectorySy
   return {
     mode,
     sourceSystem,
-    scheduledSyncEnabled: scheduled === true,
+    scheduledSyncEnabled: scheduled,
     webhookConfigured: Boolean(getConfig().BAMBOOHR_WEBHOOK_PRIVATE_KEY?.trim()),
     simulatedOutage: outage === true && !getConfig().isProduction,
     employees,

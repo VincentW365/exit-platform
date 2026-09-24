@@ -74,7 +74,8 @@ Pinned by `packages/config/test/hostedUat.test.ts`.
 | Valid | Invalid |
 | --- | --- |
 | UAT + separate UAT S3 bucket | UAT + production storage bucket |
-| UAT + separate UAT OIDC application | UAT + production BambooHR credential |
+| UAT + separate UAT OIDC application | UAT + production identity provider |
+| UAT + the read-only BambooHR directory credential (DEC-071: the directory is live in every environment; the adapter never writes) | UAT + any BambooHR credential with write scope |
 | UAT + controlled test email provider | UAT + production database |
 
 This is an **operational** rule. Configuration cannot distinguish a UAT bucket from a
@@ -164,7 +165,12 @@ S3_SECRET_KEY_REF=env:UAT_S3_SECRET_KEY
 UAT_S3_ACCESS_KEY=<set in the host's secret store>
 UAT_S3_SECRET_KEY=<set in the host's secret store>
 
-# Deliberately ABSENT: no BambooHR credential of any kind, no webhook key.
+# Directory (DEC-071): the read-only BambooHR credential is PRESENT so the
+# directory is live from the first start; with it configured the platform
+# resolves bamboohr.mode=live and bamboohr.scheduledSync=true on its own.
+BAMBOOHR_SUBDOMAIN=<company subdomain>
+BAMBOOHR_API_KEY=<read-only key, set in the host's secret store>
+# Optional: the webhook key, if BambooHR change notifications are wired to UAT.
 ```
 
 ## Configuration — worker (minimised)
@@ -342,28 +348,24 @@ pnpm exec tsx scripts/uat-stakeholder-seed.ts          # 5. stakeholder UAT data
 
 ### The first directory synchronization
 
-The seeds do **not** populate the employee directory mirror. Only a synchronization run
-fills `employee_source_record`, and the local reset tool's synthetic mode is what
-normally triggers it. On the remote database, after step 5:
+The seeds do **not** populate the employee directory mirror; a synchronization run
+fills `employee_source_record`. Since DEC-071 that first run is automatic: with the
+BambooHR credential configured the platform resolves `bamboohr.mode=live` and
+`bamboohr.scheduledSync=true` without any key being set, and the **worker's start-up
+check** fills an empty live mirror at once. So on the remote database, after step 5:
 
-1. Sign in to the hosted app as the **HR Manager** (DEC-063: Refresh Directory Now is an HR Manager capability).
-2. Open **Administration → System** and press **Refresh Directory Now**.
-3. Watch the panel; the run should finish `SUCCESS: checked 14, added 14`.
+1. Start the worker (or restart it). Its log shows `directory_startup_check` with
+   `STARTUP:SUCCESS checked <n>`.
+2. Sign in as the **HR Manager**, open **Administration → System** and confirm the
+   adapter reads `live`, the mirror `CURRENT`, and the live record count.
+3. If the worker cannot run yet, press **Refresh Directory Now** on the same page; the
+   run is queued at once and executed after the response.
 
-With no BambooHR credential and `bamboohr.mode` unset, the engine reads the
-**fixture** adapter — the fourteen synthetic employees — so this is safe and needs
-nothing external. Until it has run, the `/directory` pages show "The directory is
-empty" (intake search still finds fixtures, so case creation works either way).
-
-The refresh is queued at once and executed after the response; on a serverless web
-host that continuation can be cut short, so **have the worker running first** — its
-minute tick executes any queued run regardless.
-
-Optionally enable `bamboohr.scheduledSync` on the same page. In UAT this makes the
-hourly and nightly reconciliations run against the fixture (harmless, and it keeps
-freshness `CURRENT`); with it off, freshness moves to "delayed" after two hours and
-"stale" after six, which is cosmetic — a status note on directory pages and a failing
-"employee directory mirror" component on `/admin/health`. `/api/ready` is unaffected.
+The hourly and nightly reconciliations then run on their own. An administrator can
+still set either key explicitly, and an explicit value always wins; `fixture` is the
+value the local reset tool writes for automated test runs, followed by `connect-live`.
+With no credential at all (a throwaway environment), the same steps fill the mirror
+from the **fixture** adapter instead.
 
 ## Recipient configuration and workflow assignments
 

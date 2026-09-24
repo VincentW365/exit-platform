@@ -2,6 +2,7 @@
  * One-command environment reset (facilitator-only, development machines only).
  *
  *   pnpm exec tsx scripts/reset-environment.ts status
+ *   pnpm exec tsx scripts/reset-environment.ts connect-live
  *   pnpm exec tsx scripts/reset-environment.ts purge-live --yes
  *   pnpm exec tsx scripts/reset-environment.ts uat --yes
  *   pnpm exec tsx scripts/reset-environment.ts fresh --yes
@@ -9,6 +10,10 @@
  * Modes:
  *   status      Read-only: counts of cases, directory records, live-data
  *               presence and the current directory mode. Never changes state.
+ *   connect-live Sets live mode and scheduled reconciliation and runs one
+ *               read-only synchronization, touching nothing else. Run it after
+ *               every synthetic rebuild (DEC-071: the directory is never left
+ *               disconnected).
  *   purge-live  Removes real (live BambooHR) directory data WITHOUT touching
  *               cases: anonymizes the live cache, deletes the local alias
  *               mapping if present, lowers the live banner and returns the
@@ -198,13 +203,21 @@ async function rebuild(withUatDataset: boolean, migrateUrl: URL, devDbName: stri
         },
       });
       if (admin) {
-        const sync = await db.syncEmployees({
-          userId: admin.id,
-          roles: ['HR_MANAGER'] as never,
-        });
+        const actor = { userId: admin.id, roles: ['HR_MANAGER'] as never };
+        // DEC-071: a configured credential now means "live" by default, so a
+        // synthetic rebuild must say "fixture" out loud. Reconnect afterwards
+        // with `connect-live` - the owner never wants the directory left off.
+        await db.setSystemConfig(
+          actor,
+          'bamboohr.mode',
+          'fixture',
+          'Synthetic rebuild for automated tests: fixture directory until connect-live runs.',
+        );
+        const sync = await db.syncEmployees(actor);
         console.log(
           `Synthetic directory loaded: ${sync.created} created, ${sync.updated} updated.`,
         );
+        console.log('Reconnect the live directory afterwards: reset-environment.ts connect-live');
       }
     } catch (e) {
       console.log(
@@ -248,12 +261,44 @@ async function rebuild(withUatDataset: boolean, migrateUrl: URL, devDbName: stri
   console.log('NOTE: restart the dev server and worker so they reconnect cleanly.');
 }
 
+/**
+ * DEC-071: connect the live BambooHR directory WITHOUT touching cases or the
+ * schema - the step that follows every synthetic rebuild, and the one to run
+ * whenever the owner finds the directory disconnected. Read-only mirror;
+ * prints counts, never a name.
+ */
+async function connectLive(): Promise<void> {
+  if (!process.env.BAMBOOHR_API_KEY || !process.env.BAMBOOHR_SUBDOMAIN) {
+    fail('no BambooHR credential in the root env file - nothing to connect to.');
+  }
+  const db = await import('../packages/db/src/index.ts');
+  const admin = await db.getPrisma().user.findFirst({
+    where: {
+      roleAssignments: { some: { role: 'HR_MANAGER', revokedAt: null } },
+      isActive: true,
+    },
+  });
+  if (!admin) fail('no active HR_MANAGER account exists - seed the environment first.');
+  const actor = { userId: admin.id, roles: ['HR_MANAGER'] as never };
+  const reason = 'connect-live: the live directory is always connected (owner decision, DEC-071).';
+  await db.setSystemConfig(actor, 'bamboohr.mode', 'live', reason);
+  await db.setSystemConfig(actor, 'bamboohr.scheduledSync', true, reason);
+  const sync = await db.syncEmployees(actor);
+  const live = await db.liveDirectoryPresence();
+  console.log(
+    `Live directory connected: ${sync.created} created, ${sync.updated} updated; ` +
+      `${live.records} live record(s) present (read-only; case snapshots are never written).`,
+  );
+  console.log('Scheduled reconciliation is on; the worker keeps the mirror current.');
+}
+
 async function main(): Promise<void> {
   const mode = process.argv[2];
   const confirmed = process.argv.includes('--yes');
   const guard = guardEnvironment();
 
   if (mode === 'status') return status();
+  if (mode === 'connect-live') return connectLive();
   if (mode === 'purge-live') {
     if (!confirmed) fail('purge-live changes data - re-run with --yes.');
     return purgeLive();
@@ -263,7 +308,7 @@ async function main(): Promise<void> {
     return rebuild(mode === 'uat', guard.migrateUrl, guard.devDbName);
   }
   console.log(
-    'Usage: pnpm exec tsx scripts/reset-environment.ts status|purge-live|uat|fresh [--yes]',
+    'Usage: pnpm exec tsx scripts/reset-environment.ts status|connect-live|purge-live|uat|fresh [--yes] [--synthetic]',
   );
   process.exitCode = mode ? 1 : 0;
 }

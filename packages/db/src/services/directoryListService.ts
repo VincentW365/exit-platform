@@ -7,8 +7,8 @@
 import { can, directoryRecordStatus, type Actor } from '@exit/domain';
 import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
+import { directoryMode } from './directoryModeService.ts';
 import { directorySyncStatus } from './directorySyncService.ts';
-import { getSystemConfigValue } from './systemConfigService.ts';
 
 const PURGED_PREFIX = 'PURGED-';
 
@@ -50,7 +50,7 @@ export interface DirectoryCard {
 }
 
 async function activeSourceSystem(): Promise<string> {
-  return (await getSystemConfigValue('bamboohr.mode')) === 'live' ? 'BAMBOOHR' : 'SYNTHETIC';
+  return (await directoryMode()) === 'live' ? 'BAMBOOHR' : 'SYNTHETIC';
 }
 
 function toCard(r: {

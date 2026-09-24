@@ -239,6 +239,34 @@ export function startupSyncNeeded(
   return now.getTime() - lastSuccessfulAt.getTime() >= s.startupStaleHours * 3_600_000;
 }
 
+// --- mode defaults (DEC-071) ----------------------------------------------
+
+export type DirectoryMode = 'live' | 'fixture';
+export type DirectoryCredentialStatus = 'configured' | 'not configured' | 'invalid configuration';
+
+/**
+ * DEC-071 (owner decision, 2026-09-23): the directory is live whenever a
+ * BambooHR credential is configured, so a deployment comes up connected
+ * without anyone setting a key by hand. An explicit `bamboohr.mode` still
+ * wins - that is how automated test runs keep the fixture directory - and a
+ * test environment never goes live on its own.
+ */
+export function resolveDirectoryMode(input: {
+  explicit: unknown;
+  credential: DirectoryCredentialStatus;
+  appEnvironment: string;
+}): DirectoryMode {
+  if (input.explicit === 'live') return 'live';
+  if (input.explicit === 'fixture') return 'fixture';
+  return input.credential === 'configured' && input.appEnvironment !== 'test' ? 'live' : 'fixture';
+}
+
+/** Scheduled reconciliation follows the mode unless an administrator set it. */
+export function resolveScheduledSync(input: { explicit: unknown; mode: DirectoryMode }): boolean {
+  if (typeof input.explicit === 'boolean') return input.explicit;
+  return input.mode === 'live';
+}
+
 // --- webhooks --------------------------------------------------------------
 
 export interface WebhookVerification {

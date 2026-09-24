@@ -14,6 +14,8 @@ import {
   nightlyDue,
   parseBambooWebhookEmployees,
   parseDirectorySyncSettings,
+  resolveDirectoryMode,
+  resolveScheduledSync,
   startupSyncNeeded,
   syncResultFromCounts,
   verifyBambooWebhookSignature,
@@ -21,6 +23,58 @@ import {
 
 const NOW = new Date('2026-09-15T15:00:00.000Z'); // 10:00 Jamaica
 const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
+
+describe('directory mode defaults (DEC-071)', () => {
+  it('goes live on its own when a credential is configured, outside test runs', () => {
+    expect(
+      resolveDirectoryMode({ explicit: null, credential: 'configured', appEnvironment: 'uat' }),
+    ).toBe('live');
+    expect(
+      resolveDirectoryMode({
+        explicit: null,
+        credential: 'configured',
+        appEnvironment: 'development',
+      }),
+    ).toBe('live');
+    expect(
+      resolveDirectoryMode({ explicit: null, credential: 'configured', appEnvironment: 'test' }),
+    ).toBe('fixture');
+    expect(
+      resolveDirectoryMode({ explicit: null, credential: 'not configured', appEnvironment: 'uat' }),
+    ).toBe('fixture');
+    expect(
+      resolveDirectoryMode({
+        explicit: null,
+        credential: 'invalid configuration',
+        appEnvironment: 'uat',
+      }),
+    ).toBe('fixture');
+  });
+
+  it('lets an explicit setting win in either direction', () => {
+    expect(
+      resolveDirectoryMode({
+        explicit: 'fixture',
+        credential: 'configured',
+        appEnvironment: 'uat',
+      }),
+    ).toBe('fixture');
+    expect(
+      resolveDirectoryMode({
+        explicit: 'live',
+        credential: 'not configured',
+        appEnvironment: 'uat',
+      }),
+    ).toBe('live');
+  });
+
+  it('schedules reconciliation whenever the directory is live unless told otherwise', () => {
+    expect(resolveScheduledSync({ explicit: null, mode: 'live' })).toBe(true);
+    expect(resolveScheduledSync({ explicit: null, mode: 'fixture' })).toBe(false);
+    expect(resolveScheduledSync({ explicit: false, mode: 'live' })).toBe(false);
+    expect(resolveScheduledSync({ explicit: true, mode: 'fixture' })).toBe(true);
+  });
+});
 
 describe('directory freshness (section 19)', () => {
   it('has never synchronized -> the only genuinely unavailable state, for administrators', () => {

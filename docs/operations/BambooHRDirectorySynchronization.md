@@ -95,8 +95,8 @@ Their current record is then read from BambooHR by the engine.
 
 | Key                          | Meaning                                                                 |
 | ---------------------------- | ----------------------------------------------------------------------- |
-| `bamboohr.mode`              | `fixture` (synthetic) or `live` (read-only BambooHR)                    |
-| `bamboohr.scheduledSync`     | `true` enables the hourly, nightly and start-up reconciliations         |
+| `bamboohr.mode`              | `fixture` (synthetic) or `live` (read-only BambooHR). Unset: `live` whenever a credential is configured, except in a test environment (DEC-071) |
+| `bamboohr.scheduledSync`     | `true`/`false` for the hourly, nightly and start-up reconciliations. Unset: follows the mode - on when live (DEC-071) |
 | `directory.sync`             | JSON: `hourlyMinutes`, `nightlyHour`, `nightlyMinute`, `staleDelayedHours`, `staleWarningHours`, `staleAlertHours`, `startupStaleHours`, `webhookMaxSkewSeconds` |
 | `bamboohr.simulateOutage`    | Development/UAT only: makes the source unreachable to prove the cache; ignored in production |
 

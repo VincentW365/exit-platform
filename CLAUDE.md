@@ -23,7 +23,7 @@ When sources conflict, stop and record the conflict. Do not choose the most conv
 5. Update the Decision Register or raise an explicit question when required information is missing.
 6. Use synthetic data only.
 7. Never commit real employee names, addresses, employee numbers, personal emails, signatures, letters, screenshots or exported HR data.
-8. Do not connect local/CI development to production BambooHR, email, identity, storage or databases.
+8. Do not connect local/CI development to production email, identity, storage or databases. The BambooHR directory is the owner's standing exception (DEC-071): local and UAT environments mirror it read-only whenever a credential is configured, and it must never be left disconnected. Automated test runs use the fixture directory (`reset-environment.ts ... --synthetic`) and reconnect straight afterwards (`reset-environment.ts connect-live`).
 9. Do not send real email in development or tests.
 10. Do not implement automatic pay withholding, deduction or entitlement calculation.
 11. Do not let AI independently approve, decide, issue or send sensitive content.
