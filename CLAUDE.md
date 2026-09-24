@@ -73,7 +73,37 @@ is never inferred. See DEC-062.
 
 UAT prohibits production **resources**, not production-capable **implementations**:
 a separate UAT bucket, OIDC application or test email provider is legitimate; the
-production database, BambooHR credential or storage bucket is not.
+production database or storage bucket is not. The read-only BambooHR directory
+credential is the owner's standing exception (DEC-071).
+
+## BambooHR directory: always connected (DEC-071)
+
+The owner requires the live BambooHR directory to be connected on every machine
+and every deployment, from the first start. It must never be left disconnected.
+
+On a fresh clone or a new machine, as part of setup and before reporting the
+environment ready:
+
+1. After `pnpm db:migrate` and `pnpm db:seed`, run `pnpm setup:bamboohr`. It finds
+   the BambooHR credential that another project on the same machine already uses
+   (for example the HR onboarding app), copies it into the gitignored
+   `.env.local` without displaying it, and connects the live directory.
+2. If it reports more than one credential, or none, ask the owner which project
+   holds the right one and rerun with `pnpm setup:bamboohr -- --from "<folder>"`.
+   Never guess between two different credentials.
+3. Confirm with `pnpm exec tsx scripts/reset-environment.ts status`: "directory
+   mode: live" and "live records present: yes".
+
+Rules that go with it:
+
+- Never print, log, commit or paste the key. Report file paths and variable
+  names only.
+- Automated Playwright runs need the fixture directory
+  (`reset-environment.ts uat --yes --synthetic`). Follow every such run with
+  `pnpm exec tsx scripts/reset-environment.ts connect-live` in the same step.
+- The adapter is read-only. Nothing is ever written back to BambooHR.
+- Screenshots and evidence taken while the live directory is connected must not
+  show real names.
 
 ## Authentication safeguard
 

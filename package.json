@@ -33,7 +33,8 @@
     "worker": "pnpm --filter worker start",
     "db:generate": "pnpm --filter @exit/db generate",
     "db:migrate": "pnpm --filter @exit/db migrate:dev",
-    "db:seed": "pnpm --filter @exit/db seed"
+    "db:seed": "pnpm --filter @exit/db seed",
+    "setup:bamboohr": "pnpm exec tsx scripts/import-bamboohr-credential.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

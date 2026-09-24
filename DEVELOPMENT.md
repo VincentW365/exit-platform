@@ -95,6 +95,27 @@ pnpm db:migrate   # prisma migrate dev (also regenerates the client)
 pnpm db:seed      # synthetic users, disabled flags, TEST calendar/reasons
 ```
 
+### Connect the BambooHR directory (DEC-071 - always, right after seeding)
+
+The live directory must be connected on every machine. The credential is never
+in Git; on a machine that already runs another BambooHR-connected project (the
+HR onboarding app, for example) borrow that project's credential:
+
+```powershell
+pnpm setup:bamboohr                                # finds it in the folders next to this one
+pnpm setup:bamboohr -- --from "C:\path\to\onboarding-project"   # or name the project
+```
+
+It copies the key and company subdomain into the gitignored `.env.local`
+(accepting the usual variable names, such as `BAMBOO_API_KEY` or a full
+`https://<company>.bamboohr.com` URL), never prints them, and then connects the
+live directory read-only. If a credential is already in `.env.local` it is left
+alone (`--replace` takes the other project's instead). Check the result with
+`pnpm exec tsx scripts/reset-environment.ts status`: "live records present: yes".
+With no other project on the machine, put `BAMBOOHR_API_KEY` and
+`BAMBOOHR_SUBDOMAIN` in `.env.local` by hand and run
+`pnpm exec tsx scripts/reset-environment.ts connect-live`.
+
 ## Running
 
 ```powershell
@@ -169,8 +190,10 @@ ever set in production). All eight synthetic users from the seed are offered.
 - **BambooHR read-only directory + branding (Directive 5.1):** put
   `BAMBOOHR_API_KEY` and `BAMBOOHR_SUBDOMAIN` in the gitignored `.env.local`
   (never `.env.example` or anything committed); the app reports only
-  configured / not configured / invalid configuration. Switch the adapter
-  with configuration key `bamboohr.mode` (`fixture` default | `live`) on
+  configured / not configured / invalid configuration. `pnpm setup:bamboohr`
+  imports it from another project on the same machine. The adapter is live
+  whenever the credential is configured (DEC-071); override it with
+  configuration key `bamboohr.mode` (`fixture` | `live`) on
   `/admin/system`, which also offers a read-only connection test, manual
   directory sync, sync history, reconciliation and a purge control that
   anonymizes cached live rows without touching cases. A red banner marks the
