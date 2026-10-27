@@ -224,7 +224,10 @@ async function rebuild(withUatDataset: boolean, migrateUrl: URL, devDbName: stri
         `WARNING: synthetic directory sync failed (${e instanceof Error ? e.message : 'unknown'}).`,
       );
     }
-  } else if (process.env.BAMBOOHR_API_KEY && process.env.BAMBOOHR_SUBDOMAIN) {
+  } else if (
+    (process.env.BAMBOOHR_API_KEY || process.env.BAMBOOHR_API_KEY_REF) &&
+    process.env.BAMBOOHR_SUBDOMAIN
+  ) {
     console.log('');
     console.log('Reconnecting the live BambooHR directory...');
     try {
@@ -268,7 +271,10 @@ async function rebuild(withUatDataset: boolean, migrateUrl: URL, devDbName: stri
  * prints counts, never a name.
  */
 async function connectLive(): Promise<void> {
-  if (!process.env.BAMBOOHR_API_KEY || !process.env.BAMBOOHR_SUBDOMAIN) {
+  if (
+    !(process.env.BAMBOOHR_API_KEY || process.env.BAMBOOHR_API_KEY_REF) ||
+    !process.env.BAMBOOHR_SUBDOMAIN
+  ) {
     fail('no BambooHR credential in the root env file - nothing to connect to.');
   }
   const db = await import('../packages/db/src/index.ts');

@@ -169,7 +169,10 @@ UAT_S3_SECRET_KEY=<set in the host's secret store>
 # directory is live from the first start; with it configured the platform
 # resolves bamboohr.mode=live and bamboohr.scheduledSync=true on its own.
 BAMBOOHR_SUBDOMAIN=<company subdomain>
-BAMBOOHR_API_KEY=<read-only key, set in the host's secret store>
+BAMBOOHR_API_KEY_REF=env:UAT_BAMBOOHR_KEY
+UAT_BAMBOOHR_KEY=<read-only key, set in the host's secret store>
+# Set these on BOTH the web service and the worker. The worker runs the
+# synchronization; a web service alone shows an empty directory.
 # Optional: the webhook key, if BambooHR change notifications are wired to UAT.
 ```
 

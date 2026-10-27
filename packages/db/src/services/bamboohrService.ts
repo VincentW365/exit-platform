@@ -27,7 +27,7 @@ import {
   type EmployeeFieldSet,
   type ReconciliationKind,
 } from '@exit/domain';
-import { bambooDirectoryStatus, getConfig } from '@exit/config';
+import { bambooApiKey, bambooDirectoryStatus, getConfig } from '@exit/config';
 import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
@@ -192,12 +192,8 @@ export class LiveBambooDirectoryAdapter implements BambooAdapter {
 
   constructor() {
     const config = getConfig();
-    if (config.isProduction) {
-      // Defense in depth: config already refuses raw keys in production.
-      throw ServiceError.validation([
-        'The raw-key BambooHR adapter is not available in production.',
-      ]);
-    }
+    // Production has no raw key (config refuses it); there the key arrives
+    // through BAMBOOHR_API_KEY_REF, which bambooApiKey resolves (DEC-071).
     if (bambooDirectoryStatus(config) !== 'configured') {
       throw ServiceError.validation([
         'BambooHR directory credential is not configured (see .env.example).',
@@ -205,7 +201,7 @@ export class LiveBambooDirectoryAdapter implements BambooAdapter {
     }
     this.subdomain = config.BAMBOOHR_SUBDOMAIN!.trim();
     // Basic auth per BambooHR API: key as username, any password.
-    this.authHeader = `Basic ${Buffer.from(`${config.BAMBOOHR_API_KEY!.trim()}:x`).toString('base64')}`;
+    this.authHeader = `Basic ${Buffer.from(`${bambooApiKey(config)}:x`).toString('base64')}`;
   }
 
   validateConfig(): string[] {

@@ -56,7 +56,12 @@ Legend: **[ENFORCED]** = the config loader refuses to start;
 
 - [ ] [ENFORCED] The raw-key form (`BAMBOOHR_API_KEY`) is REFUSED at startup
       in production; production access requires the reference-based secret
-      pattern like every other provider.
+      pattern like every other provider: `BAMBOOHR_API_KEY_REF=env:<SECRET>`
+      plus `BAMBOOHR_SUBDOMAIN`, on the web service AND the worker. A
+      malformed reference is refused at startup (DEC-071).
+- [ ] [MANUAL] After the first deploy, `/admin/system` shows the directory
+      credential `configured`, the adapter `live` and live records present;
+      the worker log shows `directory_startup_check` with `STARTUP:SUCCESS`.
 - [ ] [MANUAL] Dedicated READ-ONLY BambooHR integration identity provisioned
       by the HR-system administrator (replace the local personal-style key);
       written authorization for the approved minimum field set recorded in

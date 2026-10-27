@@ -114,6 +114,13 @@ const envSchema = z.object({
   // this raw-key form entirely (reference-based configuration is required
   // there), so the existing fail-closed posture is unchanged.
   BAMBOOHR_API_KEY: z.string().optional(),
+  /**
+   * DEC-071: the reference form, as every other provider uses - `env:NAME`,
+   * naming the host secret that holds the key. Accepted in every environment
+   * and the ONLY form production accepts, so a deployment can connect the
+   * live directory without a raw key in its configuration.
+   */
+  BAMBOOHR_API_KEY_REF: z.string().optional(),
   BAMBOOHR_SUBDOMAIN: z.string().optional(),
   /**
    * Private key BambooHR issued for the API-created employee webhook; used
@@ -415,8 +422,12 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       // reference-based configuration pattern like every other provider.
       throw new ConfigError(
         'FATAL: BAMBOOHR_API_KEY (a raw secret) is not permitted in production; ' +
-          'use a credential reference via the secret manager instead.',
+          'set BAMBOOHR_API_KEY_REF=env:<SECRET_VARIABLE> instead.',
       );
+    }
+    if (c.BAMBOOHR_API_KEY_REF) {
+      const refError = secretRefFormatError(c.BAMBOOHR_API_KEY_REF, 'BAMBOOHR_API_KEY_REF');
+      if (refError) throw new ConfigError(`FATAL: ${refError}`);
     }
   }
 
@@ -487,8 +498,32 @@ export function loadRootEnvFile(startDir: string): void {
  */
 export type BambooDirectoryStatus = 'configured' | 'not configured' | 'invalid configuration';
 
-export function bambooDirectoryStatus(config: AppConfig = getConfig()): BambooDirectoryStatus {
-  const key = config.BAMBOOHR_API_KEY?.trim() ?? '';
+/**
+ * The BambooHR API key, from `BAMBOOHR_API_KEY_REF` when set (any
+ * environment), otherwise from the raw `BAMBOOHR_API_KEY` outside production.
+ * Returns '' when neither applies; throws ConfigError (never naming the
+ * value) when a reference cannot be resolved.
+ */
+export function bambooApiKey(
+  config: AppConfig = getConfig(),
+  env: Record<string, string | undefined> = process.env,
+): string {
+  if (config.BAMBOOHR_API_KEY_REF?.trim()) {
+    return resolveSecretRef(config.BAMBOOHR_API_KEY_REF, 'BAMBOOHR_API_KEY_REF', env).trim();
+  }
+  return config.isProduction ? '' : (config.BAMBOOHR_API_KEY?.trim() ?? '');
+}
+
+export function bambooDirectoryStatus(
+  config: AppConfig = getConfig(),
+  env: Record<string, string | undefined> = process.env,
+): BambooDirectoryStatus {
+  let key: string;
+  try {
+    key = bambooApiKey(config, env);
+  } catch {
+    return 'invalid configuration';
+  }
   const subdomain = config.BAMBOOHR_SUBDOMAIN?.trim() ?? '';
   if (!key && !subdomain) return 'not configured';
   if (!key || !subdomain) return 'invalid configuration';
