@@ -3,8 +3,10 @@ import Link from 'next/link';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { RefreshWatcher } from '@/components/RefreshWatcher';
 import { DirectoryFreshnessNote } from '@/components/DirectoryFreshness';
-import { Kpi } from '@/components/patterns';
+import { Kpi, SectionHead } from '@/components/patterns';
+import { DirectoryIcon } from '@/components/icons';
 import {
+  bambooCredentialStatus,
   breakGlassStatus,
   directoryTechnicalCounts,
   getSystemConfigValue,
@@ -16,7 +18,6 @@ import {
   directorySyncStatus,
   getDepartmentBannerConfig,
 } from '@exit/db';
-import { bambooDirectoryStatus } from '@exit/config';
 import { can, formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
@@ -27,6 +28,8 @@ import {
   purgeDirectoryAction,
   reconciliationAction,
   refreshDirectoryAction,
+  removeBambooConnectionAction,
+  saveBambooConnectionAction,
   setConfigAction,
   syncEmployeesAction,
   testDirectoryConnectionAction,
@@ -84,50 +87,134 @@ export default async function SystemAdminPage({
   } catch (e) {
     if (!(e instanceof ServiceError)) throw e;
   }
-  const directoryStatus = bambooDirectoryStatus();
+  const credential = await bambooCredentialStatus();
+  const directoryStatus = credential.status;
+  const connected = directoryStatus === 'configured';
 
   return (
     <>
       <h1>System Administration</h1>
       <Feedback err={sp.err} ok={sp.ok} />
-      <p className="hint" role="note">
-        Configuration only - this area never grants HR case content access. Secrets are stored as
-        REFERENCES and never displayed. {breakGlass.note}
-      </p>
 
-      <section className="panel" aria-labelledby="cfg-h">
-        <h2 id="cfg-h" style={{ marginTop: 0 }}>
-          System Configuration
-        </h2>
-        {config.length === 0 ? (
-          <p className="meta">
-            No configuration entries yet. Settings appear here as they are recorded.
+      {/* DEC-072: connect BambooHR from here, in plain words - no hosting
+          platform access needed. The key is write-only: never shown again. */}
+      <section className="panel" aria-labelledby="bamboo-h" id="bamboohr">
+        <SectionHead
+          id="bamboo-h"
+          icon={<DirectoryIcon />}
+          tone={connected ? 'done' : 'attention'}
+          title="BambooHR connection"
+          description="Connects the employee directory to BambooHR. Read-only: nothing is ever changed in BambooHR."
+          aside={
+            <span
+              className={`badge ${connected ? 'badge--success' : directoryStatus === 'invalid configuration' ? 'badge--danger' : 'badge--warning'}`}
+            >
+              {connected
+                ? 'Connected'
+                : directoryStatus === 'invalid configuration'
+                  ? 'Needs attention'
+                  : 'Not connected'}
+            </span>
+          }
+        />
+        {credential.source === 'host' ? (
+          <p className="hint">
+            Connected through the hosting platform&apos;s settings. Nothing to enter here.
           </p>
-        ) : null}
-        <ul>
-          {config.map((c) => (
-            <li key={c.key}>
-              <code>{c.key}</code> = <code>{JSON.stringify(c.value)}</code>
-              {c.secretRef ? <span className="hint"> (secret ref: {c.secretRef})</span> : null}
-              {c.reason ? <span className="hint"> - {c.reason}</span> : null}
-            </li>
-          ))}
-        </ul>
-        <details className="action">
-          <summary>Set a configuration value</summary>
-          <form action={setConfigAction}>
-            <label htmlFor="sc-key">Key (E.g. Sync.scheduledEnabled)</label>
-            <input id="sc-key" name="key" required maxLength={80} />
-            <label htmlFor="sc-value">Value (True/false, Number or Text - Never a Secret)</label>
-            <input id="sc-value" name="value" required maxLength={500} />
-            <label htmlFor="sc-secret">Secret REFERENCE (Optional; Vault Path or Env Name)</label>
-            <input id="sc-secret" name="secretRef" maxLength={200} />
-            <label htmlFor="sc-reason">Reason (Required, Audited)</label>
-            <input id="sc-reason" name="reason" required maxLength={500} />
-            <button type="submit">Save configuration</button>
-          </form>
-        </details>
+        ) : (
+          <>
+            {credential.source === 'app' && credential.savedAt ? (
+              <p className="meta">
+                Key saved {formatInstant(new Date(credential.savedAt))}. It is stored encrypted and
+                is never shown again; to change it, enter a new one below.
+              </p>
+            ) : (
+              <p className="hint">
+                Enter the two details below once. The person who looks after BambooHR (or the HR
+                onboarding app) can give them to you.
+              </p>
+            )}
+            <form action={saveBambooConnectionAction} className="stack">
+              <div className="field">
+                <label htmlFor="bh-subdomain">Company name in BambooHR</label>
+                <p className="hint" id="bh-subdomain-hint">
+                  From your BambooHR web address: for <code>acme.bamboohr.com</code>, type{' '}
+                  <code>acme</code>.
+                </p>
+                <input
+                  id="bh-subdomain"
+                  name="subdomain"
+                  required
+                  maxLength={200}
+                  autoComplete="off"
+                  aria-describedby="bh-subdomain-hint"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="bh-key">API key</label>
+                <p className="hint" id="bh-key-hint">
+                  The long code BambooHR gives for API access. Paste it whole.
+                </p>
+                <input
+                  id="bh-key"
+                  name="apiKey"
+                  type="password"
+                  required
+                  maxLength={500}
+                  autoComplete="off"
+                  aria-describedby="bh-key-hint"
+                />
+              </div>
+              <div className="actions-row">
+                <button type="submit">
+                  {credential.source === 'app' ? 'Replace and reconnect' : 'Connect BambooHR'}
+                </button>
+              </div>
+            </form>
+            {credential.source === 'app' ? (
+              <form action={removeBambooConnectionAction} style={{ marginTop: 'var(--space-3)' }}>
+                <button type="submit" className="secondary compact">
+                  Remove saved key
+                </button>
+              </form>
+            ) : null}
+          </>
+        )}
       </section>
+
+      <details className="panel action" aria-labelledby="cfg-h">
+        <summary id="cfg-h">Advanced settings (for technical support)</summary>
+        <p className="hint" role="note">
+          Low-level settings used by technical support. Not needed for everyday use. Never type a
+          password or key here. {breakGlass.note}
+        </p>
+        {config.length === 0 ? (
+          <p className="meta">No settings recorded yet.</p>
+        ) : (
+          <ul>
+            {config.map((c) => (
+              <li key={c.key}>
+                <code>{c.key}</code> = <code>{JSON.stringify(c.value)}</code>
+                {c.secretRef ? <span className="hint"> (secret ref: {c.secretRef})</span> : null}
+                {c.reason ? <span className="hint"> - {c.reason}</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+        <form action={setConfigAction}>
+          <label htmlFor="sc-key">Setting name (for example bamboohr.scheduledSync)</label>
+          <input id="sc-key" name="key" required maxLength={80} />
+          <label htmlFor="sc-value">Value (true, false, a number or text)</label>
+          <input id="sc-value" name="value" required maxLength={500} />
+          <label htmlFor="sc-secret">Secret reference (optional, technical support only)</label>
+          <input id="sc-secret" name="secretRef" maxLength={200} />
+          <label htmlFor="sc-reason">Why are you changing it? (recorded)</label>
+          <input id="sc-reason" name="reason" required maxLength={500} />
+          <button type="submit" className="secondary">
+            Save setting
+          </button>
+        </form>
+      </details>
 
       <EmailBannerAdmin
         config={await getDepartmentBannerConfig()}
@@ -271,12 +358,12 @@ export default async function SystemAdminPage({
             </span>
           ) : null}
         </p>
-        <p className="hint">
-          The credential value is never displayed, logged or committed; only the status above is
-          reported. Switch adapters with configuration key <code>bamboohr.mode</code> (fixture |
-          live). The live adapter is strictly READ-ONLY - no write operation exists. Scheduled sync
-          stays disabled unless <code>bamboohr.scheduledSync</code> is explicitly set.
-        </p>
+        {!connected ? (
+          <p className="hint">
+            Employees load from BambooHR once it is connected -{' '}
+            <a href="#bamboohr">enter the BambooHR connection details above</a>.
+          </p>
+        ) : null}
         <form action={syncEmployeesAction} style={{ display: 'inline-block' }}>
           <button type="submit">Synchronize the directory now</button>
         </form>{' '}

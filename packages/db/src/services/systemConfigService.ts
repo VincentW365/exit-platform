@@ -17,7 +17,12 @@ export async function getSystemConfigValue(key: string): Promise<unknown> {
 
 export async function listSystemConfig(actor: Actor) {
   if (!can(actor, 'admin.system') && !can(actor, 'privacy.view')) throw ServiceError.forbidden();
-  return getPrisma().systemConfig.findMany({ orderBy: { key: 'asc' } });
+  // The saved BambooHR credential (DEC-072) is never listed, even encrypted;
+  // the System page reports its status instead.
+  return getPrisma().systemConfig.findMany({
+    where: { key: { not: 'bamboohr.storedCredential' } },
+    orderBy: { key: 'asc' },
+  });
 }
 
 export async function setSystemConfig(
@@ -31,6 +36,8 @@ export async function setSystemConfig(
   if (!reason.trim()) throw ServiceError.validation(['A reason is required (I.5).']);
   if (!/^[a-z][a-zA-Z0-9.]{2,80}$/.test(key))
     throw ServiceError.validation(['Configuration keys are dot-separated identifiers.']);
+  if (key === 'bamboohr.storedCredential')
+    throw ServiceError.validation(['Use the BambooHR connection panel to change this setting.']);
   // Refuse raw secrets outright: only references are stored (I.8).
   if (typeof value === 'string' && SECRET_LIKE.test(value))
     throw ServiceError.validation([

@@ -10,8 +10,10 @@ import {
   generateAccessReview,
   purgeLiveDirectory,
   reconciliationReport,
+  removeBambooCredential,
   requestManualDirectoryRefresh,
   runQueuedDirectorySyncs,
+  saveBambooCredential,
   setDepartmentBannerImage,
   setSystemConfig,
   syncEmployees,
@@ -170,6 +172,67 @@ export async function refreshDirectoryAction(): Promise<void> {
         ? 'A directory synchronization is already queued or running; this page follows its progress.'
         : 'Directory refresh started. This page updates itself as the synchronization proceeds.',
     });
+  } catch (e) {
+    if (e instanceof ServiceError) back({ err: errText(e) });
+    throw e;
+  }
+}
+
+/**
+ * DEC-072: save the BambooHR company name and API key from the System page,
+ * test the connection at once, and start the first synchronization - so the
+ * directory fills without anyone touching the hosting platform. The key is
+ * never echoed back, in the page, the redirect or the audit trail.
+ */
+export async function saveBambooConnectionAction(formData: FormData): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  try {
+    await saveBambooCredential(actor, {
+      subdomain: str(formData, 'subdomain'),
+      apiKey: String(formData.get('apiKey') ?? ''),
+    });
+    // A deployment may hold an explicit "fixture" from an earlier setup;
+    // connecting means live, kept fresh on a schedule (DEC-071).
+    const reason = 'BambooHR connected from the System page (DEC-072).';
+    await setSystemConfig(actor, 'bamboohr.mode', 'live', reason);
+    await setSystemConfig(actor, 'bamboohr.scheduledSync', true, reason);
+    const test = await testDirectoryConnection(actor);
+    if (test.status !== 'ok') {
+      revalidatePath('/admin/system');
+      back({
+        err:
+          'Saved, but BambooHR did not accept it: ' +
+          `${test.detail} Check the company name and paste the key again.`,
+      });
+    }
+    const { runId, reused } = await requestManualDirectoryRefresh(actor);
+    if (!reused) {
+      after(async () => {
+        try {
+          await runQueuedDirectorySyncs({ holder: `web-connect:${process.pid}:${runId}` });
+        } catch {
+          // The outcome is on the run row; the page shows it.
+        }
+      });
+    }
+    revalidatePath('/admin/system');
+    back({
+      ok: `BambooHR connected: ${test.aggregates?.employees ?? 0} employees found. Loading them into the directory now - this page updates itself.`,
+    });
+  } catch (e) {
+    if (e instanceof ServiceError) back({ err: errText(e) });
+    throw e;
+  }
+}
+
+export async function removeBambooConnectionAction(): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  try {
+    await removeBambooCredential(actor);
+    revalidatePath('/admin/system');
+    back({ ok: 'The saved BambooHR connection was removed.' });
   } catch (e) {
     if (e instanceof ServiceError) back({ err: errText(e) });
     throw e;

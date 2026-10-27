@@ -357,6 +357,11 @@ BambooHR credential configured the platform resolves `bamboohr.mode=live` and
 `bamboohr.scheduledSync=true` without any key being set, and the **worker's start-up
 check** fills an empty live mirror at once. So on the remote database, after step 5:
 
+0. If nobody can set the host's secrets, skip the BambooHR lines above: sign in as the
+   HR Manager, open **Administration → System → BambooHR connection**, type the
+   company name, paste the API key and press **Connect BambooHR** (DEC-072). The
+   key is stored encrypted, the connection is tested at once and the first
+   synchronization starts by itself.
 1. Start the worker (or restart it). Its log shows `directory_startup_check` with
    `STARTUP:SUCCESS checked <n>`.
 2. Sign in as the **HR Manager**, open **Administration → System** and confirm the

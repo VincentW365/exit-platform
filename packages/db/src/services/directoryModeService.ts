@@ -10,15 +10,17 @@
  * environment never goes live on its own. The credential value itself is
  * never read here; only its configuration category.
  */
-import { bambooDirectoryStatus, getConfig } from '@exit/config';
+import { getConfig } from '@exit/config';
 import { resolveDirectoryMode, resolveScheduledSync, type DirectoryMode } from '@exit/domain';
+import { bambooCredentialStatus } from './bambooCredentialService.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
 
 export async function directoryMode(): Promise<DirectoryMode> {
   const config = getConfig();
   return resolveDirectoryMode({
     explicit: await getSystemConfigValue('bamboohr.mode'),
-    credential: bambooDirectoryStatus(config),
+    // The host's credential, or the one saved on the System page (DEC-072).
+    credential: (await bambooCredentialStatus()).status,
     appEnvironment: config.appEnvironment,
   });
 }

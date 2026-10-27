@@ -94,6 +94,11 @@ environment ready:
 3. Confirm with `pnpm exec tsx scripts/reset-environment.ts status`: "directory
    mode: live" and "live records present: yes".
 
+On a deployed site where nobody can reach the hosting platform's settings, the
+HR Manager connects it in the app instead: Administration → System →
+BambooHR connection, company name plus API key, then **Connect BambooHR**
+(DEC-072). The key is stored encrypted and never shown again.
+
 Rules that go with it:
 
 - Never print, log, commit or paste the key. Report file paths and variable

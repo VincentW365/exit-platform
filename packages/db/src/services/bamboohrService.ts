@@ -27,7 +27,12 @@ import {
   type EmployeeFieldSet,
   type ReconciliationKind,
 } from '@exit/domain';
-import { bambooApiKey, bambooDirectoryStatus, getConfig } from '@exit/config';
+import { getConfig } from '@exit/config';
+import {
+  bambooCredentialStatus,
+  resolveBambooCredential,
+  type BambooCredential,
+} from './bambooCredentialService.ts';
 import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
@@ -190,23 +195,24 @@ export class LiveBambooDirectoryAdapter implements BambooAdapter {
   private readonly subdomain: string;
   private readonly authHeader: string;
 
-  constructor() {
-    const config = getConfig();
-    // Production has no raw key (config refuses it); there the key arrives
-    // through BAMBOOHR_API_KEY_REF, which bambooApiKey resolves (DEC-071).
-    if (bambooDirectoryStatus(config) !== 'configured') {
+  /**
+   * The credential comes from resolveBambooCredential(): the host's
+   * (BAMBOOHR_API_KEY_REF, or the raw key outside production) or the one the
+   * HR Manager saved on the System page (DEC-071, DEC-072).
+   */
+  constructor(credential: BambooCredential | null) {
+    if (!credential) {
       throw ServiceError.validation([
-        'BambooHR directory credential is not configured (see .env.example).',
+        'BambooHR is not connected. Add the company name and API key under Administration > System > BambooHR connection.',
       ]);
     }
-    this.subdomain = config.BAMBOOHR_SUBDOMAIN!.trim();
+    this.subdomain = credential.subdomain;
     // Basic auth per BambooHR API: key as username, any password.
-    this.authHeader = `Basic ${Buffer.from(`${bambooApiKey(config)}:x`).toString('base64')}`;
+    this.authHeader = `Basic ${Buffer.from(`${credential.key}:x`).toString('base64')}`;
   }
 
   validateConfig(): string[] {
-    const status = bambooDirectoryStatus();
-    return status === 'configured' ? [] : [`BambooHR directory: ${status}.`];
+    return [];
   }
 
   /** GET only. The credential never appears in errors, logs or results. */
@@ -403,7 +409,9 @@ export async function getBambooAdapter(): Promise<BambooAdapter> {
   // DEC-071: live whenever a credential is configured, unless set explicitly.
   const mode = await directoryMode();
   const real: BambooAdapter =
-    mode === 'live' ? new LiveBambooDirectoryAdapter() : new FixtureBambooAdapter();
+    mode === 'live'
+      ? new LiveBambooDirectoryAdapter(await resolveBambooCredential())
+      : new FixtureBambooAdapter();
   // Simulated outage (owner directive, 2026-09-15, sections 18/37): an
   // administrator can make the source unreachable to prove the cached
   // directory carries on. Refused in production - it exists for UAT evidence.
@@ -576,15 +584,20 @@ export async function testDirectoryConnection(actor: Actor): Promise<{
 }> {
   if (!can(actor, 'sync.run')) throw ServiceError.forbidden();
   const outcome = await (async () => {
-    if (bambooDirectoryStatus() !== 'configured') {
+    const credential = await resolveBambooCredential();
+    if (!credential) {
+      const { status } = await bambooCredentialStatus();
       return {
         status: 'not-configured' as const,
-        detail: `BambooHR directory: ${bambooDirectoryStatus()}.`,
+        detail:
+          status === 'invalid configuration'
+            ? 'The saved BambooHR connection cannot be used. Enter the company name and API key again.'
+            : 'BambooHR is not connected yet. Enter the company name and API key in the BambooHR connection panel.',
         aggregates: null,
       };
     }
     try {
-      const adapter = new LiveBambooDirectoryAdapter();
+      const adapter = new LiveBambooDirectoryAdapter(credential);
       const rows = await adapter.listEmployees();
       return {
         status: 'ok' as const,
