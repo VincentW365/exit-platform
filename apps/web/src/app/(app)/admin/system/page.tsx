@@ -3,13 +3,12 @@ import Link from 'next/link';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { RefreshWatcher } from '@/components/RefreshWatcher';
 import { DirectoryFreshnessNote } from '@/components/DirectoryFreshness';
-import { Kpi, SectionHead } from '@/components/patterns';
-import { DirectoryIcon } from '@/components/icons';
+import { Chip, Kpi, SectionHead } from '@/components/patterns';
+import { DirectoryIcon, ServerIcon, ShieldIcon } from '@/components/icons';
 import {
   bambooCredentialStatus,
   breakGlassStatus,
   directoryTechnicalCounts,
-  getSystemConfigValue,
   listAccessReviews,
   listActiveUsers,
   listSystemConfig,
@@ -37,17 +36,22 @@ import {
   uploadDepartmentBannerAction,
 } from './actions';
 import { EmailBannerAdmin } from './EmailBannerAdmin';
-import { humanize, roleList } from '@/lib/text';
+import { countOf, humanize, roleList } from '@/lib/text';
 
 export const metadata: Metadata = { title: 'System Administration' };
 export const dynamic = 'force-dynamic';
 
 /**
  * HR-operational system administration (Directive 4 sections E, F, I;
- * two-role model DEC-063): provider configuration, identity lifecycle and
- * the employee directory, owned by the HR Manager. Technical functions such
- * as database backups and restore verification are not HR operations and
- * are not offered here (DEC-063).
+ * two-role model DEC-063): the BambooHR connection, the employee directory,
+ * the email banner and user access, owned by the HR Manager. Technical
+ * functions such as database backups and restore verification are not HR
+ * operations and are not offered here (DEC-063).
+ *
+ * Presentation (owner directive, 2026-10-27): the same three levels as the
+ * Exit Center - identity and the one action that matters, then each area as
+ * a panel with a plain heading, figures, and its buttons in one row - with
+ * the technical key/value form folded away at the end for support staff.
  */
 export default async function SystemAdminPage({
   searchParams,
@@ -71,7 +75,6 @@ export default async function SystemAdminPage({
   let recon: Awaited<ReturnType<typeof reconciliationReport>> | null = null;
   let directory: Awaited<ReturnType<typeof directoryTechnicalCounts>> | null = null;
   let sync: Awaited<ReturnType<typeof directorySyncStatus>> | null = null;
-  let adapterMode = 'fixture';
   try {
     [config, users, reviews, breakGlass, directory] = await Promise.all([
       listSystemConfig(actor),
@@ -80,8 +83,6 @@ export default async function SystemAdminPage({
       breakGlassStatus(),
       directoryTechnicalCounts(),
     ]);
-    adapterMode =
-      ((await getSystemConfigValue('bamboohr.mode')) as string) === 'live' ? 'live' : 'fixture';
     recon = await reconciliationReport(actor);
     sync = await directorySyncStatus();
   } catch (e) {
@@ -90,10 +91,26 @@ export default async function SystemAdminPage({
   const credential = await bambooCredentialStatus();
   const directoryStatus = credential.status;
   const connected = directoryStatus === 'configured';
+  const adapterMode = sync?.mode ?? 'fixture';
 
   return (
-    <>
-      <h1>System Administration</h1>
+    <div className="exit-center">
+      <div className="page-head">
+        <div className="page-head__text">
+          <h1 className="page-title">System Administration</h1>
+          <p className="page-lede">
+            The BambooHR connection, the employee directory, the email banner and user access.
+          </p>
+        </div>
+        <div className="page-head__actions">
+          <Link className="button secondary" href="/admin/directory-sync">
+            Synchronization log
+          </Link>
+          <Link className="button secondary" href="/admin">
+            Administration
+          </Link>
+        </div>
+      </div>
       <Feedback err={sp.err} ok={sp.ok} />
 
       {/* DEC-072: connect BambooHR from here, in plain words - no hosting
@@ -104,17 +121,23 @@ export default async function SystemAdminPage({
           icon={<DirectoryIcon />}
           tone={connected ? 'done' : 'attention'}
           title="BambooHR connection"
-          description="Connects the employee directory to BambooHR. Read-only: nothing is ever changed in BambooHR."
+          description="Read-only. Nothing is ever changed in BambooHR."
           aside={
-            <span
-              className={`badge ${connected ? 'badge--success' : directoryStatus === 'invalid configuration' ? 'badge--danger' : 'badge--warning'}`}
+            <Chip
+              tone={
+                connected
+                  ? 'done'
+                  : directoryStatus === 'invalid configuration'
+                    ? 'critical'
+                    : 'attention'
+              }
             >
               {connected
                 ? 'Connected'
                 : directoryStatus === 'invalid configuration'
                   ? 'Needs attention'
                   : 'Not connected'}
-            </span>
+            </Chip>
           }
         />
         {credential.source === 'host' ? (
@@ -126,12 +149,12 @@ export default async function SystemAdminPage({
             {credential.source === 'app' && credential.savedAt ? (
               <p className="meta">
                 Key saved {formatInstant(new Date(credential.savedAt))}. It is stored encrypted and
-                is never shown again; to change it, enter a new one below.
+                never shown again; to change it, enter a new one below.
               </p>
             ) : (
               <p className="hint">
-                Enter the two details below once. The person who looks after BambooHR (or the HR
-                onboarding app) can give them to you.
+                Enter these two details once. The person who looks after BambooHR, or the HR
+                onboarding app, can give them to you.
               </p>
             )}
             <form action={saveBambooConnectionAction} className="stack">
@@ -169,99 +192,44 @@ export default async function SystemAdminPage({
                 <button type="submit">
                   {credential.source === 'app' ? 'Replace and reconnect' : 'Connect BambooHR'}
                 </button>
+                {credential.source === 'app' ? (
+                  <button
+                    type="submit"
+                    formAction={removeBambooConnectionAction}
+                    className="secondary"
+                  >
+                    Remove saved key
+                  </button>
+                ) : null}
               </div>
             </form>
-            {credential.source === 'app' ? (
-              <form action={removeBambooConnectionAction} style={{ marginTop: 'var(--space-3)' }}>
-                <button type="submit" className="secondary compact">
-                  Remove saved key
-                </button>
-              </form>
-            ) : null}
           </>
         )}
       </section>
 
-      <details className="panel action" aria-labelledby="cfg-h">
-        <summary id="cfg-h">Advanced settings (for technical support)</summary>
-        <p className="hint" role="note">
-          Low-level settings used by technical support. Not needed for everyday use. Never type a
-          password or key here. {breakGlass.note}
-        </p>
-        {config.length === 0 ? (
-          <p className="meta">No settings recorded yet.</p>
-        ) : (
-          <ul>
-            {config.map((c) => (
-              <li key={c.key}>
-                <code>{c.key}</code> = <code>{JSON.stringify(c.value)}</code>
-                {c.secretRef ? <span className="hint"> (secret ref: {c.secretRef})</span> : null}
-                {c.reason ? <span className="hint"> - {c.reason}</span> : null}
-              </li>
-            ))}
-          </ul>
-        )}
-        <form action={setConfigAction}>
-          <label htmlFor="sc-key">Setting name (for example bamboohr.scheduledSync)</label>
-          <input id="sc-key" name="key" required maxLength={80} />
-          <label htmlFor="sc-value">Value (true, false, a number or text)</label>
-          <input id="sc-value" name="value" required maxLength={500} />
-          <label htmlFor="sc-secret">Secret reference (optional, technical support only)</label>
-          <input id="sc-secret" name="secretRef" maxLength={200} />
-          <label htmlFor="sc-reason">Why are you changing it? (recorded)</label>
-          <input id="sc-reason" name="reason" required maxLength={500} />
-          <button type="submit" className="secondary">
-            Save setting
-          </button>
-        </form>
-      </details>
-
-      <EmailBannerAdmin
-        config={await getDepartmentBannerConfig()}
-        actions={{
-          upload: uploadDepartmentBannerAction,
-          update: updateDepartmentBannerAction,
-          clear: clearDepartmentBannerAction,
-        }}
-      />
-
-      <section className="panel" aria-labelledby="id-h">
-        <h2 id="id-h" style={{ marginTop: 0 }}>
-          Identity Lifecycle
-        </h2>
-        <form action={accessReviewAction} style={{ display: 'inline-block' }}>
-          <button type="submit">Generate access review snapshot</button>
-        </form>
-        <p className="hint">
-          {reviews.length} review(s) recorded
-          {reviews[0] ? `; latest ${formatInstant(reviews[0].generatedAt)}` : ''}.
-        </p>
-        <details className="action">
-          <summary>Disable a user (revokes sessions immediately)</summary>
-          <form action={disableUserAction}>
-            <label htmlFor="du-user">User</label>
-            <select id="du-user" name="userId" required>
-              {users.map((u) => (
-                <option key={u.userId} value={u.userId}>
-                  {u.displayName} ({roleList(u.roles)})
-                </option>
-              ))}
-            </select>
-            <label htmlFor="du-reason">Reason (Required, Audited)</label>
-            <input id="du-reason" name="reason" required maxLength={500} />
-            <p className="hint">
-              High-impact action: active sessions are rejected at once and open assignments are
-              flagged for HR reassignment.
-            </p>
-            <button type="submit">Disable user now</button>
-          </form>
-        </details>
-      </section>
-
       <section className="panel" aria-labelledby="sync-h" id="directory-h">
-        <h2 id="sync-h" style={{ marginTop: 0 }}>
-          Employee Directory
-        </h2>
+        <SectionHead
+          id="sync-h"
+          icon={<ServerIcon />}
+          tone={
+            !sync
+              ? 'neutral'
+              : sync.connection === 'HEALTHY'
+                ? 'done'
+                : sync.connection === 'FAILING'
+                  ? 'critical'
+                  : 'pending'
+          }
+          title="Employee Directory"
+          description="The local copy of the employee list, refreshed from BambooHR."
+          aside={
+            sync ? (
+              <Chip tone={adapterMode === 'live' ? 'done' : 'neutral'}>
+                {adapterMode === 'live' ? 'Live from BambooHR' : 'Synthetic directory'}
+              </Chip>
+            ) : null
+          }
+        />
         {/* Integration health (owner directive, 2026-09-15, section 26):
             counts and instants only - never employee values. */}
         {sync ? (
@@ -272,8 +240,9 @@ export default async function SystemAdminPage({
               admin
             />
             <RefreshWatcher active={Boolean(sync.activeRun)} />
-            <div className="kpi-grid" data-directory-health>
+            <div className="kpi-grid kpi-grid--tiles directory-health" data-directory-health>
               <Kpi
+                compact
                 label="Connection"
                 value={
                   sync.connection === 'HEALTHY'
@@ -289,29 +258,16 @@ export default async function SystemAdminPage({
                       ? 'critical'
                       : 'pending'
                 }
-                note={`${sync.mode} adapter${sync.simulatedOutage ? ' · SIMULATED OUTAGE' : ''}${sync.webhookConfigured ? ' · webhook enabled' : ' · webhook key not set'}`}
+                note={`${sync.simulatedOutage ? 'Simulated outage · ' : ''}${sync.webhookConfigured ? 'Change notifications on' : 'No change notifications'}`}
               />
               <Kpi
+                compact
                 label="Local employees"
                 value={sync.employees}
                 note={`${sync.totalRecords} records · ${sync.archived} archived`}
               />
               <Kpi
-                label="Last event"
-                value={sync.lastEventAt ? formatInstant(sync.lastEventAt) : 'None yet'}
-                note="BambooHR webhook"
-              />
-              <Kpi
-                label="Last incremental"
-                value={sync.lastIncrementalAt ? formatInstant(sync.lastIncrementalAt) : 'None yet'}
-                note={`Hourly (every ${sync.settings.hourlyMinutes} min)`}
-              />
-              <Kpi
-                label="Last full"
-                value={sync.lastFullAt ? formatInstant(sync.lastFullAt) : 'None yet'}
-                note={`Nightly at ${String(sync.settings.nightlyHour).padStart(2, '0')}:${String(sync.settings.nightlyMinute).padStart(2, '0')} Jamaica`}
-              />
-              <Kpi
+                compact
                 label="Last result"
                 value={sync.lastRun ? humanize(sync.lastRun.status) : 'None yet'}
                 tone={
@@ -325,9 +281,39 @@ export default async function SystemAdminPage({
                 }
                 note={
                   sync.lastRun
-                    ? `${humanize(sync.lastRun.kind)}: ${sync.lastRun.added} added, ${sync.lastRun.updated} updated, ${sync.lastRun.archived} archived, ${sync.lastRun.failed} failed${sync.lastRun.errorCode ? ` · ${sync.lastRun.errorCode}` : ''}`
+                    ? `${humanize(sync.lastRun.kind)}: ${sync.lastRun.added} added, ${sync.lastRun.updated} updated, ${sync.lastRun.archived} archived${sync.lastRun.failed ? `, ${sync.lastRun.failed} failed` : ''}${sync.lastRun.errorCode ? ` · ${sync.lastRun.errorCode}` : ''}`
                     : 'No run recorded'
                 }
+              />
+              <Kpi
+                compact
+                label="Last hourly refresh"
+                value={
+                  <span className="kpi__text">
+                    {sync.lastIncrementalAt ? formatInstant(sync.lastIncrementalAt) : 'None yet'}
+                  </span>
+                }
+                note={`Every ${sync.settings.hourlyMinutes} min while connected`}
+              />
+              <Kpi
+                compact
+                label="Last full refresh"
+                value={
+                  <span className="kpi__text">
+                    {sync.lastFullAt ? formatInstant(sync.lastFullAt) : 'None yet'}
+                  </span>
+                }
+                note={`Nightly at ${String(sync.settings.nightlyHour).padStart(2, '0')}:${String(sync.settings.nightlyMinute).padStart(2, '0')} Jamaica`}
+              />
+              <Kpi
+                compact
+                label="Last change notice"
+                value={
+                  <span className="kpi__text">
+                    {sync.lastEventAt ? formatInstant(sync.lastEventAt) : 'None yet'}
+                  </span>
+                }
+                note="Sent by BambooHR when a record changes"
               />
             </div>
             <div className="actions-row">
@@ -336,100 +322,204 @@ export default async function SystemAdminPage({
                   Refresh Directory Now
                 </button>
               </form>
-              <Link className="button secondary" href="/admin/directory-sync">
-                Synchronization log
-              </Link>
+              <form action={testDirectoryConnectionAction} style={{ display: 'inline-block' }}>
+                <button type="submit" className="secondary">
+                  Test connection (read-only)
+                </button>
+              </form>
+              <form action={reconciliationAction} style={{ display: 'inline-block' }}>
+                <button type="submit" className="secondary">
+                  Run reconciliation report
+                </button>
+              </form>
+              <form action={syncEmployeesAction} style={{ display: 'inline-block' }}>
+                <button type="submit" className="secondary">
+                  Synchronize the directory now
+                </button>
+              </form>
+              <ConfirmDialog
+                trigger="Purge live directory cache"
+                triggerClassName="danger compact"
+                title="Purge the live directory cache?"
+                consequence={[
+                  'Every employee record read from BambooHR is dropped from this database.',
+                  'Employee search and manager routing stop working until the next sync completes.',
+                  'BambooHR itself is untouched - this platform never writes to it.',
+                  'Cases keep their own snapshots, so open cases stay readable.',
+                ]}
+              >
+                <form action={purgeDirectoryAction}>
+                  <button type="submit" className="danger">
+                    Purge the cache
+                  </button>
+                </form>
+              </ConfirmDialog>
             </div>
           </>
         ) : null}
-        <p>
-          Credential status:{' '}
-          <span
-            className={`badge ${directoryStatus === 'configured' ? 'badge--success' : directoryStatus === 'invalid configuration' ? 'badge--danger' : 'badge--neutral'}`}
-          >
-            {humanize(directoryStatus)}
-          </span>{' '}
-          - active adapter: <span className="badge badge--info">{adapterMode}</span>
-          {directory ? (
-            <span className="hint">
+        <p className="meta">
+          Credential status: {humanize(directoryStatus)}
+          {directory
+            ? ` · ${countOf(directory.liveRecords, 'live record')} · ${countOf(directory.syncRuns, 'sync run')}`
+            : ''}
+          {!connected ? (
+            <>
               {' '}
-              {directory.total} cached record(s), {directory.liveRecords} live BambooHR record(s),{' '}
-              {directory.syncRuns} sync run(s).
-            </span>
+              · <a href="#bamboohr">Connect BambooHR above</a> to load employees.
+            </>
           ) : null}
         </p>
-        {!connected ? (
-          <p className="hint">
-            Employees load from BambooHR once it is connected -{' '}
-            <a href="#bamboohr">enter the BambooHR connection details above</a>.
-          </p>
-        ) : null}
-        <form action={syncEmployeesAction} style={{ display: 'inline-block' }}>
-          <button type="submit">Synchronize the directory now</button>
-        </form>{' '}
-        <form action={testDirectoryConnectionAction} style={{ display: 'inline-block' }}>
-          <button type="submit" className="secondary">
-            Test connection (read-only)
-          </button>
-        </form>{' '}
-        <form action={reconciliationAction} style={{ display: 'inline-block' }}>
-          <button type="submit">Run reconciliation report</button>
-        </form>{' '}
-        <ConfirmDialog
-          trigger="Purge live directory cache"
-          title="Purge the live directory cache?"
-          consequence={[
-            'Every employee record read from BambooHR is dropped from this database.',
-            'Employee search and manager routing stop working until the next sync completes.',
-            'BambooHR itself is untouched - this platform never writes to it.',
-            'Cases keep their own snapshots, so open cases stay readable.',
-          ]}
-        >
-          <form action={purgeDirectoryAction}>
-            <button type="submit" className="danger">
-              Purge the cache
-            </button>
-          </form>
-        </ConfirmDialog>
         {directory && directory.recentRuns.length > 0 ? (
-          <>
-            <h3>Synchronization History</h3>
-            <ul>
+          <details className="action">
+            <summary>Synchronization history</summary>
+            <ul className="attention-list">
               {directory.recentRuns.map((s, i) => (
                 <li key={i}>
-                  {humanize(s.mode)} - {formatInstant(s.startedAt)}
-                  {s.finishedAt ? ` to ${formatInstant(s.finishedAt)}` : ''} - {s.createdCount}{' '}
-                  created, {s.updatedCount} updated.
+                  <Chip tone={s.mode === 'live' ? 'done' : 'neutral'}>{humanize(s.mode)}</Chip>
+                  <span className="attention-list__title">
+                    {s.createdCount} created, {s.updatedCount} updated
+                  </span>
+                  <span className="attention-list__meta">
+                    {formatInstant(s.startedAt)}
+                    {s.finishedAt ? ` to ${formatInstant(s.finishedAt)}` : ''}
+                  </span>
                 </li>
               ))}
             </ul>
-          </>
+          </details>
         ) : null}
         {recon ? (
           <>
-            <h3>Latest Reconciliation ({humanize(recon.adapterMode)} Source)</h3>
+            <h3>Latest reconciliation ({humanize(recon.adapterMode)} source)</h3>
             {recon.findings.length === 0 ? (
-              <p className="meta">
-                No mismatches - every runtime privilege matches what the grants define.
-              </p>
+              <p className="meta">No mismatches found.</p>
             ) : (
-              <ul>
+              <ul className="attention-list">
                 {recon.findings.map((f, i) => (
                   <li key={i}>
-                    <span className="badge badge--warning">{humanize(f.kind)}</span> {f.sourceId} -{' '}
-                    {f.detail}
+                    <Chip tone="attention">{humanize(f.kind)}</Chip>
+                    <span className="attention-list__title">
+                      {f.sourceId} · {f.detail}
+                    </span>
                   </li>
                 ))}
               </ul>
             )}
           </>
         ) : null}
-        <p className="hint">
-          Sync updates SOURCE records only; immutable case snapshots and approved HR decisions are
-          never touched. Missing source employees are reported for reconciliation, never deleted.
-          Purging anonymizes cached live records without touching cases or snapshots.
+        <p className="section-foot">
+          Refreshing updates the local employee list only. Cases keep their own snapshots, and
+          nothing is ever written to BambooHR.
         </p>
       </section>
-    </>
+
+      <EmailBannerAdmin
+        config={await getDepartmentBannerConfig()}
+        actions={{
+          upload: uploadDepartmentBannerAction,
+          update: updateDepartmentBannerAction,
+          clear: clearDepartmentBannerAction,
+        }}
+      />
+
+      <section className="panel" aria-labelledby="id-h">
+        <SectionHead
+          id="id-h"
+          icon={<ShieldIcon />}
+          tone="info"
+          title="User access"
+          description="Who can sign in, and a record of who could at a point in time."
+          aside={
+            reviews[0] ? (
+              <Chip tone="neutral">Last review {formatInstant(reviews[0].generatedAt)}</Chip>
+            ) : null
+          }
+        />
+        <div className="actions-row">
+          <form action={accessReviewAction} style={{ display: 'inline-block' }}>
+            <button type="submit" className="secondary">
+              Generate access review snapshot
+            </button>
+          </form>
+        </div>
+        <p className="meta">
+          {countOf(reviews.length, 'review')} recorded. Roles are granted and revoked under{' '}
+          <Link href="/admin">Administration</Link>.
+        </p>
+        <details className="action">
+          <summary>Disable a user</summary>
+          <form action={disableUserAction} className="stack">
+            <div className="field">
+              <label htmlFor="du-user">User</label>
+              <select id="du-user" name="userId" required>
+                {users.map((u) => (
+                  <option key={u.userId} value={u.userId}>
+                    {u.displayName} ({roleList(u.roles)})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="du-reason">Reason (recorded)</label>
+              <input id="du-reason" name="reason" required maxLength={500} />
+            </div>
+            <p className="hint">
+              Their sessions end at once and any open assignments are flagged for reassignment.
+            </p>
+            <button type="submit" className="danger">
+              Disable user now
+            </button>
+          </form>
+        </details>
+      </section>
+
+      <details className="panel action" aria-labelledby="cfg-h">
+        <summary id="cfg-h">Advanced settings (for technical support)</summary>
+        <p className="hint" role="note">
+          Low-level settings used by technical support. Not needed for everyday use. Never type a
+          password or key here. {breakGlass.note}
+        </p>
+        {config.length === 0 ? (
+          <p className="meta">No settings recorded yet.</p>
+        ) : (
+          <ul className="attention-list">
+            {config.map((c) => (
+              <li key={c.key}>
+                <span className="attention-list__title">
+                  <code>{c.key}</code> = <code>{JSON.stringify(c.value)}</code>
+                  {c.secretRef ? (
+                    <span className="attention-list__meta"> · secret ref: {c.secretRef}</span>
+                  ) : null}
+                </span>
+                {c.reason ? <span className="attention-list__meta">{c.reason}</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+        <form action={setConfigAction} className="stack">
+          <div className="field">
+            <label htmlFor="sc-key">Setting name (for example bamboohr.scheduledSync)</label>
+            <input id="sc-key" name="key" required maxLength={80} />
+          </div>
+          <div className="field">
+            <label htmlFor="sc-value">Value (true, false, a number or text)</label>
+            <input id="sc-value" name="value" required maxLength={500} />
+          </div>
+          <div className="field">
+            <label htmlFor="sc-secret">Secret reference (optional, technical support only)</label>
+            <input id="sc-secret" name="secretRef" maxLength={200} />
+          </div>
+          <div className="field">
+            <label htmlFor="sc-reason">Why are you changing it? (recorded)</label>
+            <input id="sc-reason" name="reason" required maxLength={500} />
+          </div>
+          <div className="actions-row">
+            <button type="submit" className="secondary">
+              Save setting
+            </button>
+          </div>
+        </form>
+      </details>
+    </div>
   );
 }

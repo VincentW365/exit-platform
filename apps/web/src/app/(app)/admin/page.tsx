@@ -1,9 +1,13 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ROLES, can, formatInstant } from '@exit/domain';
 import { listActiveUsers, listCalendars, listConfigItems, listFlags } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
+import { Chip, SectionHead } from '@/components/patterns';
+import { AdminIcon, BuildingIcon, CalendarIcon, FlowIcon, ShieldIcon } from '@/components/icons';
+import { countOf } from '@/lib/text';
 import {
   addConfigItemAction,
   approveCalendarAction,
@@ -105,7 +109,7 @@ export default async function AdminPage({
       ? [
           {
             href: '/admin/system',
-            label: 'System Configuration and Identity',
+            label: 'System Administration',
             kind: 'technical' as const,
           },
         ]
@@ -127,18 +131,26 @@ export default async function AdminPage({
   ];
 
   return (
-    <>
-      <h1>Administration Center</h1>
+    <div className="exit-center">
+      <div className="page-head">
+        <div className="page-head__text">
+          <h1 className="page-title">Administration Center</h1>
+          <p className="page-lede">
+            HR configuration, user access and platform settings, for the HR Manager.
+          </p>
+        </div>
+        {can(actor, 'admin.system') ? (
+          <div className="page-head__actions">
+            <Link className="button" href="/admin/system">
+              System Administration
+            </Link>
+          </div>
+        ) : null}
+      </div>
       <Feedback err={sp.err} ok={sp.ok} />
-      <p className="hint">
-        HR configuration and platform administration are both HR Manager responsibilities (DEC-063).
-        Technical operations such as backups and restore tests run outside the application.
-      </p>
 
       <section className="panel" aria-labelledby="hub-h">
-        <h2 id="hub-h" style={{ marginTop: 0 }}>
-          Administration Areas
-        </h2>
+        <SectionHead id="hub-h" icon={<AdminIcon />} title="Administration Areas" />
         {/* Two labelled groups instead of a "(technical)" suffix repeated on
             every second button (owner request, 2026-08-18). */}
         <h3>HR Configuration</h3>
@@ -165,14 +177,17 @@ export default async function AdminPage({
 
       {canAdminRoles ? (
         <section className="panel" aria-labelledby="roles-h">
-          <h2 id="roles-h" style={{ marginTop: 0 }}>
-            Users and Roles
-          </h2>
+          <SectionHead
+            id="roles-h"
+            icon={<ShieldIcon />}
+            tone="info"
+            title="Users and Roles"
+            description="Nobody can change their own role. Every change is recorded."
+            aside={<Chip tone="neutral">{countOf(users.length, 'active user')}</Chip>}
+          />
           <div className="table-wrap" tabIndex={0}>
             <table className="data">
-              <caption>
-                Active users; self-service role changes are refused and every change is audited
-              </caption>
+              <caption className="sr-only">Active users and their roles</caption>
               <thead>
                 <tr>
                   <th scope="col">User</th>
@@ -222,7 +237,7 @@ export default async function AdminPage({
                   </select>
                 </div>
                 <div className="field">
-                  <label htmlFor="g-reason">Reason (Required, Audited)</label>
+                  <label htmlFor="g-reason">Reason (recorded)</label>
                   <input id="g-reason" name="reason" type="text" required maxLength={200} />
                 </div>
                 <button type="submit">Grant role</button>
@@ -258,7 +273,7 @@ export default async function AdminPage({
                   </select>
                 </div>
                 <div className="field">
-                  <label htmlFor="r-reason">Reason (Required, Audited)</label>
+                  <label htmlFor="r-reason">Reason (recorded)</label>
                   <input id="r-reason" name="reason" type="text" required maxLength={200} />
                 </div>
                 <button type="submit" className="danger">
@@ -272,19 +287,24 @@ export default async function AdminPage({
 
       {canAdminRoles ? (
         <section className="panel" aria-labelledby="flags-h">
-          <h2 id="flags-h" style={{ marginTop: 0 }}>
-            Feature Flags
-          </h2>
-          <p className="hint">
-            Improvement automation stays disabled for Stage 1 baseline capture (DEC-007 /
-            IC-S1-004). Changes are audited.
-          </p>
+          <SectionHead
+            id="flags-h"
+            icon={<FlowIcon />}
+            tone="info"
+            title="Feature Flags"
+            description="What the platform carries out on its own. Every change is recorded."
+            aside={
+              <Chip tone={flags.some((f) => f.enabled) ? 'done' : 'neutral'}>
+                {flags.filter((f) => f.enabled).length} of {flags.length} on
+              </Chip>
+            }
+          />
           <div className="table-wrap" tabIndex={0}>
             <table className="data">
-              <caption>Automation feature flags</caption>
+              <caption className="sr-only">Automation feature flags</caption>
               <thead>
                 <tr>
-                  <th scope="col">Flag</th>
+                  <th scope="col">Automation</th>
                   <th scope="col">State</th>
                   <th scope="col">Change</th>
                 </tr>
@@ -293,15 +313,15 @@ export default async function AdminPage({
                 {flags.map((f) => (
                   <tr key={f.key}>
                     <td>
-                      <code>{f.key}</code>
+                      {f.description}
                       <br />
-                      <span className="hint">{f.description}</span>
+                      <span className="meta">{f.key}</span>
                     </td>
                     <td>
                       {f.enabled ? (
-                        <span className="badge badge--warning">Enabled</span>
+                        <span className="badge badge--success">On</span>
                       ) : (
-                        <span className="badge badge--success">Disabled (safe)</span>
+                        <span className="badge badge--neutral">Off</span>
                       )}
                     </td>
                     <td>
@@ -335,14 +355,13 @@ export default async function AdminPage({
 
       {isHrConfig ? (
         <section className="panel" aria-labelledby="cal-h">
-          <h2 id="cal-h" style={{ marginTop: 0 }}>
-            Business Calendar
-          </h2>
-          <p className="hint">
-            Publishing creates a new version and activates it; prior versions are retained
-            (REQ-ADMIN-013). The seeded holidays are synthetic - the production list requires
-            approval under DEC-027.
-          </p>
+          <SectionHead
+            id="cal-h"
+            icon={<CalendarIcon />}
+            tone="pending"
+            title="Business Calendar"
+            description="Company holidays, so due dates skip non-working days. Publishing makes a new version active and keeps the earlier ones."
+          />
           {calendars.length ? (
             <ul>
               {calendars.map((cal) => (
@@ -352,9 +371,9 @@ export default async function AdminPage({
                   </strong>{' '}
                   {cal.isActive ? <span className="badge badge--success">Active</span> : null}{' '}
                   {cal.approvedAt ? (
-                    <span className="badge badge--success">approved</span>
+                    <span className="badge badge--success">Approved</span>
                   ) : (
-                    <span className="badge badge--warning">Unapproved</span>
+                    <span className="badge badge--warning">Awaiting approval</span>
                   )}{' '}
                   - {cal.holidays.length} holidays ({formatInstant(cal.createdAt)})
                   {cal.isActive && !cal.approvedAt ? (
@@ -374,12 +393,10 @@ export default async function AdminPage({
             </p>
           )}
           <details className="action">
-            <summary>Preview SLA impact of a candidate holiday list (nothing is applied)</summary>
+            <summary>Preview the effect of a holiday list (nothing is applied)</summary>
             <form action={previewCalendarAction} className="stack">
               <div className="field">
-                <label htmlFor="cal-preview">
-                  Candidate Holidays, One per Line: YYYY-MM-DD,Label
-                </label>
+                <label htmlFor="cal-preview">Holidays, one per line (YYYY-MM-DD,Label)</label>
                 <textarea id="cal-preview" name="holidays" rows={4} required />
               </div>
               <button type="submit">Preview impact</button>
@@ -404,7 +421,7 @@ export default async function AdminPage({
                 />
               </div>
               <div className="field">
-                <label htmlFor="cal-holidays">Holidays, One per Line: YYYY-MM-DD,Label</label>
+                <label htmlFor="cal-holidays">Holidays, one per line (YYYY-MM-DD,Label)</label>
                 <textarea
                   id="cal-holidays"
                   name="holidays"
@@ -414,7 +431,7 @@ export default async function AdminPage({
                 />
               </div>
               <div className="field">
-                <label htmlFor="cal-reason">Reason (Required, Audited)</label>
+                <label htmlFor="cal-reason">Reason (recorded)</label>
                 <input id="cal-reason" name="reason" type="text" required maxLength={200} />
               </div>
               <button type="submit">Publish and activate</button>
@@ -425,9 +442,13 @@ export default async function AdminPage({
 
       {isHrConfig ? (
         <section className="panel" aria-labelledby="lists-h">
-          <h2 id="lists-h" style={{ marginTop: 0 }}>
-            Departments and Locations
-          </h2>
+          <SectionHead
+            id="lists-h"
+            icon={<BuildingIcon />}
+            tone="info"
+            title="Departments and Locations"
+            description="The lists offered when a case is created."
+          />
           <dl className="kv">
             <dt>Departments</dt>
             <dd>{departments.map((d) => d.value).join(', ') || '-'}</dd>
@@ -453,6 +474,6 @@ export default async function AdminPage({
           </details>
         </section>
       ) : null}
-    </>
+    </div>
   );
 }

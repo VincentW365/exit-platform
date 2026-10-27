@@ -2773,3 +2773,18 @@ kbd {
     flex-basis: 100%;
   }
 }
+
+/* --- System Administration (owner directive, 2026-10-27) ----------------- */
+
+/* Six directory tiles read three-and-three rather than five-and-one, and a
+   date or a word as a tile's value sits at heading size, not figure size. */
+.directory-health {
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+}
+.kpi__text {
+  display: block;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semi);
+  line-height: var(--lh-snug);
+  letter-spacing: 0;
+}

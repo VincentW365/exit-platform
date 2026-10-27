@@ -161,11 +161,11 @@ test('Scenario 2 - platform administration belongs to the HR Manager (DEC-063)',
   // Backups and restore tests are no longer application operations.
   await expect(page.getByRole('heading', { name: 'Backup and Restore' })).toHaveCount(0);
   await expect(page.getByText('System administration')).toBeVisible();
-  await page.locator('details.action > summary', { hasText: 'Set a configuration value' }).click();
+  await page.locator('details.action > summary', { hasText: 'Advanced settings' }).click();
   await page.locator('#sc-key').fill('pilot.privacyApprovalRequired');
   await page.locator('#sc-value').fill('false');
   await page.locator('#sc-reason').fill('Stage 4 acceptance run.');
-  await page.getByRole('button', { name: 'Save configuration' }).click();
+  await page.getByRole('button', { name: 'Save setting', exact: true }).click();
   await expect(page.getByText('Configuration saved')).toBeVisible();
   await page.goto('/admin/health');
   await expect(page.getByText('Integration and Operational Health')).toBeVisible();

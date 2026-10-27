@@ -9,6 +9,13 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 
+// A last working day that stays in the future whenever the suite runs; a
+// fixed date fell behind the calendar and the wizard rightly refused it.
+const LAST_DAY = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+// The same day as the wizard summarises it: "25 Sep 2026".
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const LAST_DAY_TEXT = `${Number(LAST_DAY.slice(8, 10))} ${MONTHS[Number(LAST_DAY.slice(5, 7)) - 1]} ${LAST_DAY.slice(0, 4)}`;
+
 async function signInAs(page: Page, displayName: string): Promise<void> {
   await page.goto('/signin');
   await page.getByRole('button', { name: `Sign in as ${displayName}` }).click();
@@ -48,7 +55,7 @@ test('a settled step still reopens, and its content was never lost', async ({ pa
   await openWizard(page, 'RESIGNATION_WITH_NOTICE');
 
   const lastDay = page.locator('input[name="confirmedLastDay"]');
-  await lastDay.fill('2026-09-25');
+  await lastDay.fill(LAST_DAY);
   await page
     .locator('[data-step="dates"]')
     .getByRole('button', { name: 'Save & continue' })
@@ -59,14 +66,14 @@ test('a settled step still reopens, and its content was never lost', async ({ pa
   const dates = step(page, 'dates');
   await expect(dates).toHaveClass(/step--settled/);
   // The summary reads as a date, not as the control's raw input format.
-  await expect(dates).toContainText('25 Sep 2026');
+  await expect(dates).toContainText(LAST_DAY_TEXT);
   await expect(page.locator('[data-step="dates"]')).toBeHidden();
-  await expect(lastDay).toHaveValue('2026-09-25');
+  await expect(lastDay).toHaveValue(LAST_DAY);
 
   // The header reopens it without any backwards navigation.
   await dates.getByRole('button').first().click();
   await expect(page.locator('[data-step="dates"]')).toBeVisible();
-  await expect(lastDay).toHaveValue('2026-09-25');
+  await expect(lastDay).toHaveValue(LAST_DAY);
 });
 
 test('a step that stops holding what it needs stops claiming to be complete', async ({ page }) => {
@@ -128,7 +135,7 @@ test('the wizard creates the case, and only from the final action', async ({ pag
   await signInAs(page, 'HR Officer');
   await openWizard(page, 'RESIGNATION_WITH_NOTICE');
 
-  await page.locator('input[name="confirmedLastDay"]').fill('2026-09-25');
+  await page.locator('input[name="confirmedLastDay"]').fill(LAST_DAY);
   // Enter inside a field must not submit the half-finished form.
   await page.locator('input[name="confirmedLastDay"]').press('Enter');
   await page.waitForTimeout(500);
