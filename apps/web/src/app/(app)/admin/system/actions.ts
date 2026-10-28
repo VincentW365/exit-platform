@@ -6,8 +6,10 @@ import { after } from 'next/server';
 import {
   ServiceError,
   clearDepartmentBanner,
+  describeDirectoryFailure,
   disableUser,
   generateAccessReview,
+  isTransientDirectoryFailure,
   purgeLiveDirectory,
   reconciliationReport,
   removeBambooCredential,
@@ -200,10 +202,13 @@ export async function saveBambooConnectionAction(formData: FormData): Promise<vo
     const test = await testDirectoryConnection(actor);
     if (test.status !== 'ok') {
       revalidatePath('/admin/system');
+      // Throttling or an outage says nothing about the details just entered;
+      // sending someone back to paste the key again only adds requests.
+      const what = describeDirectoryFailure(test.detail);
       back({
-        err:
-          'Saved, but BambooHR did not accept it: ' +
-          `${test.detail} Check the company name and paste the key again.`,
+        err: isTransientDirectoryFailure(test.detail)
+          ? `Saved. ${what} Nothing is wrong with what you entered: wait a few minutes, then press Refresh Directory Now.`
+          : `Saved, but BambooHR did not accept it: ${what} Check the company name and paste the key again.`,
       });
     }
     const { runId, reused } = await requestManualDirectoryRefresh(actor);
@@ -274,7 +279,12 @@ export async function testDirectoryConnectionAction(): Promise<void> {
           `${a.missingDepartment + a.missingPosition} record(s) with missing mapping. Nothing was stored.`,
       });
     }
-    back({ err: `BambooHR connection test: ${result.status} - ${result.detail}` });
+    const what = describeDirectoryFailure(result.detail);
+    back({
+      err: isTransientDirectoryFailure(result.detail)
+        ? `${what} Nothing was stored. Try again in a few minutes.`
+        : `BambooHR connection test failed: ${what}`,
+    });
   } catch (e) {
     if (e instanceof ServiceError) back({ err: errText(e) });
     throw e;

@@ -16,7 +16,12 @@ import {
   purgeLiveDirectory,
   scheduledDirectorySyncIfEnabled,
   syncEmployees,
+  testDirectoryConnection,
 } from '../src/services/bamboohrService.ts';
+import {
+  removeBambooCredential,
+  saveBambooCredential,
+} from '../src/services/bambooCredentialService.ts';
 import {
   createDraft,
   createManualEmployeeSource,
@@ -268,14 +273,16 @@ describe('live per-employee read (webhook follow-up) - stubbed HTTP', () => {
   Object.assign(adapter, { subdomain: 'synthetic', authHeader: 'Basic c3ludGhldGljOng=' });
   const originalFetch = globalThis.fetch;
   const requested: string[] = [];
-  const respond = (handler: (url: string) => { status: number; body: unknown }) => {
+  const respond = (
+    handler: (url: string) => { status: number; body: unknown; headers?: Record<string, string> },
+  ) => {
     globalThis.fetch = (async (input: string | URL | Request) => {
       const url = String(input instanceof Request ? input.url : input);
       requested.push(url);
       const r = handler(url);
       return new Response(JSON.stringify(r.body), {
         status: r.status,
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...r.headers },
       });
     }) as typeof fetch;
   };
@@ -344,9 +351,68 @@ describe('live per-employee read (webhook follow-up) - stubbed HTTP', () => {
   it('only a genuine 404 means the source no longer returns the employee', async () => {
     respond(() => ({ status: 404, body: {} }));
     expect(await adapter.getEmployees(['9999'])).toEqual([]);
-    respond(() => ({ status: 503, body: {} }));
+    requested.length = 0;
+    respond(() => ({ status: 503, body: {}, headers: { 'retry-after': '0' } }));
     await expect(adapter.getEmployees(['9001'])).rejects.toMatchObject({
       details: ['BambooHR request failed: UPSTREAM_ERROR.'],
     });
+    // A 503 is throttling as often as not: three retries, at the source's pace.
+    expect(requested).toHaveLength(4);
+  });
+
+  it('a throttled read waits for Retry-After and tries again before it counts (2026-10-28)', async () => {
+    requested.length = 0;
+    let answered = 0;
+    respond(() =>
+      answered++ < 2
+        ? { status: 429, body: {}, headers: { 'retry-after': '0' } }
+        : { status: 200, body: { id: '9001', displayName: 'Avery Brown', status: 'Active' } },
+    );
+    const rows = await adapter.getEmployees(['9001']);
+    expect(rows.map((r) => r.sourceId)).toEqual(['9001']);
+    expect(requested).toHaveLength(3);
+
+    requested.length = 0;
+    respond(() => ({ status: 429, body: {}, headers: { 'retry-after': '0' } }));
+    await expect(adapter.getEmployees(['9001'])).rejects.toMatchObject({
+      details: ['BambooHR request failed: RATE_LIMITED.'],
+    });
+    expect(requested).toHaveLength(4);
+  });
+
+  it('the connection test reads the directory listing alone: one request (2026-10-28)', async () => {
+    await saveBambooCredential(manager.actor, {
+      subdomain: 'synthetic',
+      apiKey: 'fake-test-key-0123456789abcdefghijklmnop',
+    });
+    try {
+      requested.length = 0;
+      respond((url) =>
+        url.endsWith('/employees/directory')
+          ? {
+              status: 200,
+              body: {
+                employees: [
+                  {
+                    id: '9001',
+                    displayName: 'Avery Brown',
+                    department: 'Sales',
+                    jobTitle: 'Parts Sales Associate',
+                  },
+                ],
+              },
+            }
+          : { status: 500, body: {} },
+      );
+      const result = await testDirectoryConnection(manager.actor);
+      expect(result.status).toBe('ok');
+      expect(result.aggregates?.employees).toBe(1);
+      // Never the per-employee reads: 380 of them at once had the source
+      // throttle a connection the moment it was made.
+      expect(requested).toHaveLength(1);
+      expect(requested[0]).toMatch(/\/employees\/directory$/);
+    } finally {
+      await removeBambooCredential(manager.actor);
+    }
   });
 });

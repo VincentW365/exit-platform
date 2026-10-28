@@ -106,8 +106,13 @@ Their current record is then read from BambooHR by the engine.
    error code (`AUTH_FAILED`, `NETWORK_ERROR`, `RATE_LIMITED`,
    `UPSTREAM_ERROR`, `BAD_REQUEST` for a rejected request such as an unknown
    field name, `BAD_RESPONSE` for a body the field mapper cannot use). A
-   throttled or server-failed read is retried once before it counts. Use
-   **Test connection (read-only)**.
+   throttled read (`429`, or a `503`, which BambooHR says is usually rate
+   limiting) waits for the source's `Retry-After` - at most 15 seconds a
+   time, three times - and every other read on that run waits with it; any
+   other server failure is retried once. **Test connection (read-only)**
+   reads the directory listing alone, one request, so it never causes the
+   throttling it is checking for. `RATE_LIMITED` passes by itself: wait a
+   few minutes, then press **Refresh Directory Now**.
 2. Fix the cause (credential, network, BambooHR incident). The cached
    directory stays in use meanwhile; offboarding is never blocked.
 3. Press **Refresh Directory Now**, or wait for the next reconciliation. The

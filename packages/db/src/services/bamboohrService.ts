@@ -166,6 +166,35 @@ function classifyHttp(status: number): SafeErrorCode {
   return 'UPSTREAM_ERROR';
 }
 
+/** The safe code in a failure detail, in plain words for the System page. */
+export function describeDirectoryFailure(detail: string): string {
+  const code = /BambooHR request failed: ([A-Z_]+)/.exec(detail)?.[1];
+  switch (code) {
+    case 'RATE_LIMITED':
+      return 'BambooHR is limiting how many requests it answers right now (RATE_LIMITED).';
+    case 'UPSTREAM_ERROR':
+      return 'BambooHR reported a problem on its side (UPSTREAM_ERROR).';
+    case 'NETWORK_ERROR':
+      return 'BambooHR could not be reached (NETWORK_ERROR).';
+    case 'AUTH_FAILED':
+      return 'BambooHR rejected the API key (AUTH_FAILED).';
+    case 'FORBIDDEN':
+      return 'The API key is not allowed to read the employee directory (FORBIDDEN).';
+    case 'NOT_FOUND':
+      return 'BambooHR did not recognize the company name (NOT_FOUND).';
+    case 'BAD_REQUEST':
+    case 'BAD_RESPONSE':
+      return `BambooHR answered in a way the directory could not use (${code}).`;
+    default:
+      return detail;
+  }
+}
+
+/** A failure that passes by itself: nothing about the saved details is wrong. */
+export function isTransientDirectoryFailure(detail: string): boolean {
+  return /RATE_LIMITED|UPSTREAM_ERROR|NETWORK_ERROR/.test(detail);
+}
+
 /**
  * Live READ-ONLY directory adapter (Directive 5.1 section B). GET only; the
  * class deliberately exposes no create/update/delete/upload capability.
@@ -184,8 +213,30 @@ const DETAIL_FIELDS = [
   'lastChanged',
 ] as const;
 
-/** Pause before the single retry of a throttled or server-failed read. */
+/**
+ * Throttling (deployed site, 2026-10-28): BambooHR answers a burst of reads
+ * with 429, or with a 503 that its documentation says is commonly rate
+ * limiting, and may name a Retry-After. A throttled read waits that long -
+ * at most MAX_RETRY_WAIT_MS a time, THROTTLE_RETRIES times - and every other
+ * read on the same adapter waits with it, so a pool of detail reads never
+ * piles retries onto a source that has just asked for a pause. Any other
+ * server failure keeps its single retry.
+ */
 const RETRY_DELAY_MS = 1500;
+const THROTTLE_RETRIES = 3;
+const MAX_RETRY_WAIT_MS = 15_000;
+
+/** The source's Retry-After in milliseconds, when it sent one. */
+function retryAfterMs(res: Response): number | null {
+  const raw = res.headers.get('retry-after');
+  if (!raw) return null;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const at = Date.parse(raw);
+  return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** A stand-alone per-employee read: every approved field, nothing else. */
 const EMPLOYEE_FIELDS: readonly string[] = BAMBOO_ALLOWED_SOURCE_FIELDS.filter((f) => f !== 'id');
@@ -215,37 +266,43 @@ export class LiveBambooDirectoryAdapter implements BambooAdapter {
     return [];
   }
 
+  /** No read on this adapter is sent before this instant (throttling). */
+  private pausedUntil = 0;
+
   /** GET only. The credential never appears in errors, logs or results. */
   private async get(path: string): Promise<unknown> {
     const url = `https://api.bamboohr.com/api/gateway.php/${encodeURIComponent(this.subdomain)}/v1${path}`;
     const headers = { Accept: 'application/json', Authorization: this.authHeader };
-    let res: Response;
-    try {
-      res = await fetch(url, { method: 'GET', headers });
-    } catch {
-      throw ServiceError.validation(['BambooHR request failed: NETWORK_ERROR.']);
-    }
-    // One bounded retry on throttling or a server-side error: BambooHR
+    // Bounded retries of the identical, still read-only request. BambooHR
     // answers a single read with a 5xx now and then (seen in the directory
     // evidence run, 2026-09-15), and a per-employee webhook follow-up has no
-    // other chance until the next reconciliation. Still read-only; the
-    // request is identical.
-    if (res.status === 429 || res.status >= 500) {
-      await res.text().catch(() => '');
-      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+    // other chance until the next reconciliation.
+    for (let attempt = 0; ; attempt++) {
+      const pause = (this.pausedUntil || 0) - Date.now();
+      if (pause > 0) await sleep(pause);
+      let res: Response;
       try {
         res = await fetch(url, { method: 'GET', headers });
       } catch {
         throw ServiceError.validation(['BambooHR request failed: NETWORK_ERROR.']);
       }
-    }
-    if (!res.ok) {
-      throw ServiceError.validation([`BambooHR request failed: ${classifyHttp(res.status)}.`]);
-    }
-    try {
-      return await res.json();
-    } catch {
-      throw ServiceError.validation(['BambooHR request failed: BAD_RESPONSE.']);
+      if (res.ok) {
+        try {
+          return await res.json();
+        } catch {
+          throw ServiceError.validation(['BambooHR request failed: BAD_RESPONSE.']);
+        }
+      }
+      await res.text().catch(() => '');
+      const throttled = res.status === 429 || res.status === 503;
+      const retries = throttled ? THROTTLE_RETRIES : res.status >= 500 ? 1 : 0;
+      if (attempt >= retries) {
+        throw ServiceError.validation([`BambooHR request failed: ${classifyHttp(res.status)}.`]);
+      }
+      const wait = throttled
+        ? Math.min(retryAfterMs(res) ?? RETRY_DELAY_MS * 2 ** attempt, MAX_RETRY_WAIT_MS)
+        : RETRY_DELAY_MS;
+      this.pausedUntil = Math.max(this.pausedUntil || 0, Date.now() + wait);
     }
   }
 
@@ -575,7 +632,10 @@ export async function reconciliationReport(actor: Actor) {
 /**
  * L: minimal live connection verification. IN-MEMORY ONLY - nothing is
  * persisted, and the result contains aggregate counts, never a name, email
- * or identifier. Audited as a technical action.
+ * or identifier. Audited as a technical action. ONE request - the directory
+ * listing, never the per-employee detail reads: 380 of those at once were
+ * enough to have BambooHR throttle a connection the moment it was made
+ * (deployed site, 2026-10-28).
  */
 export async function testDirectoryConnection(actor: Actor): Promise<{
   status: 'ok' | 'failed' | 'not-configured';
@@ -598,7 +658,7 @@ export async function testDirectoryConnection(actor: Actor): Promise<{
     }
     try {
       const adapter = new LiveBambooDirectoryAdapter(credential);
-      const rows = await adapter.listEmployees();
+      const rows = await adapter.listEmployees({ details: 'none' });
       return {
         status: 'ok' as const,
         detail: 'Authentication and directory retrieval succeeded (read-only).',
