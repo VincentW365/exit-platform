@@ -21,7 +21,9 @@ Set `SESSION_SECRET` once, before `pnpm db:seed`, and keep it. It is also the
 data key for saved recipient addresses and the saved BambooHR key: change it
 and they become unreadable - Administration → System then says **Data key:
 Changed**, and Review and approve fails until the addresses are entered again
-(DEC-073).
+(DEC-073). Seeded addresses are repaired by re-running `pnpm db:seed` or by the
+Repair button on that line; `pnpm worker` also applies any pending migrations
+when it starts (DEC-074; `MIGRATE_ON_START=false` turns that off).
 
 ### Local database (isolated, hardened instance)
 

@@ -316,6 +316,11 @@ pnpm --filter @exit/db exec prisma migrate deploy
 psql "$DATABASE_URL_MIGRATE" -f scripts/db/grants.sql
 ```
 
+Outside production the worker also runs `migrate deploy` each time it starts
+(DEC-074), so a site with a running worker and `DATABASE_URL_MIGRATE` in the
+worker's environment catches up on its own; a site without a worker still
+needs the step above. `MIGRATE_ON_START=false` turns it off.
+
 `migrate deploy` is forward-only. **Never run `prisma migrate dev` against a shared
 database** — it can drop and recreate the schema. Re-run `grants.sql` after every
 migration: new tables default to read-only for `exit_app`.
@@ -345,8 +350,10 @@ export DATA_KEY="<the web app's value, if one is set>"
 ```
 
 The seed prints a data key fingerprint and the System page shows the site's;
-they must match. If they do not, re-seed under the right value or enter the
-addresses again under Administration → Recipients.
+they must match. If they do not, press **Repair** on the System page's Data
+key line (seeded addresses are re-encrypted from the seed's own table),
+re-seed under the right value, or enter the addresses again under
+Administration → Recipients.
 
 ### The component sequence
 

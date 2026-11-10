@@ -33,6 +33,7 @@ import {
   reconciliationAction,
   refreshDirectoryAction,
   removeBambooConnectionAction,
+  repairSeededAddressesAction,
   saveBambooConnectionAction,
   setConfigAction,
   syncEmployeesAction,
@@ -107,7 +108,10 @@ function dataKeyText(d: DataKeyStatus): string {
     ]
       .filter(Boolean)
       .join(' and ');
-    return `${what} cannot be read with this site's key (fingerprint ${d.fingerprint}). SESSION_SECRET or DATA_KEY changed since they were saved, or the database was seeded under a different one. Restore the original value on the host, or enter them again: addresses under Recipients, the key under BambooHR connection above.`;
+    const repairable = d.repairableAddresses
+      ? ` ${d.repairableAddresses} of these are seeded test addresses: press Repair to read them again with this key.`
+      : '';
+    return `${what} cannot be read with this site's key (fingerprint ${d.fingerprint}). SESSION_SECRET or DATA_KEY changed since they were saved, or the database was seeded under a different one. Restore the original value on the host, or enter them again: addresses under Recipients, the key under BambooHR connection above.${repairable}`;
   }
   if (d.state === 'none')
     return `Fingerprint ${d.fingerprint}. Whoever seeds or enters addresses must use the same SESSION_SECRET or DATA_KEY as this site.`;
@@ -602,6 +606,18 @@ export default async function SystemAdminPage({
             >
               {dataKeyText(support.dataKey)}
             </span>
+            {support.dataKey.repairableAddresses > 0 ? (
+              <form action={repairSeededAddressesAction}>
+                <button type="submit" className="secondary compact">
+                  Repair{' '}
+                  {countOf(
+                    support.dataKey.repairableAddresses,
+                    'seeded test address',
+                    'seeded test addresses',
+                  )}
+                </button>
+              </form>
+            ) : null}
           </li>
         </ul>
         <p className="hint" role="note">

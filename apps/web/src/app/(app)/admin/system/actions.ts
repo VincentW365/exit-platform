@@ -13,6 +13,7 @@ import {
   purgeLiveDirectory,
   reconciliationReport,
   removeBambooCredential,
+  repairSeededRecipients,
   requestManualDirectoryRefresh,
   runQueuedDirectorySyncs,
   saveBambooCredential,
@@ -225,6 +226,27 @@ export async function saveBambooConnectionAction(formData: FormData): Promise<vo
     revalidatePath('/admin/system');
     back({
       ok: `BambooHR connected: ${test.aggregates?.employees ?? 0} employees found. Loading them into the directory now - this page updates itself.`,
+    });
+  } catch (e) {
+    if (e instanceof ServiceError) back({ err: errText(e) });
+    throw e;
+  }
+}
+
+/** DEC-073: seeded test addresses the data key cannot read, re-encrypted from the seed's table. */
+export async function repairSeededAddressesAction(): Promise<void> {
+  const { actor } = await requireAuth();
+  await touchSession();
+  try {
+    const r = await repairSeededRecipients(actor);
+    revalidatePath('/admin/system');
+    revalidatePath('/admin/recipients');
+    back({
+      ok:
+        `${r.repaired} seeded test address(es) can be read again.` +
+        (r.remaining
+          ? ` ${r.remaining} entered by hand still need entering again under Recipients.`
+          : ''),
     });
   } catch (e) {
     if (e instanceof ServiceError) back({ err: errText(e) });

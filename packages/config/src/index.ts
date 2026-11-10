@@ -63,6 +63,11 @@ const envSchema = z.object({
    * test environment is never inferred: it must be asked for twice.
    */
   UAT_HOSTED_ACK: boolString,
+  /**
+   * DEC-074: the worker applies pending database migrations when it starts.
+   * Unset, that is on outside production and off in production.
+   */
+  MIGRATE_ON_START: z.enum(['true', 'false']).optional(),
   /** The one mailbox every message is redirected to while testing. */
   TEST_EMAIL: z.string().optional(),
   GRAPH_TENANT_ID: z.string().optional(),

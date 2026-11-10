@@ -22,6 +22,7 @@ import { z } from 'zod';
 import { getConfig } from '@exit/config';
 import { getPrisma } from '../client.ts';
 import { encryptValue, tryDecryptValue } from '../secretBox.ts';
+import { DEV_RECIPIENTS, SEED_CHANGE_REASON, SEED_ENVIRONMENT } from '../syntheticRecipients.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
 
@@ -41,6 +42,80 @@ export const recipientInputSchema = z.object({
   organizationName: z.string().trim().max(200).nullable().optional(),
   contactName: z.string().trim().max(200).nullable().optional(),
 });
+
+/**
+ * The seed entry a row was written from, when it certainly was: the seed's
+ * change reason and environment, and a mask equal to the seed's. A
+ * hand-entered address never matches.
+ */
+export function seededRecipientFor(row: {
+  recipientClass: string;
+  environment: string;
+  changeReason: string | null;
+  destinationMask: string;
+}): { destination: string } | null {
+  if (row.environment !== SEED_ENVIRONMENT || row.changeReason !== SEED_CHANGE_REASON) return null;
+  const entry = DEV_RECIPIENTS.find((r) => r.recipientClass === row.recipientClass);
+  if (!entry || maskDestination(entry.destination) !== row.destinationMask) return null;
+  return { destination: entry.destination };
+}
+
+/**
+ * Seeded addresses this site's data key cannot read are re-encrypted from the
+ * seed's own table (DEC-073): synthetic capture destinations only, so no
+ * re-approval is needed - the value is the one that was approved. Returns how
+ * many were repaired and how many unreadable, hand-entered rows remain.
+ */
+export async function repairSeededRecipientRows(
+  db: ReturnType<typeof getPrisma>,
+  who: { actorId: string | null; roles: readonly string[] },
+): Promise<{ repaired: number; remaining: number }> {
+  const rows = await db.recipientConfig.findMany();
+  let repaired = 0;
+  let remaining = 0;
+  for (const row of rows) {
+    if (tryDecryptValue(row.destinationCiphertext) !== null) continue;
+    const seed = seededRecipientFor(row);
+    if (!seed) {
+      remaining += 1;
+      continue;
+    }
+    await db.recipientConfig.update({
+      where: { id: row.id },
+      data: {
+        destinationCiphertext: encryptValue(seed.destination),
+        destinationMask: maskDestination(seed.destination),
+      },
+    });
+    await appendAudit(db, {
+      eventType: 'RECIPIENT_CHANGED',
+      actorType: who.actorId ? 'USER' : 'SYSTEM',
+      actorId: who.actorId ?? undefined,
+      effectiveRoles: who.roles,
+      objectType: 'RecipientConfig',
+      objectId: row.id,
+      result: 'SUCCESS',
+      correlationId: newCorrelationId(),
+      // Mask only - never the destination itself.
+      metadata: {
+        action: 'repaired-seeded',
+        recipientClass: row.recipientClass,
+        destinationMask: row.destinationMask,
+      },
+    });
+    repaired += 1;
+  }
+  return { repaired, remaining };
+}
+
+/** The System page's Repair button: the HR Manager re-encrypts seeded addresses. */
+export async function repairSeededRecipients(
+  actor: Actor,
+): Promise<{ repaired: number; remaining: number }> {
+  if (!can(actor, 'recipients.editTechnical') && !can(actor, 'recipients.editBusiness'))
+    throw ServiceError.forbidden();
+  return repairSeededRecipientRows(getPrisma(), { actorId: actor.userId, roles: actor.roles });
+}
 
 /** Plain words for an address this site's data key cannot read (DEC-073). */
 export function unreadableAddressMessage(what: string): string {

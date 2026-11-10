@@ -45,7 +45,7 @@ const ROLES = ['HR Manager', 'HR Officer'];
 
 async function assertHealthy(page: Page, label: string): Promise<void> {
   // The global error boundary and Next's static error page must never show.
-  await expect(page.getByText('Something Went Wrong'), label).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Something Went Wrong' }), label).toHaveCount(0);
   await expect(
     page.getByText('Application error: a client-side exception has occurred'),
     label,

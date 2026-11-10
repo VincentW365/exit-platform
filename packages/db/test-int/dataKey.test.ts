@@ -14,7 +14,16 @@ import {
   tryDecryptValue,
   UnreadableSecretError,
 } from '../src/secretBox.ts';
-import { listRecipients, resolveUsableRecipient } from '../src/services/recipientService.ts';
+import {
+  listRecipients,
+  repairSeededRecipients,
+  resolveUsableRecipient,
+} from '../src/services/recipientService.ts';
+import {
+  DEV_RECIPIENTS,
+  SEED_CHANGE_REASON,
+  SEED_ENVIRONMENT,
+} from '../src/syntheticRecipients.ts';
 import { routingEnvironment } from '../src/services/routingService.ts';
 import { dataKeyStatus } from '../src/services/siteSupportService.ts';
 import { createUser, resetDb } from './helpers.ts';
@@ -109,5 +118,55 @@ describe('saved secrets under a changed data key (DEC-073)', () => {
       data: { destinationCiphertext: encryptValue('it@example.test') },
     });
     expect(await dataKeyStatus()).toMatchObject({ unreadableAddresses: 0, state: 'current' });
+  });
+
+  it('repairs seeded addresses from the seed table and leaves hand-entered ones alone', async () => {
+    const prisma = getPrisma();
+    const seeded = DEV_RECIPIENTS.find((r) => r.recipientClass === 'IT_OFFBOARDING')!;
+    // The IT row becomes what the seed wrote under another key; Finance stays
+    // a hand-entered address that the key cannot read either.
+    await prisma.recipientConfig.updateMany({
+      where: { recipientClass: 'IT_OFFBOARDING' },
+      data: {
+        destinationCiphertext: savedUnderAnotherKey(seeded.destination),
+        destinationMask: maskDestination(seeded.destination),
+        environment: SEED_ENVIRONMENT,
+        changeReason: SEED_CHANGE_REASON,
+      },
+    });
+    await prisma.recipientConfig.updateMany({
+      where: { recipientClass: 'FINANCE_OFFBOARDING' },
+      data: { destinationCiphertext: savedUnderAnotherKey('fin@example.test') },
+    });
+    expect(await dataKeyStatus()).toMatchObject({
+      unreadableAddresses: 2,
+      repairableAddresses: 1,
+      state: 'changed',
+    });
+
+    const nobody = await createUser('Key Nobody');
+    await expect(repairSeededRecipients(nobody.actor)).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+
+    expect(await repairSeededRecipients(manager.actor)).toEqual({ repaired: 1, remaining: 1 });
+    const it = await prisma.recipientConfig.findFirstOrThrow({
+      where: { recipientClass: 'IT_OFFBOARDING' },
+    });
+    expect(decryptValue(it.destinationCiphertext)).toBe(seeded.destination);
+    const audit = await prisma.auditEvent.findFirstOrThrow({
+      where: { eventType: 'RECIPIENT_CHANGED', objectId: it.id },
+      orderBy: { occurredAt: 'desc' },
+    });
+    expect(audit.actorId).toBe(manager.userId);
+    expect(audit.metadata).toMatchObject({
+      action: 'repaired-seeded',
+      recipientClass: 'IT_OFFBOARDING',
+    });
+    expect(await dataKeyStatus()).toMatchObject({
+      unreadableAddresses: 1,
+      repairableAddresses: 0,
+      state: 'changed',
+    });
   });
 });

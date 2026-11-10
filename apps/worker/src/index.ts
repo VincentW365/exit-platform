@@ -36,6 +36,46 @@ function log(event: string, fields: Record<string, string | number | boolean> = 
 }
 
 const config = getConfig(); // fail-closed guards run before anything else
+
+/**
+ * DEC-074: a hosted site without a release step never has its migrations
+ * applied, and the web app can only report the gap (DEC-073). Outside
+ * production the worker applies pending migrations when it starts;
+ * MIGRATE_ON_START=false turns that off, and in production it runs only
+ * with MIGRATE_ON_START=true. Prisma serialises concurrent deploys with an
+ * advisory lock. A failure is logged - the last line only, never a
+ * connection string - and never stops the worker.
+ */
+async function applyPendingMigrations(): Promise<void> {
+  const { execFileSync } = await import('node:child_process');
+  const { createRequire } = await import('node:module');
+  const path = await import('node:path');
+  const dbRoot = path.resolve(import.meta.dirname, '../../../packages/db');
+  const lastLine = (s: string) =>
+    s
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .at(-1) ?? '';
+  try {
+    const cli = createRequire(path.join(dbRoot, 'package.json')).resolve('prisma/build/index.js');
+    const out = execFileSync(process.execPath, [cli, 'migrate', 'deploy'], {
+      cwd: dbRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 180_000,
+    });
+    log('migrations', { result: lastLine(out).slice(0, 200) });
+  } catch (e) {
+    const err = e as { stderr?: string; message?: string };
+    log('migrations_error', {
+      message: lastLine(err.stderr ?? err.message ?? 'unknown').slice(0, 300),
+    });
+  }
+}
+if (config.MIGRATE_ON_START ? config.MIGRATE_ON_START === 'true' : !config.isProduction) {
+  await applyPendingMigrations();
+}
 const prisma = getPrisma();
 
 let running = true;

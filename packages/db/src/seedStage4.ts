@@ -9,119 +9,11 @@
  */
 import { maskDestination, EXTERNAL_RECIPIENT_CLASSES, NOTIFICATION_TYPES } from '@exit/domain';
 import { encryptValue } from './secretBox.ts';
+import { repairSeededRecipientRows } from './services/recipientService.ts';
+import { DEV_RECIPIENTS, SEED_CHANGE_REASON, SEED_ENVIRONMENT } from './syntheticRecipients.ts';
 import type { getPrisma } from './client.ts';
 
 type Db = ReturnType<typeof getPrisma>;
-
-const DEV_RECIPIENTS = [
-  {
-    recipientClass: 'IT_OFFBOARDING',
-    displayName: 'DEV IT offboarding mailbox',
-    destination: 'capture://it-offboarding',
-    purpose: null,
-    organizationName: null,
-    contactName: null,
-  },
-  {
-    recipientClass: 'FINANCE_OFFBOARDING',
-    displayName: 'DEV Finance offboarding mailbox',
-    destination: 'capture://finance-offboarding',
-    purpose: null,
-    organizationName: null,
-    contactName: null,
-  },
-  {
-    recipientClass: 'HR_OFFBOARDING',
-    displayName: 'DEV HR offboarding mailbox',
-    destination: 'capture://hr-offboarding',
-    purpose: null,
-    organizationName: null,
-    contactName: null,
-  },
-  {
-    recipientClass: 'LINE_MANAGER',
-    displayName: 'DEV line-manager mailbox',
-    destination: 'capture://line-manager',
-    purpose: null,
-    organizationName: null,
-    contactName: null,
-  },
-  {
-    recipientClass: 'SAGICOR_GROUP_HEALTH',
-    displayName: 'DEV Sagicor capture (synthetic)',
-    destination: 'capture://sagicor-group-health',
-    purpose: 'GROUP_HEALTH_REMOVAL',
-    organizationName: 'Sagicor (synthetic)',
-    contactName: 'Group Benefits Team',
-  },
-  {
-    recipientClass: 'NCB_GROUP_LIFE',
-    displayName: 'DEV NCB capture (synthetic)',
-    destination: 'capture://ncb-group-life',
-    purpose: 'GROUP_LIFE_REMOVAL',
-    organizationName: 'NCB Insurance (synthetic)',
-    contactName: 'Group Life Team',
-  },
-  {
-    recipientClass: 'EMPLOYEE_PERSONAL',
-    displayName: 'DEV employee capture (synthetic)',
-    destination: 'capture://employee-personal',
-    purpose: null,
-    organizationName: null,
-    contactName: null,
-  },
-  // Directive 6.3 N: independently configurable provider purposes.
-  {
-    recipientClass: 'PAYROLL_BANK',
-    displayName: 'DEV payroll/bank capture (synthetic)',
-    destination: 'capture://payroll-bank',
-    purpose: 'PAYROLL_OR_BANK_NOTIFICATION',
-    organizationName: 'NCB Bank (synthetic)',
-    contactName: 'Payroll Services Team',
-  },
-  {
-    recipientClass: 'OTHER_APPROVED_EXTERNAL',
-    displayName: 'DEV other approved provider capture (synthetic)',
-    destination: 'capture://other-approved-external',
-    purpose: 'OTHER_APPROVED_PROVIDER',
-    organizationName: 'Other approved provider (synthetic)',
-    contactName: 'Provider Contact Team',
-  },
-  // Email routing directive: the remaining departmental destinations, so an
-  // administrator can route any notification type without touching code.
-  {
-    recipientClass: 'HR_OFFICERS',
-    displayName: 'DEV HR Officers capture (synthetic)',
-    destination: 'capture://hr-officers',
-    purpose: null,
-    organizationName: null,
-    contactName: 'HR Officers',
-  },
-  {
-    recipientClass: 'PAYROLL',
-    displayName: 'DEV Payroll capture (synthetic)',
-    destination: 'capture://payroll',
-    purpose: null,
-    organizationName: null,
-    contactName: 'Payroll Team',
-  },
-  {
-    recipientClass: 'SECURITY',
-    displayName: 'DEV Security capture (synthetic)',
-    destination: 'capture://security',
-    purpose: null,
-    organizationName: null,
-    contactName: 'Security Team',
-  },
-  {
-    recipientClass: 'ASSET_WAREHOUSE',
-    displayName: 'DEV Asset / Warehouse capture (synthetic)',
-    destination: 'capture://asset-warehouse',
-    purpose: null,
-    organizationName: null,
-    contactName: 'Asset and Warehouse Team',
-  },
-] as const;
 
 /**
  * Write the shipped routes into the routing table on first seed. Storing them
@@ -154,7 +46,7 @@ export async function seedStage4(db: Db): Promise<void> {
   });
   for (const r of DEV_RECIPIENTS) {
     const existing = await db.recipientConfig.findFirst({
-      where: { recipientClass: r.recipientClass, environment: 'development' },
+      where: { recipientClass: r.recipientClass, environment: SEED_ENVIRONMENT },
     });
     if (existing) {
       // Directive 6.3 N/P: backfill the purpose/identity metadata and the
@@ -177,7 +69,7 @@ export async function seedStage4(db: Db): Promise<void> {
         displayName: r.displayName,
         destinationCiphertext: encryptValue(r.destination),
         destinationMask: maskDestination(r.destination),
-        environment: 'development',
+        environment: SEED_ENVIRONMENT,
         allowedTypes: [...NOTIFICATION_TYPES],
         isExternal: (EXTERNAL_RECIPIENT_CLASSES as readonly string[]).includes(r.recipientClass),
         purpose: r.purpose,
@@ -187,11 +79,21 @@ export async function seedStage4(db: Db): Promise<void> {
         approvedById: hrManager.id,
         approvedAt: new Date(),
         verifiedAt: new Date(),
-        changeReason: 'Synthetic development seed (Stage 4) - capture destinations only.',
+        changeReason: SEED_CHANGE_REASON,
         createdById: hrManager.id,
         ownerId: hrManager.id,
       },
     });
+  }
+  // DEC-073: a seeded address this machine's data key cannot read (the
+  // secret changed since the last seed) is re-encrypted from the table above.
+  const repair = await repairSeededRecipientRows(db, {
+    actorId: hrManager.id,
+    roles: ['HR_MANAGER'],
+  });
+  if (repair.repaired) {
+    // eslint-disable-next-line no-console -- seed progress, like the line below it
+    console.log(`Re-encrypted ${repair.repaired} seeded recipient address(es) with this data key.`);
   }
   await seedRoutes(db);
 }

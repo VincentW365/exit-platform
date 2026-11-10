@@ -8,6 +8,7 @@ import { getPrisma } from '../client.ts';
 import { EXPECTED_LATEST_MIGRATION, schemaState, type SchemaState } from '../schemaVersion.ts';
 import { dataKeyFingerprint, tryDecryptValue } from '../secretBox.ts';
 import { bambooCredentialStatus } from './bambooCredentialService.ts';
+import { seededRecipientFor } from './recipientService.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
 
 export interface DatabaseSchemaStatus {
@@ -88,6 +89,8 @@ export interface DataKeyStatus {
   fingerprint: string;
   savedAddresses: number;
   unreadableAddresses: number;
+  /** Unreadable rows the seed wrote: the System page can repair these. */
+  repairableAddresses: number;
   bambooCredential: 'readable' | 'unreadable' | 'none';
   state: 'current' | 'changed' | 'none';
 }
@@ -101,15 +104,22 @@ export async function dataKeyStatus(): Promise<DataKeyStatus> {
   const fingerprint = dataKeyFingerprint();
   let savedAddresses = 0;
   let unreadableAddresses = 0;
+  let repairableAddresses = 0;
   let bambooCredential: DataKeyStatus['bambooCredential'] = 'none';
   try {
     const rows = await getPrisma().recipientConfig.findMany({
-      select: { destinationCiphertext: true },
+      select: {
+        destinationCiphertext: true,
+        recipientClass: true,
+        environment: true,
+        changeReason: true,
+        destinationMask: true,
+      },
     });
     savedAddresses = rows.length;
-    unreadableAddresses = rows.filter(
-      (r) => tryDecryptValue(r.destinationCiphertext) === null,
-    ).length;
+    const unreadable = rows.filter((r) => tryDecryptValue(r.destinationCiphertext) === null);
+    unreadableAddresses = unreadable.length;
+    repairableAddresses = unreadable.filter((r) => seededRecipientFor(r) !== null).length;
     const credential = await bambooCredentialStatus();
     bambooCredential =
       credential.source === 'app'
@@ -126,7 +136,14 @@ export async function dataKeyStatus(): Promise<DataKeyStatus> {
       : savedAddresses === 0 && bambooCredential === 'none'
         ? 'none'
         : 'current';
-  return { fingerprint, savedAddresses, unreadableAddresses, bambooCredential, state };
+  return {
+    fingerprint,
+    savedAddresses,
+    unreadableAddresses,
+    repairableAddresses,
+    bambooCredential,
+    state,
+  };
 }
 
 export async function siteSupportStatus(
