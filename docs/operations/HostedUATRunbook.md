@@ -505,6 +505,9 @@ HR Manager can read it without the host's logs. Quote the reference and the
 message when asking for help. A message naming a table or column that does
 not exist means the database migrations have not been deployed (see
 Migrations above).
+The same section says outright whether the database
+schema matches the deployed build and whether the worker is alive, and
+Integration Health reports both as components.
 
 ## Deployment protection
 

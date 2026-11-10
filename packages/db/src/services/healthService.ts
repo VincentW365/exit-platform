@@ -13,6 +13,7 @@ import { getBambooAdapter } from './bamboohrService.ts';
 import { getScanner } from './scannerService.ts';
 import { getStorage } from '../storage.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
+import { databaseSchemaStatus, describeSchemaState } from './siteSupportService.ts';
 
 export interface ComponentHealth {
   component: string;
@@ -30,23 +31,23 @@ export async function collectHealth(): Promise<{
   const components: ComponentHealth[] = [];
   const now = Date.now();
 
-  // Database + migration status.
-  let dbOk = false;
-  let migration: string | null = null;
-  try {
-    const rows = await prisma.$queryRawUnsafe<{ migration_name: string }[]>(
-      'SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1',
-    );
-    migration = rows[0]?.migration_name ?? null;
-    dbOk = true;
-  } catch {
-    dbOk = false;
-  }
+  // Database + migration status (DEC-073: a schema behind this build is a
+  // DOWN component, named here before any page trips over a missing table).
+  const schema = await databaseSchemaStatus();
+  const dbOk = schema.reachable;
+  const migration = schema.applied;
   components.push({
     component: 'database',
     ok: dbOk,
-    detail: dbOk ? `connected; latest migration ${migration}` : 'unreachable',
+    detail: dbOk ? `connected; latest migration ${migration ?? 'none recorded'}` : 'unreachable',
   });
+  if (dbOk) {
+    components.push({
+      component: 'database schema',
+      ok: schema.state === 'current' || schema.state === 'ahead',
+      detail: describeSchemaState(schema),
+    });
+  }
 
   // Providers.
   const email = getEmailProvider();

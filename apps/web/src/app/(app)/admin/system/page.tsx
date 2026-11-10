@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { RefreshWatcher } from '@/components/RefreshWatcher';
 import { DirectoryFreshnessNote } from '@/components/DirectoryFreshness';
-import { Chip, Kpi, SectionHead } from '@/components/patterns';
+import { Chip, Kpi, SectionHead, type Tone } from '@/components/patterns';
 import { DirectoryIcon, ServerIcon, ShieldIcon } from '@/components/icons';
 import {
   bambooCredentialStatus,
@@ -13,6 +13,9 @@ import {
   listActiveUsers,
   listRecentApplicationErrors,
   listSystemConfig,
+  siteSupportStatus,
+  type DatabaseSchemaStatus,
+  type SchemaState,
   reconciliationReport,
   ServiceError,
   directorySyncStatus,
@@ -54,6 +57,35 @@ export const dynamic = 'force-dynamic';
  * a panel with a plain heading, figures, and its buttons in one row - with
  * the technical key/value form folded away at the end for support staff.
  */
+// DEC-073: the database schema and the worker, in the words of someone who
+// cannot reach the host and needs to know what to ask for.
+const SCHEMA_TONE: Record<SchemaState, Tone> = {
+  current: 'done',
+  ahead: 'attention',
+  behind: 'critical',
+  unknown: 'critical',
+};
+const SCHEMA_LABEL: Record<SchemaState, string> = {
+  current: 'Current',
+  ahead: 'Newer than this version',
+  behind: 'Behind',
+  unknown: 'Unknown',
+};
+function schemaText(s: DatabaseSchemaStatus): string {
+  switch (s.state) {
+    case 'current':
+      return `Matches this version (${s.expected}).`;
+    case 'ahead':
+      return `The database is newer than this version: it has ${s.applied}, this version expects ${s.expected}. Redeploy the latest version.`;
+    case 'behind':
+      return `The database has ${s.applied}; this version expects ${s.expected}. Pages that touch the missing tables fail with a reference. Ask the host to run the database migrations (prisma migrate deploy).`;
+    default:
+      return s.reachable
+        ? 'No migration is recorded. Ask the host to run the database migrations (prisma migrate deploy).'
+        : 'The database could not be reached.';
+  }
+}
+
 export default async function SystemAdminPage({
   searchParams,
 }: {
@@ -106,6 +138,11 @@ export default async function SystemAdminPage({
   } catch (e) {
     if (!(e instanceof ServiceError)) throw e;
   }
+  const support = await siteSupportStatus();
+  const needsAttention =
+    support.schema.state === 'behind' ||
+    support.schema.state === 'unknown' ||
+    !support.worker.alive;
   const credential = await bambooCredentialStatus();
   const directoryStatus = credential.status;
   const connected = directoryStatus === 'configured';
@@ -493,11 +530,39 @@ export default async function SystemAdminPage({
 
       {/* DEC-073: what sits behind "Something Went Wrong ... reference N", for a
           site whose owner cannot read the host's logs. */}
-      <details className="panel action" aria-labelledby="err-h">
+      <details className="panel action" aria-labelledby="err-h" open={needsAttention || undefined}>
         <summary id="err-h">
-          Recent errors (for support)
+          Recent errors and site health (for support)
           {errors.length ? ` · ${countOf(errors.length, 'error')}` : ''}
         </summary>
+        <ul className="attention-list" aria-label="Site health for support">
+          <li>
+            <Chip tone={SCHEMA_TONE[support.schema.state]}>
+              {SCHEMA_LABEL[support.schema.state]}
+            </Chip>
+            <span className="attention-list__title">Database schema</span>
+            <span
+              className="attention-list__meta"
+              role={support.schema.state === 'current' ? undefined : 'alert'}
+            >
+              {schemaText(support.schema)}
+            </span>
+          </li>
+          <li>
+            <Chip tone={support.worker.alive ? 'done' : 'critical'}>
+              {support.worker.alive ? 'Running' : 'Not running'}
+            </Chip>
+            <span className="attention-list__title">Background worker</span>
+            <span
+              className="attention-list__meta"
+              role={support.worker.alive ? undefined : 'alert'}
+            >
+              {support.worker.alive
+                ? `Last heartbeat ${support.worker.ageSeconds} seconds ago. It sends email, refreshes the directory and runs the schedules.`
+                : `${support.worker.lastHeartbeatAt ? `Last heartbeat ${formatInstant(support.worker.lastHeartbeatAt)}.` : 'No heartbeat has ever been recorded.'} Without it, email is not sent and the directory is not refreshed on schedule. Ask the host to start the worker service.`}
+            </span>
+          </li>
+        </ul>
         <p className="hint" role="note">
           When a page says &ldquo;Something Went Wrong&rdquo; with a reference, the same reference
           is listed here with what happened. Quote both when asking for help. Nothing personal is
