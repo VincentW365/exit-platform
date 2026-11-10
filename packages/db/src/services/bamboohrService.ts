@@ -548,11 +548,18 @@ export async function syncEmployees(actor: Actor) {
   };
 }
 
-/** F.11 / 5.1-D.9: reconciliation report between source data, cases, users. */
+/**
+ * F.11 / 5.1-D.9: reconciliation report between source data, cases, users.
+ * ONE request: the report compares listing fields only (presence, active,
+ * department, location, manager), so the per-employee detail reads were 380
+ * requests for nothing - and, run on every System page view, the surest way
+ * to have BambooHR throttle the site (owner report, 2026-10-28). The page now
+ * asks for the report only when the HR Manager presses the button.
+ */
 export async function reconciliationReport(actor: Actor) {
   if (!can(actor, 'sync.run') && !can(actor, 'reports.view')) throw ServiceError.forbidden();
   const adapter = await getBambooAdapter();
-  const source = await adapter.listEmployees();
+  const source = await adapter.listEmployees({ details: 'none' });
   const sourceSystem = SOURCE_SYSTEM_FOR_MODE[adapter.mode];
   const bySourceId = new Map(source.map((e) => [e.sourceId, e]));
   const prisma = getPrisma();

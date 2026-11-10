@@ -25,10 +25,11 @@ import {
 import { requireAuth } from '@/lib/auth';
 import { touchSession } from '@/lib/session';
 
-function back(opts: { err?: string; ok?: string }): never {
+function back(opts: { err?: string; ok?: string; recon?: boolean }): never {
   const p = new URLSearchParams();
   if (opts.err) p.set('err', opts.err.slice(0, 900));
   if (opts.ok) p.set('ok', opts.ok);
+  if (opts.recon) p.set('recon', '1');
   redirect(`/admin/system?${p.toString()}`);
 }
 
@@ -314,7 +315,8 @@ export async function reconciliationAction(): Promise<void> {
     const report = await reconciliationReport(actor);
     revalidatePath('/admin/system');
     back({
-      ok: `Reconciliation: ${report.findings.length} finding(s) (${report.adapterMode} adapter). See the panel below.`,
+      ok: `Reconciliation: ${report.findings.length} finding(s) (${report.adapterMode} adapter). See Latest reconciliation below.`,
+      recon: true,
     });
   } catch (e) {
     if (e instanceof ServiceError) back({ err: errText(e) });

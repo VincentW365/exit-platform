@@ -14,6 +14,7 @@ import {
   LiveBambooDirectoryAdapter,
   liveDirectoryPresence,
   purgeLiveDirectory,
+  reconciliationReport,
   scheduledDirectorySyncIfEnabled,
   syncEmployees,
   testDirectoryConnection,
@@ -412,6 +413,36 @@ describe('live per-employee read (webhook follow-up) - stubbed HTTP', () => {
       expect(requested).toHaveLength(1);
       expect(requested[0]).toMatch(/\/employees\/directory$/);
     } finally {
+      await removeBambooCredential(manager.actor);
+    }
+  });
+
+  it('the reconciliation report reads the listing alone: one request (2026-11-10)', async () => {
+    await saveBambooCredential(manager.actor, {
+      subdomain: 'synthetic',
+      apiKey: 'fake-test-key-0123456789abcdefghijklmnop',
+    });
+    await setSystemConfig(manager.actor, 'bamboohr.mode', 'live', 'test: report against live');
+    try {
+      requested.length = 0;
+      respond((url) =>
+        url.endsWith('/employees/directory')
+          ? {
+              status: 200,
+              body: {
+                employees: [{ id: '9001', displayName: 'Avery Brown', department: 'Sales' }],
+              },
+            }
+          : { status: 500, body: {} },
+      );
+      const report = await reconciliationReport(manager.actor);
+      expect(report.adapterMode).toBe('live');
+      // Listing fields are all the report compares; it ran on every System
+      // page view, so the detail reads were 380 requests per view.
+      expect(requested).toHaveLength(1);
+      expect(requested[0]).toMatch(/\/employees\/directory$/);
+    } finally {
+      await setSystemConfig(manager.actor, 'bamboohr.mode', 'fixture', 'test: back to fixture');
       await removeBambooCredential(manager.actor);
     }
   });

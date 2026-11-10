@@ -495,6 +495,17 @@ database only. A green readiness probe therefore says nothing about dispatch —
 Still usable without it: sign-in, directory browsing, case creation, case views,
 case approval, document finalization and rendering, action forms, audit trail, admin pages.
 
+## When a page says "Something Went Wrong" with a reference
+
+The reference is Next.js's sanitized id for the error; a production build
+never sends the message itself to the browser. The same reference, with the
+error's name, a shortened message and the route pattern, is listed under
+Administration → System → **Recent errors (for support)** (DEC-073), so the
+HR Manager can read it without the host's logs. Quote the reference and the
+message when asking for help. A message naming a table or column that does
+not exist means the database migrations have not been deployed (see
+Migrations above).
+
 ## Deployment protection
 
 Hosted UAT **must remain access-protected at the host layer** for the whole of its

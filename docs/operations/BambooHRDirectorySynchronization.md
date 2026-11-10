@@ -113,6 +113,9 @@ Their current record is then read from BambooHR by the engine.
    reads the directory listing alone, one request, so it never causes the
    throttling it is checking for. `RATE_LIMITED` passes by itself: wait a
    few minutes, then press **Refresh Directory Now**.
+   The System page itself makes no BambooHR request; **Run reconciliation
+   report** reads the listing once (one request) and shows the result under
+   Latest reconciliation.
 2. Fix the cause (credential, network, BambooHR incident). The cached
    directory stays in use meanwhile; offboarding is never blocked.
 3. Press **Refresh Directory Now**, or wait for the next reconciliation. The

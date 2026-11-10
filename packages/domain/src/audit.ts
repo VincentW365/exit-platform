@@ -190,6 +190,8 @@ export const AUDIT_EVENT_TYPES = [
   'RECIPIENT_APPROVED',
   'RECIPIENT_VERIFIED',
   'CONFIG_SYSTEM_CHANGED',
+  /** An unexpected server error, with the reference the error page shows (DEC-073). */
+  'APPLICATION_ERROR',
   // Stage 4: identity and sync (E-F)
   'IDENTITY_USER_SYNCED',
   'IDENTITY_USER_DISABLED',

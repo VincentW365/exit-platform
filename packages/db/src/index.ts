@@ -31,6 +31,7 @@ export * from './services/recipientService.ts';
 export * from './services/identityService.ts';
 export * from './services/bamboohrService.ts';
 export * from './services/bambooCredentialService.ts';
+export * from './services/applicationErrorService.ts';
 export * from './services/directoryModeService.ts';
 export * from './services/directorySyncService.ts';
 export * from './services/directoryListService.ts';

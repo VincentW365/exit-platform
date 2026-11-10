@@ -11,6 +11,7 @@ import {
   directoryTechnicalCounts,
   listAccessReviews,
   listActiveUsers,
+  listRecentApplicationErrors,
   listSystemConfig,
   reconciliationReport,
   ServiceError,
@@ -75,6 +76,7 @@ export default async function SystemAdminPage({
   let recon: Awaited<ReturnType<typeof reconciliationReport>> | null = null;
   let directory: Awaited<ReturnType<typeof directoryTechnicalCounts>> | null = null;
   let sync: Awaited<ReturnType<typeof directorySyncStatus>> | null = null;
+  let errors: Awaited<ReturnType<typeof listRecentApplicationErrors>> = [];
   try {
     [config, users, reviews, breakGlass, directory] = await Promise.all([
       listSystemConfig(actor),
@@ -83,8 +85,24 @@ export default async function SystemAdminPage({
       breakGlassStatus(),
       directoryTechnicalCounts(),
     ]);
-    recon = await reconciliationReport(actor);
     sync = await directorySyncStatus();
+  } catch (e) {
+    if (!(e instanceof ServiceError)) throw e;
+  }
+  // The live reconciliation is a BambooHR read; it runs only when asked for
+  // (Run reconciliation report), never on a page view - every view used to
+  // read the whole directory, and a failure there silently blanked the rest.
+  if (sp.recon === '1') {
+    try {
+      recon = await reconciliationReport(actor);
+    } catch (e) {
+      if (!(e instanceof ServiceError)) throw e;
+    }
+  }
+  // Loaded on its own: the support list must show even when a directory
+  // service above has just failed - that failure is what it is there for.
+  try {
+    errors = await listRecentApplicationErrors(actor);
   } catch (e) {
     if (!(e instanceof ServiceError)) throw e;
   }
@@ -472,6 +490,38 @@ export default async function SystemAdminPage({
           </form>
         </details>
       </section>
+
+      {/* DEC-073: what sits behind "Something Went Wrong ... reference N", for a
+          site whose owner cannot read the host's logs. */}
+      <details className="panel action" aria-labelledby="err-h">
+        <summary id="err-h">
+          Recent errors (for support)
+          {errors.length ? ` · ${countOf(errors.length, 'error')}` : ''}
+        </summary>
+        <p className="hint" role="note">
+          When a page says &ldquo;Something Went Wrong&rdquo; with a reference, the same reference
+          is listed here with what happened. Quote both when asking for help. Nothing personal is
+          recorded: the error&apos;s name, a shortened message and the page pattern, never who was
+          signed in or what they typed.
+        </p>
+        {errors.length === 0 ? (
+          <p className="meta">No errors recorded.</p>
+        ) : (
+          <ul className="attention-list">
+            {errors.map((e) => (
+              <li key={e.id}>
+                <Chip tone="critical">{e.reference ? `Ref ${e.reference}` : 'No reference'}</Chip>
+                <span className="attention-list__title">
+                  {e.errorName}: {e.message || 'No message.'}
+                </span>
+                <span className="attention-list__meta">
+                  {formatInstant(e.occurredAt)} · {e.method} {e.route}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
 
       <details className="panel action" aria-labelledby="cfg-h">
         <summary id="cfg-h">Advanced settings (for technical support)</summary>
