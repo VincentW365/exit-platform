@@ -90,7 +90,15 @@ export default async function RecipientsPage({
             ) : (
               <span className="badge badge--warning"> Unverified</span>
             )}
+            {r.readable ? null : <span className="badge badge--danger"> Unreadable</span>}
           </h2>
+          {r.readable ? null : (
+            <p className="banner-uat" role="alert">
+              This address cannot be read with this site&apos;s data key: SESSION_SECRET or DATA_KEY
+              changed since it was saved, or the database was seeded under a different one. Enter
+              the address again below, or restore the original key on the host (DEC-073).
+            </p>
+          )}
           <p className="hint">
             Destination (masked): <code>{r.destinationMask}</code> - environment {r.environment} -
             allowed types: {r.allowedTypes.join(', ')}

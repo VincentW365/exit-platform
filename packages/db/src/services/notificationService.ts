@@ -53,7 +53,7 @@ import { getConfig } from '@exit/config';
 import { getPrisma } from '../client.ts';
 import type { Prisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
-import { decryptValue, encryptValue } from '../secretBox.ts';
+import { encryptValue, tryDecryptValue } from '../secretBox.ts';
 import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
 import { loadCaseAccess } from './shared.ts';
 import { autoResolveException, openException } from './exceptionService.ts';
@@ -64,7 +64,7 @@ import {
   routingEnvironment,
   type RoutingCaseFacts,
 } from './routingService.ts';
-import { upsertRecipient } from './recipientService.ts';
+import { unreadableAddressMessage, upsertRecipient } from './recipientService.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
 import { listRevisions, recordRevisionTx } from './revisionService.ts';
 import { readBannerBytes, resolveEmailBannerForNotification } from './emailBannerService.ts';
@@ -1566,9 +1566,11 @@ async function resolveChoice(
     if (!row) throw ServiceError.validation(['That configured recipient no longer exists.']);
     const errors = recipientUsableErrors(row, notificationType, routingEnvironment(), new Date());
     if (errors.length) throw ServiceError.validation(errors);
+    const email = tryDecryptValue(row.destinationCiphertext);
+    if (email === null) throw ServiceError.validation([unreadableAddressMessage(row.displayName)]);
     return {
       name: row.contactName ?? row.displayName,
-      email: decryptValue(row.destinationCiphertext),
+      email,
       recipientConfigId: row.id,
       organization: row.organizationName,
     };
@@ -1915,21 +1917,21 @@ async function composeForReader(actor: Actor, recordId: string) {
   let toMask: string;
   if (record.caseRecipientCiphertext) {
     toMask = record.caseRecipientMask ?? '';
-    toAddress = seesFull ? decryptValue(record.caseRecipientCiphertext) : toMask;
+    toAddress = seesFull ? (tryDecryptValue(record.caseRecipientCiphertext) ?? toMask) : toMask;
   } else if (record.recipientConfigId) {
     const row = await prisma.recipientConfig.findUnique({
       where: { id: record.recipientConfigId },
     });
     toMask = row ? row.destinationMask : '(recipient not configured)';
-    toAddress = row && seesFull ? decryptValue(row.destinationCiphertext) : toMask;
+    toAddress = row && seesFull ? (tryDecryptValue(row.destinationCiphertext) ?? toMask) : toMask;
   } else toAddress = toMask = '(recipient not resolved)';
   const cc =
     seesFull && record.ccCiphertext
-      ? (JSON.parse(decryptValue(record.ccCiphertext)) as string[])
+      ? addressesOrMasks(record.ccCiphertext, record.ccMasks)
       : record.ccMasks;
   const bcc =
     seesFull && record.bccCiphertext
-      ? (JSON.parse(decryptValue(record.bccCiphertext)) as string[])
+      ? addressesOrMasks(record.bccCiphertext, record.bccMasks)
       : record.bccMasks;
   const sender = await hrSenderFor(record.caseId);
   const sent = ['SENT', 'MANUALLY_SENT', 'ACKNOWLEDGED', 'CONFIRMED_COMPLETE'].includes(
@@ -2114,4 +2116,10 @@ export function notificationTemplateErrors(
     }
   }
   return errors;
+}
+
+/** Copied addresses for the PDF, or their masks when this site's data key cannot read them (DEC-073). */
+function addressesOrMasks(ciphertext: string, masks: string[]): string[] {
+  const raw = tryDecryptValue(ciphertext);
+  return raw === null ? masks : (JSON.parse(raw) as string[]);
 }

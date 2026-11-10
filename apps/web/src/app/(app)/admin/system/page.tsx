@@ -15,6 +15,7 @@ import {
   listSystemConfig,
   siteSupportStatus,
   type DatabaseSchemaStatus,
+  type DataKeyStatus,
   type SchemaState,
   reconciliationReport,
   ServiceError,
@@ -86,6 +87,33 @@ function schemaText(s: DatabaseSchemaStatus): string {
   }
 }
 
+const DATA_KEY_TONE: Record<DataKeyStatus['state'], Tone> = {
+  current: 'done',
+  none: 'neutral',
+  changed: 'critical',
+};
+const DATA_KEY_LABEL: Record<DataKeyStatus['state'], string> = {
+  current: 'Current',
+  none: 'Nothing saved yet',
+  changed: 'Changed',
+};
+function dataKeyText(d: DataKeyStatus): string {
+  if (d.state === 'changed') {
+    const what = [
+      d.unreadableAddresses
+        ? `${d.unreadableAddresses} of ${countOf(d.savedAddresses, 'saved address', 'saved addresses')}`
+        : '',
+      d.bambooCredential === 'unreadable' ? 'the saved BambooHR key' : '',
+    ]
+      .filter(Boolean)
+      .join(' and ');
+    return `${what} cannot be read with this site's key (fingerprint ${d.fingerprint}). SESSION_SECRET or DATA_KEY changed since they were saved, or the database was seeded under a different one. Restore the original value on the host, or enter them again: addresses under Recipients, the key under BambooHR connection above.`;
+  }
+  if (d.state === 'none')
+    return `Fingerprint ${d.fingerprint}. Whoever seeds or enters addresses must use the same SESSION_SECRET or DATA_KEY as this site.`;
+  return `All ${countOf(d.savedAddresses, 'saved address', 'saved addresses')} can be read. Fingerprint ${d.fingerprint}.`;
+}
+
 export default async function SystemAdminPage({
   searchParams,
 }: {
@@ -142,7 +170,8 @@ export default async function SystemAdminPage({
   const needsAttention =
     support.schema.state === 'behind' ||
     support.schema.state === 'unknown' ||
-    !support.worker.alive;
+    !support.worker.alive ||
+    support.dataKey.state === 'changed';
   const credential = await bambooCredentialStatus();
   const directoryStatus = credential.status;
   const connected = directoryStatus === 'configured';
@@ -560,6 +589,18 @@ export default async function SystemAdminPage({
               {support.worker.alive
                 ? `Last heartbeat ${support.worker.ageSeconds} seconds ago. It sends email, refreshes the directory and runs the schedules.`
                 : `${support.worker.lastHeartbeatAt ? `Last heartbeat ${formatInstant(support.worker.lastHeartbeatAt)}.` : 'No heartbeat has ever been recorded.'} Without it, email is not sent and the directory is not refreshed on schedule. Ask the host to start the worker service.`}
+            </span>
+          </li>
+          <li>
+            <Chip tone={DATA_KEY_TONE[support.dataKey.state]}>
+              {DATA_KEY_LABEL[support.dataKey.state]}
+            </Chip>
+            <span className="attention-list__title">Data key</span>
+            <span
+              className="attention-list__meta"
+              role={support.dataKey.state === 'changed' ? 'alert' : undefined}
+            >
+              {dataKeyText(support.dataKey)}
             </span>
           </li>
         </ul>

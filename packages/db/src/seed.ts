@@ -7,6 +7,7 @@
  * categories are TEST-ONLY because DEC-031 is OPEN (IC-S1-008).
  */
 import { loadRootEnvFile } from '@exit/config';
+import { dataKeyFingerprint } from './secretBox.ts';
 import {
   DEFAULT_CLOSE_OF_BUSINESS,
   DEFAULT_SEND_CONTROL,
@@ -361,6 +362,12 @@ async function main(): Promise<void> {
     'Seed complete: synthetic users, flags (all disabled), send-control defaults, calendar, ' +
       'reasons, org lists, DEV templates, DEV exit survey, DEV workflows (v2 active), ' +
       'DEV notification templates, synthetic assets and recipients.',
+  );
+  // DEC-073: the addresses above were encrypted with THIS machine's data key.
+  // The site that reads them must show the same fingerprint under
+  // Administration > System, or every address is unreadable there.
+  console.log(
+    `Data key fingerprint: ${dataKeyFingerprint()} - the site that reads these addresses must show the same fingerprint under Administration > System.`,
   );
 }
 

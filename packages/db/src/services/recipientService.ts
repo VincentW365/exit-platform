@@ -21,7 +21,7 @@ import {
 import { z } from 'zod';
 import { getConfig } from '@exit/config';
 import { getPrisma } from '../client.ts';
-import { decryptValue, encryptValue } from '../secretBox.ts';
+import { encryptValue, tryDecryptValue } from '../secretBox.ts';
 import { ServiceError } from '../errors.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
 
@@ -42,13 +42,26 @@ export const recipientInputSchema = z.object({
   contactName: z.string().trim().max(200).nullable().optional(),
 });
 
+/** Plain words for an address this site's data key cannot read (DEC-073). */
+export function unreadableAddressMessage(what: string): string {
+  return (
+    `The saved address for ${what} cannot be read with this site's data key: SESSION_SECRET or ` +
+    'DATA_KEY changed since it was saved, or the database was seeded under a different one. ' +
+    'Restore the original value on the host, or enter the address again under Administration > Recipients.'
+  );
+}
+
 export async function listRecipients(actor: Actor) {
   if (!can(actor, 'recipients.viewBusiness')) throw ServiceError.forbidden();
   const rows = await getPrisma().recipientConfig.findMany({
     orderBy: [{ recipientClass: 'asc' }, { createdAt: 'desc' }],
   });
   // Masked ONLY - raw destinations never leave the service (I.7 analogue).
-  return rows.map(({ destinationCiphertext: _c, ...r }) => r);
+  // Whether this site's data key can read each row is told; the value is not.
+  return rows.map(({ destinationCiphertext, ...r }) => ({
+    ...r,
+    readable: tryDecryptValue(destinationCiphertext) !== null,
+  }));
 }
 
 export async function upsertRecipient(actor: Actor, rawInput: unknown, existingId?: string) {
@@ -224,11 +237,9 @@ export async function resolveUsableRecipient(
   if (!row) return { errors: [`No ${recipientClass} recipient is configured for ${env}.`] };
   const errors = recipientUsableErrors(row, notificationType, env, new Date());
   if (errors.length) return { errors };
-  return {
-    id: row.id,
-    destination: decryptValue(row.destinationCiphertext),
-    destinationMask: row.destinationMask,
-  };
+  const destination = tryDecryptValue(row.destinationCiphertext);
+  if (destination === null) return { errors: [unreadableAddressMessage(recipientClass)] };
+  return { id: row.id, destination, destinationMask: row.destinationMask };
 }
 
 /** Development mailbox (section C): captured messages, non-production only. */

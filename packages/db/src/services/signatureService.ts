@@ -63,7 +63,7 @@ import { getConfig } from '@exit/config';
 import { getPrisma } from '../client.ts';
 import type { PrismaClient } from '../client.ts';
 import { ServiceError } from '../errors.ts';
-import { decryptValue, encryptValue } from '../secretBox.ts';
+import { decryptValue, encryptValue, tryDecryptValue } from '../secretBox.ts';
 import { getStorage, newPrefixedObjectKey } from '../storage.ts';
 import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
 import { enqueueOutboxTx } from './outboxService.ts';
@@ -296,7 +296,11 @@ export async function getSigningLink(actor: Actor, requestId: string): Promise<s
   assertCanManage(actor, ctx);
   if (!request.tokenCiphertext || !requestAcceptsSignature({ ...request, now: new Date() }))
     throw ServiceError.conflict('This signing request is no longer active.');
-  const raw = decryptValue(request.tokenCiphertext);
+  const raw = tryDecryptValue(request.tokenCiphertext);
+  if (raw === null)
+    throw ServiceError.conflict(
+      "This signing link cannot be read with this site's data key (it changed since the request was issued). Issue a new signing request.",
+    );
   await appendAudit(getPrisma(), {
     eventType: 'SIGNATURE_LINK_COPIED',
     actorType: 'USER',

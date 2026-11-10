@@ -1,6 +1,7 @@
 export { getPrisma } from './client.ts';
 export { ServiceError, type ServiceErrorCode } from './errors.ts';
 export { getStorage, LocalStorageAdapter, newObjectKey, setStorageForTests } from './storage.ts';
+export { dataKeyFingerprint, tryDecryptValue, UnreadableSecretError } from './secretBox.ts';
 export * from './services/auditService.ts';
 export * from './services/caseService.ts';
 export * from './services/attachmentService.ts';

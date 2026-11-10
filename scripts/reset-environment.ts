@@ -91,6 +91,7 @@ async function status(): Promise<void> {
   console.log(`  user accounts:          ${users}`);
   console.log(`  directory mode:         ${mode}`);
   console.log(`  live records present:   ${live.present ? `yes (${live.records})` : 'no'}`);
+  console.log(`  data key fingerprint:   ${db.dataKeyFingerprint()}`);
   await prisma.$disconnect();
 }
 

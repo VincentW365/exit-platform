@@ -13,7 +13,7 @@ import { getBambooAdapter } from './bamboohrService.ts';
 import { getScanner } from './scannerService.ts';
 import { getStorage } from '../storage.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
-import { databaseSchemaStatus, describeSchemaState } from './siteSupportService.ts';
+import { databaseSchemaStatus, dataKeyStatus, describeSchemaState } from './siteSupportService.ts';
 
 export interface ComponentHealth {
   component: string;
@@ -46,6 +46,15 @@ export async function collectHealth(): Promise<{
       component: 'database schema',
       ok: schema.state === 'current' || schema.state === 'ahead',
       detail: describeSchemaState(schema),
+    });
+    const dataKey = await dataKeyStatus();
+    components.push({
+      component: 'data key',
+      ok: dataKey.state !== 'changed',
+      detail:
+        dataKey.state === 'changed'
+          ? `CHANGED since values were saved: ${dataKey.unreadableAddresses} of ${dataKey.savedAddresses} saved addresses${dataKey.bambooCredential === 'unreadable' ? ' and the saved BambooHR key' : ''} unreadable (fingerprint ${dataKey.fingerprint})`
+          : `fingerprint ${dataKey.fingerprint}; ${dataKey.savedAddresses} saved addresses readable`,
     });
   }
 

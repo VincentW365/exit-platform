@@ -6,6 +6,8 @@
  */
 import { getPrisma } from '../client.ts';
 import { EXPECTED_LATEST_MIGRATION, schemaState, type SchemaState } from '../schemaVersion.ts';
+import { dataKeyFingerprint, tryDecryptValue } from '../secretBox.ts';
+import { bambooCredentialStatus } from './bambooCredentialService.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
 
 export interface DatabaseSchemaStatus {
@@ -81,9 +83,59 @@ export async function workerStatus(now: Date = new Date()): Promise<WorkerStatus
   };
 }
 
+export interface DataKeyStatus {
+  /** Eight hex characters: compare between the seeding machine and the site. */
+  fingerprint: string;
+  savedAddresses: number;
+  unreadableAddresses: number;
+  bambooCredential: 'readable' | 'unreadable' | 'none';
+  state: 'current' | 'changed' | 'none';
+}
+
+/**
+ * Whether this site's data key reads what was saved (owner report,
+ * 2026-11-10). Every saved value is tried in memory and discarded: nothing
+ * decrypted leaves this function.
+ */
+export async function dataKeyStatus(): Promise<DataKeyStatus> {
+  const fingerprint = dataKeyFingerprint();
+  let savedAddresses = 0;
+  let unreadableAddresses = 0;
+  let bambooCredential: DataKeyStatus['bambooCredential'] = 'none';
+  try {
+    const rows = await getPrisma().recipientConfig.findMany({
+      select: { destinationCiphertext: true },
+    });
+    savedAddresses = rows.length;
+    unreadableAddresses = rows.filter(
+      (r) => tryDecryptValue(r.destinationCiphertext) === null,
+    ).length;
+    const credential = await bambooCredentialStatus();
+    bambooCredential =
+      credential.source === 'app'
+        ? credential.status === 'configured'
+          ? 'readable'
+          : 'unreadable'
+        : 'none';
+  } catch {
+    // No tables yet: nothing saved to read.
+  }
+  const state =
+    unreadableAddresses > 0 || bambooCredential === 'unreadable'
+      ? 'changed'
+      : savedAddresses === 0 && bambooCredential === 'none'
+        ? 'none'
+        : 'current';
+  return { fingerprint, savedAddresses, unreadableAddresses, bambooCredential, state };
+}
+
 export async function siteSupportStatus(
   now: Date = new Date(),
-): Promise<{ schema: DatabaseSchemaStatus; worker: WorkerStatus }> {
-  const [schema, worker] = await Promise.all([databaseSchemaStatus(), workerStatus(now)]);
-  return { schema, worker };
+): Promise<{ schema: DatabaseSchemaStatus; worker: WorkerStatus; dataKey: DataKeyStatus }> {
+  const [schema, worker, dataKey] = await Promise.all([
+    databaseSchemaStatus(),
+    workerStatus(now),
+    dataKeyStatus(),
+  ]);
+  return { schema, worker, dataKey };
 }

@@ -17,6 +17,12 @@ Copy-Item .env.example .env
 # then edit .env: set SESSION_SECRET (generation command is in the file)
 ```
 
+Set `SESSION_SECRET` once, before `pnpm db:seed`, and keep it. It is also the
+data key for saved recipient addresses and the saved BambooHR key: change it
+and they become unreadable - Administration → System then says **Data key:
+Changed**, and Review and approve fails until the addresses are entered again
+(DEC-073).
+
 ### Local database (isolated, hardened instance)
 
 Stage 1 development uses a **project-local PostgreSQL instance** so nothing

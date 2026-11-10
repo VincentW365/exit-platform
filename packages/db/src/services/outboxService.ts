@@ -29,7 +29,7 @@ import { ServiceError } from '../errors.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
 import { getEmailProvider, type OutboundAttachment } from './emailProviders.ts';
 import { resolveEmailBannerForNotification } from './emailBannerService.ts';
-import { decryptValue } from '../secretBox.ts';
+import { tryDecryptValue } from '../secretBox.ts';
 import { openException, autoResolveException } from './exceptionService.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
 
@@ -269,11 +269,14 @@ export async function processOutbox(
         if (!rc || !rc.active || rc.approvalStatus !== 'APPROVED' || !rc.verifiedAt) {
           throw new ProviderError('RECIPIENT_INVALID', 'Recipient configuration is unusable.');
         }
-        destination = decryptValue(rc.destinationCiphertext);
+        destination =
+          tryDecryptValue(rc.destinationCiphertext) ?? unreadable('The recipient address');
       } else if (item.notificationRecord.caseRecipientCiphertext) {
         // Directive 6.3 O: HR-entered case-only recipient, decrypted in
         // memory only - same posture as the directory path.
-        destination = decryptValue(item.notificationRecord.caseRecipientCiphertext);
+        destination =
+          tryDecryptValue(item.notificationRecord.caseRecipientCiphertext) ??
+          unreadable('The recipient address');
       } else {
         throw new ProviderError('RECIPIENT_INVALID', 'No recipient configuration recorded.');
       }
@@ -329,10 +332,15 @@ export async function processOutbox(
       // DEC-054: copied recipients and the rendered document this email
       // carries. Both are decrypted / read here and held in memory only.
       const cc: string[] = item.notificationRecord.ccCiphertext
-        ? (JSON.parse(decryptValue(item.notificationRecord.ccCiphertext)) as string[])
+        ? (JSON.parse(
+            tryDecryptValue(item.notificationRecord.ccCiphertext) ?? unreadable('A copied address'),
+          ) as string[])
         : [];
       const bcc: string[] = item.notificationRecord.bccCiphertext
-        ? (JSON.parse(decryptValue(item.notificationRecord.bccCiphertext)) as string[])
+        ? (JSON.parse(
+            tryDecryptValue(item.notificationRecord.bccCiphertext) ??
+              unreadable('A copied address'),
+          ) as string[])
         : [];
       const attachments = item.notificationRecord.attachedDocumentId
         ? await loadDocumentAttachment(item.notificationRecord.attachedDocumentId)
@@ -782,4 +790,16 @@ export async function listOutbox(actor: Actor, filter: { status?: string } = {})
       },
     },
   });
+}
+
+/**
+ * A saved value this site's data key cannot read is a permanent recipient
+ * failure, named as such (DEC-073): retrying cannot help, and the reason must
+ * reach the person who can fix it.
+ */
+function unreadable(what: string): never {
+  throw new ProviderError(
+    'RECIPIENT_INVALID',
+    `${what} cannot be read with this site's data key: SESSION_SECRET or DATA_KEY changed since it was saved, or the database was seeded under a different one.`,
+  );
 }

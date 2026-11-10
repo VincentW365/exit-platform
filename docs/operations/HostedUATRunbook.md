@@ -330,6 +330,24 @@ It refuses any host that is not `localhost`/`127.0.0.1`/`::1`, refuses
 destructive-operation safeguard and is kept deliberately; no bypass or force flag
 exists or should be added. For remote UAT, run its component steps by hand.
 
+### The data key must be the host's before seeding
+
+The seed encrypts recipient addresses with the data key of the machine
+running it (`DATA_KEY`, or `SESSION_SECRET`). Seeded under a laptop's value,
+every address is unreadable on the site: Review and approve fails with a
+reference, and Administration → System says **Data key: Changed** (owner
+report, 2026-11-10). In the same shell as the seed, export the host's values
+first:
+
+```bash
+export SESSION_SECRET="<the web app's value>"
+export DATA_KEY="<the web app's value, if one is set>"
+```
+
+The seed prints a data key fingerprint and the System page shows the site's;
+they must match. If they do not, re-seed under the right value or enter the
+addresses again under Administration → Recipients.
+
 ### The component sequence
 
 Both seed commands were verified before this was written: they read the database
