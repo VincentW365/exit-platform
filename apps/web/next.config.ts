@@ -1,6 +1,7 @@
 ﻿import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import type { NextConfig } from 'next';
+import { maxUploadMbFromEnv, uploadBodyLimitMb } from '@exit/config';
 
 // Load the repository-root .env for local development (monorepo root, not the
 // app folder). Real environments inject configuration directly (REQ-SEC-013).
@@ -59,8 +60,24 @@ function allowedDevOrigins(): string[] {
   return [...new Set(['127.0.0.1', ...local, ...fromEnv])];
 }
 
+/**
+ * Uploads travel in a server action's request body, and Next.js refuses a body
+ * above a limit fixed HERE, at build time - 1 MB unless told otherwise - before
+ * any of this platform's code runs. The platform accepts a 2 MB email banner
+ * and case attachments up to MAX_UPLOAD_MB, so the limit is sized from that
+ * variable (read when the app is built: the Dockerfile passes it through) plus
+ * a margin for the multipart envelope. The built value is also inlined for the
+ * System page, which says when the running configuration asks for more than
+ * the build accepts (DEC-075).
+ */
+const uploadBodyLimit = uploadBodyLimitMb(maxUploadMbFromEnv(process.env.MAX_UPLOAD_MB));
+
 const nextConfig: NextConfig = {
   allowedDevOrigins: allowedDevOrigins(),
+  env: { NEXT_UPLOAD_BODY_LIMIT_MB: String(uploadBodyLimit) },
+  experimental: {
+    serverActions: { bodySizeLimit: `${uploadBodyLimit}mb` },
+  },
   transpilePackages: ['@exit/config', '@exit/domain', '@exit/db'],
   // pdfkit must stay external: bundling breaks its runtime font-data paths.
   serverExternalPackages: ['@prisma/client', 'pdfkit'],

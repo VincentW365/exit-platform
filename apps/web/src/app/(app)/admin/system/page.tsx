@@ -17,6 +17,7 @@ import {
   type DatabaseSchemaStatus,
   type DataKeyStatus,
   type SchemaState,
+  type UploadLimitStatus,
   reconciliationReport,
   ServiceError,
   directorySyncStatus,
@@ -118,6 +119,34 @@ function dataKeyText(d: DataKeyStatus): string {
   return `All ${countOf(d.savedAddresses, 'saved address', 'saved addresses')} can be read. Fingerprint ${d.fingerprint}.`;
 }
 
+/**
+ * DEC-075: the file sizes the configuration promises must also get through
+ * the build. The request-body limit is fixed when the web app is built; when
+ * the build accepts less than MAX_UPLOAD_MB asks for, every larger upload
+ * becomes "Something Went Wrong" with a reference before this platform's
+ * code runs.
+ */
+const UPLOAD_TONE: Record<UploadLimitStatus['state'], Tone> = {
+  ok: 'done',
+  'build-too-small': 'critical',
+  unknown: 'attention',
+};
+const UPLOAD_LABEL: Record<UploadLimitStatus['state'], string> = {
+  ok: 'Current',
+  'build-too-small': 'Build too small',
+  unknown: 'Unknown',
+};
+function uploadText(u: UploadLimitStatus): string {
+  switch (u.state) {
+    case 'ok':
+      return `Files up to ${u.configuredMb} MB are accepted (email banners up to 2 MB). This build accepts requests up to ${u.builtBodyLimitMb} MB.`;
+    case 'build-too-small':
+      return `MAX_UPLOAD_MB is ${u.configuredMb}, but this build accepts requests up to ${u.builtBodyLimitMb} MB${u.effectiveMb > 0 ? ` (it was made for MAX_UPLOAD_MB=${u.effectiveMb})` : ' (it was built without the limit)'}: a file near or above ${u.builtBodyLimitMb} MB fails with a reference before it is checked. Ask the host to build the web app again with MAX_UPLOAD_MB=${u.configuredMb}${u.effectiveMb > 0 ? `, or set MAX_UPLOAD_MB=${u.effectiveMb} on the host` : ''}.`;
+    default:
+      return `Files up to ${u.configuredMb} MB are accepted. This build did not record the request limit it was made with.`;
+  }
+}
+
 export default async function SystemAdminPage({
   searchParams,
 }: {
@@ -170,12 +199,15 @@ export default async function SystemAdminPage({
   } catch (e) {
     if (!(e instanceof ServiceError)) throw e;
   }
-  const support = await siteSupportStatus();
+  // Inlined by next.config.ts when the app was built (DEC-075).
+  const builtBodyLimitMb = Number(process.env['NEXT_UPLOAD_BODY_LIMIT_MB']) || null;
+  const support = await siteSupportStatus({ builtBodyLimitMb });
   const needsAttention =
     support.schema.state === 'behind' ||
     support.schema.state === 'unknown' ||
     !support.worker.alive ||
-    support.dataKey.state === 'changed';
+    support.dataKey.state === 'changed' ||
+    support.uploads.state === 'build-too-small';
   const credential = await bambooCredentialStatus();
   const directoryStatus = credential.status;
   const connected = directoryStatus === 'configured';
@@ -618,6 +650,18 @@ export default async function SystemAdminPage({
                 </button>
               </form>
             ) : null}
+          </li>
+          <li>
+            <Chip tone={UPLOAD_TONE[support.uploads.state]}>
+              {UPLOAD_LABEL[support.uploads.state]}
+            </Chip>
+            <span className="attention-list__title">Upload limit</span>
+            <span
+              className="attention-list__meta"
+              role={support.uploads.state === 'build-too-small' ? 'alert' : undefined}
+            >
+              {uploadText(support.uploads)}
+            </span>
           </li>
         </ul>
         <p className="hint" role="note">

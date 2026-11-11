@@ -32,6 +32,22 @@ export function safeErrorMessage(message: string): string {
     .slice(0, MESSAGE_LIMIT);
 }
 
+/**
+ * Next's own refusals in words a support reader can act on (DEC-075). A
+ * request body above the limit the build accepts ends as "Body exceeded N MB
+ * limit" or, when the multipart stream is cut at that limit, "Unexpected end
+ * of form"; neither names a file or a cause. Next's words stay first, so the
+ * row still matches the host's log; its advice to developers is dropped.
+ */
+export function explainRequestError(message: string, builtBodyLimitMb: number | null): string {
+  const words = message.replace(/\s+/g, ' ').trim();
+  const bodyLimit = /^Body exceeded .*?limit\.?/i.exec(words);
+  const cutOff = /^Unexpected end of form\.?$/i.test(words);
+  if (!bodyLimit && !cutOff) return message;
+  const limit = builtBodyLimitMb ? ` (${builtBodyLimitMb} MB)` : '';
+  return `${(bodyLimit?.[0] ?? words).replace(/\.$/, '')}. The request was larger than this build accepts${limit} or was cut off: usually a file over the upload limit. See "Upload limit" under site health.`;
+}
+
 export interface ApplicationErrorInput {
   /** Next's digest: the reference the error page shows. */
   reference: string | null;

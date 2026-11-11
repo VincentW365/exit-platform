@@ -1,6 +1,7 @@
 import type { DepartmentBannerConfig } from '@exit/db';
 import { EMAIL_BANNER_DEFAULT_ALT, EMAIL_BANNER_MAX_BYTES } from '@exit/domain';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { FileInput } from '@/components/FileInput';
 import { Field, FormActions } from '@/components/forms';
 import { Chip, SectionHead } from '@/components/patterns';
 import { MailIcon } from '@/components/icons';
@@ -71,12 +72,13 @@ export function EmailBannerAdmin({
             required
             hint={`A .jpg file up to ${maxMb} MB, as supplied - the platform does not alter it.`}
           >
-            <input
+            <FileInput
               id="dept-banner-file"
               name="bannerFile"
-              type="file"
               accept=".jpg,.jpeg,image/jpeg"
               required
+              maxBytes={EMAIL_BANNER_MAX_BYTES}
+              limitLabel={`The limit is ${maxMb} MB.`}
             />
           </Field>
           <Field

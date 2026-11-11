@@ -18,6 +18,36 @@ const boolString = z
   .default('false')
   .transform((v) => v === 'true');
 
+/**
+ * Upload sizes (REQ-SEC-019..022). MAX_UPLOAD_MB bounds a case attachment at
+ * run time; the web build must ALSO be told, because Next.js refuses a server
+ * action's request body above a limit fixed when the app is built (1 MB unless
+ * configured), before any of this platform's code runs. Owner report,
+ * 2026-11-11: a 1.3 MB banner upload came back as "Something Went Wrong" with
+ * a reference. next.config.ts sets that body limit from the same variable at
+ * build time, plus a margin for the multipart envelope and the form's other
+ * fields, so every file the platform itself accepts also reaches it.
+ */
+export const MAX_UPLOAD_MB_DEFAULT = 10;
+export const MAX_UPLOAD_MB_CEILING = 100;
+export const UPLOAD_BODY_MARGIN_MB = 2;
+const maxUploadMbSchema = z.coerce
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_UPLOAD_MB_CEILING)
+  .default(MAX_UPLOAD_MB_DEFAULT);
+
+/** MAX_UPLOAD_MB as the configuration reads it; invalid values fail, as getConfig() would. */
+export function maxUploadMbFromEnv(raw: string | undefined): number {
+  return maxUploadMbSchema.parse(raw);
+}
+
+/** The request-body limit (MB) a build must accept so a file of maxUploadMb arrives whole. */
+export function uploadBodyLimitMb(maxUploadMb: number): number {
+  return maxUploadMb + UPLOAD_BODY_MARGIN_MB;
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
@@ -28,7 +58,7 @@ const envSchema = z.object({
   SESSION_ABSOLUTE_HOURS: z.coerce.number().int().min(1).max(24).default(12),
   ALLOW_DEV_LOGIN: boolString,
   STORAGE_DIR: z.string().min(1).default('./storage'),
-  MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(100).default(10),
+  MAX_UPLOAD_MB: maxUploadMbSchema,
   SCAN_MODE: z.enum(['disabled', 'dev-passthrough', 'external']).default('disabled'),
   SCANNER_URL: z.string().optional(),
   APP_TIMEZONE: z.literal('America/Jamaica').default('America/Jamaica'),

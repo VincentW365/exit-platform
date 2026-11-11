@@ -140,6 +140,11 @@ EMAIL_MODE=dev-capture
 
 # Uploads are accepted and clearly labelled as unscanned.
 SCAN_MODE=dev-passthrough
+# Largest case attachment (MB). Also read when the web app is BUILT: the build
+# accepts request bodies up to this plus 2 MB (DEC-075). Pass the same value as
+# a build argument (docker build --build-arg MAX_UPLOAD_MB=10) and change it
+# only together with a new build. System > site health says what the build accepts.
+MAX_UPLOAD_MB=10
 
 # Disposable UAT database - never the production one. Use the POOLED endpoint.
 DATABASE_URL=postgresql://exit_app:<pw>@<pooled-host>:<port>/exit_uat?sslmode=require
@@ -529,10 +534,15 @@ Administration → System → **Recent errors (for support)** (DEC-073), so the
 HR Manager can read it without the host's logs. Quote the reference and the
 message when asking for help. A message naming a table or column that does
 not exist means the database migrations have not been deployed (see
-Migrations above).
+Migrations above). A reference ending in `@E394` was raised by Next.js itself,
+before any platform code ran; the usual case is `Body exceeded N MB limit` or
+`Unexpected end of form` - a file larger than the build accepts (DEC-075). The
+recorded row says so in words and points at the "Upload limit" health line
+and MAX_UPLOAD_MB above.
 The same section says outright whether the database
-schema matches the deployed build and whether the worker is alive, and
-Integration Health reports both as components.
+schema matches the deployed build, whether the worker is alive, whether the
+data key reads what was saved and what size of upload the build accepts, and
+Integration Health reports the first two as components.
 
 ## Deployment protection
 

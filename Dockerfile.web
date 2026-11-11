@@ -19,8 +19,14 @@ COPY packages/domain/package.json packages/domain/package.json
 COPY packages/db/package.json packages/db/package.json
 RUN pnpm install --frozen-lockfile
 COPY . .
-RUN pnpm --filter @exit/db exec prisma generate \
- && pnpm --filter web build
+# The largest upload the build accepts (DEC-075). Next.js fixes the server
+# action request-body limit at BUILD time; next.config.ts sizes it from
+# MAX_UPLOAD_MB plus a margin. Build with the same MAX_UPLOAD_MB the service
+# runs with (docker build --build-arg MAX_UPLOAD_MB=<n>); the default matches
+# the runtime default. The System page says when the two disagree.
+ARG MAX_UPLOAD_MB=10
+RUN MAX_UPLOAD_MB=${MAX_UPLOAD_MB} pnpm --filter @exit/db exec prisma generate \
+ && MAX_UPLOAD_MB=${MAX_UPLOAD_MB} pnpm --filter web build
 
 FROM node:24-slim AS runner
 ENV NODE_ENV=production

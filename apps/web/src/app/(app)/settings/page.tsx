@@ -3,6 +3,7 @@ import { getDepartmentBannerConfig, getMySettings } from '@exit/db';
 import { EMAIL_BANNER_MAX_BYTES, formatInstant } from '@exit/domain';
 import { requireAuth } from '@/lib/auth';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { FileInput } from '@/components/FileInput';
 import { Feedback } from '@/components/ui';
 import { Field, FormActions } from '@/components/forms';
 import { Chip, Fact, Facts, SectionHead } from '@/components/patterns';
@@ -107,12 +108,13 @@ export default async function MySettingsPage({
               label={me.personalBanner ? 'Replace banner (JPG)' : 'Upload banner (JPG)'}
               hint={`A .jpg file up to ${maxMb} MB. It is shown at its own size and scales down on small screens; it is never stretched or cropped.`}
             >
-              <input
+              <FileInput
                 id="bannerFile"
                 name="bannerFile"
-                type="file"
                 accept=".jpg,.jpeg,image/jpeg"
                 required
+                maxBytes={EMAIL_BANNER_MAX_BYTES}
+                limitLabel={`The limit is ${maxMb} MB.`}
               />
             </Field>
             <FormActions note="Plain-text emails always keep their text; the banner is added to the HTML version.">

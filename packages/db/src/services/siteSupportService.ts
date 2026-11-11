@@ -4,6 +4,7 @@
  * whether the background worker is alive. Names, counts and ages only.
  * Nothing here throws: a database that cannot be read is reported as such.
  */
+import { getConfig, uploadBodyLimitMb } from '@exit/config';
 import { getPrisma } from '../client.ts';
 import { EXPECTED_LATEST_MIGRATION, schemaState, type SchemaState } from '../schemaVersion.ts';
 import { dataKeyFingerprint, tryDecryptValue } from '../secretBox.ts';
@@ -146,13 +147,70 @@ export async function dataKeyStatus(): Promise<DataKeyStatus> {
   };
 }
 
+export interface UploadLimitStatus {
+  /** MAX_UPLOAD_MB as this process runs. */
+  configuredMb: number;
+  /** The request-body limit the web app was built with, or null when the build did not say. */
+  builtBodyLimitMb: number | null;
+  /** What the build must accept for a file of configuredMb to arrive whole. */
+  requiredBodyLimitMb: number;
+  /**
+   * The MAX_UPLOAD_MB the build was made for: configuredMb when the build is
+   * large enough, otherwise what the build's limit implies (0 when the build
+   * never set a limit and kept Next's 1 MB).
+   */
+  effectiveMb: number;
+  state: 'ok' | 'build-too-small' | 'unknown';
+}
+
+/**
+ * Whether the files the configuration accepts also reach the application
+ * (DEC-075). Next.js refuses a server action's request body above a limit
+ * fixed when the web app was built; next.config.ts sizes it from MAX_UPLOAD_MB
+ * at build time and inlines the value, which the System page passes in here.
+ * A host that raises MAX_UPLOAD_MB on a build made with a smaller value gets a
+ * plain statement of what gets through, instead of a reference per upload.
+ */
+export function uploadLimitStatus(builtBodyLimitMb: number | null): UploadLimitStatus {
+  const configuredMb = getConfig().MAX_UPLOAD_MB;
+  const requiredBodyLimitMb = uploadBodyLimitMb(configuredMb);
+  const built =
+    builtBodyLimitMb !== null && Number.isFinite(builtBodyLimitMb) && builtBodyLimitMb > 0
+      ? builtBodyLimitMb
+      : null;
+  if (built === null) {
+    return {
+      configuredMb,
+      builtBodyLimitMb: null,
+      requiredBodyLimitMb,
+      effectiveMb: configuredMb,
+      state: 'unknown',
+    };
+  }
+  const tooSmall = built < requiredBodyLimitMb;
+  return {
+    configuredMb,
+    builtBodyLimitMb: built,
+    requiredBodyLimitMb,
+    effectiveMb: tooSmall
+      ? Math.max(0, built - (requiredBodyLimitMb - configuredMb))
+      : configuredMb,
+    state: tooSmall ? 'build-too-small' : 'ok',
+  };
+}
+
 export async function siteSupportStatus(
-  now: Date = new Date(),
-): Promise<{ schema: DatabaseSchemaStatus; worker: WorkerStatus; dataKey: DataKeyStatus }> {
+  options: { now?: Date; builtBodyLimitMb?: number | null } = {},
+): Promise<{
+  schema: DatabaseSchemaStatus;
+  worker: WorkerStatus;
+  dataKey: DataKeyStatus;
+  uploads: UploadLimitStatus;
+}> {
   const [schema, worker, dataKey] = await Promise.all([
     databaseSchemaStatus(),
-    workerStatus(now),
+    workerStatus(options.now ?? new Date()),
     dataKeyStatus(),
   ]);
-  return { schema, worker, dataKey };
+  return { schema, worker, dataKey, uploads: uploadLimitStatus(options.builtBodyLimitMb ?? null) };
 }

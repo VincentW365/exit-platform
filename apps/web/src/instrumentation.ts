@@ -8,14 +8,30 @@ import type { Instrumentation } from 'next';
  */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    const { getConfig } = await import('@exit/config');
+    const { getConfig, uploadBodyLimitMb } = await import('@exit/config');
+    let config: ReturnType<typeof getConfig>;
     try {
-      getConfig();
+      config = getConfig();
     } catch (error) {
       // Hard exit: an unsafe production configuration must never leave a
       // half-prepared server process holding the port.
       console.error(error instanceof Error ? error.message : 'Invalid configuration.');
       process.exit(1);
+    }
+    // DEC-075: the request-body limit was fixed when this app was built
+    // (next.config.ts, from MAX_UPLOAD_MB at that time). A larger runtime value
+    // cannot take effect; say so once, where the host reads, in the startup log.
+    const built = Number(process.env['NEXT_UPLOAD_BODY_LIMIT_MB']) || null;
+    if (built !== null && built < uploadBodyLimitMb(config.MAX_UPLOAD_MB)) {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          event: 'upload_limit_exceeds_build',
+          maxUploadMb: config.MAX_UPLOAD_MB,
+          builtBodyLimitMb: built,
+          fix: 'build the web app again with the same MAX_UPLOAD_MB (DEC-075)',
+        }),
+      );
     }
   }
 }
@@ -35,11 +51,14 @@ export const onRequestError: Instrumentation.onRequestError = async (error, requ
   const errorName = typeof e?.name === 'string' ? e.name : 'Error';
   const message = typeof e?.message === 'string' ? e.message : String(error);
   try {
-    const { recordApplicationError } = await import('@exit/db');
+    const { explainRequestError, recordApplicationError } = await import('@exit/db');
     await recordApplicationError({
       reference,
       errorName,
-      message,
+      message: explainRequestError(
+        message,
+        Number(process.env['NEXT_UPLOAD_BODY_LIMIT_MB']) || null,
+      ),
       routePath: context.routePath,
       method: request.method,
       routeType: context.routeType,

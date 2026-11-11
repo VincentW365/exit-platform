@@ -3,6 +3,8 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Field } from '@/components/forms';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { getConfig } from '@exit/config';
+import { FileInput } from '@/components/FileInput';
 import {
   BASELINE_EVENT_TYPES,
   MISSING_REASONS,
@@ -125,6 +127,8 @@ export default async function CaseDetailPage({
     throw e;
   }
   const { case: c, capabilities: cap } = data;
+  // The size the upload rule applies; the build accepts request bodies above it (DEC-075).
+  const maxUploadMb = getConfig().MAX_UPLOAD_MB;
 
   const activeChip: TimelineChip = (TIMELINE_CHIPS as readonly string[]).includes(
     sp.auditChip ?? '',
@@ -883,19 +887,20 @@ export default async function CaseDetailPage({
           )}
           {cap.canUpload ? (
             <details className="action">
-              <summary>Upload a file (pdf, png, jpg; max size per configuration)</summary>
+              <summary>Upload a file (pdf, png, jpg; up to {maxUploadMb} MB)</summary>
               {/* React sets the encoding for a server-action form itself - stating it here
               only produced a console warning. */}
               <form action={uploadAttachmentAction} className="stack">
                 <input type="hidden" name="caseId" value={c.id} />
                 <div className="field">
                   <label htmlFor="up-file">File</label>
-                  <input
+                  <FileInput
                     id="up-file"
                     name="file"
-                    type="file"
                     accept=".pdf,.png,.jpg,.jpeg"
                     required
+                    maxBytes={maxUploadMb * 1024 * 1024}
+                    limitLabel={`The limit is ${maxUploadMb} MB.`}
                   />
                 </div>
                 <div className="field">

@@ -167,6 +167,11 @@ ever set in production). All eight synthetic users from the seed are offered.
 
 ## Notes and known limitations (Stage 1)
 
+- **Upload sizes (DEC-075):** `MAX_UPLOAD_MB` (default 10) bounds a case
+  attachment at run time AND sizes the server-action request-body limit at
+  build time (`next.config.ts`, plus a 2 MB margin). Raise it, then build
+  again; Administration → System says what the running build accepts. Every
+  file input refuses an oversize file in words before sending it.
 - **Scan mode:** `SCAN_MODE=disabled` quarantines every upload (not
   downloadable). `dev-passthrough` marks files CLEAN with an explicit
   "no real malware scan performed" note; it is refused in production.
