@@ -1,7 +1,7 @@
 ﻿import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import type { NextConfig } from 'next';
-import { maxUploadMbFromEnv, uploadBodyLimitMb } from '@exit/config';
+import { maxUploadMbFromEnv, serverActionAllowedOrigins, uploadBodyLimitMb } from '@exit/config';
 
 // Load the repository-root .env for local development (monorepo root, not the
 // app folder). Real environments inject configuration directly (REQ-SEC-013).
@@ -71,12 +71,18 @@ function allowedDevOrigins(): string[] {
  * the build accepts (DEC-075).
  */
 const uploadBodyLimit = uploadBodyLimitMb(maxUploadMbFromEnv(process.env.MAX_UPLOAD_MB));
+// Public hostnames a proxy may present differently from the Host header the
+// app sees (see the hosted runbook); empty means Next's own check applies.
+const allowedOrigins = serverActionAllowedOrigins(process.env.SERVER_ACTIONS_ALLOWED_ORIGINS);
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: allowedDevOrigins(),
   env: { NEXT_UPLOAD_BODY_LIMIT_MB: String(uploadBodyLimit) },
   experimental: {
-    serverActions: { bodySizeLimit: `${uploadBodyLimit}mb` },
+    serverActions: {
+      bodySizeLimit: `${uploadBodyLimit}mb`,
+      ...(allowedOrigins.length ? { allowedOrigins } : {}),
+    },
   },
   transpilePackages: ['@exit/config', '@exit/domain', '@exit/db'],
   // pdfkit must stay external: bundling breaks its runtime font-data paths.

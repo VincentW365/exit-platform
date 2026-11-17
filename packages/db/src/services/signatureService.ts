@@ -64,7 +64,7 @@ import { getPrisma } from '../client.ts';
 import type { PrismaClient } from '../client.ts';
 import { ServiceError } from '../errors.ts';
 import { decryptValue, encryptValue, tryDecryptValue } from '../secretBox.ts';
-import { getStorage, newPrefixedObjectKey } from '../storage.ts';
+import { newPrefixedObjectKey, storageRead, storageWrite } from '../storage.ts';
 import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
 import { enqueueOutboxTx } from './outboxService.ts';
 import { routingEnvironment } from './routingService.ts';
@@ -734,7 +734,7 @@ export async function readVerifiedSignature(record: {
   storageKey: string;
   checksum: string;
 }): Promise<Buffer> {
-  const bytes = await getStorage().get(record.storageKey);
+  const bytes = await storageRead(record.storageKey);
   if (createHash('sha256').update(bytes).digest('hex') !== record.checksum)
     throw new Error('Stored signature failed its integrity check.');
   return bytes;
@@ -790,7 +790,7 @@ async function prepareMarks(
   for (const d of decoded) {
     const dims = pngDimensions(d.bytes)!;
     const storageKey = newPrefixedObjectKey('signature');
-    await getStorage().put(storageKey, d.bytes);
+    await storageWrite(storageKey, d.bytes);
     prepared.push({
       block: d.block,
       storageKey,

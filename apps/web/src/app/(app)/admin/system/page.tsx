@@ -17,6 +17,7 @@ import {
   type DatabaseSchemaStatus,
   type DataKeyStatus,
   type SchemaState,
+  type StorageStatus,
   type UploadLimitStatus,
   reconciliationReport,
   ServiceError,
@@ -126,6 +127,14 @@ function dataKeyText(d: DataKeyStatus): string {
  * becomes "Something Went Wrong" with a reference before this platform's
  * code runs.
  */
+/** Where uploads, rendered letters and forms are kept (owner review, 2026-11-17). */
+function storageText(s: StorageStatus): string {
+  const where = s.adapter === 's3' ? 'the configured bucket' : 'the local directory';
+  return s.ok
+    ? `Uploads, letters and forms are written to and read from ${where} (${s.detail}).`
+    : `${where[0]!.toUpperCase()}${where.slice(1)} cannot be used: ${s.detail}. Every upload, letter and form fails in words until the host corrects the storage settings (STORAGE_MODE and the S3 variables).`;
+}
+
 const UPLOAD_TONE: Record<UploadLimitStatus['state'], Tone> = {
   ok: 'done',
   'build-too-small': 'critical',
@@ -207,7 +216,8 @@ export default async function SystemAdminPage({
     support.schema.state === 'unknown' ||
     !support.worker.alive ||
     support.dataKey.state === 'changed' ||
-    support.uploads.state === 'build-too-small';
+    support.uploads.state === 'build-too-small' ||
+    !support.storage.ok;
   const credential = await bambooCredentialStatus();
   const directoryStatus = credential.status;
   const connected = directoryStatus === 'configured';
@@ -661,6 +671,15 @@ export default async function SystemAdminPage({
               role={support.uploads.state === 'build-too-small' ? 'alert' : undefined}
             >
               {uploadText(support.uploads)}
+            </span>
+          </li>
+          <li>
+            <Chip tone={support.storage.ok ? 'done' : 'critical'}>
+              {support.storage.ok ? 'Reachable' : 'Not reachable'}
+            </Chip>
+            <span className="attention-list__title">Document storage</span>
+            <span className="attention-list__meta" role={support.storage.ok ? undefined : 'alert'}>
+              {storageText(support.storage)}
             </span>
           </li>
         </ul>

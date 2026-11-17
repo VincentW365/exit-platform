@@ -33,7 +33,7 @@ import {
 import { getConfig } from '@exit/config';
 import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
-import { getStorage, newPrefixedObjectKey } from '../storage.ts';
+import { newPrefixedObjectKey, storageRead, storageWrite } from '../storage.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
 
@@ -101,7 +101,7 @@ async function storeBanner(upload: BannerUpload, altText: string): Promise<Email
   if (errors.length) throw ServiceError.validation(errors);
   const dims = jpegDimensions(upload.bytes)!;
   const objectKey = newPrefixedObjectKey('branding');
-  await getStorage().put(objectKey, upload.bytes);
+  await storageWrite(objectKey, upload.bytes);
   return {
     objectKey,
     checksum: createHash('sha256').update(upload.bytes).digest('hex'),
@@ -316,7 +316,7 @@ export async function readBannerBytes(ref: {
   objectKey: string;
   checksum: string;
 }): Promise<Buffer> {
-  const bytes = await getStorage().get(ref.objectKey);
+  const bytes = await storageRead(ref.objectKey);
   const checksum = createHash('sha256').update(bytes).digest('hex');
   if (checksum !== ref.checksum) throw new Error('Stored email banner failed its integrity check.');
   return bytes;

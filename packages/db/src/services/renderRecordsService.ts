@@ -10,7 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import { formatInstant } from '@exit/domain';
-import { getStorage, newObjectKey } from '../storage.ts';
+import { newObjectKey, storageWrite } from '../storage.ts';
 import {
   BODY_INK,
   INK,
@@ -304,6 +304,6 @@ export async function renderReturnItemsPdf(input: ReturnItemsRenderInput): Promi
   const bytes = await renderReturnItemsPdfBytes(input);
   const checksum = createHash('sha256').update(bytes).digest('hex');
   const objectKey = newObjectKey();
-  await getStorage().put(objectKey, bytes);
+  await storageWrite(objectKey, bytes);
   return { objectKey, checksum, byteLength: bytes.byteLength };
 }

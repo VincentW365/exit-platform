@@ -14,7 +14,7 @@ import {
 import { canDiscoverCase, canViewCase, type CaseAccessContext } from '@exit/domain';
 import { getPrisma } from '../client.ts';
 import { ServiceError } from '../errors.ts';
-import { getStorage, newObjectKey } from '../storage.ts';
+import { newObjectKey, storageRead, storageWrite } from '../storage.ts';
 import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
 
 async function loadAccess(caseId: string) {
@@ -84,7 +84,7 @@ export async function uploadAttachment(
       ? 'dev-passthrough: no real malware scan performed (non-production only)'
       : 'quarantined: no scanner configured in this environment';
 
-  await getStorage().put(objectKey, file.bytes);
+  await storageWrite(objectKey, file.bytes);
 
   const correlationId = newCorrelationId();
   const created = await getPrisma().$transaction(async (tx) => {
@@ -162,7 +162,7 @@ export async function downloadAttachment(actor: Actor, attachmentId: string) {
     );
   }
 
-  const bytes = await getStorage().get(a.objectKey);
+  const bytes = await storageRead(a.objectKey);
   const checksum = createHash('sha256').update(bytes).digest('hex');
   if (checksum !== a.checksum)
     throw ServiceError.conflict('Stored file failed its integrity check; download blocked.');

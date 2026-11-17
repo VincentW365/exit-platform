@@ -48,6 +48,23 @@ export function uploadBodyLimitMb(maxUploadMb: number): number {
   return maxUploadMb + UPLOAD_BODY_MARGIN_MB;
 }
 
+/**
+ * Server actions behind a proxy that rewrites the Host header. Next.js refuses
+ * a form submit whose Origin does not match the host it sees ("Invalid Server
+ * Actions request"); the public hostnames a deployment is reached through are
+ * listed here, comma-separated, and read when the web app is built.
+ */
+export function serverActionAllowedOrigins(raw: string | undefined): string[] {
+  return [
+    ...new Set(
+      (raw ?? '')
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),

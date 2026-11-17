@@ -156,8 +156,19 @@ SESSION_SECRET=<openssl rand -base64 48>
 # Links in captured email are built from this. It must be the URL testers use.
 APP_BASE_URL=https://<the-uat-url>
 
-# Correct client IPs in the audit trail behind the host's proxy.
+# Accepted but not yet read by any code path (2026-11-17): client addresses
+# on signature and survey submissions are taken from the first forwarded
+# address as the host presents it. Keep it set for the day it is honoured.
 TRUSTED_PROXY=<proxy CIDR or address>
+
+# Only if the host's proxy presents a different Host header than the public
+# name (every form submit then fails as "Invalid Server Actions request"):
+# the public hostnames, comma-separated, passed to the BUILD
+# (docker build --build-arg SERVER_ACTIONS_ALLOWED_ORIGINS=<host[,host]>).
+# SERVER_ACTIONS_ALLOWED_ORIGINS=<the-uat-host>
+
+# The images set TZ=America/Jamaica so "today" follows the business day. A
+# host that runs the app outside these images must set TZ itself.
 
 # Storage: see "Document storage".
 STORAGE_MODE=s3
@@ -538,11 +549,16 @@ Migrations above). A reference ending in `@E394` was raised by Next.js itself,
 before any platform code ran; the usual case is `Body exceeded N MB limit` or
 `Unexpected end of form` - a file larger than the build accepts (DEC-075). The
 recorded row says so in words and points at the "Upload limit" health line
-and MAX_UPLOAD_MB above.
+and MAX_UPLOAD_MB above. `Invalid Server Actions request` means the proxy
+presents a different Host header than the public name: build with
+SERVER_ACTIONS_ALLOWED_ORIGINS (above). A failed upload, letter or form that
+names "the document store" is the bucket: read the "Document storage" health
+line, which runs the store's own check on every view of the page.
 The same section says outright whether the database
 schema matches the deployed build, whether the worker is alive, whether the
-data key reads what was saved and what size of upload the build accepts, and
-Integration Health reports the first two as components.
+data key reads what was saved, what size of upload the build accepts and whether
+the document store answers, and Integration Health reports schema and storage
+as components.
 
 ## Deployment protection
 

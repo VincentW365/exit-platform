@@ -10,7 +10,7 @@ import path from 'node:path';
 import PDFDocument from 'pdfkit';
 import { BRAND, formatInstant } from '@exit/domain';
 import { getConfig } from '@exit/config';
-import { getStorage, newObjectKey } from '../storage.ts';
+import { newObjectKey, storageRead, storageWrite } from '../storage.ts';
 
 export const PRODUCER = "Bert's Auto Parts - Offboarding Platform";
 
@@ -278,7 +278,7 @@ export async function renderLetterPdf(input: LetterRenderInput): Promise<Rendere
   const bytes = await renderLetterPdfBytes(input);
   const checksum = createHash('sha256').update(bytes).digest('hex');
   const objectKey = newObjectKey();
-  await getStorage().put(objectKey, bytes);
+  await storageWrite(objectKey, bytes);
   return { objectKey, checksum, byteLength: bytes.byteLength };
 }
 
@@ -449,7 +449,7 @@ export async function renderActionFormPdf(input: FormRenderInput): Promise<Rende
   const bytes = await renderActionFormPdfBytes(input);
   const checksum = createHash('sha256').update(bytes).digest('hex');
   const objectKey = newObjectKey();
-  await getStorage().put(objectKey, bytes);
+  await storageWrite(objectKey, bytes);
   return { objectKey, checksum, byteLength: bytes.byteLength };
 }
 
@@ -458,7 +458,7 @@ export async function readVerifiedPdf(
   objectKey: string,
   expectedChecksum: string,
 ): Promise<Buffer> {
-  const bytes = await getStorage().get(objectKey);
+  const bytes = await storageRead(objectKey);
   const checksum = createHash('sha256').update(bytes).digest('hex');
   if (checksum !== expectedChecksum) {
     throw new Error('Stored PDF failed its integrity check.');

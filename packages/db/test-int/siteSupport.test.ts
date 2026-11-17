@@ -10,9 +10,19 @@ import { getConfig, uploadBodyLimitMb } from '@exit/config';
 import {
   databaseSchemaStatus,
   siteSupportStatus,
+  storageStatus,
   uploadLimitStatus,
   workerStatus,
 } from '../src/services/siteSupportService.ts';
+import { ServiceError } from '../src/errors.ts';
+import {
+  setStorageForTests,
+  STORAGE_READ_UNAVAILABLE,
+  STORAGE_WRITE_UNAVAILABLE,
+  storageRead,
+  storageWrite,
+  type StorageAdapter,
+} from '../src/storage.ts';
 import { resetDb } from './helpers.ts';
 
 beforeAll(async () => {
@@ -71,5 +81,54 @@ describe('site health for support (DEC-073)', () => {
     const all = await siteSupportStatus({ builtBodyLimitMb: required });
     expect(all.uploads.state).toBe('ok');
     expect(all.schema.state).toBe('current');
+    expect(all.storage).toMatchObject({ adapter: 'local-dev', ok: true });
+  });
+
+  it('says whether the document store answers, and a dead store fails in words', async () => {
+    expect(await storageStatus()).toMatchObject({ adapter: 'local-dev', ok: true });
+
+    const dead: StorageAdapter = {
+      name: 's3',
+      put: async () => {
+        throw new Error('getaddrinfo ENOTFOUND bucket.example.invalid');
+      },
+      get: async () => {
+        throw new Error('getaddrinfo ENOTFOUND bucket.example.invalid');
+      },
+      health: async () => ({ ok: false, detail: 'bucket unreachable: ENOTFOUND' }),
+    };
+    setStorageForTests(dead);
+    try {
+      expect(await storageStatus()).toEqual({
+        adapter: 's3',
+        ok: false,
+        detail: 'bucket unreachable: ENOTFOUND',
+      });
+      const key = 'branding/' + 'a'.repeat(48);
+      await expect(storageWrite(key, new Uint8Array([1]))).rejects.toMatchObject({
+        name: 'ServiceError',
+        code: 'CONFLICT',
+        message: STORAGE_WRITE_UNAVAILABLE,
+      });
+      await expect(storageRead(key)).rejects.toMatchObject({
+        code: 'CONFLICT',
+        message: STORAGE_READ_UNAVAILABLE,
+      });
+      // The words name no host, key or URL.
+      expect(STORAGE_WRITE_UNAVAILABLE).not.toMatch(/ENOTFOUND|invalid|http/);
+      expect(new ServiceError('CONFLICT', STORAGE_WRITE_UNAVAILABLE).message).toContain(
+        'Document storage',
+      );
+      // A store that never answers is reported, not waited for.
+      setStorageForTests({
+        name: 's3',
+        put: async () => undefined,
+        get: async () => Buffer.alloc(0),
+        health: () => new Promise(() => undefined),
+      });
+      expect(await storageStatus(50)).toMatchObject({ ok: false, detail: /no answer/ });
+    } finally {
+      setStorageForTests(undefined);
+    }
   });
 });

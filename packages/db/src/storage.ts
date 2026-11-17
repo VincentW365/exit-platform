@@ -15,6 +15,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getConfig, resolveFromRoot, resolveSecretRef, secretRefFormatError } from '@exit/config';
+import { ServiceError } from './errors.ts';
 
 export interface StorageAdapter {
   readonly name: string;
@@ -268,4 +269,52 @@ export function getStorage(): StorageAdapter {
 /** Test hook. */
 export function setStorageForTests(a: StorageAdapter | undefined): void {
   adapter = a;
+}
+
+/**
+ * What a person reads when the document store cannot be reached (owner
+ * review, 2026-11-17): on a hosted site the store is a bucket, and a wrong
+ * bucket, endpoint or key used to turn every upload and every rendered PDF
+ * into "Something Went Wrong" with a reference. The wrappers below keep the
+ * adapter's own exceptions for the log (name only, never a key or a URL) and
+ * give the caller a ServiceError in plain words that every action and route
+ * already shows.
+ */
+export const STORAGE_WRITE_UNAVAILABLE =
+  'The document store could not be reached, so nothing was saved. Ask the host to check Document storage under Administration > System (STORAGE_MODE and the S3 settings).';
+export const STORAGE_READ_UNAVAILABLE =
+  'The document store could not be reached, so the file cannot be read right now. Ask the host to check Document storage under Administration > System.';
+
+function storageFailure(op: 'write' | 'read', e: unknown): never {
+  if (e instanceof ServiceError) throw e;
+  console.error(
+    JSON.stringify({
+      level: 'error',
+      event: 'storage_unavailable',
+      op,
+      adapter: getStorage().name,
+      errorName: e instanceof Error ? e.name : 'Error',
+    }),
+  );
+  throw ServiceError.conflict(
+    op === 'write' ? STORAGE_WRITE_UNAVAILABLE : STORAGE_READ_UNAVAILABLE,
+  );
+}
+
+/** Store bytes under a system-generated key, or fail in words. */
+export async function storageWrite(objectKey: string, bytes: Uint8Array): Promise<void> {
+  try {
+    await getStorage().put(objectKey, bytes);
+  } catch (e) {
+    storageFailure('write', e);
+  }
+}
+
+/** Read stored bytes, or fail in words. */
+export async function storageRead(objectKey: string): Promise<Buffer> {
+  try {
+    return await getStorage().get(objectKey);
+  } catch (e) {
+    storageFailure('read', e);
+  }
 }

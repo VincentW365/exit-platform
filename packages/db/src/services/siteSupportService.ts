@@ -8,6 +8,7 @@ import { getConfig, uploadBodyLimitMb } from '@exit/config';
 import { getPrisma } from '../client.ts';
 import { EXPECTED_LATEST_MIGRATION, schemaState, type SchemaState } from '../schemaVersion.ts';
 import { dataKeyFingerprint, tryDecryptValue } from '../secretBox.ts';
+import { getStorage } from '../storage.ts';
 import { bambooCredentialStatus } from './bambooCredentialService.ts';
 import { seededRecipientFor } from './recipientService.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
@@ -199,6 +200,37 @@ export function uploadLimitStatus(builtBodyLimitMb: number | null): UploadLimitS
   };
 }
 
+export interface StorageStatus {
+  /** The adapter in use: local-dev or s3. */
+  adapter: string;
+  ok: boolean;
+  /** Names and states only: a variable NAME, a bucket's reachability, never a value. */
+  detail: string;
+}
+
+/**
+ * Whether documents can be stored and read (owner review, 2026-11-17). On a
+ * hosted site the store is a bucket; a wrong bucket, endpoint or key fails
+ * every upload and PDF. The adapter's own health check answers, bounded so a
+ * hung endpoint never holds the page.
+ */
+export async function storageStatus(timeoutMs = 5000): Promise<StorageStatus> {
+  let adapter = 'unknown';
+  try {
+    const storage = getStorage();
+    adapter = storage.name;
+    const check = storage.health?.() ?? Promise.resolve({ ok: true, detail: storage.name });
+    const timeout = new Promise<{ ok: boolean; detail: string }>((resolve) =>
+      setTimeout(() => resolve({ ok: false, detail: 'no answer within 5 seconds' }), timeoutMs),
+    );
+    const result = await Promise.race([check, timeout]);
+    return { adapter, ok: result.ok, detail: result.detail };
+  } catch (e) {
+    // A configuration error names the variable, never its value.
+    return { adapter, ok: false, detail: e instanceof Error ? e.message : 'not available' };
+  }
+}
+
 export async function siteSupportStatus(
   options: { now?: Date; builtBodyLimitMb?: number | null } = {},
 ): Promise<{
@@ -206,11 +238,19 @@ export async function siteSupportStatus(
   worker: WorkerStatus;
   dataKey: DataKeyStatus;
   uploads: UploadLimitStatus;
+  storage: StorageStatus;
 }> {
-  const [schema, worker, dataKey] = await Promise.all([
+  const [schema, worker, dataKey, storage] = await Promise.all([
     databaseSchemaStatus(),
     workerStatus(options.now ?? new Date()),
     dataKeyStatus(),
+    storageStatus(),
   ]);
-  return { schema, worker, dataKey, uploads: uploadLimitStatus(options.builtBodyLimitMb ?? null) };
+  return {
+    schema,
+    worker,
+    dataKey,
+    uploads: uploadLimitStatus(options.builtBodyLimitMb ?? null),
+    storage,
+  };
 }

@@ -25,12 +25,21 @@ COPY . .
 # runs with (docker build --build-arg MAX_UPLOAD_MB=<n>); the default matches
 # the runtime default. The System page says when the two disagree.
 ARG MAX_UPLOAD_MB=10
-RUN MAX_UPLOAD_MB=${MAX_UPLOAD_MB} pnpm --filter @exit/db exec prisma generate \
- && MAX_UPLOAD_MB=${MAX_UPLOAD_MB} pnpm --filter web build
+# Public hostnames the site is reached through when a proxy rewrites the Host
+# header (comma-separated; empty means Next's own origin check). Build-time.
+ARG SERVER_ACTIONS_ALLOWED_ORIGINS=
+RUN MAX_UPLOAD_MB=${MAX_UPLOAD_MB} SERVER_ACTIONS_ALLOWED_ORIGINS=${SERVER_ACTIONS_ALLOWED_ORIGINS} \
+    pnpm --filter @exit/db exec prisma generate \
+ && MAX_UPLOAD_MB=${MAX_UPLOAD_MB} SERVER_ACTIONS_ALLOWED_ORIGINS=${SERVER_ACTIONS_ALLOWED_ORIGINS} \
+    pnpm --filter web build
 
 FROM node:24-slim AS runner
 ENV NODE_ENV=production
 ENV PORT=3000
+# The platform's business day is Jamaica's (APP_TIMEZONE). The process clock
+# follows it so "today" on dashboards, task lists and audit counts does not
+# roll over at 7 pm local time, as it does in a UTC container.
+ENV TZ=America/Jamaica
 WORKDIR /app
 # Non-root runtime user (U.3).
 RUN groupadd --system app && useradd --system --gid app --home /app app

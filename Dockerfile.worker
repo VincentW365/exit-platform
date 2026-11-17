@@ -20,6 +20,8 @@ RUN pnpm --filter @exit/db exec prisma generate
 
 FROM node:24-slim AS runner
 ENV NODE_ENV=production
+# Same business-day clock as the web image (APP_TIMEZONE).
+ENV TZ=America/Jamaica
 WORKDIR /app
 RUN groupadd --system app && useradd --system --gid app --home /app app
 COPY --from=builder --chown=app:app /app /app
