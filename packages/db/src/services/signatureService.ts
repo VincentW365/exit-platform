@@ -67,7 +67,7 @@ import { decryptValue, encryptValue, tryDecryptValue } from '../secretBox.ts';
 import { newPrefixedObjectKey, storageRead, storageWrite } from '../storage.ts';
 import { appendAudit, auditDenied, newCorrelationId } from './auditService.ts';
 import { enqueueOutboxTx } from './outboxService.ts';
-import { routingEnvironment } from './routingService.ts';
+import { routedAddressErrors, routingEnvironment } from './routingService.ts';
 import { loadCaseAccess } from './shared.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
 
@@ -228,7 +228,11 @@ export async function createSignatureRequest(
 
   const email = (input.signerEmail ?? '').trim() || null;
   if (email) {
-    const errors = destinationErrors(email, routingEnvironment());
+    // DEC-076: the employee's own address is a resolved party of the case.
+    const errors =
+      input.signerRole === 'EMPLOYEE'
+        ? routedAddressErrors(email)
+        : destinationErrors(email, routingEnvironment());
     if (errors.length) throw ServiceError.validation(errors);
   }
 
@@ -334,7 +338,10 @@ export async function sendSignatureRequestEmail(
 
   const email = (input.email ?? request.signerEmail ?? '').trim();
   if (!email) throw ServiceError.validation(['Enter the email address to send the request to.']);
-  const destErrors = destinationErrors(email, routingEnvironment());
+  const destErrors =
+    request.signerRole === 'EMPLOYEE'
+      ? routedAddressErrors(email)
+      : destinationErrors(email, routingEnvironment());
   if (destErrors.length) throw ServiceError.validation(destErrors);
 
   const prisma = getPrisma();

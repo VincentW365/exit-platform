@@ -71,7 +71,7 @@ is built and run.
 
 | Environment | Recipients | Delivery |
 | --- | --- | --- |
-| `development` | Must be non-deliverable (`.test`, `.invalid`, `localhost`, `capture://`). A local mistake cannot reach a person even if every other guard failed. | Captured in the development mailbox. |
+| `development` and hosted `uat` | Configured and hand-entered addresses must be non-deliverable (`.test`, `.invalid`, `localhost`, `capture://`). Addresses the platform resolves from the case and the directory - the departing employee, their manager, the assigned HR Officer, the case owner - are accepted as they are while the email provider is a capture one (DEC-076), so the live directory's real work emails do not block the acceptance letter or a signing link. | Captured in the development mailbox; nothing can leave while the provider cannot deliver. With `EMAIL_MODE=graph` the strict rule applies to every address. |
 | `test` (UAT) | The **real** organizational addresses, resolved exactly as in production — because the point of UAT is to prove routing. | Every message is redirected to `TEST_EMAIL`. Redirection **cannot be turned off** here. |
 | `production` | Real, deliverable addresses. | Real delivery. |
 

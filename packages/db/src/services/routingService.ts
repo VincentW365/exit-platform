@@ -20,6 +20,7 @@ import {
   maskDestination,
   routeErrors,
   destinationErrors,
+  routedDestinationErrors,
   DESTINATION_LABELS,
   STATIC_DESTINATION_CLASS,
   NOTIFICATION_TYPES,
@@ -462,11 +463,23 @@ export function routeMasks(resolution: RouteResolution): {
 /**
  * The routing environment this deployment is running as.
  *
- * 'uat' is deliberately NOT given its own branch in destinationErrors: it
- * falls into the strict development rule, so a hosted test deployment can
- * only ever address capture:// channels, reserved .test/.invalid domains or
- * localhost - never a deliverable mailbox.
+ * 'uat' is deliberately NOT given its own branch in destinationErrors: a
+ * configured or hand-entered address on a hosted test deployment can only be
+ * a capture:// channel, a reserved .test/.invalid domain or localhost (DEC-062).
+ * Addresses the platform resolves from the case and the directory follow
+ * routedAddressErrors below (DEC-076).
  */
 export function routingEnvironment(): 'development' | 'test' | 'uat' | 'production' {
   return getConfig().appEnvironment;
+}
+
+/**
+ * DEC-076: the rule for an address the platform resolved from the case or the
+ * directory (the departing employee, their manager, the assigned HR Officer,
+ * the case owner) - accepted outside production while the configured email
+ * provider cannot deliver. Hand-entered and configured addresses keep using
+ * destinationErrors directly.
+ */
+export function routedAddressErrors(email: string): string[] {
+  return routedDestinationErrors(email, routingEnvironment(), getConfig().EMAIL_MODE);
 }

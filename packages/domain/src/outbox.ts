@@ -138,14 +138,18 @@ const DEV_ONLY_DESTINATION = /@example\.invalid$|@[^\s@]*\.test$|@localhost$|^ca
 const PLAUSIBLE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * D.4/D.5: destination validation differs by environment.
+ * D.4/D.5: destination validation differs by environment. This is the rule for
+ * a CONFIGURED or HAND-ENTERED address (the recipient directory, a departmental
+ * mailbox, a manual override); an address the platform resolved from the case
+ * or the directory goes through routedDestinationErrors below (DEC-076).
  *
- *  - development: nothing deliverable, ever. A local mistake must not be able
- *    to reach a person even if every other guard failed.
- *  - test/UAT: the REAL organizational addresses are configured and resolved,
- *    because the point of UAT is to prove routing. They are never delivered
- *    to - every message is redirected to the test mailbox - so a real address
- *    here is correct rather than dangerous.
+ *  - development and hosted uat: nothing deliverable, ever (DEC-062). A local
+ *    mistake must not be able to reach a person even if every other guard
+ *    failed.
+ *  - test: the REAL organizational addresses are configured and resolved,
+ *    because the point of that environment is to prove routing. They are never
+ *    delivered to - every message is redirected to TEST_EMAIL - so a real
+ *    address here is correct rather than dangerous.
  *  - production: must be a real, deliverable address.
  */
 export function destinationErrors(destination: string, environment: string): string[] {
@@ -170,6 +174,37 @@ export function destinationErrors(destination: string, environment: string): str
       );
   }
   return errors;
+}
+
+/** Email modes that can deliver to a mailbox; every other mode captures or discards. */
+export const DELIVERING_EMAIL_MODES: readonly string[] = ['graph'];
+
+/**
+ * DEC-076 (owner decision, 2026-11-17): an address the platform RESOLVED - the
+ * departing employee, their manager, the assigned HR Officer or the case
+ * owner, from the case and the directory - is accepted outside production
+ * while the configured email provider cannot deliver (dev-capture, sink,
+ * disabled: every message lands in the capture mailbox or nowhere). The
+ * barrier is the provider, not the address, so a live directory's real work
+ * emails no longer block the acceptance letter or a signing link on a test
+ * site. With a delivering provider, and in production and test, the ordinary
+ * rule applies unchanged. Hand-entered addresses never come through here.
+ */
+export function routedDestinationErrors(
+  destination: string,
+  environment: string,
+  emailMode: string,
+): string[] {
+  const d = destination.trim();
+  const captured =
+    environment !== 'production' &&
+    environment !== 'test' &&
+    !DELIVERING_EMAIL_MODES.includes(emailMode);
+  if (!captured) return destinationErrors(d, environment);
+  if (!d) return ['A destination is required.'];
+  return PLAUSIBLE_EMAIL.test(d) || d.startsWith('capture://')
+    ? []
+    : ['The resolved address is not a valid email address.'];
 }
 
 /** Masked display: never show the full destination outside authorized admin. */

@@ -420,9 +420,12 @@ from the **fixture** adapter instead.
 
 Group recipients are **not seeded**. The HR Manager configures them at runtime
 under **Administration → Recipients**, and dispatch uses a recipient only once it is
-active, approved and verified. In UAT every destination must be a reserved-domain
-address or a `capture://` channel — the `uat` environment refuses anything
-deliverable. Configure, approve and verify:
+active, approved and verified. In UAT every CONFIGURED destination must be a
+reserved-domain address or a `capture://` channel — the `uat` environment refuses
+anything deliverable there. The departing employee's, their manager's and the HR
+staff's own addresses, as the live directory holds them, are accepted on the
+letter and the signing link because the capture provider cannot deliver
+(DEC-076). Configure, approve and verify:
 
 | Recipient class | Destination |
 | --- | --- |

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   backoffDelayMs,
   destinationErrors,
+  routedDestinationErrors,
   isRetryableError,
   maskDestination,
   normalizeProviderError,
@@ -65,6 +66,33 @@ describe('recipient directory rules (D)', () => {
     expect(destinationErrors('capture://x', 'production')).not.toEqual([]);
     expect(destinationErrors('user@localhost', 'production')).not.toEqual([]);
     expect(destinationErrors('offboarding@company.com', 'production')).toEqual([]);
+  });
+
+  it('a resolved address is accepted outside production while nothing can deliver (DEC-076)', () => {
+    const real = 'employee@company.example';
+    // Capture providers: the live directory's real addresses reach the capture mailbox only.
+    for (const mode of ['dev-capture', 'sink', 'disabled']) {
+      expect(routedDestinationErrors(real, 'development', mode)).toEqual([]);
+      expect(routedDestinationErrors(real, 'uat', mode)).toEqual([]);
+      expect(routedDestinationErrors('capture://employee', 'uat', mode)).toEqual([]);
+      expect(routedDestinationErrors('not an address', 'uat', mode)).not.toEqual([]);
+      expect(routedDestinationErrors('   ', 'uat', mode)).toEqual(['A destination is required.']);
+    }
+    // A delivering provider restores the ordinary rule, word for word.
+    expect(routedDestinationErrors(real, 'development', 'graph')).toEqual(
+      destinationErrors(real, 'development'),
+    );
+    expect(routedDestinationErrors(real, 'uat', 'graph')).not.toEqual([]);
+    expect(routedDestinationErrors('it@example.test', 'uat', 'graph')).toEqual([]);
+    // Production and test never change.
+    expect(routedDestinationErrors(real, 'production', 'dev-capture')).toEqual([]);
+    expect(routedDestinationErrors('it@example.invalid', 'production', 'dev-capture')).toEqual(
+      destinationErrors('it@example.invalid', 'production'),
+    );
+    expect(routedDestinationErrors(real, 'test', 'sink')).toEqual([]);
+    // The configured rule itself is untouched: hand-entered real addresses stay refused.
+    expect(destinationErrors(real, 'uat')).not.toEqual([]);
+    expect(destinationErrors(real, 'development')).not.toEqual([]);
   });
 
   it('masks destinations for display', () => {

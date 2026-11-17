@@ -63,6 +63,7 @@ import {
   resolveStaticTo,
   routingEnvironment,
   type RoutingCaseFacts,
+  routedAddressErrors,
 } from './routingService.ts';
 import { unreadableAddressMessage, upsertRecipient } from './recipientService.ts';
 import { getSystemConfigValue } from './systemConfigService.ts';
@@ -1656,7 +1657,12 @@ export async function overrideRecipient(
     };
   } else {
     chosen = await resolveChoice(c, input, routingFactsOf(c), record.notificationType);
-    const errors = destinationErrors(chosen.email, routingEnvironment());
+    // DEC-076: a person from the directory or a party of the case is a resolved
+    // address; a configured recipient keeps the configured rule.
+    const errors =
+      input.kind === 'CONFIG'
+        ? destinationErrors(chosen.email, routingEnvironment())
+        : routedAddressErrors(chosen.email);
     if (errors.length) throw ServiceError.validation(errors);
   }
   const overrideKind: RecipientOverrideKind = input.kind === 'MANUAL' ? 'MANUAL' : 'RECIPIENT';

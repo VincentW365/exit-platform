@@ -16,7 +16,6 @@ import {
   type Actor,
   canActOnCase,
   contentChecksum,
-  destinationErrors,
   docTransitionError,
   executionBlockedReason,
   firstNameOf,
@@ -34,7 +33,7 @@ import { encryptValue } from '../secretBox.ts';
 import { appendAudit, newCorrelationId } from './auditService.ts';
 import { loadCaseAccess } from './shared.ts';
 import { enqueueOutboxTx } from './outboxService.ts';
-import { resolveRoute, routingEnvironment } from './routingService.ts';
+import { resolveRoute, routedAddressErrors } from './routingService.ts';
 
 /** One person the letter may be copied to. */
 export interface LetterCcContact {
@@ -256,7 +255,8 @@ export async function issueDocumentByEmail(
     );
   const routedTo = routed.to;
   const destination = routedTo.email;
-  const errors = destinationErrors(destination, routingEnvironment());
+  // DEC-076: the employee's address comes from the case and the directory.
+  const errors = routedAddressErrors(destination);
   if (errors.length) throw ServiceError.validation(errors);
 
   const chosen = await resolveCc(input.ccIds);
@@ -279,7 +279,7 @@ export async function issueDocumentByEmail(
     seenCc.add(key);
   }
   for (const address of cc.emails) {
-    const ccErrors = destinationErrors(address, routingEnvironment());
+    const ccErrors = routedAddressErrors(address);
     if (ccErrors.length) throw ServiceError.validation(ccErrors);
   }
 
