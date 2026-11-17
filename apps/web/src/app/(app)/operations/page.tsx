@@ -3,12 +3,18 @@ import Link from 'next/link';
 import { ServiceError, trainingStatus } from '@exit/db';
 import { requireAuth } from '@/lib/auth';
 import { Feedback } from '@/components/ui';
+import { ProcessFlow } from './ProcessFlow';
 import { recordTrainingAction } from './actions';
 
 export const metadata: Metadata = { title: 'Operations and Training Center' };
 export const dynamic = 'force-dynamic';
 
-/** Directive 4 section S: SOP centre with role guides and training mode. */
+/**
+ * Directive 4 section S: the SOP centre with role guides and training mode.
+ * Review recommendation (2026-11-17): the page leads with one simplified,
+ * step-by-step process flow of an offboarding; the role guides and training
+ * records follow, folded away so the flow is what a reader meets first.
+ */
 const SOPS: ReadonlyArray<{ module: string; title: string; audience: string; summary: string[] }> =
   [
     {
@@ -129,45 +135,70 @@ export default async function OperationsPage({
     if (!(e instanceof ServiceError)) throw e;
   }
   const done = new Set(completions.map((c) => c.module));
+  const recorded = SOPS.filter((s) => done.has(s.module)).length;
 
   return (
-    <>
-      <h1>Operations and Training</h1>
+    <div className="exit-center">
+      <div className="page-head">
+        <div className="page-head__text">
+          <h1 className="page-title">Operations and Training</h1>
+          <p className="page-lede">
+            How an offboarding runs from the first entry to the closed record, then the role guides
+            behind each step.
+          </p>
+        </div>
+        <div className="page-head__actions">
+          <Link className="button secondary" href="/queue">
+            My queue
+          </Link>
+          <Link className="button secondary" href="/cases/new">
+            Start a TRAINING case
+          </Link>
+        </div>
+      </div>
       <Feedback err={sp.err} ok={sp.ok} />
+
+      <ProcessFlow />
+
       <p className="hint" role="note">
-        Repository-controlled procedures (full runbooks in docs/operations). TRAINING mode: create
-        cases with the TRAINING record purpose - they exercise the complete workflow and can never
-        call live integrations. Recording completion is not formal certification.
-      </p>
-      <p>
-        Quick links: <Link href="/queue">My queue</Link> -{' '}
-        <Link href="/continuity">Continuity center</Link> - <Link href="/support">Support</Link> -{' '}
-        <Link href="/cases/new">Start a TRAINING case</Link>
+        TRAINING mode: create cases with the TRAINING record purpose. They exercise the complete
+        workflow and can never call live integrations. Quick links:{' '}
+        <Link href="/continuity">Continuity center</Link> · <Link href="/support">Support</Link>.
+        Full runbooks live in the repository under docs/operations.
       </p>
 
-      {SOPS.map((sop) => (
-        <section className="panel" key={sop.module} aria-label={sop.title}>
-          <h2 style={{ marginTop: 0, fontSize: '1.05rem' }}>
-            {sop.title} <span className="badge badge--neutral">{sop.audience}</span>{' '}
-            {done.has(sop.module) ? (
-              <span className="badge badge--success">Training recorded</span>
+      <details className="panel action" aria-labelledby="guides-h">
+        <summary id="guides-h">
+          Role guides and training records · {recorded} of {SOPS.length} recorded
+        </summary>
+        <p className="hint" role="note">
+          Repository-controlled procedures, one per module. Recording completion is not formal
+          certification.
+        </p>
+        {SOPS.map((sop) => (
+          <section className="panel" key={sop.module} aria-label={sop.title}>
+            <h2 style={{ marginTop: 0, fontSize: '1.05rem' }}>
+              {sop.title} <span className="badge badge--neutral">{sop.audience}</span>{' '}
+              {done.has(sop.module) ? (
+                <span className="badge badge--success">Training recorded</span>
+              ) : null}
+            </h2>
+            <ul>
+              {sop.summary.map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ul>
+            {!done.has(sop.module) ? (
+              <form action={recordTrainingAction}>
+                <input type="hidden" name="module" value={sop.module} />
+                <button type="submit" className="secondary">
+                  Record training completion ({user.roles[0] ?? 'no role'})
+                </button>
+              </form>
             ) : null}
-          </h2>
-          <ul>
-            {sop.summary.map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ul>
-          {!done.has(sop.module) ? (
-            <form action={recordTrainingAction}>
-              <input type="hidden" name="module" value={sop.module} />
-              <button type="submit" className="secondary">
-                Record training completion ({user.roles[0] ?? 'no role'})
-              </button>
-            </form>
-          ) : null}
-        </section>
-      ))}
-    </>
+          </section>
+        ))}
+      </details>
+    </div>
   );
 }

@@ -2788,3 +2788,176 @@ kbd {
   line-height: var(--lh-snug);
   letter-spacing: 0;
 }
+
+/* ---------------------------------------------------------------------------
+   24. PROCESS MAP - one offboarding, start to finish, in HR's words
+   ------------------------------------------------------------------------ */
+
+.process-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  counter-reset: strip;
+}
+.process-strip > li {
+  flex: 1 1 9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border-top: 3px solid var(--st-progress);
+  background: var(--surface-well);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.process-strip > li::before {
+  counter-increment: strip;
+  content: 'Phase ' counter(strip);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.process-strip__name {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  line-height: var(--lh-snug);
+}
+.process-strip__who {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.process-map {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: phase;
+}
+.process-map > li {
+  position: relative;
+  padding: 0 0 var(--space-5) 3.25rem;
+}
+.process-map > li::before {
+  counter-increment: phase;
+  content: counter(phase);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid var(--st-progress);
+  background: var(--st-progress-bg);
+  color: var(--st-progress);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.process-map > li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: calc(1.125rem - 1px);
+  top: 2.5rem;
+  bottom: var(--space-2);
+  width: 2px;
+  background: var(--border-strong);
+}
+.process-map__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.25rem;
+}
+.process-map__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--lh-snug);
+}
+.process-map__purpose {
+  margin: var(--space-1) 0 0;
+}
+.process-map__gate {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+.process-map__detail {
+  margin-top: var(--space-2);
+}
+.process-map__detail > summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--accent);
+  width: fit-content;
+}
+.process-map__cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.process-map__cols h4 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.process-map__cols ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: var(--text-sm);
+}
+.process-map__cols li + li {
+  margin-top: var(--space-2);
+}
+.process-map__where {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+}
+
+.process-trouble {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-well);
+  border-radius: var(--radius);
+}
+.process-trouble h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-md, 1rem);
+}
+.process-trouble dl {
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.process-trouble dt {
+  font-weight: var(--weight-semi);
+  font-size: var(--text-sm);
+}
+.process-trouble dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+@media (max-width: 40rem) {
+  .process-map > li {
+    padding-left: 2.75rem;
+  }
+  .process-map > li::before {
+    width: 2rem;
+    height: 2rem;
+  }
+  .process-map > li:not(:last-child)::after {
+    left: calc(1rem - 1px);
+  }
+}
