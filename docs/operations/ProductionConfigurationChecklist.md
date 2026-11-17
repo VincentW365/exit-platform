@@ -27,7 +27,9 @@ Legend: **[ENFORCED]** = the config loader refuses to start;
 - [ ] [ENFORCED] `EMAIL_MODE=graph` (production rejects `sink`,
       `dev-capture`); `disabled` is permitted for a no-email start.
 - [ ] [ENFORCED] `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`,
-      `GRAPH_CLIENT_SECRET_REF`, `GRAPH_SENDER` complete when mode is graph.
+      `GRAPH_CLIENT_SECRET_REF`, `GRAPH_SENDER_MAILBOX` complete when mode is graph
+      (`GRAPH_ALLOWED_DOMAINS` optional: a comma-separated allow-list of
+      recipient domains).
 - [ ] [MANUAL] Azure application registered with least privilege
       (`Mail.Send` restricted to the offboarding mailbox), admin consent
       recorded, secret in the secret manager (the app stores a REFERENCE).

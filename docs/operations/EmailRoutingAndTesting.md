@@ -132,3 +132,47 @@ why the addresses stay masked even here.
 4. Deploy with `APP_ENVIRONMENT=production`.
 
 No application logic changes at any step.
+
+## Before email can go live at all
+
+Owner question, 2026-11-17: can the deployment start sending real email by
+configuration alone, the way other internal web apps were switched on? Not
+yet. Four things must exist first, in this order; none of them can travel
+through Git, and the first three are decisions and credentials, not code.
+
+1. **The provider decision.** DEC-020 (email provider) is still OPEN with IT
+   as its owner. Microsoft Graph is the leading option because the company
+   mails from Outlook/Exchange Online; the decision names the provider and
+   the mailbox the platform sends from (the "offboarding mailbox"). The
+   production checklist also requires written authorization to send real
+   mail, recorded in the Decision Register.
+2. **The Azure application.** A Microsoft 365 administrator registers an
+   application in the company tenant with the `Mail.Send` *application*
+   permission, grants admin consent, and restricts it with an Exchange
+   Online application access policy to the sending mailbox only. They hand
+   over the tenant ID, the application (client) ID and a client secret. The
+   secret goes into the deploying machine's secret store, never into Git or
+   the application.
+3. **The configuration on the deploying machine** (web service AND worker):
+   `EMAIL_MODE=graph`, `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`,
+   `GRAPH_CLIENT_SECRET_REF=env:<SECRET NAME>`, `GRAPH_SENDER_MAILBOX`,
+   and optionally `GRAPH_ALLOWED_DOMAINS` (a comma-separated list of
+   recipient domains; anything else is refused before any network call).
+4. **The send itself.** The Graph adapter in this repository validates the
+   configuration, builds the `sendMail` request, enforces the allow-list and
+   then **fails closed**: live sending was placed out of scope by Directive 4
+   section C until the company provisions credentials. Once 1-3 exist, the
+   token call (client credentials) and the `sendMail` submission are
+   implemented against that request builder, with throttling and
+   `Retry-After` honoured and provider acceptance recorded as SUBMITTED, not
+   delivered (DEC-034).
+
+Where it may run: real addresses are only addressed in `production` (full
+production configuration: OIDC identity, S3 storage, external scanning) or
+in `test`, which resolves the real recipients and redirects every message to
+`TEST_EMAIL`. The hosted `uat` site and every development machine refuse
+deliverable addresses by design (DEC-062; DEC-076 records the open question
+of the live directory's real addresses outside production). A sensible
+first live step is therefore `APP_ENVIRONMENT=test` with `TEST_EMAIL` set
+to one HR mailbox: it proves the Graph connection and the routing with
+nothing reaching an employee.
