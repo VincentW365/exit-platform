@@ -235,3 +235,14 @@ ever set in production). All eight synthetic users from the seed are offered.
   the reference workstation). See
   `docs/delivery/Stage4ProductionReadinessBuildRecord.md` and the runbooks
   in `docs/operations/`.
+
+### JSX text that contains an HTML entity
+
+Next's compiler (SWC) drops the leading space of a multi-line JSX text when
+that text contains an HTML entity (`&apos;`, `&amp;`, `&quot;`, `&#215;`), so
+`<strong>Done.</strong> The host&apos;s rule ...` wrapped over two lines renders
+as "Done.The host's rule". Babel and TypeScript keep the space, so nothing
+else notices. Write such a sentence with a typographic apostrophe or
+quotation mark instead of an entity, or start the text on its own line. The
+unit test `test/webJsxEntityWhitespace.test.ts` scans every web component for
+the shape and fails the build of a pull request that reintroduces it.

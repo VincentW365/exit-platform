@@ -2,7 +2,7 @@
 
 | ID | Screen | Primary users | Purpose | Critical UX/control notes |
 | --- | --- | --- | --- | --- |
-| UX-001 | Sign in / SSO handoff | All internal users | Authenticate through approved IdP | Environment banner only in non-production; accessible errors. |
+| UX-001 | Sign in / SSO handoff | All internal users | Authenticate through approved IdP; outside production, pick a synthetic role | Fixed navy brand panel beside one sign-in card. Outside production the role switcher names the environment as a chip, says in words why it exists (never variable names), and shows each account as one button: name, what the role does, Sign in. The network-reachable note stays beside the buttons. Accessible errors. |
 | UX-002 | Exit Center (HR dashboard) | HR Manager/Officer | See next actions, cases, approvals, exceptions and KPIs | Role-filtered; counts/denominators; no broad termination leak. Presentation pass 2026-09-23 (DEC-070): identity and primary action in one head; pipeline then five queue figures (zero reads calm); My Work (officer: assigned cases with next action; manager: cases awaiting approval first) before Requires your attention; business labels only, dates as `d LLL yyyy`, helper text only where it prevents a misreading. |
 | UX-003 | Case List | HR authorized roles | Search/filter/sort authorized cases | Confidentiality badges; saved filters; controlled export. |
 | UX-004 | Create Case — Employee | HR | Find employee or start approved manual fallback | Source/retrieved time; duplicate warning; minimum data. |
